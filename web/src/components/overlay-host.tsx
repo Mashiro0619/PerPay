@@ -132,6 +132,10 @@ const views: Partial<Record<OverlayRouteKind, React.LazyExoticComponent<React.Co
   evidence: lazy(() => import("@/pages/ReconciliationDetail")),
   audit: lazy(() => import("@/pages/AuditDetail")),
   "audit-status": lazy(() => import("@/pages/AuditStatus")),
+  site: lazy(() => import("@/pages/Sites").then(module => ({ default: module.SiteEditorPage }))),
+  "site-summary": lazy(() => import("@/pages/Sites").then(module => ({ default: module.SiteSummaryOverlay }))),
+  "site-defaults": lazy(() => import("@/pages/Sites").then(module => ({ default: module.SiteDefaultsPage }))),
+  account: lazy(() => import("@/pages/AlipayAccounts")),
 };
 
 class OverlayFailure extends Component<{ children: ReactNode }, { error: Error | null }> {

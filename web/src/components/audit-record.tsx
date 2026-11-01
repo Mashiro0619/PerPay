@@ -33,7 +33,7 @@ export function AuditSite({ event, deleted = false }: { event: Pick<AuditEventIt
   if (!event.site_id) return <span>未关联网站</span>;
   const title = event.site_name || event.site_id;
   if (deleted) return <span className="wrap-anywhere">{title}（已删除）</span>;
-  return <Link global to={"/sites/" + encodeURIComponent(event.site_id)} title={event.site_id} className="list-secondary-link wrap-anywhere">{title}</Link>;
+  return <Link global to={"/sites/" + encodeURIComponent(event.site_id) + "/summary"} title={event.site_id} className="list-secondary-link wrap-anywhere">{title}</Link>;
 }
 
 export function AuditActor({ event }: { event: Pick<AuditEventItem, "actor_type" | "actor_id"> }) {

@@ -389,7 +389,7 @@ describe("desktop business list composition", () => {
         const reference = table.querySelector('tbody [data-column-id="order_reference"] a');
         expect(reference).toHaveTextContent(order.merchant_order_no);
         expect(reference).toHaveAttribute("href", "/orders/" + orderId);
-        expect(table.querySelector('tbody [data-column-id="site"] a')).toHaveAttribute("href", "/sites/" + order.api_client_id);
+        expect(table.querySelector('tbody [data-column-id="site"] a')).toHaveAttribute("href", "/sites/" + order.api_client_id + "/summary");
         expect(table.querySelector('tbody [data-column-id="order"]')).toHaveTextContent(order.product_name);
         expect(table.querySelector('tbody [data-column-id="order"]')).not.toHaveTextContent(order.merchant_order_no);
       }

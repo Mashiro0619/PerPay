@@ -4,6 +4,7 @@ import { setSystemName } from "@/branding";
 import {
   Fragment,
   useEffect,
+  useId,
   useRef,
   useState,
   type FormEvent,
@@ -23,6 +24,8 @@ import { Link } from "@/navigation";
 import { cn } from "@/lib/utils";
 import { applicationKeyState } from "@/lib/application-key";
 import { useFormDraft } from "@/drafts";
+import { OverlayActions } from "@/components/overlay-actions";
+import { useOverlayCloseGuard, useOverlayContext } from "@/lib/overlay-context";
 import { useSuccessToast } from "@/components/Feedback";
 import { CollectionCodeField } from "@/components/CollectionCodeField";
 import { ApplicationKey, hasLegacyAlipayConfiguration, LegacyAlipayNotice } from "@/components/ApplicationKey";
@@ -249,6 +252,8 @@ export function SettingsEditor({
   // Keep defaults stable for this mounted draft when a sibling form saves.
   // Explicit refreshes remount the editor; saves still use the latest revision.
   const [initialSettings] = useState(settings);
+  const overlay = useOverlayContext();
+  const formId = useId();
   const legacyProvider = section === "provider" &&
     (hasLegacyAlipayConfiguration(initialSettings) || hasLegacyAlipayConfiguration(settings));
   const [privateOpen, setPrivateOpen] = useState(false);
@@ -324,6 +329,8 @@ export function SettingsEditor({
       submitting.current = false;
     },
   });
+  // Submitted saves retain the existing draft-confirmation flow in DraftProvider.
+  useOverlayCloseGuard(() => decoding);
   useEffect(() => {
     // A mutation can publish field errors before its disabled fieldset is released.
     if (save.isPending) return;
@@ -798,7 +805,8 @@ export function SettingsEditor({
         }
       />
       <Field orientation="horizontal" className="flex-wrap justify-end">
-        <Button type="submit" className="h-auto min-h-8 max-w-full whitespace-normal" disabled={decoding || !canSave || save.isPending} aria-busy={save.isPending}>
+        {overlay && !guided && <Button type="button" variant="outline" disabled={save.isPending || decoding} onClick={() => overlay.requestClose()}>关闭</Button>}
+        <Button form={formId} type="submit" className="h-auto min-h-8 max-w-full whitespace-normal" disabled={decoding || !canSave || save.isPending} aria-busy={save.isPending}>
           {save.isPending ? (
             <Spinner aria-hidden="true" data-icon="inline-start" />
           ) : (
@@ -818,6 +826,7 @@ export function SettingsEditor({
 
   const editor = (
     <form
+      id={formId}
       className={cn(
         "w-full min-w-0",
         guided && renderGuidedActions && "flex min-w-0 flex-col gap-5",
@@ -900,7 +909,7 @@ export function SettingsEditor({
                   ))}
                 </FieldGroup>
               </CardContent>
-              <CardFooter>{actions}</CardFooter>
+              {overlay ? <OverlayActions className="w-full">{actions}</OverlayActions> : <CardFooter>{actions}</CardFooter>}
             </Card>
           )}
           {guided && !renderGuidedActions && actions}

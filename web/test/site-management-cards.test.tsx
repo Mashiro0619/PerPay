@@ -52,14 +52,12 @@ function deferredResponse() {
 
 function cards() {
   const region = screen.queryByRole("region", { name: "网站经营概况" });
-  return region ? within(region).queryAllByRole("article") : [];
+  return region ? [...region.querySelectorAll<HTMLElement>("[data-business-row]")] : [];
 }
 
 function card(clientId: string) {
-  const destination = "/sites/" + encodeURIComponent(clientId);
-  const result = cards().find(item => [...item.querySelectorAll<HTMLAnchorElement>("a[href]")]
-    .some(link => new URL(link.href).pathname === destination));
-  if (!result) throw new Error("找不到业务网站卡片：" + clientId);
+  const result = cards().find(item => item.dataset.businessRow === clientId);
+  if (!result) throw new Error("找不到业务网站行：" + clientId);
   return result;
 }
 
@@ -71,17 +69,10 @@ function amount(item: HTMLElement) {
   return within(item).getByText(/^¥[\d,]+\.\d{2}$/);
 }
 
-function metric(item: HTMLElement, name: string) {
-  const term = within(item).getByText(name, { selector: "dt", exact: true });
-  const value = term.nextElementSibling;
-  expect(value?.tagName).toBe("DD");
-  return value as HTMLElement;
-}
-
-function barWidth(item: HTMLElement) {
-  const fill = item.querySelector<SVGRectElement>(".site-overview-amount-fill");
-  if (!fill) throw new Error("找不到管理卡片实收横条");
-  return Number(fill.getAttribute("width"));
+function workload(item: HTMLElement) {
+  const value = item.querySelector<HTMLElement>('[data-column-id="work"]');
+  expect(value).not.toBeNull();
+  return value!;
 }
 
 function rangeButton(range: Range) {
@@ -102,13 +93,14 @@ function mount(handler: RequestHandler, path = "/sites", onCommit?: () => void) 
     { path: "/sites/new", element: <h1>创建业务网站页面</h1> },
     { path: "/sites/defaults", element: <h1>默认模板页面</h1> },
     { path: "/sites/:clientId", element: <h1>网站后台页面</h1> },
+    { path: "/sites/:clientId/summary", element: <h1>网站概况弹层</h1> },
     { path: "/sites/:clientId/settings/basic", element: <h1>网站设置页面</h1> },
   ], { initialEntries: [path] });
   const view = render(<QueryClientProvider client={queryClient}><RouterProvider router={router} /></QueryClientProvider>);
   return { ...view, router, requests };
 }
 
-describe("website management operating cards", () => {
+describe("website management compact table", () => {
   it("keeps creation and template entries while loading without inventing receipts or a clickable website", async () => {
     const pending = deferredResponse();
     mount(() => pending.promise);
@@ -129,24 +121,15 @@ describe("website management operating cards", () => {
     const view = mount(() => page([site("site_single", "单个经营网站")], null, { range, maximum: 25802 }), "/sites?range=" + range);
     const item = await findCard("site_single");
     expect(cards()).toHaveLength(1);
-    expect(item.closest(".site-management-grid")).not.toBeNull();
+    expect(item.closest('[data-business-table="sites"]')).toHaveAttribute("data-density", "compact");
     expect(amount(item)).toHaveTextContent("¥129.01");
-    expect(metric(item, "收款确认笔数")).toHaveTextContent(/^17$/);
-    expect(metric(item, "当前待付款")).toHaveTextContent(/^23$/);
-    expect(metric(item, "待处理")).toHaveTextContent(/^5$/);
-    expect(metric(item, "待处理").querySelector("[data-slot=badge]")).toHaveAttribute("data-variant", "warning");
+    expect(workload(item)).toHaveTextContent(/^5$/);
+    expect(workload(item).querySelector("[data-slot=badge]")).toHaveAttribute("data-variant", "warning");
     expect(within(item).getByText("接单中", { exact: true })).toBeVisible();
-    expect(within(item).getByText("通知开启", { exact: true })).toBeVisible();
-    expect(barWidth(item)).toBe(50);
-    const bar = item.querySelector("svg.site-overview-amount-bar")!;
-    expect(bar).toHaveAttribute("aria-hidden", "true");
-    expect(bar).toHaveAttribute("focusable", "false");
-    expect(bar.querySelector("path, polyline, [style]")).toBeNull();
-    expect(bar).not.toHaveAttribute("style");
-    expect(within(item).getByRole("link", { name: "单个经营网站" })).toHaveAttribute("href", "/sites/site_single?range=" + range);
+    expect(within(item).getByRole("link", { name: "单个经营网站" })).toHaveAttribute("href", "/sites/site_single/summary?range=" + range);
     expect(within(item).getByRole("link", { name: "进入后台" })).toHaveAttribute("href", "/sites/site_single?range=" + range);
-    expect(within(item).getByRole("link", { name: "网站设置" })).toHaveAttribute("href", "/sites/site_single/settings/basic");
-    expect(item.querySelector("[data-slot=card-footer]")).not.toBeNull();
+    expect(within(item).getByRole("link", { name: "网站设置：单个经营网站" })).toHaveAttribute("href", "/sites/site_single/settings/basic");
+    expect(item.querySelectorAll('[data-column-id]')).toHaveLength(5);
     expect(item.querySelector("a a, a button")).toBeNull();
     expect(rangeButton(range)).toHaveAttribute("aria-pressed", "true");
     expect(view.requests).toHaveLength(1);
@@ -164,21 +147,16 @@ describe("website management operating cards", () => {
     const paused = card("site_paused");
     expect(cards()).toHaveLength(2);
     expect(within(active).getByText("接单中", { exact: true })).toBeVisible();
-    expect(within(active).getByText("通知关闭", { exact: true })).toBeVisible();
-    expect(metric(active, "当前待付款")).toHaveTextContent(/^4$/);
-    expect(metric(active, "待处理")).toHaveTextContent(/^6$/);
+    expect(workload(active)).toHaveTextContent(/^6$/);
     expect(within(paused).getByText("暂停接单", { exact: true })).toBeVisible();
-    expect(within(paused).getByText("通知开启", { exact: true })).toBeVisible();
     expect(amount(paused)).toHaveTextContent("¥7.00");
-    expect(metric(paused, "收款确认笔数")).toHaveTextContent(/^9$/);
-    expect(metric(paused, "当前待付款")).toHaveTextContent(/^2$/);
-    expect(metric(paused, "待处理")).toHaveTextContent(/^1$/);
+    expect(workload(paused)).toHaveTextContent(/^1$/);
     expect(within(paused).getByRole("link", { name: "进入后台" })).not.toHaveAttribute("aria-disabled", "true");
     expect(new URL(view.requests[0]!.url).searchParams.get("range")).toBe("30");
     expect(rangeButton(30)).toHaveAttribute("aria-pressed", "true");
   });
 
-  it("shows zero values for all three operating metrics and an empty amount bar", async () => {
+  it("shows genuine zero receipts and workload without warning badges", async () => {
     mount(() => page([site("site_zero", "尚未收款网站", {
       accepting_orders: false,
       notifications_enabled: false,
@@ -189,14 +167,11 @@ describe("website management operating cards", () => {
     })], null, { maximum: 0 }));
     const item = await findCard("site_zero");
     expect(amount(item)).toHaveTextContent("¥0.00");
-    for (const label of ["收款确认笔数", "当前待付款", "待处理"])
-      expect(metric(item, label)).toHaveTextContent(/^0$/);
-    expect(metric(item, "待处理").querySelector("[data-slot=badge]")).toBeNull();
-    expect(barWidth(item)).toBe(0);
+    expect(workload(item)).toHaveTextContent(/^0$/);
+    expect(workload(item).querySelector("[data-slot=badge]")).toBeNull();
     expect(item.innerHTML).not.toMatch(/NaN|Infinity/);
     expect(within(item).getByText("暂停接单", { exact: true })).toBeVisible();
-    expect(within(item).getByText("通知关闭", { exact: true })).toBeVisible();
-    expect(within(item).getByRole("link", { name: "网站设置" })).toBeVisible();
+    expect(within(item).getByRole("link", { name: "网站设置：尚未收款网站" })).toBeVisible();
   });
 
   it("preserves long duplicate names, independent identifiers and complete large amounts across pages", async () => {
@@ -209,30 +184,28 @@ describe("website management operating cards", () => {
     await userEvent.setup().click(screen.getByRole("button", { name: /加载更多/ }));
     const second = await findCard("site_bbbbbbbb-next");
     for (const [item, suffix, clientId] of [[first, "aaaaaaaa", "site_aaaaaaaa-first"], [second, "bbbbbbbb", "site_bbbbbbbb-next"]] as const) {
-      const visibleName = within(item).getByText(name, { exact: true });
-      const identifier = within(item).getByText(suffix, { exact: true });
+      const visibleName = within(item).getByRole("link", { name: name + " · " + suffix });
       expect(visibleName).toBeVisible();
-      expect(identifier).toBeVisible();
-      expect(visibleName).not.toContainElement(identifier);
+      expect(visibleName).toHaveAttribute("href", "/sites/" + clientId + "/summary?range=30");
       expect(within(item).getByRole("link", { name: "进入后台" })).toHaveAttribute("href", "/sites/" + clientId + "?range=30");
-      expect(within(item).getByRole("link", { name: "网站设置" })).toHaveAttribute("href", "/sites/" + clientId + "/settings/basic");
+      expect(within(item).getByRole("link", { name: "网站设置：" + name })).toHaveAttribute("href", "/sites/" + clientId + "/settings/basic");
     }
   });
 
-  it("uses the global maximum before its website is loaded and applies the latest page's scale to all thirty cards", async () => {
+  it("appends the next page without replacing existing rows or changing their amounts", async () => {
     const first = Array.from({ length: 30 }, (_, index) => site("site_page_" + index, "分页网站 " + index, { confirmed_amount_cents: 2500 }));
     const view = mount(url => url.searchParams.has("cursor")
       ? page([site("site_peak", "最大收款网站", { accepting_orders: false, confirmed_amount_cents: 10000 })], null, { maximum: 10000 })
       : page(first, "next-thirty", { maximum: 20000 }));
     const original = await findCard("site_page_0");
     expect(cards()).toHaveLength(30);
-    expect(barWidth(original)).toBe(12.5);
+    expect(amount(original)).toHaveTextContent("¥25.00");
     await userEvent.setup().click(screen.getByRole("button", { name: /加载更多/ }));
     const peak = await findCard("site_peak");
     expect(cards()).toHaveLength(31);
     expect(card("site_page_0")).toBe(original);
-    expect(first.every(item => barWidth(card(item.client_id)) === 25)).toBe(true);
-    expect(barWidth(peak)).toBe(100);
+    expect(first.every(item => amount(card(item.client_id)).textContent === "¥25.00")).toBe(true);
+    expect(amount(peak)).toHaveTextContent("¥100.00");
     expect(screen.queryByRole("button", { name: /加载更多/ })).not.toBeInTheDocument();
     expect(view.requests.map(request => new URL(request.url).searchParams.get("cursor"))).toEqual([null, "next-thirty"]);
     expect(view.requests.every(request => new URL(request.url).searchParams.get("limit") === "30")).toBe(true);
@@ -271,11 +244,11 @@ describe("website management operating cards", () => {
     expect(error).toHaveTextContent("后续网站读取失败");
     expect(cards()).toHaveLength(30);
     expect(card("site_retained_0")).toBe(original);
-    expect(barWidth(original)).toBe(50);
+    expect(amount(original)).toHaveTextContent("¥129.01");
     await user.click(within(error).getByRole("button", { name: "重试" }));
     await findCard("site_recovered_tail");
     expect(cards()).toHaveLength(31);
-    expect(cards().every(item => barWidth(item) === 25)).toBe(true);
+    expect(cards().every(item => amount(item).textContent === "¥129.01")).toBe(true);
     expect(view.requests.map(request => new URL(request.url).searchParams.get("cursor"))).toEqual([null, "retry-next", "retry-next"]);
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
@@ -389,8 +362,6 @@ describe("website management operating cards", () => {
       expect(view.requests).toHaveLength(4);
       expect(amount(card("site_first"))).toHaveTextContent("¥30.00");
       expect(amount(card("site_second"))).toHaveTextContent("¥40.00");
-      expect(barWidth(card("site_first"))).toBe(37.5);
-      expect(barWidth(card("site_second"))).toBe(50);
       expect(snapshots.filter(values => values.length === 2).every(values =>
         JSON.stringify(values) === JSON.stringify(["¥10.00", "¥20.00"]) || JSON.stringify(values) === JSON.stringify(["¥30.00", "¥40.00"]),
       )).toBe(true);
@@ -424,8 +395,6 @@ describe("website management operating cards", () => {
     expect(cards()).toHaveLength(2);
     expect(amount(card("site_first"))).toHaveTextContent("¥10.00");
     expect(amount(card("site_second"))).toHaveTextContent("¥20.00");
-    expect(barWidth(card("site_first"))).toBe(50);
-    expect(barWidth(card("site_second"))).toBe(100);
     stage = "fresh";
     await user.click(within(error).getByRole("button", { name: "重试" }));
     await waitFor(() => expect(amount(card("site_second"))).toHaveTextContent("¥40.00"));
@@ -447,9 +416,9 @@ describe("website management operating cards", () => {
   });
 
   it.each([
-    { name: "导航网站", destination: "/sites/site_navigation?range=90", heading: "网站后台页面" },
+    { name: "导航网站", destination: "/sites/site_navigation/summary?range=90", heading: "网站概况弹层" },
     { name: "进入后台", destination: "/sites/site_navigation?range=90", heading: "网站后台页面" },
-    { name: "网站设置", destination: "/sites/site_navigation/settings/basic", heading: "网站设置页面" },
+    { name: "网站设置：导航网站", destination: "/sites/site_navigation/settings/basic", heading: "网站设置页面" },
   ])("opens the separate $name link without nesting other controls", async ({ name, destination, heading }) => {
     const view = mount(() => page([site("site_navigation", "导航网站")], null, { range: 90 }), "/sites?range=90");
     const item = await findCard("site_navigation");

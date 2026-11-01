@@ -338,7 +338,7 @@ describe("audit event details", () => {
     expect(within(group).getByText("20 ms")).toBeVisible();
     expect(within(group).getByText(/本条记录不对应一次独立请求/)).toBeVisible();
     expect(screen.getByText("curl 客户端")).toBeVisible();
-    expect(screen.getByRole("link", { name: "示例网站" })).toHaveAttribute("href", "/sites/site_a");
+    expect(screen.getByRole("link", { name: "示例网站" })).toHaveAttribute("href", "/sites/site_a/summary");
     expect(within(group).getByText("2026/11/01 10:03:01")).toBeVisible();
     expect(within(group).getByText("2026/11/01 10:03:54")).toBeVisible();
     const summary = screen.getByRole("group", { name: "日志概况" });

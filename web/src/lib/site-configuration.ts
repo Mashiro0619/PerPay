@@ -2,8 +2,8 @@ import type { SiteConfiguration, SitePolicy } from "@/api/client";
 import { siteTimeoutSeconds } from "./site-timeout";
 import type { SiteCollection } from "./alipay-accounts";
 
-// These are the fields editable in each website settings group. Merge only local
-// changes in that group; every other value must come from the latest snapshot.
+// A single group keeps unrelated remote fields. The tabbed editor owns all
+// groups, so its merge must retain changes made in any of its tabs.
 const fields = [
   ["basic", "name", "业务网站名称"],
   ["basic", "accepting_orders", "允许新订单"],
@@ -80,7 +80,7 @@ export function mergeSiteConfiguration(
   remote: SiteConfiguration,
   section: string,
 ) {
-  return mergeFields(base, draft, remote, fields.filter(([group]) => section === group));
+  return mergeFields(base, draft, remote, fields.filter(([group]) => section === "all" || section === group));
 }
 
 export function mergeSitePolicy(base: SitePolicy, draft: SitePolicy, remote: SitePolicy) {

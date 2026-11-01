@@ -336,7 +336,7 @@ describe("application public key generation and replacement", () => {
     });
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "验证并启用" }));
-    const dialog = await screen.findByRole("dialog");
+    const dialog = await screen.findByRole("dialog", { name: "验证并启用新应用公钥" });
     const input = within(dialog).getByLabelText("支付宝公钥");
     await user.type(input, "incorrect-platform-key");
     await user.click(
@@ -381,7 +381,7 @@ describe("application public key generation and replacement", () => {
     });
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "验证并启用" }));
-    const dialog = await screen.findByRole("dialog");
+    const dialog = await screen.findByRole("dialog", { name: "验证并启用新应用公钥" });
     const input = within(dialog).getByLabelText("支付宝公钥");
     await user.type(input, "synthetic-application-public-key");
     await user.click(
@@ -432,7 +432,7 @@ describe("application public key generation and replacement", () => {
     });
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "验证并启用" }));
-    const dialog = await screen.findByRole("dialog");
+    const dialog = await screen.findByRole("dialog", { name: "验证并启用新应用公钥" });
     const input = within(dialog).getByLabelText("支付宝公钥");
     await user.type(input, "fixed-platform-key");
     await user.click(

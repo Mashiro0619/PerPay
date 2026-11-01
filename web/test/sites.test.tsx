@@ -258,24 +258,25 @@ describe("business website management", () => {
   });
   it("edits only the creation template without modifying any existing website", async () => {
     const view = mount("/sites/defaults"); const user = userEvent.setup();
-    expect(await screen.findByRole("button", { name: "保存默认模板" })).toHaveClass("w-fit");
+    const save = await screen.findByRole<HTMLButtonElement>("button", { name: "保存默认模板" });
     const ttl = await screen.findByLabelText("收银台有效期（秒）"); fireEvent.change(ttl, { target: { value: "600" } });
+    expect(save.form).toBe(ttl.closest("form"));
     expect(screen.queryByLabelText("通知地址前缀")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "保存默认模板" }));
     await waitFor(() => expect(view.writes).toHaveLength(1));
     expect(view.writes[0]!.path).toBe("/api/admin/v1/settings/site-defaults");
     expect(view.writes[0]!.body).toMatchObject({ revision: 0, policy: { orders: { order_ttl_seconds: 600 } } });
   });
-  it("keeps a single website operating card with separate dashboard and settings links", async () => {
+  it("keeps a compact website row with separate overview, dashboard and settings links", async () => {
     const view = mount("/sites");
-    expect(await screen.findByRole("link", { name: "网站 A" })).toHaveAttribute("href", "/sites/site_test?range=30");
-    expect(document.querySelectorAll(".site-management-card")).toHaveLength(1);
+    expect(await screen.findByRole("link", { name: "网站 A" })).toHaveAttribute("href", "/sites/site_test/summary?range=30");
+    expect(document.querySelectorAll('[data-business-table="sites"] [data-business-row]')).toHaveLength(1);
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
     expect(screen.queryByText("site_test", { exact: true })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "进入后台" })).toHaveAttribute("href", "/sites/site_test?range=30");
-    expect(screen.getByRole("link", { name: "网站设置" })).toHaveAttribute("href", "/sites/site_test/settings/basic");
+    expect(screen.getByRole("link", { name: "网站设置：网站 A" })).toHaveAttribute("href", "/sites/site_test/settings/basic");
     expect(screen.getByText("¥129.01", { exact: true })).toBeVisible();
-    expect(screen.getByText("收款确认笔数", { exact: true })).toBeVisible();
+    expect(screen.getByRole("columnheader", { name: "待处理" })).toBeVisible();
     expect(view.fetchMock.mock.calls.map(([request]) => new URL(request.url).pathname)).toEqual(["/api/admin/v1/sites/overview"]);
   });
 

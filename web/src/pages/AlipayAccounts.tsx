@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useLocation, useParams } from "react-router";
-import { KeyRound, Plus, RefreshCw } from "lucide-react";
+import { KeyRound, MoreHorizontal, Plus, RefreshCw } from "lucide-react";
 import { api, ApiError, queryClient, result } from "@/api/client";
 import { useDirtyDraft } from "@/drafts";
 import { Link, useNavigate } from "@/navigation";
@@ -17,10 +17,21 @@ import {
 import { alipayApplicationUrl } from "@/lib/application-key";
 import { dateTime } from "@/lib/format";
 import { PageHeading } from "@/components/page-heading";
+import { BusinessTable, type BusinessColumn } from "@/components/business-table";
+import { OverlayActions } from "@/components/overlay-actions";
+import { ScrollingTabs } from "@/components/scrolling-tabs";
+import { useOverlayCloseGuard, useOverlayContext } from "@/lib/overlay-context";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CollectionCodeField } from "@/components/CollectionCodeField";
 import { CopyValue } from "@/components/copy-value";
 import { ErrorNotice, QueryView } from "@/components/request-state";
 import { Button, buttonVariants } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -84,121 +95,27 @@ export default function AlipayAccountsPage() {
   );
 }
 
-export function AlipayAccountList({
-  onSelect,
-}: {
-  onSelect?: (id: string) => void;
-}) {
+export function AlipayAccountList({ onSelect }: { onSelect?: (id: string) => void }) {
   const accounts = useQuery(alipayAccountsQuery);
-  const createLink = onSelect ? (
-    <Button onClick={() => onSelect("new")}>
-      <Plus data-icon="inline-start" />
-      添加支付宝账号
-    </Button>
-  ) : (
-    <Link to="/settings/accounts/new" className={buttonVariants()}>
-      <Plus data-icon="inline-start" />
-      添加支付宝账号
-    </Link>
-  );
-  return (
-    <div className="flex min-w-0 flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-muted-foreground">
-          每个账号分别保存收款码和开放平台应用信息，再分配给业务网站。
-        </p>
-        {createLink}
-      </div>
-      <QueryView query={accounts}>
-        {({ data }) =>
-          data.length === 0 ? (
-            <Empty>
-              <EmptyHeader>
-                <EmptyTitle>还没有支付宝账号</EmptyTitle>
-                <EmptyDescription>
-                  先添加一个账号，完成应用密钥、开放平台信息和收款码配置。
-                </EmptyDescription>
-              </EmptyHeader>
-            </Empty>
-          ) : (
-            <div
-              className="flex min-w-0 flex-col divide-y rounded-lg border"
-              data-account-list
-            >
-              {data.map((account) => (
-                <div
-                  key={account.id}
-                  className="flex min-w-0 flex-wrap items-start gap-3 p-4"
-                >
-                  <div className="flex min-w-0 flex-1 flex-col gap-2">
-                    {onSelect ? (
-                      <Button
-                        variant="link"
-                        className="h-auto justify-start p-0"
-                        onClick={() => onSelect(account.id)}
-                      >
-                        {account.name}
-                      </Button>
-                    ) : (
-                      <Link
-                        className="font-medium underline-offset-4 hover:underline"
-                        to={"/settings/accounts/" + account.id}
-                      >
-                        {account.name}
-                      </Link>
-                    )}
-                    <div className="flex flex-wrap gap-2">
-                      <Badge
-                        variant={
-                          account.enabled && account.configured
-                            ? "secondary"
-                            : "outline"
-                        }
-                      >
-                        {accountState(account)}
-                      </Badge>
-                      <Badge variant="outline">{accountHealth(account)}</Badge>
-                    </div>
-                    <p className="break-all text-sm text-muted-foreground">
-                      {account.app_id
-                        ? "App ID：" + account.app_id
-                        : "尚未填写 App ID"}
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      {account.sites.length
-                        ? "用于：" +
-                          account.sites.map((site) => site.name).join("、")
-                        : "尚未分配给网站"}
-                    </p>
-                  </div>
-                  {onSelect ? (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => onSelect(account.id)}
-                    >
-                      配置
-                    </Button>
-                  ) : (
-                    <Link
-                      to={"/settings/accounts/" + account.id}
-                      className={buttonVariants({
-                        variant: "outline",
-                        size: "sm",
-                      })}
-                      aria-label={"配置" + account.name}
-                    >
-                      配置
-                    </Link>
-                  )}
-                </div>
-              ))}
-            </div>
-          )
-        }
-      </QueryView>
+  const columns: BusinessColumn<AlipayAccount>[] = [
+    { id: "name", label: "账号", layout: "identity", hideable: false, cell: account => onSelect
+      ? <Button variant="link" className="h-auto justify-start p-0" onClick={() => onSelect(account.id)}>{account.name}</Button>
+      : <Link data-row-link to={"/settings/accounts/" + encodeURIComponent(account.id)}>{account.name}</Link> },
+    { id: "status", label: "状态", layout: "status", summaryDefault: true, cell: account => <Badge variant={account.enabled && account.configured ? "secondary" : "outline"}>{accountState(account)}</Badge> },
+    { id: "health", label: "查账", layout: "status", summaryDefault: true, cell: account => accountHealth(account) },
+    { id: "app", label: "App ID", cell: account => account.app_id || "未配置" },
+    { id: "sites", label: "用于网站", cell: account => account.sites.length ? <span title={account.sites.map(site => site.name).join("、")}>{account.sites.length} 个网站</span> : "未分配" },
+    { id: "actions", label: "操作", layout: "actions", hideable: false, cell: account => onSelect
+      ? <Button variant="outline" size="sm" onClick={() => onSelect(account.id)}>配置</Button>
+      : <Link to={"/settings/accounts/" + encodeURIComponent(account.id)} className={buttonVariants({ variant: "outline", size: "sm" })} aria-label={"配置" + account.name}>配置</Link> },
+  ];
+  return <div className="flex min-w-0 flex-col gap-4" data-account-list>
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <p className="text-sm text-muted-foreground">每个账号分别保存收款码和开放平台应用信息，再分配给业务网站。</p>
+      {onSelect ? <Button size="sm" onClick={() => onSelect("new")}><Plus data-icon="inline-start" />添加支付宝账号</Button> : <Link to="/settings/accounts/new" className={buttonVariants({ size: "sm" })}><Plus data-icon="inline-start" />添加支付宝账号</Link>}
     </div>
-  );
+    <QueryView query={accounts}>{({ data }) => data.length ? <BusinessTable id="alipay-accounts" items={data} columns={columns} rowId={account => account.id} density="compact" columnsMenu={false} aria-label="支付宝账号列表" /> : <Empty><EmptyHeader><EmptyTitle>还没有支付宝账号</EmptyTitle><EmptyDescription>先添加一个账号，完成应用密钥、开放平台信息和收款码配置。</EmptyDescription></EmptyHeader></Empty>}</QueryView>
+  </div>;
 }
 
 export function AlipayAccountDetail({
@@ -249,6 +166,11 @@ function accountConfiguration(account: AlipayAccount | null) {
   };
 }
 
+const accountSections = [["basic", "基本信息"], ["application", "应用信息"], ["collection", "收款码"], ["keys", "应用密钥"], ["usage", "使用情况"]] as const;
+function AccountPanel({ tabbed, value, children }: { tabbed: boolean; value: string; children: ReactNode }) {
+  return tabbed ? <TabsContent value={value} keepMounted data-account-panel={value}><FieldGroup>{children}</FieldGroup></TabsContent> : <>{children}</>;
+}
+
 export function AlipayAccountEditor({
   initial,
   onSaved,
@@ -258,6 +180,10 @@ export function AlipayAccountEditor({
   onSaved?: (account: AlipayAccount) => void;
   onBack?: () => void;
 }) {
+  const overlay = useOverlayContext();
+  const tabbed = !!overlay && !onBack;
+  const formId = useId();
+  const [panel, setPanel] = useState(initial?.pending_application_key ? "keys" : "basic");
   const navigate = useNavigate();
   const location = useLocation();
   const navigationFeedback = location.state as {
@@ -283,7 +209,9 @@ export function AlipayAccountEditor({
   const [activationKey, setActivationKey] = useState("");
   const [keyChangeId, setKeyChangeId] = useState(() => crypto.randomUUID());
   const form = useRef<HTMLFormElement>(null);
+  const invalidDraftField = useRef<HTMLElement | null>(null);
   const mounted = useRef(true);
+  const completedNavigation = useRef(false);
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -294,6 +222,7 @@ export function AlipayAccountEditor({
     JSON.stringify(draft) !== JSON.stringify(accountConfiguration(saved)) ||
     privateKey !== "";
   const clear = useDirtyDraft(dirty);
+  const clearActivationDraft = useDirtyDraft(activationKey !== "");
 
   async function accepted(account: AlipayAccount, message: string) {
     if (mounted.current) {
@@ -308,7 +237,7 @@ export function AlipayAccountEditor({
   }
   const check = useMutation({
     networkMode: "always",
-    onMutate: () => setInitialCheckFailure(undefined),
+    onMutate: () => { completedNavigation.current = false; setInitialCheckFailure(undefined); },
     mutationFn: (id: string) => {
       if (historical) throw new Error("此账号仅保留历史记录，请添加已上线应用的支付宝账号。");
       return result(api.checkAlipayAccount({ path: { accountId: id }, body: {} }));
@@ -320,6 +249,7 @@ export function AlipayAccountEditor({
   });
   const save = useMutation({
     networkMode: "always",
+    onMutate: () => { completedNavigation.current = false; },
     mutationFn: async (checkAfter: boolean) => {
       if (historical) throw new Error("此账号仅保留历史记录，请添加已上线应用的支付宝账号。");
       const input = {
@@ -355,15 +285,18 @@ export function AlipayAccountEditor({
             error instanceof Error ? error.message : "连接检查暂不可用";
         }
       }
-      if (created && mounted.current && !onBack)
+      if (created && mounted.current && !onBack) {
+        completedNavigation.current = true;
         void navigate("/settings/accounts/" + account.id, {
           replace: true,
           state: { savedAccountId: account.id, checkFailure },
         });
+      }
     },
   });
   const key = useMutation({
     networkMode: "always",
+    onMutate: () => { completedNavigation.current = false; },
     mutationFn: async (
       action: "generate" | "regenerate" | "activate" | "discard",
     ) => {
@@ -403,6 +336,7 @@ export function AlipayAccountEditor({
     onSuccess: async ({ data }, action) => {
       setConfirmation(null);
       setActivationKey("");
+      clearActivationDraft();
       if (action === "discard" || action === "activate")
         setKeyChangeId(crypto.randomUUID());
       await accepted(
@@ -417,6 +351,7 @@ export function AlipayAccountEditor({
   });
   const remove = useMutation({
     networkMode: "always",
+    onMutate: () => { completedNavigation.current = false; },
     mutationFn: () =>
       result(
         api.deleteAlipayAccount({
@@ -426,6 +361,9 @@ export function AlipayAccountEditor({
       ),
     onSuccess: () => {
       clear();
+      clearActivationDraft();
+      completedNavigation.current = true;
+      queryClient.removeQueries({ queryKey: alipayAccountKey(saved!.id) });
       void queryClient.invalidateQueries({ queryKey: alipayAccountsKey });
       void queryClient.invalidateQueries({ queryKey: ["settings"] });
       if (onBack) onBack();
@@ -434,14 +372,19 @@ export function AlipayAccountEditor({
   });
   const busy =
     save.isPending || key.isPending || remove.isPending || check.isPending;
+  // A confirmed create/delete may navigate before React Query clears isPending.
+  useOverlayCloseGuard(() => decoding || (busy && !completedNavigation.current));
   const errors = save.error instanceof ApiError ? save.error.fields : {};
   useEffect(() => {
     if (save.isPending || !save.error) return;
     const invalid = form.current?.querySelector<HTMLElement>(
       '[aria-invalid="true"]',
     );
-    invalid?.focus();
-  }, [save.error, save.isPending]);
+    if (!invalid) return;
+    const nextPanel = invalid.closest<HTMLElement>("[data-account-panel]")?.dataset.accountPanel;
+    if (tabbed && nextPanel && nextPanel !== panel) setPanel(nextPanel);
+    requestAnimationFrame(() => { if (invalid.isConnected) invalid.focus(); });
+  }, [save.error, save.isPending, panel, tabbed]);
   function change<T extends keyof typeof draft>(
     field: T,
     value: (typeof draft)[T],
@@ -452,12 +395,25 @@ export function AlipayAccountEditor({
     check.reset();
     setInitialCheckFailure(undefined);
   }
+  function saveDraft() {
+    const owningForm = form.current;
+    if (!owningForm) return;
+    if (!owningForm.reportValidity()) {
+      invalidDraftField.current = owningForm.querySelector<HTMLElement>(
+        "input:invalid, textarea:invalid, select:invalid",
+      );
+      return;
+    }
+    check.reset();
+    save.mutate(false);
+  }
   const error = save.error || key.error || remove.error;
   const pending = saved?.pending_application_key;
   const checkResult = historical ? null : check.data?.data ?? (!dirty ? saved?.last_check : null);
   const checkFailure = historical ? undefined : check.error?.message ?? initialCheckFailure;
   return (
     <div className="flex min-w-0 flex-col gap-4" data-alipay-account-editor>
+      <Tabs value={panel} onValueChange={value => { if (value) setPanel(value); }} className="min-w-0 gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-lg font-medium">
           {saved?.name ?? "添加支付宝账号"}
@@ -466,15 +422,18 @@ export function AlipayAccountEditor({
           <Button variant="ghost" onClick={onBack}>
             返回账号列表
           </Button>
-        ) : (
+        ) : !overlay ? (
           <Link
             to="/settings/accounts"
             className={buttonVariants({ variant: "ghost" })}
           >
             返回账号列表
           </Link>
-        )}
+        ) : null}
       </div>
+      {tabbed && <ScrollingTabs><TabsList aria-label="支付宝账号配置分组" variant="line" activateOnFocus={false} className="min-w-max">
+        {accountSections.map(([value, label]) => <TabsTrigger key={value} value={value}>{label}</TabsTrigger>)}
+      </TabsList></ScrollingTabs>}
       <ErrorNotice error={error} />
       {historical && (
         <Alert>
@@ -520,7 +479,16 @@ export function AlipayAccountEditor({
         </Alert>
       )}
       <form
+        id={formId}
         ref={form}
+        onInvalidCapture={event => {
+          if (!tabbed || !(event.target instanceof HTMLElement)) return;
+          const nextPanel = event.target.closest<HTMLElement>("[data-account-panel]")?.dataset.accountPanel;
+          if (nextPanel && nextPanel !== panel) {
+            event.preventDefault(); setPanel(nextPanel);
+            const field = event.target; requestAnimationFrame(() => { if (field.isConnected) field.focus(); });
+          }
+        }}
         onSubmit={(event) => {
           event.preventDefault();
           if (!busy && !decoding && !historical) {
@@ -530,7 +498,7 @@ export function AlipayAccountEditor({
         }}
       >
         <FieldSet disabled={busy || historical}>
-          <Card>
+          <Card className={tabbed && (panel === "keys" || panel === "usage") ? "hidden" : undefined}>
             <CardHeader>
               <CardTitle>账号信息</CardTitle>
               <CardDescription>
@@ -540,6 +508,8 @@ export function AlipayAccountEditor({
             </CardHeader>
             <CardContent>
               <FieldGroup>
+                <AccountPanel tabbed={tabbed} value="basic">
+                <FieldGroup>
                 <Field data-invalid={!!errors.name}>
                   <FieldLabel htmlFor="alipay-name">账号名称</FieldLabel>
                   <Input
@@ -569,6 +539,9 @@ export function AlipayAccountEditor({
                     onCheckedChange={(value) => change("enabled", value)}
                   />
                 </Field>
+                </FieldGroup>
+                </AccountPanel>
+                <AccountPanel tabbed={tabbed} value="application">
                 <FieldSet>
                   <FieldLegend>开放平台应用</FieldLegend>
                   <FieldDescription>
@@ -617,22 +590,6 @@ export function AlipayAccountEditor({
                     )}
                   </Field>
                 </FieldSet>
-                <FieldSet>
-                  <FieldLegend>收款码</FieldLegend>
-                  <FieldDescription>
-                    支持支付宝收款码或经营码。可以先保存草稿，填写收款码后再接收订单。
-                  </FieldDescription>
-                  <CollectionCodeField
-                    key={saved?.id ?? "new"}
-                    defaultValue={draft.code_payload}
-                    onDecoded={() => {}}
-                    onValueChange={(value) => change("code_payload", value)}
-                    onPendingChange={setDecoding}
-                    disabled={busy}
-                    required={false}
-                    error={errors.code_payload}
-                  />
-                </FieldSet>
                 <Collapsible>
                   <CollapsibleTrigger
                     render={<Button type="button" variant="ghost" size="sm" />}
@@ -668,23 +625,53 @@ export function AlipayAccountEditor({
                     </Field>
                   </CollapsibleContent>
                 </Collapsible>
+                </AccountPanel>
+                <AccountPanel tabbed={tabbed} value="collection">
+                <FieldSet>
+                  <FieldLegend>收款码</FieldLegend>
+                  <FieldDescription>
+                    支持支付宝收款码或经营码。可以先保存草稿，填写收款码后再接收订单。
+                  </FieldDescription>
+                  <CollectionCodeField
+                    key={saved?.id ?? "new"}
+                    defaultValue={draft.code_payload}
+                    onDecoded={() => {}}
+                    onValueChange={(value) => change("code_payload", value)}
+                    onPendingChange={setDecoding}
+                    disabled={busy}
+                    required={false}
+                    error={errors.code_payload}
+                  />
+                </FieldSet>
+                </AccountPanel>
               </FieldGroup>
             </CardContent>
             <CardFooter className="flex flex-wrap gap-2">
-              <Button type="submit" disabled={busy || decoding || historical}>
+              <OverlayActions className={tabbed ? "w-full flex-nowrap" : undefined}>
+              {overlay && !tabbed && <Button type="button" variant="outline" disabled={busy || decoding} onClick={() => overlay.requestClose()}>关闭</Button>}
+              <Button form={formId} type="submit" className={tabbed ? "h-auto min-h-8 min-w-0 flex-1 whitespace-normal py-1.5" : undefined} disabled={busy || decoding || historical}>
                 {save.isPending && <Spinner data-icon="inline-start" />}
-                {save.isPending ? "正在保存…" : "保存并检查"}
+                <span className="min-w-0">{save.isPending ? "正在保存…" : "保存并检查"}</span>
               </Button>
+              {tabbed ? <DropdownMenu onOpenChange={open => { if (open) invalidDraftField.current = null; }}>
+                <DropdownMenuTrigger render={<Button type="button" variant="outline" size="icon" aria-label="更多账号操作" disabled={busy || historical} />}>
+                  <MoreHorizontal aria-hidden="true" />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" side="top" aria-label="更多账号操作"
+                  finalFocus={() => invalidDraftField.current?.isConnected ? invalidDraftField.current : true}>
+                  <DropdownMenuItem disabled={busy || decoding || historical || (!dirty && !!saved)} onClick={saveDraft}>
+                    保存草稿
+                  </DropdownMenuItem>
+                  {saved && <DropdownMenuItem disabled={busy || dirty || historical} onClick={() => check.mutate(saved.id)}>
+                    <RefreshCw aria-hidden="true" />重新检查
+                  </DropdownMenuItem>}
+                </DropdownMenuContent>
+              </DropdownMenu> : <>
               <Button
                 type="button"
                 variant="outline"
                 disabled={busy || decoding || historical || (!dirty && !!saved)}
-                onClick={() => {
-                  if (form.current?.reportValidity()) {
-                    check.reset();
-                    save.mutate(false);
-                  }
-                }}
+                onClick={saveDraft}
               >
                 保存草稿
               </Button>
@@ -699,10 +686,13 @@ export function AlipayAccountEditor({
                   重新检查
                 </Button>
               )}
+              </>}
+              </OverlayActions>
             </CardFooter>
           </Card>
         </FieldSet>
       </form>
+      <AccountPanel tabbed={tabbed} value="keys">
       <Card data-account-key-card>
         <CardHeader>
           <CardTitle>应用密钥</CardTitle>
@@ -810,7 +800,9 @@ export function AlipayAccountEditor({
           )}
         </CardContent>
       </Card>
+      </AccountPanel>
       {saved && (
+        <AccountPanel tabbed={tabbed} value="usage">
         <Card>
           <CardHeader>
             <CardTitle>使用情况</CardTitle>
@@ -854,6 +846,7 @@ export function AlipayAccountEditor({
             )}
           </CardFooter>
         </Card>
+        </AccountPanel>
       )}
       <AlertDialog
         open={confirmation !== null}
@@ -894,6 +887,7 @@ export function AlipayAccountEditor({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      </Tabs>
     </div>
   );
 }

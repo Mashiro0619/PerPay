@@ -18,8 +18,8 @@ describe("notification website identity", () => {
     render(<QueryClientProvider client={queryClient}><MemoryRouter><Notifications /></MemoryRouter></QueryClientProvider>);
     for (const identity of identities) {
       const link = await screen.findByRole("link", { name: identity.site_name + " · " + identity.api_client_id });
-      expect(link).toHaveAttribute("href", "/sites/" + identity.api_client_id);
-      expect(within(link.closest("tr")!).getAllByText("same-number")[0]).toBeVisible();
+      expect(link).toHaveAttribute("href", "/sites/" + identity.api_client_id + "/summary");
+      expect(within(link.closest("tr")!).getByText("同名商品")).toBeVisible();
     }
   });
   it.each([false, true])("shows website identity in standalone or embedded delivery evidence: embedded=%s", async embedded => {
@@ -33,6 +33,6 @@ describe("notification website identity", () => {
     render(<QueryClientProvider client={queryClient}><MemoryRouter initialEntries={["/notifications/" + detail.delivery.delivery_id]}>
       <Routes><Route path="/notifications/:deliveryId" element={embedded ? <DeliveryCard detail={detail} embedded /> : <NotificationDetail />} /></Routes>
     </MemoryRouter></QueryClientProvider>);
-    expect(await screen.findByRole("link", { name: "第二个网站 · site_second" })).toHaveAttribute("href", "/sites/site_second");
+    expect(await screen.findByRole("link", { name: "第二个网站 · site_second" })).toHaveAttribute("href", "/sites/site_second/summary");
   });
 });

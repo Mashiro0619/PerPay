@@ -314,15 +314,11 @@ export const appRoutes = createRoutesFromElements(
     />
     <Route
       path="sites/new"
-      lazy={async () => ({
-        Component: (await import("./pages/Sites")).SiteEditorPage,
-      })}
+      element={<LegacyOverlayRedirect />}
     />
     <Route
       path="sites/defaults"
-      lazy={async () => ({
-        Component: (await import("./pages/Sites")).SiteDefaultsPage,
-      })}
+      element={<LegacyOverlayRedirect />}
     />
     <Route path="sites/:clientId">
       <Route
@@ -363,14 +359,14 @@ export const appRoutes = createRoutesFromElements(
       />
       <Route
         path="settings/:section?"
-        lazy={async () => ({ Component: (await import("./pages/Sites")).SiteEditorPage })}
+        lazy={async () => ({ Component: (await import("./pages/Sites")).SiteSettingsPage })}
       />
-
-
+      <Route path="edit" element={<LegacyOverlayRedirect />} />
+      <Route path="summary" element={<LegacyOverlayRedirect />} />
     </Route>
     <Route
       path="settings/accounts/:accountId"
-      lazy={() => import("@/pages/AlipayAccounts").then(module => ({ Component: module.default }))}
+      element={<LegacyOverlayRedirect />}
     />
     <Route
       path="settings/onboarding/:step?"

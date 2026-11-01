@@ -1,4 +1,6 @@
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
+import { OverlayActions } from "@/components/overlay-actions";
+import { useOverlayCloseGuard, useOverlayContext } from "@/lib/overlay-context";
 import { useQuery } from "@tanstack/react-query";
 import {
   api,
@@ -43,10 +45,13 @@ export default function CreateSite({ onCreated }: { onCreated?: (clientId: strin
   );
 }
 function CreateSiteForm({ policy, accounts, onCreated }: { policy: SiteConfiguration["policy"]; accounts: readonly AlipayAccount[]; onCreated?: (clientId: string) => void }) {
+  const overlay = useOverlayContext();
+  const formId = useId();
   const [template] = useState(() => structuredClone(policy)),
     [name, setName] = useState("");
   const [initialCollection] = useState(() => defaultSiteCollection(accounts));
   const [collection, setCollection] = useState(initialCollection);
+  const creationConfirmed = useRef(false);
   const clear = useDirtyDraft(!!name || JSON.stringify(collection) !== JSON.stringify(initialCollection)),
     navigate = useNavigate(),
     key = useRef(createOperationKey()),
@@ -57,6 +62,7 @@ function CreateSiteForm({ policy, accounts, onCreated }: { policy: SiteConfigura
       signal,
     ) => result(api.createSite({ body: input, signal })),
     onSuccess: (response) => {
+      creationConfirmed.current = true;
       clear();
       queryClient.setQueryData(
         ["workspace-site", response.data.client_id],
@@ -66,16 +72,18 @@ function CreateSiteForm({ policy, accounts, onCreated }: { policy: SiteConfigura
       void queryClient.invalidateQueries({ queryKey: ["site-overview"] });
       void queryClient.invalidateQueries({ queryKey: ["settings"] });
       if (onCreated) onCreated(response.data.client_id);
-      else void navigate("/sites/" + response.data.client_id);
+      else void navigate("/sites/" + response.data.client_id + (overlay ? "/edit?section=basic" : ""), overlay ? { replace: true } : undefined);
     },
     isSafeRejection: (error) =>
       error instanceof ApiError && error.status === 422,
   });
   const navigation = useOperationNavigation(
     create.isPending || !!create.recovery,
-    () => create.isBusy() || !!create.recovery,
+    () => !creationConfirmed.current && (create.isBusy() || !!create.recovery),
   );
+  useOverlayCloseGuard(() => !creationConfirmed.current && create.isBusy());
   function submit() {
+    creationConfirmed.current = false;
     const configuration: SiteConfiguration = {
       name,
       accepting_orders: true,
@@ -90,6 +98,7 @@ function CreateSiteForm({ policy, accounts, onCreated }: { policy: SiteConfigura
   return (
     <div className="admin-settings-layout">
       <form
+        id={formId}
         ref={form}
         className="max-w-2xl"
         onSubmit={(event) => {
@@ -133,8 +142,10 @@ function CreateSiteForm({ policy, accounts, onCreated }: { policy: SiteConfigura
             </FieldGroup>
           </CardContent>
           <CardFooter className="gap-2">
+            <OverlayActions>
             <Button
               type="submit"
+              form={formId}
               disabled={create.isPending || create.conflict}
             >
               {create.isPending
@@ -143,9 +154,10 @@ function CreateSiteForm({ policy, accounts, onCreated }: { policy: SiteConfigura
                   ? "重试上一次操作"
                   : "创建业务网站"}
             </Button>
-            <Link to="/sites" className={buttonVariants({ variant: "ghost" })}>
+            {overlay ? <Button type="button" variant="outline" onClick={() => overlay.requestClose()} disabled={create.isPending}>取消</Button> : <Link to="/sites" className={buttonVariants({ variant: "ghost" })}>
               取消
-            </Link>
+            </Link>}
+            </OverlayActions>
           </CardFooter>
         </Card>
       </form>

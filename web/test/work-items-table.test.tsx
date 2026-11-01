@@ -186,7 +186,7 @@ describe("work item business context", () => {
     expect(screen.getByLabelText("当前地址")).toHaveTextContent("/orders/" + orderId);
     if (width >= 640) {
       await user.click(within(row).getByRole("link", { name: "订阅网站 · site_a" }));
-      expect(screen.getByLabelText("当前地址")).toHaveTextContent("/sites/site_a");
+      expect(screen.getByLabelText("当前地址")).toHaveTextContent("/sites/site_a/summary");
     } else expect(within(row).queryByRole("link", { name: "订阅网站 · site_a" })).not.toBeInTheDocument();
   });
 
@@ -201,7 +201,7 @@ describe("work item business context", () => {
       await waitFor(() => expect(fetch).toHaveBeenCalledOnce());
       expect(screen.queryByRole("link", { name: "订阅网站 · site_a" })).not.toBeInTheDocument();
     } else {
-      expect(screen.getByRole("link", { name: "订阅网站 · site_a" })).toHaveAttribute("href", "/sites/site_a");
+      expect(screen.getByRole("link", { name: "订阅网站 · site_a" })).toHaveAttribute("href", "/sites/site_a/summary");
       expect(fetch).not.toHaveBeenCalled();
     }
   });

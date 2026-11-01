@@ -1,4 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
+import { OverlayActions } from "@/components/overlay-actions";
+import { useOverlayCloseGuard, useOverlayContext } from "@/lib/overlay-context";
 import { PageHeading } from "@/components/page-heading";
 import { onlineManager, useMutation, useQuery } from "@tanstack/react-query";
 import { api, ApiError, queryClient, result, type SitePolicy } from "@/api/client";
@@ -50,6 +52,8 @@ export default function SiteDefaultsPage() {
 }
 
 function DefaultsEditor({ initial }: { initial: DefaultsSnapshot }) {
+  const overlay = useOverlayContext();
+  const formId = useId();
   const [section, setSection] = useState("orders");
   const formRef = useRef<HTMLFormElement>(null);
   const [saved, setSaved] = useState(initial);
@@ -142,6 +146,7 @@ function DefaultsEditor({ initial }: { initial: DefaultsSnapshot }) {
   });
 
   const busy = save.isPending || reload.isPending;
+  useOverlayCloseGuard(() => busy);
   const requiresReview = needsReview || !!review || (initial.revision > saved.revision && dirty);
   useEffect(() => {
     if (busy || initial.revision <= saved.revision) return;
@@ -205,7 +210,7 @@ function DefaultsEditor({ initial }: { initial: DefaultsSnapshot }) {
           saveLabel="保存默认模板"
         />
       )}
-      <form ref={formRef} onSubmit={event => {
+      <form id={formId} ref={formRef} onSubmit={event => {
         event.preventDefault();
         if (!busy && !requiresReview && !timeoutError) save.mutate();
       }}>
@@ -223,7 +228,10 @@ function DefaultsEditor({ initial }: { initial: DefaultsSnapshot }) {
               save.reset();
             }}
           />
-          <Button type="submit" className="w-fit" disabled={busy || requiresReview || !!timeoutError}>保存默认模板</Button>
+          <OverlayActions>
+            {overlay && <Button type="button" variant="outline" disabled={busy} onClick={() => overlay.requestClose()}>关闭</Button>}
+            <Button form={formId} type="submit" disabled={busy || requiresReview || !!timeoutError}>保存默认模板</Button>
+          </OverlayActions>
         </FieldSet>
       </form>
     </div>

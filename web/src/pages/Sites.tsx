@@ -2,10 +2,16 @@ import CreateSite from "./CreateSite";
 import { SiteManagementCards } from "@/components/site-management-cards";
 import { CopyValue } from "@/components/copy-value";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useLocation, useNavigation, useParams } from "react-router";
 import { PageHeading } from "@/components/page-heading";
+import { ScrollingTabs } from "@/components/scrolling-tabs";
+import { SettingsSummary, type SettingsSummaryRow } from "@/components/settings-summary";
+import { OverlayActions } from "@/components/overlay-actions";
+import { useOverlayCloseGuard, useOverlayContext } from "@/lib/overlay-context";
+import { overviewQueries, overviewRange } from "@/api/workspace-queries";
+import { count, dateTime, money } from "@/lib/format";
 import {
   api,
   ApiError,
@@ -27,6 +33,7 @@ import { latestEditorSnapshot, siteEditorKey, siteEditorQueryOptions } from "@/l
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import {
   Card,
@@ -57,6 +64,92 @@ import {
 export default function Sites() {
   return <SiteManagementCards />;
 }
+const siteSections = [
+  { value: "basic", label: "基本信息" },
+  { value: "collection", label: "收款账号" },
+  { value: "orders", label: "订单设置" },
+  { value: "integration", label: "接入与通知" },
+  { value: "display", label: "收银台展示" },
+] as const;
+
+function siteSummaryRows(site: Site, section: string): SettingsSummaryRow[] {
+  const value = site.configuration, policy = value.policy;
+  if (section === "collection") return [
+    ["分配方式", value.collection ? { FIXED: "指定账号", RANDOM: "随机分配", WEIGHTED: "按权重分配" }[value.collection.mode] : "未配置"],
+    ["收款账号", value.collection?.accounts.length ? count(value.collection.accounts.length) + " 个" : "未分配"],
+  ];
+  if (section === "orders") return [
+    ["收银台有效期", policy.orders.order_ttl_seconds + " 秒"],
+    ["最大加价金额", money(policy.orders.amount_offset_maximum_cents)],
+    ["应付金额复用等待", policy.orders.amount_reuse_cooldown_seconds + " 秒"],
+    ["待付款订单上限", policy.orders.pending_order_limit === null ? "不限" : count(policy.orders.pending_order_limit)],
+  ];
+  if (section === "integration") return [
+    ["通知", value.notifications_enabled ? "开启" : "关闭"],
+    ["通知地址前缀", value.notification_origin || "未设置"],
+    ["返回地址前缀", value.return_origin || "未设置"],
+    ["通知超时", siteTimeoutSeconds(policy.notification_delivery.timeout_milliseconds) + " 秒"],
+    ["最多发送次数", count(policy.notification_delivery.maximum_attempts)],
+    ["首次 / 最大重试间隔", policy.notification_delivery.retry_base_seconds + " / " + policy.notification_delivery.retry_maximum_seconds + " 秒"],
+  ];
+  if (section === "display") return [
+    ["收银台名称", policy.display.checkout_name],
+    ["显示商品名称", policy.display.checkout_show_product_name ? "开启" : "关闭"],
+    ["帮助链接", policy.display.checkout_help_url || "未设置"],
+  ];
+  return [
+    ["业务网站名称", value.name],
+    ["新订单", value.accepting_orders ? "允许接单" : "暂停接单"],
+    ["客户端 ID", <CopyValue value={site.client_id} label="复制客户端 ID" />],
+    ["创建时间", dateTime(site.created_at)],
+  ];
+}
+
+export function SiteSettingsPage() {
+  const { clientId, section = "basic" } = useParams();
+  const navigate = useNavigate();
+  const query = useQuery(siteEditorQueryOptions(clientId));
+  const selected = siteSections.find(item => item.value === section);
+  if (!selected) return <ErrorNotice error={new Error("网站设置分组不存在")} />;
+  return <div className="admin-settings-layout flex min-w-0 flex-col gap-4">
+    <PageHeading title={selected.label} />
+    <Tabs value={section} onValueChange={value => { if (value) void navigate("/sites/" + encodeURIComponent(clientId!) + "/settings/" + value); }}>
+      <ScrollingTabs><TabsList aria-label="网站设置分组" variant="line" activateOnFocus={false} className="min-w-max">
+        {siteSections.map(item => <TabsTrigger key={item.value} value={item.value}>{item.label}</TabsTrigger>)}
+      </TabsList></ScrollingTabs>
+    </Tabs>
+    <QueryView query={query}>{({ site }) => <SettingsSummary title={selected.label} rows={siteSummaryRows(site, section)} editTo={"/sites/" + encodeURIComponent(site.client_id) + "/edit?section=" + section} />}</QueryView>
+  </div>;
+}
+
+export function SiteSummaryOverlay() {
+  const { clientId } = useParams();
+  const location = useLocation();
+  const range = overviewRange(new URLSearchParams(location.search));
+  const site = useQuery(siteEditorQueryOptions(clientId));
+  const queries = overviewQueries(clientId ?? null, range);
+  const analytics = useQuery({ ...queries.analytics, enabled: !!clientId, placeholderData: undefined });
+  const work = useQuery(queries.workSummary);
+  return <QueryView query={site}>{({ site: current }) => <div className="flex min-w-0 flex-col gap-4">
+    <PageHeading title={current.configuration.name} />
+    <ErrorNotice error={analytics.error} retry={() => { void analytics.refetch(); }} />
+    <ErrorNotice error={work.error} retry={() => { void work.refetch(); }} />
+    <SettingsSummary title="网站概况" rows={[
+      ["接单状态", <Badge variant={current.configuration.accepting_orders ? "success" : "warning"}>{current.configuration.accepting_orders ? "接单中" : "暂停接单"}</Badge>],
+      ["通知", current.configuration.notifications_enabled ? "开启" : "关闭"],
+      ["近 " + range + " 天实收", analytics.data ? money(analytics.data.data.confirmations.amount_cents) : analytics.isPending ? "正在读取…" : "暂不可用"],
+      ["收款确认笔数", analytics.data ? count(analytics.data.data.confirmations.count) : "—"],
+      ["当前待付款", analytics.data ? count(analytics.data.data.pending.orders) : "—"],
+      ["待处理", work.data?.data ? count(work.data.data.total) : "—"],
+      ["客户端 ID", <CopyValue value={current.client_id} label="复制客户端 ID" />],
+    ]} />
+    <OverlayActions>
+      <Link to={"/sites/" + encodeURIComponent(current.client_id) + "/edit?section=basic"} className={buttonVariants({ variant: "outline" })}>编辑网站</Link>
+      <Link to={"/sites/" + encodeURIComponent(current.client_id) + "?range=" + range} className={buttonVariants()}>进入后台</Link>
+    </OverlayActions>
+  </div>}</QueryView>;
+}
+
 export function SiteEditorPage() {
   const { clientId } = useParams();
   return clientId ? <ExistingSiteEditor /> : <CreateSite />;
@@ -77,7 +170,10 @@ function isSiteRevisionConflict(error: unknown) {
   return error instanceof ApiError && error.status === 409 && error.code === "site_revision_conflict";
 }
 function ExistingSiteEditor() {
-  const { clientId, section = "basic" } = useParams();
+  const { clientId, section: routeSection = "basic" } = useParams();
+  const location = useLocation();
+  const overlay = useOverlayContext();
+  const section = overlay ? new URLSearchParams(location.search).get("section") ?? "basic" : routeSection;
   const query = useQuery(siteEditorQueryOptions(clientId));
   if (
     clientId &&
@@ -88,10 +184,11 @@ function ExistingSiteEditor() {
     <QueryView query={query}>
       {(data) => (
         <SiteEditor
-          key={(clientId ?? "new") + section}
+          key={(clientId ?? "new") + (overlay ? "" : section)}
           initial={data.site}
           configuration={data.configuration}
           section={clientId ? section : "all"}
+          tabbed={!!overlay}
         />
       )}
     </QueryView>
@@ -100,12 +197,19 @@ function ExistingSiteEditor() {
 function SiteEditor({
   initial,
   configuration,
-  section,
+  section: initialSection,
+  tabbed = false,
 }: {
   initial: Site | null;
   configuration: SiteConfiguration;
   section: string;
+  tabbed?: boolean;
 }) {
+  const overlay = useOverlayContext();
+  const formId = useId();
+  const formRef = useRef<HTMLFormElement>(null);
+  const [activeSection, setActiveSection] = useState(initialSection);
+  const section = tabbed ? activeSection : initialSection;
   const navigate = useNavigate();
   const location = useLocation();
   const navigation = useNavigation();
@@ -113,13 +217,7 @@ function SiteEditor({
   useLayoutEffect(() => {
     currentNavigation.current = { key: location.key, pending: navigation.state !== "idle" };
   }, [location.key, navigation.state]);
-  const sections = [
-    { value: "basic", label: "基本信息" },
-    { value: "collection", label: "收款账号" },
-    { value: "orders", label: "订单设置" },
-    { value: "integration", label: "接入与通知" },
-    { value: "display", label: "收银台展示" },
-  ];
+  const sections = siteSections;
   const visible = (value: string) => section === "all" || section === value;
   const [saved, setSaved] = useState(initial);
   const [draft, setDraft] = useState(() => structuredClone(configuration));
@@ -133,6 +231,7 @@ function SiteEditor({
   const [choices, setChoices] = useState<SiteConflictChoices>({});
   const reloadController = useRef<AbortController | null>(null);
   const mounted = useRef(true);
+  const deletionConfirmed = useRef(false);
   useLayoutEffect(() => {
     mounted.current = true;
     return () => {
@@ -225,10 +324,12 @@ function SiteEditor({
       if (!saved) return;
       const path = { clientId: saved.client_id };
       if (kind === "delete") {
+        deletionConfirmed.current = false;
         const originKey = currentNavigation.current.key;
         await result(
           api.deleteSite({ path, body: { revision: saved.revision } }),
         );
+        deletionConfirmed.current = true;
         const returnToList = mounted.current && currentNavigation.current.key === originKey && !currentNavigation.current.pending;
         clearDraft();
         queryClient.removeQueries({
@@ -321,7 +422,7 @@ function SiteEditor({
     onSuccess: site => {
       if (!mounted.current || !saved) return;
       observeSecretRevision(site.revision);
-      const merged = mergeSiteConfiguration(saved.configuration, draft, site.configuration, section);
+      const merged = mergeSiteConfiguration(saved.configuration, draft, site.configuration, tabbed ? "all" : section);
       setChoices({});
       if (merged.conflicts.length) setReview({ site, ...merged });
       else applyReview(site, merged.configuration);
@@ -329,6 +430,15 @@ function SiteEditor({
   });
   const errors = save.error instanceof ApiError ? save.error.fields : {};
   const busy = save.isPending || action.isPending || reload.isPending;
+  useOverlayCloseGuard(() => save.isPending || reload.isPending || (action.isPending && !deletionConfirmed.current));
+  useEffect(() => {
+    if (!tabbed || !(save.error instanceof ApiError)) return;
+    const field = Object.keys(save.error.fields)[0] ?? "";
+    if (field) setActiveSection(field.includes(".display.") ? "display" : field.includes(".orders.") ? "orders" : field.startsWith("configuration.collection") ? "collection" : /notification|return_origin/.test(field) ? "integration" : "basic");
+  }, [save.error, tabbed]);
+  useEffect(() => {
+    if (!busy && save.error) formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
+  }, [section, save.error, busy]);
   const requiresReview = needsReview || !!review || (!!initial && !!saved && initial.revision > saved.revision && dirty);
   useEffect(() => {
     // The write/reload callback adopts its own response and must finish first.
@@ -372,20 +482,22 @@ function SiteEditor({
   return (
     <div className="admin-settings-layout flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <PageHeading title={sections.find((item) => item.value === section)?.label ?? "网站设置"} />
-        <Link to="/sites" className={buttonVariants({ variant: "outline" })}>
+        <PageHeading title={tabbed ? "编辑" + (saved?.configuration.name ?? "业务网站") : sections.find((item) => item.value === section)?.label ?? "网站设置"} />
+        {!overlay && <Link to="/sites" className={buttonVariants({ variant: "outline" })}>
           返回网站列表
-        </Link>
+        </Link>}
       </div>
       {saved && (
         <Tabs
           value={section}
           onValueChange={(value) => {
-            if (value)
-              void navigate("/sites/" + saved.client_id + "/settings/" + value);
+            if (value) {
+              if (tabbed) setActiveSection(value);
+              else void navigate("/sites/" + saved.client_id + "/settings/" + value);
+            }
           }}
         >
-          <TabsList className="flex h-auto flex-wrap" aria-label="网站设置分组">
+          <TabsList className="flex h-auto flex-wrap" aria-label="网站设置分组" activateOnFocus={false}>
             {sections.map((item) => (
               <TabsTrigger value={item.value} key={item.value}>
                 {item.label}
@@ -444,6 +556,8 @@ function SiteEditor({
         </Card>
       )}
       <form
+        id={formId}
+        ref={formRef}
         onSubmit={(event) => {
           event.preventDefault();
           if (busy || requiresReview || timeoutError) return;
@@ -551,9 +665,12 @@ function SiteEditor({
               </FieldGroup>
             </CardContent>
             <CardFooter>
-              <Button type="submit" disabled={busy || requiresReview || !!timeoutError}>
+              <OverlayActions>
+              {overlay && <Button type="button" variant="outline" disabled={busy} onClick={() => overlay.requestClose()}>关闭</Button>}
+              <Button form={formId} type="submit" disabled={busy || requiresReview || !!timeoutError}>
                 {save.isPending ? "正在保存…" : "保存业务网站"}
               </Button>
+              </OverlayActions>
             </CardFooter>
           </Card>
         </FieldSet>

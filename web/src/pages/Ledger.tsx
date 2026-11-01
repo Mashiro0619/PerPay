@@ -92,7 +92,7 @@ export function LedgerList({ onManual }: { onManual?: (trigger: HTMLButtonElemen
     { id: "order", label: "当前关联订单", layout: "text", summaryDefault: true, responsive: { minWidthRem: 64, basis: "container" }, cell: entry => <LedgerActiveOrder entry={entry} /> },
     { id: "order_reference", label: "商户订单号", layout: "text", defaultVisible: false, summaryDefault: false, cell: entry => <LedgerOrderLink match={entry.active_match} /> },
     { id: "site", label: "关联网站", layout: "text", defaultVisible: false, summaryDefault: false, cell: entry => entry.active_match?.api_client_id
-      ? <Link global to={"/sites/" + entry.active_match.api_client_id}>{entry.active_match.site_name ?? entry.active_match.api_client_id}</Link>
+      ? <Link global to={"/sites/" + entry.active_match.api_client_id + "/summary"}>{entry.active_match.site_name ?? entry.active_match.api_client_id}</Link>
       : entry.active_match ? "网站名称未保存" : "—" },
     { id: "other_account", label: "对方", layout: "text", summaryDefault: true, summaryPriority: "details", responsive: { minWidthRem: 58, basis: "container" }, cell: entry => <span className="wrap-anywhere">{ledgerFact(entry.other_account)}</span> },
     { id: "alipay_account", label: "收款账号", layout: "text", summaryDefault: true, responsive: { minWidthRem: 58, basis: "container" }, cell: entry => <AlipayAccountIdentity id={entry.alipay_account_id} name={entry.alipay_account_name} /> },

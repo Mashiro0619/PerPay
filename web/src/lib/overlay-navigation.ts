@@ -18,6 +18,11 @@ const definitions: ReadonlyArray<{ pattern: string; kind: OverlayRouteKind; titl
   { pattern: "/sites/:clientId/reconciliation/:kind/:resourceId", kind: "evidence", title: "对账详情", size: "lg" },
   { pattern: "/audit/:source/:eventId", kind: "audit", title: "审计日志详情", size: "md" },
   { pattern: "/audit/status", kind: "audit-status", title: "审计记录状态", size: "md" },
+  { pattern: "/sites/new", kind: "site", title: "添加业务网站", size: "lg" },
+  { pattern: "/sites/defaults", kind: "site-defaults", title: "网站默认配置", size: "lg" },
+  { pattern: "/sites/:clientId/edit", kind: "site", title: "编辑业务网站", size: "lg" },
+  { pattern: "/sites/:clientId/summary", kind: "site-summary", title: "网站概况", size: "md" },
+  { pattern: "/settings/accounts/:accountId", kind: "account", title: "支付宝账号", size: "lg" },
 ];
 export const overlayRouteDefinitions = definitions;
 
