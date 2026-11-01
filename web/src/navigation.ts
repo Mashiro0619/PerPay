@@ -103,7 +103,7 @@ function localPath(path: string) { const scope = workspaceScope(path); return sc
 function isTransactionList(pathname: string, search: string) {
   return pathname === "/ledger" || (pathname === "/reconciliation" && !["conflicts", "exceptions"].includes(new URLSearchParams(search).get("tab") ?? ""));
 }
-const listLabels: Record<string, string> = { "/": "总览", "/orders": "订单列表", "/notifications": "通知", "/work-items": "待处理", "/reconciliation": "对账", "/ledger": "支付宝流水" };
+const listLabels: Record<string, string> = { "/": "总览", "/orders": "订单列表", "/notifications": "通知", "/work-items": "待处理", "/reconciliation": "对账", "/ledger": "支付宝流水", "/audit": "审计日志" };
 type ListReturn = { to: string; label: string; state?: unknown };
 function readListReturn(value: unknown): ListReturn | null {
   if (!value || typeof value !== "object") return null;
@@ -116,7 +116,7 @@ function detailNavigationState(destination: To, location: ReturnType<typeof useL
   const parts = typeof destination === "string" ? parsePath(destination) : destination;
   if (!parts.pathname && parts.hash) return location.state;
   const pathname = typeof destination === "string" ? destination.split(/[?#]/)[0]! : destination.pathname ?? "";
-  if (!["orders", "notifications", "reconciliation", "ledger"].includes(localPath(pathname).split("/")[1] ?? "") || !localPath(pathname).split("/")[2]) return undefined;
+  if (!["orders", "notifications", "reconciliation", "ledger", "audit"].includes(localPath(pathname).split("/")[1] ?? "") || !localPath(pathname).split("/")[2]) return undefined;
   if (workspaceScope(pathname).clientId !== workspaceScope(location.pathname).clientId) return undefined;
   const inherited = readListReturn(location.state?.listReturn);
   const label = listLabels[localPath(location.pathname)];
@@ -161,8 +161,8 @@ export function useDetailBack(to: string, label: string): ListReturn {
   const location = useLocation(), scope = workspaceScope(location.pathname);
   const saved = readListReturn(location.state?.listReturn);
   if (saved && workspaceScope(saved.to.split(/[?#]/)[0]!).clientId === scope.clientId) {
-    if (isTransactionList(saved.to.split(/[?#]/)[0]!, parsePath(saved.to).search ?? "") && isGlobalNavigationPage(location.pathname)) {
-      const target = parsePath(saved.to);
+    const target = parsePath(saved.to);
+    if ((target.pathname === "/audit" || isTransactionList(target.pathname!, target.search ?? "")) && isGlobalNavigationPage(location.pathname)) {
       return { ...saved, to: switchWorkspaceHref({ ...target, pathname: target.pathname! }, navigationSelection(location).clientId) ?? saved.to };
     }
     return saved;

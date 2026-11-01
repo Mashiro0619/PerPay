@@ -17,7 +17,7 @@ const selectedA = { pathname: "/system", search: "?selected_site=site_a" };
 describe("navigation selection stays separate from the actual workspace", () => {
   it.each([
     "/reconciliation", "/reconciliation/conflicts/conflict-id", "/system",
-    "/sites", "/sites/new", "/sites/defaults", "/system/",
+    "/sites", "/sites/new", "/sites/defaults", "/system/", "/audit", "/audit/core/event-id", "/audit/activity/event-id",
   ])("permits navigation memory on the global page %s", (pathname) => {
     expect(isGlobalNavigationPage(pathname)).toBe(true);
     expect(navigationSelection({ pathname, search: "?selected_site=site_a" })).toEqual(siteA);
@@ -63,6 +63,7 @@ describe("fixed navigation sections and destinations", () => {
     ["/reconciliation/transactions/entry-id", "reconciliation"], ["/ledger/entry-id", "reconciliation"],
     ["/settings/security", "settings"], ["/sites/site_a/settings/integration", "settings"],
     ["/sites/new", "sites"], ["/sites/defaults", "sites"], ["/system/", "system"],
+    ["/audit", "audit"], ["/audit/core/event-id", "audit"], ["/audit/activity/event-id", "audit"],
     ["/orders-old", null], ["/test-payment", null], ["/sites/site_a/unknown", null],
   ] as const)("classifies %s as %s", (pathname, section) => {
     expect(navigationSection(pathname)).toBe(section);
@@ -76,6 +77,7 @@ describe("fixed navigation sections and destinations", () => {
     ["settings", "/settings", "/sites/site_a/settings/basic"],
     ["reconciliation", "/reconciliation", "/reconciliation?selected_site=site_a"],
     ["system", "/system", "/system?selected_site=site_a"],
+    ["audit", "/audit", "/audit?selected_site=site_a"],
     ["sites", "/sites", "/sites?selected_site=site_a"],
   ] satisfies Array<[NavigationSection, string, string]>)("resolves the fixed %s item in both selections", (section, globalHref, siteHref) => {
     expect(sidebarHref(section, all)).toBe(globalHref);
@@ -128,7 +130,7 @@ describe("switching a navigation selection", () => {
     expect(switchWorkspaceHref({ pathname: "/sites/site_a/settings/unknown" }, "site_b")).toBe("/sites/site_b/settings/basic");
   });
 
-  it.each(["/reconciliation", "/system", "/sites", "/sites/new", "/sites/defaults"])(
+  it.each(["/reconciliation", "/system", "/sites", "/sites/new", "/sites/defaults", "/audit", "/audit/core/event-id"])(
     "preserves the actual global page, query bytes and hash at %s", (pathname) => {
       const location = { pathname, search: "?q=hello%20world&selected_site=site_a&cursor=old&page=3&sort_by=created_at", hash: "#position" };
       const href = switchWorkspaceHref(location, "site_b");

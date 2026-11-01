@@ -39,6 +39,7 @@ const detailQueryScopes = new Set([
   "notification",
   "notification-attempts",
   "conflict",
+  "audit-event",
 ]);
 export function useDetailFetching() {
   return useIsFetching({

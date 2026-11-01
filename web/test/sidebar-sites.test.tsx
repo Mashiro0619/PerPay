@@ -303,8 +303,9 @@ describe("business websites in the sidebar", () => {
     const settings = within(nav).getByRole("navigation", { name: "设置导航" });
     const shared = within(nav).getByRole("navigation", { name: "全局管理" });
     expect(within(shared).getAllByRole("link")).toEqual(
-      ["业务网站", "对账", "运行状态"].map(name => within(shared).getByRole("link", { name })),
+      ["业务网站", "对账", "运行状态", "审计日志"].map(name => within(shared).getByRole("link", { name })),
     );
+    expect(within(shared).getByRole("link", { name: "审计日志" })).toHaveAttribute("href", "/audit");
     expect(within(shared).queryByRole("link", { name: "支付宝流水" })).not.toBeInTheDocument();
     const manage = within(shared).getByRole("link", { name: "业务网站" });
     expect(manage).toHaveAttribute("href", "/sites");

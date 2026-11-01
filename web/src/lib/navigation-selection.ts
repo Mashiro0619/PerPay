@@ -10,6 +10,7 @@ export type NavigationSection =
   | "reconciliation"
   | "ledger"
   | "system"
+  | "audit"
   | "sites";
 
 type NavigationLocation = {
@@ -32,6 +33,7 @@ const SECTION_QUERY_PARAMETERS: Record<NavigationSection, readonly string[]> = {
   ledger: ["direction", "state", "alipay_account_id", "occurred_from", "occurred_to", "min_amount_cents", "max_amount_cents", ...LIST_QUERY_PARAMETERS],
   settings: [],
   system: [],
+  audit: ["source", "category", "action", "outcome", "actor_type", "site_id", "source_address", ...LIST_QUERY_PARAMETERS, ...DATE_QUERY_PARAMETERS],
   sites: [],
 };
 
@@ -43,7 +45,7 @@ function selectionScope(clientId: string | null): WorkspaceScope {
 
 /** Only these pages may remember a site without changing their global API scope. */
 export function isGlobalNavigationPage(pathname: string): boolean {
-  return /^\/(?:reconciliation(?:\/[^/]+\/[^/]+)?|ledger(?:\/[^/]+)?|system|sites(?:\/(?:new|defaults))?)\/?$/.test(pathname);
+  return /^\/(?:reconciliation(?:\/[^/]+\/[^/]+)?|ledger(?:\/[^/]+)?|audit(?:\/[^/]+\/[^/]+)?|system|sites(?:\/(?:new|defaults))?)\/?$/.test(pathname);
 }
 
 export function navigationSelection(location: NavigationLocation): WorkspaceScope {
@@ -70,6 +72,7 @@ export function navigationSection(pathname: string): NavigationSection | null {
   }
   if (!isGlobalNavigationPage(pathname)) return null;
   if (path === "/system") return "system";
+  if (/^\/audit(?:\/|$)/.test(path)) return "audit";
   if (/^\/ledger(?:\/|$)/.test(path)) return "reconciliation";
   return path.startsWith("/reconciliation") ? "reconciliation" : "sites";
 }
@@ -101,7 +104,7 @@ function selectionSearch(search: string, clientId: string | null): string {
 }
 
 export function sidebarHref(section: NavigationSection, selection: WorkspaceScope): string {
-  if (section === "reconciliation" || section === "ledger" || section === "system" || section === "sites") {
+  if (section === "reconciliation" || section === "ledger" || section === "system" || section === "audit" || section === "sites") {
     return "/" + section + selectionSearch("", selection.clientId);
   }
   if (section === "overview") return selection.base || "/";

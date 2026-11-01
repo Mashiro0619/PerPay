@@ -57,6 +57,8 @@ export function ListFilterSheet({
   activeContentCount?: number;
 }) {
   const id = useId();
+  const hasSorting = sorts.length > 0;
+  const panelTitle = hasSorting ? "筛选与排序" : "筛选";
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [sortBy, setSortBy] = useState(control.query.sortBy);
@@ -91,8 +93,10 @@ export function ListFilterSheet({
     if (value) stagedSearch.set(filter.key, value);
     else stagedSearch.delete(filter.key);
   }
-  stagedSearch.set("sort_by", sortBy);
-  stagedSearch.set("sort_order", sortOrder);
+  if (hasSorting) {
+    stagedSearch.set("sort_by", sortBy);
+    stagedSearch.set("sort_order", sortOrder);
+  }
   function stage(values: Record<string, string | null>) {
     setContentDraft(current => ({ ...current, ...values }));
     setDraft(current => ({ ...current, ...Object.fromEntries(filters.filter(filter => filter.key in values).map(filter => [filter.key, values[filter.key] ?? ""])) }));
@@ -129,19 +133,19 @@ export function ListFilterSheet({
             disabled={disabled}
           />
         }
-        aria-label={count ? "筛选与排序，已选 " + count + " 项" : "筛选与排序"}
+        aria-label={count ? panelTitle + "，已选 " + count + " 项" : panelTitle}
         data-list-filter-trigger
       >
         <SlidersHorizontal data-icon="inline-start" />
         {!compact && (
           <>
-            筛选与排序{count > 0 && <Badge variant="secondary">{count}</Badge>}
+            {panelTitle}{count > 0 && <Badge variant="secondary">{count}</Badge>}
           </>
         )}
       </SheetTrigger>
       <SheetContent side="bottom" className="max-h-[calc(100dvh-2rem)] gap-0 overflow-hidden">
         <SheetHeader className="shrink-0 pr-16">
-          <SheetTitle>筛选与排序</SheetTitle>
+          <SheetTitle>{panelTitle}</SheetTitle>
         </SheetHeader>
         <form
           className="grid min-h-0 auto-rows-max gap-4 overflow-y-auto overscroll-contain"
@@ -151,8 +155,7 @@ export function ListFilterSheet({
             if (disabled) return;
             setOpen(false);
             const changed =
-              sortBy !== control.query.sortBy ||
-              sortOrder !== control.query.sortOrder ||
+              (hasSorting && (sortBy !== control.query.sortBy || sortOrder !== control.query.sortOrder)) ||
               Object.entries(contentDraft).some(([key, value]) =>
                 (value || null) !== initialSearch.get(key),
               ) ||
@@ -170,8 +173,7 @@ export function ListFilterSheet({
                   draft[filter.key] ?? filter.value,
                 ]),
               ),
-              sort_by: sortBy,
-              sort_order: sortOrder,
+              ...(hasSorting ? { sort_by: sortBy, sort_order: sortOrder } : {}),
             });
           }}
         >
@@ -213,7 +215,7 @@ export function ListFilterSheet({
               </Field>
             ))}
             {content && <ListFilterPanelContext value><div className="flex min-w-0 flex-col gap-4" data-list-filter-content>{content(contentControl)}</div></ListFilterPanelContext>}
-            <Field>
+            {hasSorting && <><Field>
               <FieldLabel htmlFor={id + "sort"}>排序字段</FieldLabel>
               <Select
                 items={sorts}
@@ -262,7 +264,7 @@ export function ListFilterSheet({
                   降序
                 </ToggleGroupItem>
               </ToggleGroup>
-            </Field>
+            </Field></>}
           </FieldGroup>
           <SheetFooter className="shrink-0 flex-row justify-end pb-[max(1rem,env(safe-area-inset-bottom))]">
             <SheetClose render={<Button type="button" variant="outline" />}>

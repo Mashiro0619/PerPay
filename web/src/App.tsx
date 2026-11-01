@@ -60,6 +60,7 @@ const globalPageTitles: Record<NavigationSection, string> = {
   reconciliation: "对账",
   ledger: "支付宝流水",
   system: "运行状态",
+  audit: "审计日志",
   sites: "业务网站",
 };
 
@@ -375,6 +376,18 @@ export const appRoutes = createRoutesFromElements(
       path="settings/:section?"
       lazy={async () => ({
         Component: (await import("./pages/Settings")).default,
+      })}
+    />
+    <Route
+      path="audit"
+      lazy={async () => ({
+        Component: (await import("./pages/Audit")).default,
+      })}
+    />
+    <Route
+      path="audit/:source/:eventId"
+      lazy={async () => ({
+        Component: (await import("./pages/AuditDetail")).default,
       })}
     />
     <Route

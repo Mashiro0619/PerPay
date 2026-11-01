@@ -80,7 +80,7 @@ client.interceptors.request.use((request) => {
   }
   if (!["GET", "HEAD", "OPTIONS"].includes(request.method)) {
     const path = new URL(request.url).pathname;
-    if (isReadOnlyDemo() && !["/api/admin/v1/session/login", "/api/admin/v1/session/logout", "/api/admin/v1/orders/export"].includes(path)) {
+    if (isReadOnlyDemo() && !["/api/admin/v1/session/login", "/api/admin/v1/session/logout", "/api/admin/v1/orders/export", "/api/admin/v1/audit-events/export"].includes(path)) {
       throw new ApiError(undefined, {error:{code:"demo_read_only",message:"当前操作不可用。"}});
     }
     const token = readCsrfToken();

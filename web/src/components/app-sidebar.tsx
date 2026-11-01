@@ -9,6 +9,7 @@ import {
   Globe,
   LayoutDashboard,
   ListChecks,
+  ScrollText,
   Settings2,
   WalletCards,
 } from "lucide-react";
@@ -56,6 +57,7 @@ export const navigation = [
   { section: "sites", url: "/sites", title: "业务网站", icon: Globe },
   { section: "reconciliation", url: "/reconciliation", title: "对账", icon: WalletCards },
   { section: "system", url: "/system", title: "运行状态", icon: Activity },
+  { section: "audit", url: "/audit", title: "审计日志", icon: ScrollText },
 ] satisfies (NavigationItem & { section: NavigationSection })[];
 export function AppSidebar({
   pathname,

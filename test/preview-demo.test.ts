@@ -134,6 +134,30 @@ describe("isolated documentation preview", () => {
       const csv = await app.request(base + "/orders/export", { method: "POST", headers, body: JSON.stringify({ created_from: date, created_to: date }) });
       assert.equal(csv.status, 200);
       assert.match(csv.headers.get("content-type")!, /text\/csv/);
+      const auditMeta = await app.request("/api/admin/v1/audit-events/meta", { headers });
+      assert.equal(auditMeta.status, 200);
+      const auditActions = (await auditMeta.json() as { data: { actions: { action: string }[] } }).data.actions.map(item => item.action);
+      for (const action of ["orders.created", "ledger.scan", "reconciliation.sweep", "webhook.delivery", "backup.cycle", "maintenance.publication_lock.clear", "system.started"]) {
+        assert.ok(auditActions.includes(action), `Preview must demonstrate ${action}`);
+      }
+      const summaries = await app.request("/api/admin/v1/audit-events?source=activity&action=http.request", { headers });
+      assert.equal(summaries.status, 200);
+      const summary = (await summaries.json() as { data: { event_count: number; first_occurred_at: string; last_occurred_at: string; source_address: string | null }[] }).data
+        .find(event => event.event_count === 18);
+      assert.ok(summary);
+      assert.equal(summary.source_address, "203.0.113.12");
+      assert.equal(Date.parse(summary.last_occurred_at) - Date.parse(summary.first_occurred_at), 25_000);
+      const auditExportPath = "/api/admin/v1/audit-events/export";
+      const exportBody = JSON.stringify({ created_from: date, created_to: date });
+      assert.equal((await app.request(auditExportPath, { method: "POST", headers: { cookie, Origin: demo.origin, "Content-Type": "application/json" }, body: exportBody })).status, 403);
+      const auditCsv = await app.request(auditExportPath, { method: "POST", headers, body: exportBody });
+      assert.equal(auditCsv.status, 200);
+      const auditBytes = Buffer.from(await auditCsv.arrayBuffer());
+      assert.deepEqual([...auditBytes.subarray(0, 3)], [0xef, 0xbb, 0xbf]);
+      assert.match(auditBytes.toString("utf8"), /http.request/);
+      assert.ok(demo.database.read(connection => connection.prepare("SELECT 1 FROM audit_events WHERE action = 'audit.export_generated'").get()));
+      assert.deepEqual(demo.database.read(connection => connection.prepare("SELECT * FROM payment_orders").all()), before,
+        "audit preview queries and exports must not mutate payment state");
       assert.equal((await app.request(base + "/test-payments", { method: "POST", headers, body: "{}" })).status, 403);
       assert.equal((await app.request("/admin/sites/" + clientId + "/orders", { headers })).status, 200);
       // An unavailable update is honest: no fabricated successful online version check.
