@@ -381,7 +381,7 @@ export function LoginForm({ onLogin }: { onLogin: () => void }) {
           </CardContent>
           {initialized === true && (
             <CardFooter className="justify-center py-3">
-              <Collapsible className="flex w-full min-w-0 flex-col items-center gap-2">
+              <Collapsible className="flex w-full min-w-0 flex-col items-end gap-2">
                 <CollapsibleTrigger render={<Button variant="ghost" size="sm" className="h-auto min-h-7 max-w-full whitespace-normal py-1" />}>
                   忘记密码？
                   <ChevronDown aria-hidden="true" data-icon="inline-end" className="transition-transform group-data-panel-open/button:rotate-180 motion-reduce:transition-none" />
