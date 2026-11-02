@@ -2,7 +2,7 @@ import type { Locator, Page } from "@playwright/test";
 import { test, expect, login, record, type Manifest } from "./fixtures";
 import { audit, screenshot } from "./audit";
 import { expectOverlayFits, expectOverlayTarget, settleOverlay } from "./overlay-fixtures";
-import { expectTouchTarget } from "./touch-targets";
+import { expectTouchTarget, measureTouchTarget, waitForControlAnimations } from "./touch-targets";
 import type { AdminLedgerDetail, AdminOrderDetail, PaymentMatchDetail, WebhookAttempt, WebhookDeliveryDetail } from "../web/src/api/generated/types.gen";
 
 const scenarios = [
@@ -84,6 +84,7 @@ async function keyboardTools(page: Page, label: string) {
   await page.keyboard.press("Enter");
   await expect(trigger).toHaveAttribute("aria-expanded", "true");
   await expect(technical.locator("pre")).toBeVisible();
+  await compactFieldsGeometry(technical.locator('[data-compact-fields="true"]:visible'));
   await expect(page.getByRole("dialog", { name: "技术详情", exact: true })).toHaveCount(0);
   await page.keyboard.press("Tab");
   await expect(technical.getByRole("button", { name: /^复制/ }).first()).toBeFocused();
@@ -106,6 +107,27 @@ async function compactFieldsGeometry(containers: Locator) {
         gap: Number.parseFloat(fieldStyle.rowGap), columnGap: Number.parseFloat(fieldStyle.columnGap),
         labelFont: Number.parseFloat(getComputedStyle(term).fontSize), valueFont: Number.parseFloat(getComputedStyle(value).fontSize),
         scrollWidth: value.scrollWidth, valueWidth: value.clientWidth,
+        firstValue: (() => {
+          const walker = document.createTreeWalker(value, NodeFilter.SHOW_TEXT);
+          const range = document.createRange();
+          while (walker.nextNode()) {
+            const node = walker.currentNode, parent = node.parentElement;
+            const start = node.textContent?.search(/\S/u) ?? -1;
+            if (!parent || start < 0 || parent.closest('.sr-only, [hidden], [aria-hidden="true"]')) continue;
+            const style = getComputedStyle(parent);
+            if (style.visibility !== "visible" || style.display === "none") continue;
+            const character = String.fromCodePoint(node.textContent!.codePointAt(start)!);
+            range.setStart(node, start); range.setEnd(node, start + character.length);
+            const box = [...range.getClientRects()].find(rect => rect.width > 0 && rect.height > 0);
+            if (!box) continue;
+            // Badges have deliberate interior padding; their painted pill is
+            // the first value. Plain text and CopyValue are checked at the glyph.
+            const badge = parent.closest('[data-slot="badge"]');
+            return { kind: badge ? "badge" : parent.closest("span.break-all") ? "copy" : "text",
+              text: node.textContent!.trim().slice(0, 40), left: badge?.getBoundingClientRect().left ?? box.left, glyphLeft: box.left };
+          }
+          return null;
+        })(),
         textBounds: (() => {
           const textElement = value.querySelector("span.break-all");
           if (!textElement) return null;
@@ -130,8 +152,15 @@ async function compactFieldsGeometry(containers: Locator) {
       expect(field.columns).toBe(group.width <= 320 ? 1 : 2);
       expect(field.labelFont).toBeGreaterThanOrEqual(13);
       expect(field.valueFont).toBeGreaterThanOrEqual(14);
-      expect(field.left).toBeGreaterThanOrEqual(group.left - 1);
-      expect(field.right).toBeLessThanOrEqual(group.right + 1);
+      expect(Math.abs(field.left - group.left), "row starts at its group: " + field.name).toBeLessThanOrEqual(1);
+      expect(Math.abs(field.width - group.width), "ordinary and wide rows fill the same group: " + field.name).toBeLessThanOrEqual(1);
+      expect(Math.abs(field.right - group.right), "row ends at its group: " + field.name).toBeLessThanOrEqual(1);
+      expect(field.firstValue, "visible content exists for " + field.name).not.toBeNull();
+      expect(Math.abs(field.firstValue!.left - field.valueLeft), "first value starts at dd: " + JSON.stringify({ name: field.name, valueLeft: field.valueLeft, firstValue: field.firstValue })).toBeLessThanOrEqual(1);
+      if (field.columns === 2) {
+        const firstColumnValue = group.fields.find(candidate => candidate.columns === 2)!;
+        expect(Math.abs(field.valueLeft - firstColumnValue.valueLeft), "one shared value column for all row kinds: " + field.name).toBeLessThanOrEqual(1);
+      }
       expect(field.scrollWidth, field.name ?? "complete value").toBeLessThanOrEqual(field.valueWidth + 1);
       if (field.textBounds) {
         expect(field.textBounds.textHeight).toBeLessThanOrEqual(field.textBounds.boxHeight + 1);
@@ -145,6 +174,13 @@ async function compactFieldsGeometry(containers: Locator) {
       const previous = group.fields[field.index - 1];
       if (previous) expect(field.top, "DOM reading order: " + field.name).toBeGreaterThanOrEqual(previous.bottom - 1);
     }
+  }
+  const alignedGroups = groups.filter(group => group.fields.some(field => field.columns === 2));
+  for (const [index, group] of alignedGroups.entries()) for (const sibling of alignedGroups.slice(index + 1)) {
+    if (Math.abs(group.left - sibling.left) > 1) continue;
+    const value = group.fields.find(field => field.columns === 2)!;
+    const siblingValue = sibling.fields.find(field => field.columns === 2)!;
+    expect(Math.abs(value.valueLeft - siblingValue.valueLeft), "peer fact groups share the value column").toBeLessThanOrEqual(1);
   }
   return groups;
 }
@@ -176,6 +212,7 @@ function completeFieldGeometry(field: Element) {
   const top = Math.min(...characters.map(character => character.top));
   const bottom = Math.max(...characters.map(character => character.bottom));
   return { name: field.querySelector("dt")!.textContent, fieldWidth: field.getBoundingClientRect().width,
+    containerWidth: field.parentElement!.parentElement!.getBoundingClientRect().width,
     height: box.height, valueHeight: box.height, lineHeight: Number.parseFloat(getComputedStyle(value).lineHeight),
     textHeight: bottom - top, boxHeight: textBox.height, textRight: Math.max(...characters.map(character => character.right)), boxRight: textBox.right,
     textBottom: bottom, boxBottom: textBox.bottom, characterCount: characters.length, characterText: characters.map(character => character.text).join(""),
@@ -195,9 +232,54 @@ async function readingCredentialsGeometry(page: Page) {
   }
   return compactFieldsGeometry(sections.locator("[data-detail-fields]"));
 }
+async function headerControlsGeometry(page: Page) {
+  const header = foreground(page).locator('[data-overlay-primary] > [data-slot="dialog-header"]');
+  const refresh = header.getByRole("button", { name: "刷新", exact: true });
+  const close = header.getByRole("button", { name: "关闭对话框", exact: true });
+  await expect(refresh).toBeVisible();
+  await expect(close).toBeVisible();
+  const measurements = await Promise.all([refresh, close].map(control => control.evaluate(element => {
+    const bounds = element.getBoundingClientRect(), header = element.closest('[data-slot="dialog-header"]')!.getBoundingClientRect();
+    const center = { x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2 };
+    const hit = document.elementFromPoint(center.x, center.y);
+    return { box: bounds.toJSON(), header: header.toJSON(), center, hit: hit === element || !!hit && element.contains(hit) };
+  })));
+  const [refreshGeometry, closeGeometry] = measurements;
+  expect(Math.abs(refreshGeometry!.center.y - closeGeometry!.center.y), "refresh and close share a visual center line").toBeLessThanOrEqual(1);
+  expect(Math.abs(refreshGeometry!.box.width - closeGeometry!.box.width), "header actions have equal widths").toBeLessThanOrEqual(1);
+  expect(Math.abs(refreshGeometry!.box.height - closeGeometry!.box.height), "header actions have equal heights").toBeLessThanOrEqual(1);
+  expect(Math.abs(closeGeometry!.box.right - closeGeometry!.header.right), "close occupies the trailing edge of the header").toBeLessThanOrEqual(1);
+  for (const control of measurements) {
+    expect(control.hit, "the center is an actionable part of its control").toBe(true);
+    expect(control.box.left).toBeGreaterThanOrEqual(control.header.left - 1);
+    expect(control.box.right).toBeLessThanOrEqual(control.header.right + 1);
+    expect(control.box.top).toBeGreaterThanOrEqual(control.header.top - 1);
+    expect(control.box.bottom).toBeLessThanOrEqual(control.header.bottom + 1);
+  }
+  return { refresh: refreshGeometry!, close: closeGeometry! };
+}
+async function notificationSectionAlignment(page: Page) {
+  const information = detailBody(page).locator('[data-notification-information]:visible');
+  if (!await information.count()) return null;
+  const summary = detailBody(page).locator('[data-detail-order-summary]');
+  await expect(summary).toBeVisible();
+  const boxes = await detailBody(page).evaluate(body => {
+    const summary = body.querySelector('[data-detail-order-summary]')!;
+    const notification = body.querySelector('[data-notification-information]')!;
+    return { summaryLeft: summary.getBoundingClientRect().left, summaryFieldsLeft: summary.querySelector('[data-detail-fields]')!.getBoundingClientRect().left,
+      notificationLeft: notification.getBoundingClientRect().left, notificationFieldsLeft: notification.querySelector('[data-detail-fields]')!.getBoundingClientRect().left };
+  });
+  for (const left of [boxes.summaryLeft, boxes.summaryFieldsLeft, boxes.notificationFieldsLeft]) {
+    expect(Math.abs(left - boxes.notificationLeft), "related order and notification facts share the same left edge").toBeLessThanOrEqual(1);
+  }
+  return boxes;
+}
 async function readingLayout(page: Page, mode: "compact" | "full") {
   await expect(page.locator("[data-content-width]")).toHaveAttribute("data-content-width", mode);
   const frame = await expectOverlayFits(page);
+  const header = await headerControlsGeometry(page);
+  const notificationAlignment = await notificationSectionAlignment(page);
+  const fields = await compactFieldsGeometry(detailBody(page).locator('[data-compact-fields="true"]:visible'));
   const geometry = await detailBody(page).evaluate(body => {
     const detail = body.querySelector<HTMLElement>("[data-detail-page]")!;
     const cards = Array.from(detail.querySelectorAll<HTMLElement>('[data-slot="card"]')).filter(card => card.getBoundingClientRect().width > 0);
@@ -220,8 +302,52 @@ async function readingLayout(page: Page, mode: "compact" | "full") {
   expect(geometry.cards.filter(card => card.radius !== "0px" || card.shadow !== "none")).toEqual([]);
   expect(geometry.timeFonts.filter(time => time.font < 14)).toEqual([]);
   expect(geometry.overflowActions).toEqual([]);
-  return { ...geometry, frame };
+  return { ...geometry, frame, header, notificationAlignment, fields };
 }
+
+test("headers without refresh keep close at the trailing edge and fully clickable", async ({ page, manifest }, info) => {
+  await login(page, manifest);
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto(manifest.origin + "/admin/settings/accounts/new");
+    const overlay = await settleOverlay(page);
+    await expectOverlayTarget(page, "/settings/accounts/new");
+    await expect(overlay.getByRole("textbox", { name: "账号名称", exact: true })).toBeVisible();
+    const header = overlay.locator('[data-overlay-primary] > [data-slot="dialog-header"]');
+    await expect(header.getByRole("button", { name: "刷新", exact: true })).toHaveCount(0);
+    const close = header.getByRole("button", { name: "关闭对话框", exact: true });
+    await waitForControlAnimations(close);
+    const edges = await close.evaluate(element => {
+      const bounds = element.getBoundingClientRect();
+      const centerHit = document.elementFromPoint(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2);
+      return { close: bounds.toJSON(), header: element.closest('[data-slot="dialog-header"]')!.getBoundingClientRect().toJSON(),
+        borderRadius: getComputedStyle(element).borderRadius, centerHit: centerHit === element || !!centerHit && element.contains(centerHit) };
+    });
+    expect(Math.abs(edges.close.right - edges.header.right), "an empty action slot leaves no gap after close").toBeLessThanOrEqual(1);
+    const hitArea = width < 768 ? await expectTouchTarget(close) : await close.evaluate(measureTouchTarget);
+    expect(hitArea.fits, "the complete close target stays within the viewport").toBe(true);
+    expect(hitArea.points).toHaveLength(9);
+    if (width < 768) {
+      expect(hitArea.hits, "all nine mobile touch probes belong to close").toBe(true);
+      expect(hitArea.width).toBeGreaterThanOrEqual(44);
+      expect(hitArea.height).toBeGreaterThanOrEqual(44);
+    } else {
+      // Desktop icons may have rounded, non-painted bounding-box corners.
+      // Retain those raw probes, then verify the actual pointer and keyboard entry.
+      expect(edges.centerHit, "the desktop close center is actionable").toBe(true);
+      await close.focus();
+      await expect(close).toBeFocused();
+    }
+    await record(page, info, { feature: "overlay-empty-actions-header", width, edges, hitArea });
+    const capture = info.outputPath(`header-without-refresh-${width}.png`);
+    await page.screenshot({ path: capture, fullPage: false });
+    await info.attach(`header-without-refresh-${width}`, { path: capture, contentType: "image/png" });
+    if (width < 768) await close.click();
+    else await page.keyboard.press("Enter");
+    await page.clock.runFor(250);
+    await expect(overlay).toHaveCount(0);
+  }
+});
 
 test("detail overlays separate facts into readable business sections", async ({ page, manifest }, info) => {
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -294,8 +420,8 @@ test("compact summaries and credentials preserve reading order at container boun
   expect(twoFacts, "the genuine inferred match has two short processing facts").toBeTruthy();
   expect(twoFacts!.width).toBeGreaterThanOrEqual(840);
   expect(twoFacts!.rows).toEqual([["关联方式"], ["关联时间"]]);
-  for (const field of twoFacts!.fields) expect(field.width).toBeLessThan(twoFacts!.width / 3);
-  expect(twoFacts!.right - twoFacts!.fields.at(-1)!.right).toBeGreaterThan(200);
+  for (const field of twoFacts!.fields) expect(Math.abs(field.width - twoFacts!.width)).toBeLessThanOrEqual(1);
+  expect(Math.abs(twoFacts!.fields[0]!.valueLeft - twoFacts!.fields[1]!.valueLeft)).toBeLessThanOrEqual(1);
   await record(page, info, { feature: "detail-flow-two-facts", evidence: "local-synthetic-domain", geometry: twoFacts });
   await screenshot(page, info, "reading-flow-two-facts");
 
@@ -397,6 +523,13 @@ test("coarse-pointer detail actions retain compact touch targets in both content
       await layout(page, "dark", mode);
       for (const scenario of scenarios) {
         await openDetail(page, manifest, scenario.key);
+        const headerGeometry = await headerControlsGeometry(page);
+        const header = foreground(page).locator('[data-overlay-primary] > [data-slot="dialog-header"]');
+        const refreshTouch = await expectTouchTarget(header.getByRole("button", { name: "刷新", exact: true }));
+        const closeTouch = await expectTouchTarget(header.getByRole("button", { name: "关闭对话框", exact: true }));
+        expect(Math.abs(refreshTouch.width - closeTouch.width)).toBeLessThanOrEqual(1);
+        expect(Math.abs(refreshTouch.height - closeTouch.height)).toBeLessThanOrEqual(1);
+        expect(Math.abs(refreshTouch.y + refreshTouch.height / 2 - closeTouch.y - closeTouch.height / 2)).toBeLessThanOrEqual(1);
         const targets = [];
         for (const button of await page.locator('[data-overlay-detail] [class~="group/button"], [data-overlay-detail] [data-slot="button"]').all()) {
           if (!await button.isVisible() || !await button.isEnabled()) continue;
@@ -406,7 +539,7 @@ test("coarse-pointer detail actions retain compact touch targets in both content
           targets.push(await expectTouchTarget(button));
         }
         expect(targets.length).toBeGreaterThan(0);
-        await record(page, info, { feature: "detail-touch-targets", width, mode, scenario: scenario.key, targets });
+        await record(page, info, { feature: "detail-touch-targets", width, mode, scenario: scenario.key, targets, headerGeometry, headerTargets: [refreshTouch, closeTouch] });
         await screenshot(page, info, `reading-touch-${scenario.key}-${width}-${mode}`);
       }
     }
@@ -801,10 +934,7 @@ test("long products, complete identifiers and multiline details wrap without cli
         if (wrapped.hangingWhitespace.length || wrapped.textRight > wrapped.boxRight + 1) await info.attach(`text-bounds-${scenario.key}-${width}-${theme}-${name}`, {
           body: JSON.stringify(wrapped, null, 2), contentType: "application/json",
         });
-        if (width === 1440) {
-          expect(wrapped.fieldWidth).toBeGreaterThanOrEqual(191);
-          expect(wrapped.fieldWidth).toBeLessThanOrEqual(257);
-        }
+        expect(Math.abs(wrapped.fieldWidth - wrapped.containerWidth), "long facts use the same complete row width").toBeLessThanOrEqual(1);
         expect(wrapped.valueHeight).toBeGreaterThan(wrapped.lineHeight * 2);
         expect(wrapped.textRight).toBeLessThanOrEqual(wrapped.boxRight + 1);
         expect(wrapped.textBottom).toBeLessThanOrEqual(wrapped.boxBottom + 1);

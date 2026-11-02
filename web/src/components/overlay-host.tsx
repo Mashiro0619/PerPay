@@ -1,6 +1,6 @@
 import { Component, Suspense, createContext, lazy, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Navigate, Route, Routes, UNSAFE_NavigationContext, UNSAFE_RouteContext, createPath, useLocation, useNavigate, type Location, type NavigateOptions, type Navigator, type Path, type To } from "react-router";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, XIcon } from "lucide-react";
 import { OverlayActionsContext, OverlayCloseGuardContext, OverlayContext, OverlayNavigationContext, OverlayNestedModalContext, OverlayStepsContext, type OverlayNavigation, type OverlaySize } from "@/lib/overlay-context";
 import { OVERLAY_HISTORY_KEY, OVERLAY_PARAMETER, legacyOverlayLocation, overlayBackground, overlayRoute, overlayRouteDefinitions, parseOverlayTarget, readOverlayHistory, readOverlayTarget, stateRecord, withOverlayTarget, type OverlayHistory, type OverlayRouteKind } from "@/lib/overlay-navigation";
 import { workspaceScope } from "@/lib/workspace-scope";
@@ -8,7 +8,7 @@ import { ResourceWorkspaceProvider } from "@/workspace";
 import { useSession } from "@/auth";
 import { PageHeadingProvider, PageHeadingSlot } from "@/components/page-heading";
 import { InlinePageHeaderActions, PageHeaderActionsProvider, PageHeaderActionsSlot } from "@/components/page-header-actions";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/admin-dialog";
+import { Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle } from "@/components/admin-dialog";
 import { ErrorNotice, Loading } from "@/components/request-state";
 import { RequestNoticeProvider } from "@/lib/request-notices";
 import { RequestNoticeBanner } from "@/components/request-notice-banner";
@@ -230,15 +230,19 @@ export function OverlayHost({ routes }: { routes?: ReactNode }) {
   return <Dialog open={overlay.hasOverlay} onOpenChange={(open, event) => { if (!open) { event.cancel(); overlay.close(); } }}>
     <DialogContent kind="detail" size={activeStep?.size ?? definition?.size ?? "md"} data-overlay-content data-overlay-size={activeStep?.size ?? definition?.size ?? "md"}
       role={activeStep ? "presentation" : "dialog"} aria-modal={activeStep ? false : true}
-      initialFocus={() => nestedModals.current.size ? false : title.current} finalFocus={overlay.restoreFocus} showCloseButton={!activeStep}>
+      initialFocus={() => nestedModals.current.size ? false : title.current} finalFocus={overlay.restoreFocus} showCloseButton={false}>
       <OverlayContext value={presentation}><OverlayCloseGuardContext value={overlay.registerCloseGuard}>
         <OverlayActionsContext value={actionsTarget}><OverlayStepsContext value={stepContext}><OverlayNestedModalContext value={registerNestedModal}>
           <PageHeadingProvider routeKey={target?.pathname ?? "invalid"}><InlinePageHeaderActions><PageHeaderActionsProvider presentation="inline">
             <div data-overlay-primary hidden={!!activeStep} inert={!!activeStep} className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden">
               <DialogHeader>
-                <div className="flex min-w-0 flex-wrap items-start gap-2">
-                  <DialogTitle className="min-w-0 flex-1" render={<div ref={title} tabIndex={-1} />}><PageHeadingSlot title={definition?.title ?? "无法打开详情"} /></DialogTitle>
+                <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-1 sm:gap-2">
+                  <DialogTitle className="min-w-0" render={<div ref={title} tabIndex={-1} />}><PageHeadingSlot title={definition?.title ?? "无法打开详情"} /></DialogTitle>
                   <PageHeaderActionsSlot className="max-w-full flex-wrap justify-end" />
+                  <DialogClose className="col-start-3" render={<Button variant="ghost" size="icon" />}>
+                    <XIcon />
+                    <span className="sr-only">关闭对话框</span>
+                  </DialogClose>
                 </div>
                 {overlay.canGoBack && <Button className="w-fit" size="sm" variant="ghost" onClick={overlay.back}><ArrowLeft data-icon="inline-start" />返回上一步</Button>}
               </DialogHeader>

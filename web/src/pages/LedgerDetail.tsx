@@ -67,11 +67,10 @@ export default function LedgerDetail() {
       <DetailSections label="流水详情分类" sections={[
         { id: "transaction", label: "交易", content: <>
       <Card data-ledger-summary>
-        <CardHeader className="flex min-w-0 flex-col gap-2 @3xl/main:grid">
-          <CardTitle role="heading" aria-level={2}>支付宝交易</CardTitle>
-          <CardAction className="flex max-w-full flex-wrap items-center gap-2">
+        <CardHeader className="flex min-w-0 flex-row flex-wrap items-start justify-between gap-x-3 gap-y-2">
+          <CardTitle className="min-w-0 max-w-full" role="heading" aria-level={2}>支付宝交易</CardTitle>
+          <CardAction className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
             <Badge variant="outline">{data.environment === "SANDBOX" ? "沙箱环境" : "生产环境"}</Badge>
-
           </CardAction>
         </CardHeader>
         <CardContent className="flex min-w-0 flex-col gap-6">
@@ -142,9 +141,9 @@ function LedgerSource({ source, index, consistent, hasMatch }: { source: AdminLe
     </ItemContent>
   </Item>;
   return <Card id={"source-" + source.ledger_entry_id} tabIndex={-1} className="scroll-mt-16" data-ledger-source={source.ledger_entry_id}>
-    <CardHeader className="flex min-w-0 flex-col gap-2 @3xl/main:grid">
-      <CardTitle role="heading" aria-level={3}>查账记录 {index + 1}</CardTitle>
-      <CardAction>{actions}</CardAction>
+    <CardHeader className="flex min-w-0 flex-row flex-wrap items-start justify-between gap-x-3 gap-y-2">
+      <CardTitle className="min-w-0 max-w-full" role="heading" aria-level={3}>查账记录 {index + 1}</CardTitle>
+      <CardAction className="min-w-0 max-w-full">{actions}</CardAction>
     </CardHeader>
     <CardContent className="flex min-w-0 flex-col gap-6">
       <DetailFields density="comfortable" layout="flow" wide={["支付宝备注"]} items={[
@@ -214,9 +213,9 @@ function LedgerConflicts({ entry }: { entry: AdminLedgerDetail }) {
   return <section className="flex min-w-0 flex-col gap-4" aria-labelledby="ledger-conflicts-heading">
     <h2 id="ledger-conflicts-heading" className="text-base font-semibold">账本冲突记录（{entry.conflicts.length}）</h2>
     {entry.conflicts.map(conflict => <Card key={conflict.conflict_id} data-ledger-conflict>
-      <CardHeader className="flex min-w-0 flex-col gap-2 @3xl/main:grid">
-        <CardTitle role="heading" aria-level={3}>{label(conflict.conflict_type)}</CardTitle>
-        <CardAction className="flex max-w-full flex-wrap items-center gap-2">
+      <CardHeader className="flex min-w-0 flex-row flex-wrap items-start justify-between gap-x-3 gap-y-2">
+        <CardTitle className="min-w-0 max-w-full" role="heading" aria-level={3}>{label(conflict.conflict_type)}</CardTitle>
+        <CardAction className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
           <StatusBadge value={conflict.status} label={conflict.status === "OPEN" ? "待处理" : conflict.status === "IGNORED" ? "已确认隔离" : "已处理"} />
           <Link global to={"/reconciliation/conflicts/" + conflict.conflict_id} className={buttonVariants({ variant: "outline", size: "sm" })}>查看冲突记录</Link>
           <RecordTools inline data={conflict} identifiers={[["账本冲突编号", conflict.conflict_id], ["关联内部流水编号（PerPay）", conflict.existing_ledger_entry_id]]} label="账本冲突记录操作" />

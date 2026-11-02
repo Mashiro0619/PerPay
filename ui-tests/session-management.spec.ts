@@ -216,7 +216,7 @@ test("session failures remain scoped and retry without replacing an active passw
   await expect(card.locator("[data-business-row]")).toHaveCount(3);
   await expect(password).toHaveValue("retained-through-read-error");
   await expect(password).toHaveAttribute("data-session-draft", "retained");
-  await page.locator('[data-overlay-content] > [data-slot="dialog-close"]').click();
+  await page.locator('[data-overlay-content]').getByRole('button', { name: '关闭对话框', exact: true }).click();
   const guard = page.getByRole("alertdialog", { name: "放弃未保存的修改？", exact: true });
   await guard.getByRole("button", { name: "放弃修改并继续", exact: true }).click();
   await expect(page.locator('[data-overlay-content]')).toBeHidden();

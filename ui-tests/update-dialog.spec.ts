@@ -264,7 +264,7 @@ test("an automatic update waits for a dirty form and its discard confirmation", 
     await expect(updateIndicator(page)).toHaveCount(1);
     await expect(field).toHaveValue("450");
     await expect(dialog(page)).toHaveCount(0);
-    await page.locator('[data-overlay-content] > [data-slot="dialog-close"]').click();
+    await page.locator('[data-overlay-content]').getByRole('button', { name: '关闭对话框', exact: true }).click();
     const discard = page.getByRole("alertdialog", { name: "放弃未保存的修改？", exact: true });
     await expect(discard).toBeVisible();
     await expect(dialog(page)).toHaveCount(0);
