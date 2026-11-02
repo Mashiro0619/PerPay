@@ -1629,8 +1629,6 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 /* End console lists. */
 
 /* Root-owned overview and entry surfaces use the same compact reading rhythm. */
-[data-admin-auth] [data-slot="card"] { border: 0; box-shadow: none; }
-[data-admin-auth] [data-slot="card-header"], [data-admin-auth] [data-slot="card-content"] { padding-inline: 0; }
 [data-onboarding-workspace] > [data-slot="card"], [data-account-onboarding] > [data-slot="card"] { --card-spacing: 1rem; }
 [data-overview-layout] .overview-work-fields { display: flex; min-width: 0; flex-wrap: wrap; gap: 0.25rem 0.75rem; }
 [data-overview-layout] .overview-work-order-reference { display: none; }

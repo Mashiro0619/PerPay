@@ -1,7 +1,7 @@
 import { useSystemName } from "@/branding";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useLocation, useNavigate, Link } from "react-router";
-import { Eye, EyeOff, WalletCards, CheckCircle2 } from "lucide-react";
+import { Eye, EyeOff, WalletCards, CheckCircle2, ChevronDown } from "lucide-react";
 import { api, ApiError, result } from "@/api/client";
 import { MIN_ADMIN_PASSWORD_CHARACTERS, validatePassword } from "@/lib/format";
 import { ThemeControl } from "@/theme";
@@ -11,6 +11,7 @@ import {
   Card,
   CardContent,
   CardDescription,
+  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -173,17 +174,17 @@ export function LoginForm({ onLogin }: { onLogin: () => void }) {
   }
 
   return (
-    <main className="flex min-h-svh items-center justify-center p-4 md:p-6" data-admin-auth>
-      <ThemeControl className="absolute right-4 top-4" />
-      <div className="flex w-full max-w-sm flex-col gap-5">
+    <main className="flex min-h-svh flex-col p-4 sm:p-6" data-admin-auth>
+      <ThemeControl className="shrink-0 self-end" />
+      <div className="mx-auto my-auto flex w-full min-w-0 max-w-sm flex-col gap-6 py-6 sm:py-10">
         <Link
           to="/"
-          className="flex items-center justify-center gap-2 font-medium"
+          className="flex min-w-0 max-w-full items-center justify-center gap-2 self-center px-1 py-1 font-medium"
         >
-          <WalletCards className="shrink-0" />
+          <WalletCards aria-hidden="true" className="shrink-0" />
           <span className="min-w-0 break-all">{systemName}</span>
         </Link>
-        <Card>
+        <Card className="min-w-0 [--card-spacing:--spacing(5)] sm:[--card-spacing:--spacing(6)]">
           <CardHeader>
             <CardTitle>
               <h1>{title}</h1>
@@ -194,7 +195,7 @@ export function LoginForm({ onLogin }: { onLogin: () => void }) {
               </CardDescription>
             )}
           </CardHeader>
-          <CardContent>
+          <CardContent className="min-w-0">
             {initialized === null ? (
               <ErrorNotice
                 error={
@@ -206,6 +207,7 @@ export function LoginForm({ onLogin }: { onLogin: () => void }) {
               />
             ) : (
               <form
+                className="min-w-0"
                 noValidate={setup}
                 onSubmit={(event) => {
                   void submit(event);
@@ -245,7 +247,7 @@ export function LoginForm({ onLogin }: { onLogin: () => void }) {
                           setInvalidField(null);
                         }}
                       />
-                      <FieldDescription id="setup-token-hint">
+                      <FieldDescription id="setup-token-hint" className="wrap-anywhere">
                         从服务器启动日志获取；Docker 部署执行 <code>docker compose logs app</code>，复制最新的 <code>setup_token</code>。未初始化时重启服务会更换令牌。
                       </FieldDescription>
                       {tokenInvalid && (
@@ -255,7 +257,7 @@ export function LoginForm({ onLogin }: { onLogin: () => void }) {
                       )}
                     </Field>
                   )}
-                  <Field data-invalid={passwordInvalid}>
+                  <Field data-invalid={passwordInvalid} data-disabled={pending}>
                     <FieldLabel htmlFor="password">
                       {setup ? "设置管理员密码" : "管理员密码"}
                     </FieldLabel>
@@ -307,7 +309,7 @@ export function LoginForm({ onLogin }: { onLogin: () => void }) {
                     )}
                   </Field>
                   {setup && (
-                    <Field data-invalid={invalidField === "confirmation"}>
+                    <Field data-invalid={invalidField === "confirmation"} data-disabled={pending}>
                       <FieldLabel htmlFor="password-confirmation">
                         再次输入密码
                       </FieldLabel>
@@ -339,7 +341,7 @@ export function LoginForm({ onLogin }: { onLogin: () => void }) {
                     </Field>
                   )}
                   {!setup && (
-                    <Field orientation="horizontal">
+                    <Field orientation="horizontal" className="min-w-0" data-disabled={pending}>
                       <Checkbox
                         id="remember-me"
                         name="remember-me"
@@ -347,7 +349,7 @@ export function LoginForm({ onLogin }: { onLogin: () => void }) {
                         disabled={pending}
                         onCheckedChange={setRemember}
                       />
-                      <FieldLabel htmlFor="remember-me">
+                      <FieldLabel htmlFor="remember-me" className="min-w-0">
                         在此设备保持登录 30 天
                       </FieldLabel>
                     </Field>
@@ -362,6 +364,8 @@ export function LoginForm({ onLogin }: { onLogin: () => void }) {
                   <Field>
                     <Button
                       type="submit"
+                      size="lg"
+                      className="h-auto min-h-9 whitespace-normal py-1.5"
                       disabled={pending}
                       aria-busy={pending}
                     >
@@ -375,27 +379,30 @@ export function LoginForm({ onLogin }: { onLogin: () => void }) {
               </form>
             )}
           </CardContent>
+          {initialized === true && (
+            <CardFooter className="justify-center py-3">
+              <Collapsible className="flex w-full min-w-0 flex-col items-center gap-2">
+                <CollapsibleTrigger render={<Button variant="ghost" size="sm" className="h-auto min-h-7 max-w-full whitespace-normal py-1" />}>
+                  忘记密码？
+                  <ChevronDown aria-hidden="true" data-icon="inline-end" className="transition-transform group-data-panel-open/button:rotate-180 motion-reduce:transition-none" />
+                </CollapsibleTrigger>
+                <CollapsibleContent className="w-full min-w-0 pb-1">
+                  <FieldDescription className="wrap-anywhere">
+                    请联系服务器管理员停服重设，无需删除数据。
+                    <a
+                      data-external-link
+                      href="https://github.com/Mashiro0619/PerPay/blob/main/docs/maintenance.md#忘记管理员密码"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      查看恢复步骤
+                    </a>
+                  </FieldDescription>
+                </CollapsibleContent>
+              </Collapsible>
+            </CardFooter>
+          )}
         </Card>
-        {initialized === true && (
-          <Collapsible>
-            <CollapsibleTrigger render={<Button variant="ghost" size="sm" />}>
-              忘记密码？
-            </CollapsibleTrigger>
-            <CollapsibleContent>
-              <FieldDescription>
-                请联系服务器管理员停服重设，无需删除数据。
-                <a
-                  data-external-link
-                  href="https://github.com/Mashiro0619/PerPay/blob/main/docs/maintenance.md#忘记管理员密码"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  查看恢复步骤
-                </a>
-              </FieldDescription>
-            </CollapsibleContent>
-          </Collapsible>
-        )}
       </div>
     </main>
   );
