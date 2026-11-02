@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, useLocation } from "react-router";
@@ -9,6 +9,7 @@ import type { ListQueryControl } from "../src/lib/list-query";
 import { WorkspaceProvider } from "../src/workspace";
 import { json, orderId, ledgerId } from "./fixtures";
 import { mobileMedia } from "./mobile-media";
+import type { ComponentProps } from "react";
 
 const related: NonNullable<AdminWorkItem["order_summary"]> = {
   order_id: orderId,
@@ -75,8 +76,8 @@ const control: ListQueryControl = {
 function LocationProbe() {
   return <output aria-label="当前地址">{useLocation().pathname}</output>;
 }
-function mount(items: AdminWorkItem[], path = "/work-items", scoped = false, embedded = false) {
-  const content = <><WorkItemsTable items={items} {...(embedded ? {} : { control })} /><LocationProbe /></>;
+function mount(items: AdminWorkItem[], path = "/work-items", scoped = false, embedded = false, actions?: ComponentProps<typeof WorkItemsTable>["actions"]) {
+  const content = <><WorkItemsTable items={items} actions={actions} {...(embedded ? {} : { control })} /><LocationProbe /></>;
   return render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[path]}>
@@ -95,6 +96,79 @@ beforeEach(() => {
 });
 
 describe("work item business context", () => {
+  it("reserves a fixed status column for every reminder category without changing desktop column choices", async () => {
+    localStorage.setItem("perpay.table-columns.v2.work-items", JSON.stringify({ actions: false, related_record: false, created_at: true }));
+    mount([notification(), exception, conflict]);
+    const classification = screen.getByRole("columnheader", { name: "分类" });
+    expect(classification).toHaveAttribute("data-column-id", "actions");
+    expect(classification).toHaveAttribute("data-column-layout", "status");
+    expect(screen.queryByRole("columnheader", { name: "关联记录" })).not.toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "创建时间" })).toBeVisible();
+    for (const [index, category] of ["通知失败", "账务异常", "账本冲突"].entries()) {
+      const cell = rows()[index]!.querySelector<HTMLElement>('[data-column-id="actions"]')!;
+      expect(cell).toHaveAttribute("data-column-layout", "status");
+      expect(within(cell).getByText(category, { exact: true })).toBeVisible();
+    }
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "显示列" }));
+    const option = screen.getByRole("menuitemcheckbox", { name: "分类" });
+    expect(option).toHaveAttribute("aria-checked", "true");
+    expect(option).toHaveAttribute("aria-disabled", "true");
+    expect(JSON.parse(localStorage.getItem("perpay.table-columns.v2.work-items")!)).toEqual({ related_record: false, created_at: true });
+  });
+
+  it("keeps complete categories in a 200% text summary and restores desktop column choices", () => {
+    mobileMedia(1440);
+    const originalFontSize = document.documentElement.style.fontSize;
+    const originalRect = HTMLElement.prototype.getBoundingClientRect;
+    const rect = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      return this.hasAttribute("data-business-table") ? DOMRect.fromRect({ width: 1100, height: 200 }) : originalRect.call(this);
+    });
+    try {
+      document.documentElement.style.fontSize = "16px";
+      localStorage.setItem("perpay.table-columns.v2.work-items", JSON.stringify({ related_record: false, created_at: true }));
+      mount([notification(), exception, conflict]);
+      expect(screen.getByRole("table", { name: "待处理提醒列表" })).toBeVisible();
+      act(() => {
+        document.documentElement.style.fontSize = "32px";
+        window.dispatchEvent(new Event("resize"));
+      });
+      expect(screen.queryByRole("table")).not.toBeInTheDocument();
+      expect(screen.getByRole("list", { name: "待处理提醒列表" })).toBeVisible();
+      expect(rows()).toHaveLength(3);
+      for (const [index, category] of ["通知失败", "账务异常", "账本冲突"].entries()) {
+        const aside = rows()[index]!.querySelector<HTMLElement>(".list-summary-aside")!;
+        expect(within(aside).getByText(category, { exact: true })).toBeVisible();
+      }
+      expect(screen.queryByRole("button", { name: "显示列" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "展开信息" })).not.toBeInTheDocument();
+      act(() => {
+        document.documentElement.style.fontSize = "16px";
+        window.dispatchEvent(new Event("resize"));
+      });
+      expect(screen.getByRole("columnheader", { name: "分类" })).toHaveAttribute("data-column-layout", "status");
+      expect(screen.queryByRole("columnheader", { name: "关联记录" })).not.toBeInTheDocument();
+      expect(screen.getByRole("columnheader", { name: "创建时间" })).toBeVisible();
+      expect(JSON.parse(localStorage.getItem("perpay.table-columns.v2.work-items")!)).toEqual({ related_record: false, created_at: true });
+    } finally {
+      document.documentElement.style.fontSize = originalFontSize;
+      rect.mockRestore();
+    }
+  });
+
+  it.each([1440, 320])("retains the complete ignored status and its independent restore action at %spx", async (width) => {
+    mobileMedia(width);
+    const item = notification({ ignored_at: "2026-10-30T05:00:00.000Z", ignored_by: "审核员" });
+    const restore = vi.fn();
+    mount([item], "/work-items", false, false, entry => <button onClick={() => restore(entry)}>恢复提醒</button>);
+    const row = within(rows()[0]!);
+    expect(row.getByText("已忽略", { exact: true })).toBeVisible();
+    if (width === 1440) expect(screen.getByRole("columnheader", { name: "提醒状态" })).toHaveAttribute("data-column-layout", "status");
+    await userEvent.setup().click(row.getByRole("button", { name: "恢复提醒" }));
+    expect(restore).toHaveBeenCalledExactlyOnceWith(item);
+    expect(screen.getByLabelText("当前地址")).toHaveTextContent("/work-items");
+  });
+
   it.each([1440, 390, 320])("distinguishes compact reminders by order and amount, with an independent desktop site field at %spx", (width) => {
     mobileMedia(width);
     const fetch = vi.fn();

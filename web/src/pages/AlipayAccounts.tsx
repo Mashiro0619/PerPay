@@ -104,7 +104,7 @@ export function AlipayAccountList({ onSelect }: { onSelect?: (id: string) => voi
     { id: "status", label: "状态", layout: "status", summaryDefault: true, cell: account => <Badge variant={account.enabled && account.configured ? "secondary" : "outline"}>{accountState(account)}</Badge> },
     { id: "health", label: "查账", layout: "status", summaryDefault: true, cell: account => accountHealth(account) },
     { id: "app", label: "App ID", cell: account => account.app_id || "未配置" },
-    { id: "sites", label: "用于网站", cell: account => account.sites.length ? <span title={account.sites.map(site => site.name).join("、")}>{account.sites.length} 个网站</span> : "未分配" },
+    { id: "sites", label: "用于网站", layout: "number", cell: account => account.sites.length ? <span title={account.sites.map(site => site.name).join("、")}>{account.sites.length} 个网站</span> : "未分配" },
     { id: "actions", label: "操作", layout: "actions", hideable: false, cell: account => onSelect
       ? <Button variant="outline" size="sm" onClick={() => onSelect(account.id)}>配置</Button>
       : <Link to={"/settings/accounts/" + encodeURIComponent(account.id)} className={buttonVariants({ variant: "outline", size: "sm" })} aria-label={"配置" + account.name}>配置</Link> },

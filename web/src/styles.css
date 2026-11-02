@@ -1582,15 +1582,18 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 [data-business-table][data-embedded="false"] .business-table col[data-column-layout="text"] { width: 10rem; }
 [data-business-table][data-embedded="false"] .business-table col[data-column-layout="amount"] { width: 8.5rem; }
 [data-business-table][data-embedded="false"] .business-table col[data-column-layout="datetime"] { width: 10rem; }
-[data-business-table][data-embedded="false"] .business-table col[data-column-layout="status"] { width: 7rem; }
-[data-business-table][data-embedded="false"] .business-table col[data-column-layout="actions"] { width: 5rem; }
+[data-business-table][data-embedded="false"] .business-table col[data-column-layout="status"] { width: 8.5rem; }
+[data-business-table][data-embedded="false"] .business-table col[data-column-layout="actions"] { width: 7rem; }
+[data-business-table="sites"][data-embedded="false"] .business-table col[data-column-id="actions"] { width: 9.5rem; }
+[data-business-table="alipay-accounts"][data-embedded="false"] .business-table col[data-column-id="name"] { width: 14rem; }
 [data-business-table][data-embedded="false"] .business-table :is(th, td) { padding: 0.45rem 0.5rem; vertical-align: middle; }
 [data-business-table][data-embedded="false"] .business-table th { height: 2.25rem; font-size: 0.75rem; font-weight: 500; }
 [data-business-table][data-embedded="false"] .business-table td { height: 2.375rem; font-size: 0.8125rem; line-height: 1.45; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 [data-business-table][data-embedded="false"][data-density="comfortable"] .business-table td { height: 2.875rem; padding-block: 0.7rem; }
 [data-business-table][data-embedded="false"] .business-table td[data-column-layout="amount"],
 [data-business-table][data-embedded="false"] .business-table td[data-column-layout="actions"] { overflow: visible; }
-[data-business-table][data-embedded="false"] .business-table td > :is(span, a, time, div):not([data-slot="badge"]) { display: block; min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+[data-business-table][data-embedded="false"] .business-table td:is([data-column-layout="status"], [data-column-layout="actions"]) { overflow: visible; text-overflow: clip; white-space: normal; }
+[data-business-table][data-embedded="false"] .business-table td:is([data-column-layout="identity"], [data-column-layout="text"], [data-column-layout="datetime"], [data-column-layout="number"]) > :is(span, a, time, div):not([data-slot="badge"], .business-cell-stack, .business-cell-badges) { display: block; min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 [data-business-table][data-embedded="false"] .business-table .list-identity-title { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 [data-business-table][data-embedded="false"] .business-table .list-identity-title > :is(a, span) { display: block; min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 [data-business-table][data-embedded="false"] .business-table :is(.list-identity-title > a, a.list-site-identity) { min-height: 24px; padding-block: 3px; }
@@ -1605,6 +1608,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 [data-business-table][data-embedded="false"] .business-summary-field { flex: 0 1 auto; min-width: 0; max-width: 100%; flex-direction: row; align-items: baseline; gap: 0.25rem; }
 [data-business-table][data-embedded="false"] .business-summary-field dt { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 [data-business-table][data-embedded="false"] .business-summary-field dd { min-width: 0; max-width: 16rem; font-size: 0.75rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+[data-business-table][data-embedded="false"] .business-summary-field dd:has(:is([data-slot="badge"], .business-cell-stack, .business-cell-badges)) { max-width: 100%; overflow: visible; text-overflow: clip; white-space: normal; }
 [data-business-table][data-embedded="false"] .business-summary-field:has(.list-money[data-wide="true"]) { flex-basis: 100%; }
 [data-business-table][data-embedded="false"] .business-summary-field:has(.list-money[data-wide="true"]) dd { max-width: 100%; overflow: visible; }
 

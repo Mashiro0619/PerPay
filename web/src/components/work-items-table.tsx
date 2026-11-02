@@ -218,7 +218,7 @@ export function WorkItemsTable({
       label: actions ? "提醒状态" : "分类",
       hideable: false,
       align: "center",
-      layout: "actions",
+      layout: "status",
       summaryDefault: true,
       cell: (item) => (
         <div className="business-cell-stack flex flex-col items-end gap-2">

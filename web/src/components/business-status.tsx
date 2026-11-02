@@ -1,5 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { CircleCheck, CircleDashed, CircleAlert, Clock3 } from "lucide-react";
+import { cn } from "cn";
 
 const states = {
   CONFIRMED: ["收款已确认", "success", CircleCheck],
@@ -44,14 +45,19 @@ export function StatusBadge({
   value: string;
   label?: string | undefined;
 }) {
-  const [text, variant, Icon] = states[value as keyof typeof states] ?? [
+  const state = states[value as keyof typeof states];
+  const [text, variant, Icon] = state ?? [
     value,
     "secondary",
   ];
+  const caption = label ?? text;
+  // Business states are short tokens. Unknown values and explanatory captions
+  // still need to wrap safely inside narrow summaries and enlarged text.
+  const wrap = !state || Array.from(caption).length > 6;
   return (
-    <Badge variant={variant} className="h-auto min-h-5 max-w-full whitespace-normal wrap-anywhere">
+    <Badge variant={variant} className={cn("h-auto min-h-5", wrap && "max-w-full whitespace-normal wrap-anywhere")}>
       {Icon && <Icon data-icon="inline-start" />}
-      {label ?? text}
+      {caption}
     </Badge>
   );
 }
