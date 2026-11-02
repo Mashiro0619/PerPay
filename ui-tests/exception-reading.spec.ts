@@ -1,7 +1,8 @@
 import type { Page } from "@playwright/test";
 import { test, expect, login, record, type Manifest } from "./fixtures";
-import { expectOverlayFits, settleOverlay } from "./overlay-fixtures";
+import { settleOverlay } from "./overlay-fixtures";
 import { audit, screenshot } from "./audit";
+import { expectDetailRecordLayout } from "./detail-layout";
 import type { AdminOrderDetail, FinancialException, ReconciliationLedgerEntry } from "../web/src/api/generated/types.gen";
 
 function path(manifest: Manifest, key: string) {
@@ -69,54 +70,14 @@ function completeFieldGeometry(field: Element) {
 async function geometry(page: Page, mode: "compact" | "full") {
   const main = page.locator("[data-overlay-detail]");
   await expect(page.locator("[data-content-width]")).toHaveAttribute("data-content-width", mode);
-  const frame = await expectOverlayFits(page);
-  await expect(main.locator("[data-detail-page]")).toHaveCSS("row-gap", "16px");
-  const groups = await main.locator('[data-detail-fields][data-density="comfortable"]:visible').evaluateAll(containers => containers.map(container => {
-    const dl = container.querySelector("dl")!, bounds = container.getBoundingClientRect(), style = getComputedStyle(dl);
-    return { width: bounds.width, left: bounds.left, right: bounds.right, credentials: !!container.closest("[data-detail-credentials]"), compact: container.getAttribute("data-compact-fields"),
-      layout: container.getAttribute("data-layout"), display: style.display, direction: style.flexDirection, rowGap: Number.parseFloat(style.rowGap),
-      fields: Array.from(dl.children).map(field => {
-        const box = field.getBoundingClientRect(), term = field.querySelector("dt")!, value = field.querySelector("dd")!, fieldStyle = getComputedStyle(field);
-        const labelBounds = term.getBoundingClientRect(), valueBounds = value.getBoundingClientRect();
-        return { name: term.textContent, width: box.width, left: box.left, right: box.right, top: box.top, bottom: box.bottom,
-          display: fieldStyle.display, columns: fieldStyle.gridTemplateColumns.trim().split(/\s+/).length,
-          gap: Number.parseFloat(fieldStyle.rowGap), columnGap: Number.parseFloat(fieldStyle.columnGap),
-          labelTop: labelBounds.top, labelBottom: labelBounds.bottom, labelRight: labelBounds.right, valueTop: valueBounds.top, valueLeft: valueBounds.left,
-          scrollWidth: value.scrollWidth, clientWidth: value.clientWidth, labelFont: Number.parseFloat(getComputedStyle(term).fontSize), valueFont: Number.parseFloat(getComputedStyle(value).fontSize) };
-      }) };
-  }));
-  expect(groups.length).toBeGreaterThan(0);
-  for (const group of groups) {
-    expect(group.compact).toBe("true");
-    expect(group.layout).toBe(group.credentials ? "columns" : "flow");
-    expect(group.display).toBe("flex");
-    expect(group.direction).toBe("column");
-    expect(group.rowGap).toBe(0);
-    expect(group.fields.length).toBeGreaterThan(0);
-    for (const [index, field] of group.fields.entries()) {
-      expect(field.display).toBe("grid");
-      expect(field.columns).toBe(group.width <= 320 ? 1 : 2);
-      expect(field.left).toBeGreaterThanOrEqual(group.left - 1);
-      expect(field.right).toBeLessThanOrEqual(group.right + 1);
-      expect(field.scrollWidth, field.name ?? "complete fact").toBeLessThanOrEqual(field.clientWidth + 1);
-      expect(field.labelFont).toBeGreaterThanOrEqual(13);
-      expect(field.valueFont).toBeGreaterThanOrEqual(14);
-      if (field.columns === 1) expect(Math.abs(field.valueTop - field.labelBottom - field.gap)).toBeLessThanOrEqual(1);
-      else {
-        expect(Math.abs(field.valueTop - field.labelTop)).toBeLessThanOrEqual(1);
-        expect(Math.abs(field.valueLeft - field.labelRight - field.columnGap)).toBeLessThanOrEqual(1);
-      }
-      const previous = group.fields[index - 1];
-      if (previous) expect(field.top, "DOM reading order: " + field.name).toBeGreaterThanOrEqual(previous.bottom - 1);
-    }
-  }
+  const measured = await expectDetailRecordLayout(page);
   const card = main.locator("[data-financial-exception]");
   await expect(card).toHaveCSS("border-radius", "0px");
   await expect(card).toHaveCSS("box-shadow", "none");
   await expect(card.locator('[data-slot="card-footer"]')).toHaveCount(0);
   await expect(card.getByRole("button", { name: "技术信息", exact: true })).toBeVisible();
   await expect(main.locator("[data-detail-identifier]")).toHaveCount(0);
-  return { frame, groups };
+  return measured;
 }
 
 test("exception global and site overlays retain readable evidence across the complete reading matrix", async ({ page, manifest }, info) => {
@@ -154,11 +115,11 @@ test("genuine ignored, resolved, candidate and unlinked exceptions keep their ev
     const card = await open(page, manifest, key);
     if (key === "exceptionIgnored") {
       expect(exception.reminder_ignored).toBe(true);
-      await expect(card.locator('[data-slot="card-action"]')).toContainText("未处理 · 已忽略");
+      await expect(card.locator('[data-slot="card-header"]').getByText("未处理 · 已忽略", { exact: true })).toBeVisible();
     }
     if (key === "exceptionResolved") {
       expect(exception.status).toBe("RESOLVED");
-      await expect(card.locator('[data-slot="card-action"]')).toContainText("已处理");
+      await expect(card.locator('[data-slot="card-header"]').getByText("已处理", { exact: true })).toBeVisible();
       await expect(card.getByText("处理结果", { exact: true })).toBeVisible();
       await expect(card.getByRole("button", { name: "人工关联收款", exact: true })).toHaveCount(0);
     }
@@ -191,7 +152,7 @@ test("retired and context-free synthetic exceptions remain readable without inve
     await expect(card.getByRole("region", { name: "核对凭据", exact: true })).toHaveCount(0);
     await expect(card.getByRole("heading", { name: "匹配依据", exact: true })).toHaveCount(0);
     if (retired) {
-      await expect(card.locator('[data-slot="card-action"]')).toContainText("历史记录");
+      await expect(card.locator('[data-slot="card-header"]').getByText("历史记录", { exact: true })).toBeVisible();
       await expect(card.getByText("旧版支出提示，不再提醒。", { exact: true })).toBeVisible();
       await expect(card.getByRole("button", { name: "人工关联收款", exact: true })).toHaveCount(0);
     } else await expect(card.getByRole("button", { name: "人工关联收款", exact: true })).toBeVisible();
@@ -265,6 +226,7 @@ test("exception inline tools and manual confirmation preserve copy, scope and ke
     await page.keyboard.press("Enter");
     const confirmation = page.getByRole("dialog", { name: "人工关联收款", exact: true });
     await expect(confirmation).toBeVisible();
+    await expect(page.locator("[data-overlay-content]")).not.toHaveAttribute("data-overlay-record", "true");
     await expect(confirmation.getByRole("button", { name: "确认关联收款", exact: true })).toBeEnabled();
     const reason = "核对原始凭据后再确认，保留完整理由。\n".repeat(12);
     await confirmation.getByLabel("操作理由（可选）", { exact: true }).fill(reason);
@@ -273,6 +235,7 @@ test("exception inline tools and manual confirmation preserve copy, scope and ke
     await confirmation.getByRole("button", { name: "取消", exact: true }).click();
     await expect(confirmation).toHaveCount(0);
     await expect(action).toBeFocused();
+    await expect(page.locator("[data-overlay-content]")).toHaveAttribute("data-overlay-record", "true");
     const scope = path(manifest, key).split("/reconciliation/")[0];
     const orderLink = card.locator('[data-detail-order-summary] [data-slot="item-title"] a');
     const orderHref = new URL((await orderLink.getAttribute("href"))!, page.url());

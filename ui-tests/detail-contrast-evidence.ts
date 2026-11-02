@@ -3,7 +3,8 @@ import type { Page } from "@playwright/test";
 
 /** Measure actual text runs on an opaque surface; uncertain paint stays unresolved. */
 export function measureDetailTextContrast(element: Element, scope: "detail" | "tabs" = "detail") {
-  const detail = element.closest("[data-overlay-detail]");
+  const detail = element.closest("[data-overlay-detail]") ?? (element.matches("h1")
+    ? element.closest('[data-overlay-record="true"] [data-overlay-primary] > [data-slot="dialog-header"]') : null);
   const tabScroller = element.closest("[data-settings-tabs-scroll], .audit-view-scroll");
   const eligible = scope === "tabs" ? tabScroller && element.matches('button[role="tab"][data-slot="tabs-trigger"]') && element.getAttribute("aria-disabled") !== "true" && !element.hasAttribute("disabled")
     : detail && element.matches('p, h1, h2, h3, h4, h5, h6, dt, dd, span, a, div[data-slot$="-description"]');

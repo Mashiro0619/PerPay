@@ -81,13 +81,13 @@ export function AuditCaptureNotice({ capture, compact = false }: Pick<AuditMetad
 
 export function AuditAggregation({ event }: { event: AuditEventItem }) {
   if (!event.is_aggregate) return null;
-  return <Card aria-label="分钟汇总">
+  return <Card aria-label="分钟汇总" className="detail-section">
     <CardHeader>
       <CardTitle role="heading" aria-level={2}>分钟汇总 · {event.event_count.toLocaleString("zh-CN")} 次</CardTitle>
       <CardDescription>同类成功活动的分钟统计；本条记录不对应一次独立请求。</CardDescription>
     </CardHeader>
     <CardContent>
-      <DetailFields items={[
+      <DetailFields density="comfortable" items={[
         ["首次发生", <AuditTime value={event.first_occurred_at} />],
         ["最后发生", <AuditTime value={event.last_occurred_at} />],
         ["发生次数", event.event_count.toLocaleString("zh-CN")],
@@ -100,7 +100,7 @@ export function AuditAggregation({ event }: { event: AuditEventItem }) {
 
 export function AuditChanges({ changes, category }: { changes: readonly AuditChange[]; category: AuditEventItem["category"] }) {
   if (changes.length === 0 && category !== "configuration") return null;
-  return <Card aria-label="配置变更">
+  return <Card aria-label="配置变更" className="detail-section">
     <CardHeader>
       <CardTitle role="heading" aria-level={2}>配置变更</CardTitle>
       <CardDescription>只列出已记录的变更字段。密码、密钥等敏感值仅保留变更状态。</CardDescription>
@@ -114,7 +114,7 @@ export function AuditChanges({ changes, category }: { changes: readonly AuditCha
             <Item role="listitem" className="min-w-0 px-0">
               <ItemContent className="min-w-0">
                 <ItemTitle className="wrap-anywhere" title={change.field}>{auditFieldLabel(change.field)}</ItemTitle>
-                <DetailFields items={[["变更前", before], ["变更后", after]]} />
+                <DetailFields density="comfortable" items={[["变更前", before], ["变更后", after]]} />
               </ItemContent>
             </Item>
           </Fragment>;

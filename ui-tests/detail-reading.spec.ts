@@ -1,8 +1,9 @@
 import type { Locator, Page } from "@playwright/test";
 import { test, expect, login, record, type Manifest } from "./fixtures";
 import { audit, screenshot } from "./audit";
-import { expectOverlayFits, expectOverlayTarget, settleOverlay } from "./overlay-fixtures";
+import { expectOverlayTarget, settleOverlay } from "./overlay-fixtures";
 import { expectTouchTarget, measureTouchTarget, waitForControlAnimations } from "./touch-targets";
+import { expectDetailFields, expectDetailRecordLayout } from "./detail-layout";
 import type { AdminLedgerDetail, AdminOrderDetail, PaymentMatchDetail, WebhookAttempt, WebhookDeliveryDetail } from "../web/src/api/generated/types.gen";
 
 const scenarios = [
@@ -74,7 +75,7 @@ async function technicalSection(page: Page, label: string) {
     await selectDetailTab(page, /^采集记录/);
     return detailBody(page).locator('[data-ledger-source]').first().locator('[data-technical-information]');
   }
-  return detailBody(page).locator(label.includes("通知") ? '[data-notification-information] [data-technical-information]' : '[data-match-summary] [data-technical-information]');
+  return detailBody(page).locator(label.includes("通知") ? '[data-notification-information] [data-technical-information]' : '[data-match-evidence] [data-technical-information]');
 }
 async function keyboardTools(page: Page, label: string) {
   const technical = await technicalSection(page, label);
@@ -84,7 +85,7 @@ async function keyboardTools(page: Page, label: string) {
   await page.keyboard.press("Enter");
   await expect(trigger).toHaveAttribute("aria-expanded", "true");
   await expect(technical.locator("pre")).toBeVisible();
-  await compactFieldsGeometry(technical.locator('[data-compact-fields="true"]:visible'));
+  await expectDetailFields(technical.locator('[data-detail-fields]:visible'));
   await expect(page.getByRole("dialog", { name: "技术详情", exact: true })).toHaveCount(0);
   await page.keyboard.press("Tab");
   await expect(technical.getByRole("button", { name: /^复制/ }).first()).toBeFocused();
@@ -94,95 +95,6 @@ async function keyboardTools(page: Page, label: string) {
   await expect(technical.locator("pre")).toBeHidden();
   await expect(trigger).toBeFocused();
   await expect(foreground(page)).toBeVisible();
-}
-async function compactFieldsGeometry(containers: Locator) {
-  const groups = await containers.evaluateAll(containers => containers.map(container => {
-    const dl = container.querySelector("dl")!, bounds = container.getBoundingClientRect(), style = getComputedStyle(dl);
-    const fields = Array.from(dl.children).map((field, index) => {
-      const term = field.querySelector("dt")!, value = field.querySelector("dd")!;
-      const box = field.getBoundingClientRect(), label = term.getBoundingClientRect(), definition = value.getBoundingClientRect(), fieldStyle = getComputedStyle(field);
-      return { index, name: term.textContent, wide: field.getAttribute("data-field-wide") === "true", width: box.width, left: box.left, right: box.right, top: box.top, bottom: box.bottom,
-        display: fieldStyle.display, columns: fieldStyle.gridTemplateColumns.trim().split(/\s+/).length,
-        labelTop: label.top, labelBottom: label.bottom, labelRight: label.right, valueTop: definition.top, valueLeft: definition.left,
-        gap: Number.parseFloat(fieldStyle.rowGap), columnGap: Number.parseFloat(fieldStyle.columnGap),
-        labelFont: Number.parseFloat(getComputedStyle(term).fontSize), valueFont: Number.parseFloat(getComputedStyle(value).fontSize),
-        scrollWidth: value.scrollWidth, valueWidth: value.clientWidth,
-        firstValue: (() => {
-          const walker = document.createTreeWalker(value, NodeFilter.SHOW_TEXT);
-          const range = document.createRange();
-          while (walker.nextNode()) {
-            const node = walker.currentNode, parent = node.parentElement;
-            const start = node.textContent?.search(/\S/u) ?? -1;
-            if (!parent || start < 0 || parent.closest('.sr-only, [hidden], [aria-hidden="true"]')) continue;
-            const style = getComputedStyle(parent);
-            if (style.visibility !== "visible" || style.display === "none") continue;
-            const character = String.fromCodePoint(node.textContent!.codePointAt(start)!);
-            range.setStart(node, start); range.setEnd(node, start + character.length);
-            const box = [...range.getClientRects()].find(rect => rect.width > 0 && rect.height > 0);
-            if (!box) continue;
-            // Badges have deliberate interior padding; their painted pill is
-            // the first value. Plain text and CopyValue are checked at the glyph.
-            const badge = parent.closest('[data-slot="badge"]');
-            return { kind: badge ? "badge" : parent.closest("span.break-all") ? "copy" : "text",
-              text: node.textContent!.trim().slice(0, 40), left: badge?.getBoundingClientRect().left ?? box.left, glyphLeft: box.left };
-          }
-          return null;
-        })(),
-        textBounds: (() => {
-          const textElement = value.querySelector("span.break-all");
-          if (!textElement) return null;
-          const range = document.createRange(); range.selectNodeContents(textElement);
-          const text = range.getBoundingClientRect(), box = textElement.getBoundingClientRect();
-          return { textHeight: text.height, boxHeight: box.height, textRight: text.right, boxRight: box.right };
-        })() };
-    });
-    return { width: bounds.width, left: bounds.left, right: bounds.right, layout: container.getAttribute("data-layout"), compact: container.getAttribute("data-compact-fields"),
-      display: style.display, direction: style.flexDirection, rowGap: Number.parseFloat(style.rowGap), columnGap: Number.parseFloat(style.columnGap),
-      orderSummary: !!container.closest("[data-detail-order-summary]"), fields, rows: fields.map(field => [field.name]) };
-  }));
-  for (const group of groups) {
-    expect(group.compact).toBe("true");
-    expect(group.display).toBe("flex");
-    expect(group.direction).toBe("column");
-    expect(group.rowGap).toBe(0);
-    expect(group.columnGap).toBe(0);
-    expect(group.fields.length).toBeGreaterThan(0);
-    for (const field of group.fields) {
-      expect(field.display, field.name ?? "fact").toBe("grid");
-      expect(field.columns).toBe(group.width <= 320 ? 1 : 2);
-      expect(field.labelFont).toBeGreaterThanOrEqual(13);
-      expect(field.valueFont).toBeGreaterThanOrEqual(14);
-      expect(Math.abs(field.left - group.left), "row starts at its group: " + field.name).toBeLessThanOrEqual(1);
-      expect(Math.abs(field.width - group.width), "ordinary and wide rows fill the same group: " + field.name).toBeLessThanOrEqual(1);
-      expect(Math.abs(field.right - group.right), "row ends at its group: " + field.name).toBeLessThanOrEqual(1);
-      expect(field.firstValue, "visible content exists for " + field.name).not.toBeNull();
-      expect(Math.abs(field.firstValue!.left - field.valueLeft), "first value starts at dd: " + JSON.stringify({ name: field.name, valueLeft: field.valueLeft, firstValue: field.firstValue })).toBeLessThanOrEqual(1);
-      if (field.columns === 2) {
-        const firstColumnValue = group.fields.find(candidate => candidate.columns === 2)!;
-        expect(Math.abs(field.valueLeft - firstColumnValue.valueLeft), "one shared value column for all row kinds: " + field.name).toBeLessThanOrEqual(1);
-      }
-      expect(field.scrollWidth, field.name ?? "complete value").toBeLessThanOrEqual(field.valueWidth + 1);
-      if (field.textBounds) {
-        expect(field.textBounds.textHeight).toBeLessThanOrEqual(field.textBounds.boxHeight + 1);
-        expect(field.textBounds.textRight).toBeLessThanOrEqual(field.textBounds.boxRight + 1);
-      }
-      if (field.columns === 1) expect(Math.abs(field.valueTop - field.labelBottom - field.gap)).toBeLessThanOrEqual(1);
-      else {
-        expect(Math.abs(field.valueTop - field.labelTop)).toBeLessThanOrEqual(1);
-        expect(Math.abs(field.valueLeft - field.labelRight - field.columnGap)).toBeLessThanOrEqual(1);
-      }
-      const previous = group.fields[field.index - 1];
-      if (previous) expect(field.top, "DOM reading order: " + field.name).toBeGreaterThanOrEqual(previous.bottom - 1);
-    }
-  }
-  const alignedGroups = groups.filter(group => group.fields.some(field => field.columns === 2));
-  for (const [index, group] of alignedGroups.entries()) for (const sibling of alignedGroups.slice(index + 1)) {
-    if (Math.abs(group.left - sibling.left) > 1) continue;
-    const value = group.fields.find(field => field.columns === 2)!;
-    const siblingValue = sibling.fields.find(field => field.columns === 2)!;
-    expect(Math.abs(value.valueLeft - siblingValue.valueLeft), "peer fact groups share the value column").toBeLessThanOrEqual(1);
-  }
-  return groups;
 }
 // pre-wrap may hang line-ending spaces outside a line box. Check every
 // non-whitespace character with the same 1 px tolerance, and retain raw ranges
@@ -220,7 +132,7 @@ function completeFieldGeometry(field: Element) {
 }
 
 async function readingFlowGeometry(page: Page, _longContent = false) {
-  const groups = await compactFieldsGeometry(detailBody(page).locator('[data-detail-fields][data-density="comfortable"][data-layout="flow"]:visible'));
+  const groups = await expectDetailFields(detailBody(page).locator('[data-detail-fields][data-density="comfortable"][data-layout="flow"]:visible'));
   expect(groups.length).toBeGreaterThan(0);
   return groups;
 }
@@ -230,7 +142,7 @@ async function readingCredentialsGeometry(page: Page) {
     await expect(section.getByRole("heading")).toBeVisible();
     await expect(section.locator("button[aria-expanded]")).toHaveCount(0);
   }
-  return compactFieldsGeometry(sections.locator("[data-detail-fields]"));
+  return expectDetailFields(sections.locator("[data-detail-fields]"));
 }
 async function headerControlsGeometry(page: Page) {
   const header = foreground(page).locator('[data-overlay-primary] > [data-slot="dialog-header"]');
@@ -274,35 +186,13 @@ async function notificationSectionAlignment(page: Page) {
   }
   return boxes;
 }
-async function readingLayout(page: Page, mode: "compact" | "full") {
+async function readingLayout(page: Page, mode: "compact" | "full", alternativeTable?: string) {
   await expect(page.locator("[data-content-width]")).toHaveAttribute("data-content-width", mode);
-  const frame = await expectOverlayFits(page);
+  const geometry = await expectDetailRecordLayout(page, alternativeTable);
   const header = await headerControlsGeometry(page);
   const notificationAlignment = await notificationSectionAlignment(page);
-  const fields = await compactFieldsGeometry(detailBody(page).locator('[data-compact-fields="true"]:visible'));
-  const geometry = await detailBody(page).evaluate(body => {
-    const detail = body.querySelector<HTMLElement>("[data-detail-page]")!;
-    const cards = Array.from(detail.querySelectorAll<HTMLElement>('[data-slot="card"]')).filter(card => card.getBoundingClientRect().width > 0);
-    return { width: body.clientWidth, scrollWidth: body.scrollWidth, pageGap: Number.parseFloat(getComputedStyle(detail).rowGap),
-      cards: cards.map(card => ({ title: card.querySelector('[data-slot="card-title"]')?.textContent, radius: getComputedStyle(card).borderRadius, shadow: getComputedStyle(card).boxShadow })),
-      timeFonts: Array.from(detail.querySelectorAll(".list-time")).filter(time => time.getBoundingClientRect().width > 0).map(time => ({ text: time.textContent, font: Number.parseFloat(getComputedStyle(time).fontSize) })),
-      overflowActions: cards.flatMap(card => {
-        const box = card.getBoundingClientRect();
-        return Array.from(card.querySelectorAll<HTMLElement>('[data-slot="card-action"] a, [data-slot="card-action"] button')).flatMap(action => {
-          const bounds = action.getBoundingClientRect();
-          return bounds.width && bounds.height && getComputedStyle(action).visibility !== "hidden" && (bounds.left < box.left - 1 || bounds.right > box.right + 1)
-            ? [{ label: action.getAttribute("aria-label") ?? action.textContent, left: bounds.left, right: bounds.right, cardLeft: box.left, cardRight: box.right }] : [];
-        });
-      }),
-    };
-  });
-  expect(geometry.pageGap).toBe(16);
-  expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.width + 1);
   expect(geometry.cards.length).toBeGreaterThan(0);
-  expect(geometry.cards.filter(card => card.radius !== "0px" || card.shadow !== "none")).toEqual([]);
-  expect(geometry.timeFonts.filter(time => time.font < 14)).toEqual([]);
-  expect(geometry.overflowActions).toEqual([]);
-  return { ...geometry, frame, header, notificationAlignment, fields };
+  return { ...geometry, header, notificationAlignment };
 }
 
 test("headers without refresh keep close at the trailing edge and fully clickable", async ({ page, manifest }, info) => {
@@ -358,7 +248,7 @@ test("detail overlays separate facts into readable business sections", async ({ 
     const headings = detailBody(page).getByRole("heading", { level: 2 });
     if (scenario.kind === "notification") {
       await expect(foreground(page).getByRole("tab")).toHaveText(["概况", "投递记录"]);
-      await expect(headings).toHaveText(["关联订单", "通知信息"]);
+      await expect(headings).toHaveText(["通知信息", "关联订单"]);
       await expect(detailBody(page).getByRole("group", { name: "关联订单", exact: true }).locator("[data-detail-order-summary]")).toBeVisible();
       await expect(detailBody(page).getByRole("group", { name: "通知信息", exact: true }).getByRole("button", { name: "技术信息", exact: true })).toBeVisible();
       await selectDetailTab(page, "投递记录");
@@ -391,55 +281,67 @@ test("detail overlays separate facts into readable business sections", async ({ 
   }
 });
 
-test("compact summaries and credentials preserve reading order at container boundaries", async ({ page, manifest }, info) => {
+test("summaries and credentials use the 36rem container boundary without changing reading order", async ({ page, manifest }, info) => {
   await page.setViewportSize({ width: 2190, height: 900 });
   await login(page, manifest);
   await layout(page, "dark", "full");
-  await openDetail(page, manifest, "notificationDns");
-  const container = page.locator('[data-detail-order-summary] [data-detail-fields]');
-  const originalWidth = await container.evaluate(element => (element as HTMLElement).style.width);
-  const boundaries = [];
-  try {
-    for (const requestedWidth of [319, 320, 321, 639, 640, 840, 1024, 1280]) {
-      await container.evaluate((element, width) => { (element as HTMLElement).style.width = width + "px"; }, requestedWidth);
-      const summary = (await readingFlowGeometry(page)).find(group => group.orderSummary)!;
-      expect(summary.width).toBe(requestedWidth);
-      expect(summary.rows).toEqual(["应付金额", "实收金额", "所属网站", "创建时间", "商户订单号（业务网站）"].map(name => [name]));
-      for (const field of summary.fields) expect(field.columns).toBe(requestedWidth <= 320 ? 1 : 2);
-      boundaries.push({ requestedWidth, actualWidth: summary.width, rows: summary.rows, fieldWidths: summary.fields.map(field => field.width) });
+  const checkBoundaries = async (container: Locator) => {
+    const originalWidth = await container.evaluate(element => (element as HTMLElement).style.width);
+    const originalFont = await page.evaluate(() => document.documentElement.style.fontSize);
+    const originalViewport = page.viewportSize()!;
+    const names = await container.locator("dt").allTextContents();
+    const boundaries = [];
+    try {
+      for (const textPercent of [100, 200]) {
+        await page.evaluate(percent => document.documentElement.style.fontSize = percent + "%", textPercent);
+        const rootFont = await page.evaluate(() => Number.parseFloat(getComputedStyle(document.documentElement).fontSize));
+        const breakpoint = rootFont * 36;
+        for (const requestedWidth of [320, breakpoint - 1, breakpoint, breakpoint + 1]) {
+          await container.evaluate((element, width) => { (element as HTMLElement).style.width = width + "px"; }, requestedWidth);
+          const measured = (await expectDetailFields(container))[0]!;
+          expect(measured.width).toBe(requestedWidth);
+          expect(measured.fields.map(field => field.name)).toEqual(names);
+          expect(measured.rows.flat(), "responsive wrapping retains DOM reading order").toEqual(names);
+          expect(measured.columns).toBe(requestedWidth >= breakpoint ? 2 : 1);
+          boundaries.push({ textPercent, requestedWidth, breakpoint, rows: measured.rows, columns: measured.columns,
+            fieldWidths: measured.fields.map(field => ({ name: field.name, wide: field.wide, width: field.width })) });
+        }
+        if (textPercent === 100) {
+          await container.evaluate((element, width) => { (element as HTMLElement).style.width = width + "px"; }, breakpoint + 1);
+          for (const width of [767, 768]) {
+            await page.setViewportSize({ width, height: originalViewport.height });
+            await page.clock.runFor(100);
+            const measured = (await expectDetailFields(container))[0]!;
+            expect(measured.columns, "a wide container still needs a desktop viewport for two columns").toBe(width >= 768 ? 2 : 1);
+          }
+          await page.setViewportSize(originalViewport);
+        }
+      }
+    } finally {
+      await container.evaluate((element, width) => { (element as HTMLElement).style.width = width; }, originalWidth);
+      await page.evaluate(font => document.documentElement.style.fontSize = font, originalFont);
+      await page.setViewportSize(originalViewport);
     }
-  } finally {
-    await container.evaluate((element, width) => { (element as HTMLElement).style.width = width; }, originalWidth);
-  }
-  await record(page, info, { feature: "detail-flow-container-breakpoints", boundaries, restoredInlineWidth: originalWidth });
+    return boundaries;
+  };
+  await openDetail(page, manifest, "notificationDns");
+  const boundaries = await checkBoundaries(page.locator('[data-detail-order-summary] [data-detail-fields]'));
+  await record(page, info, { feature: "detail-flow-container-breakpoints", boundaries });
   await screenshot(page, info, "reading-flow-boundaries-restored");
 
   await openDetail(page, manifest, "matchSite");
   const flows = await readingFlowGeometry(page);
   const twoFacts = flows.find(group => group.fields.length === 2 && group.fields.map(field => field.name).join("/") === "关联方式/关联时间");
   expect(twoFacts, "the genuine inferred match has two short processing facts").toBeTruthy();
-  expect(twoFacts!.width).toBeGreaterThanOrEqual(840);
-  expect(twoFacts!.rows).toEqual([["关联方式"], ["关联时间"]]);
-  for (const field of twoFacts!.fields) expect(Math.abs(field.width - twoFacts!.width)).toBeLessThanOrEqual(1);
-  expect(Math.abs(twoFacts!.fields[0]!.valueLeft - twoFacts!.fields[1]!.valueLeft)).toBeLessThanOrEqual(1);
+  expect(twoFacts!.width).toBeGreaterThanOrEqual(36 * twoFacts!.rootFont);
+  expect(twoFacts!.rows).toEqual([["关联方式", "关联时间"]]);
+  expect(Math.abs(twoFacts!.fields[0]!.width - twoFacts!.fields[1]!.width)).toBeLessThanOrEqual(1);
   await record(page, info, { feature: "detail-flow-two-facts", evidence: "local-synthetic-domain", geometry: twoFacts });
   await screenshot(page, info, "reading-flow-two-facts");
 
   await openDetail(page, manifest, "ledgerAssociated");
-  const credentials = page.locator('[data-ledger-summary] [data-detail-credentials] [data-detail-fields]');
-  const originalCredentialsWidth = await credentials.evaluate(element => (element as HTMLElement).style.width);
-  const credentialBoundaries = [];
-  try {
-    for (const requestedWidth of [319, 320, 321, 639, 640, 1024, 1280]) {
-      await credentials.evaluate((element, width) => { (element as HTMLElement).style.width = width + "px"; }, requestedWidth);
-      const geometry = (await readingCredentialsGeometry(page))[0]!;
-      expect(geometry.width).toBe(requestedWidth);
-      credentialBoundaries.push({ requestedWidth, columns: geometry.fields.map(field => field.columns), fieldWidths: geometry.fields.map(field => field.width) });
-    }
-  } finally {
-    await credentials.evaluate((element, width) => { (element as HTMLElement).style.width = width; }, originalCredentialsWidth);
-  }
-  await record(page, info, { feature: "detail-credential-container-breakpoints", credentialBoundaries, restoredInlineWidth: originalCredentialsWidth });
+  const credentialBoundaries = await checkBoundaries(page.locator('[data-ledger-summary] [data-detail-credentials] [data-detail-fields]'));
+  await record(page, info, { feature: "detail-credential-container-breakpoints", credentialBoundaries });
 });
 
 test("three detail types retain expanded facts across widths, themes and content modes", async ({ page, manifest }, info) => {
@@ -462,7 +364,7 @@ test("three detail types retain expanded facts across widths, themes and content
         await selectDetailTab(page, "投递记录");
         await expect(detailBody(page).getByRole("heading", { name: "投递尝试（1）", exact: true })).toBeVisible();
         await expect(detailBody(page).getByText(/通知域名解析失败/).first()).toBeVisible();
-        await readingLayout(page, mode);
+        await readingLayout(page, mode, "投递尝试（1）");
         await selectDetailTab(page, "概况");
       } else if (scenario.kind === "match") {
         await fields(page, ["支付宝交易金额", "支付宝交易时间", "支付宝交易对方", "支付宝订单号", "支付宝交易备注", "金额占用时间"]);
@@ -934,7 +836,7 @@ test("long products, complete identifiers and multiline details wrap without cli
         if (wrapped.hangingWhitespace.length || wrapped.textRight > wrapped.boxRight + 1) await info.attach(`text-bounds-${scenario.key}-${width}-${theme}-${name}`, {
           body: JSON.stringify(wrapped, null, 2), contentType: "application/json",
         });
-        expect(Math.abs(wrapped.fieldWidth - wrapped.containerWidth), "long facts use the same complete row width").toBeLessThanOrEqual(1);
+        expect(wrapped.fieldWidth, "long facts remain inside their assigned grid cell").toBeLessThanOrEqual(wrapped.containerWidth + 1);
         expect(wrapped.valueHeight).toBeGreaterThan(wrapped.lineHeight * 2);
         expect(wrapped.textRight).toBeLessThanOrEqual(wrapped.boxRight + 1);
         expect(wrapped.textBottom).toBeLessThanOrEqual(wrapped.boxBottom + 1);

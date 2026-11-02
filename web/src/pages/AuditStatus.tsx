@@ -24,11 +24,11 @@ export default function AuditStatus() {
     <DetailNavigation back={back} global><PageHeaderActions>{refresh}</PageHeaderActions></DetailNavigation>
     <QueryView query={metadata}>{({ data }) => <>
       <AuditCaptureNotice capture={data.capture} compact />
-      <Card aria-label="采集概况">
+      <Card aria-label="采集概况" className="detail-section" data-audit-capture-summary>
         <CardHeader>
           <CardTitle role="heading" aria-level={2}>{auditCaptureLabel(data.capture)}</CardTitle>
         </CardHeader>
-        <CardContent><DetailFields items={[
+        <CardContent><DetailFields density="comfortable" wide={["最近错误代码"]} items={[
           ["最近成功写入", data.capture.last_flush_at ? <AuditTime value={data.capture.last_flush_at} /> : "等待首次成功写入"],
           ["等待写入", data.capture.buffered_events.toLocaleString("zh-CN") + " 条"],
           ["最近维护日志导入", data.capture.spool_last_import_at ? <AuditTime value={data.capture.spool_last_import_at} /> : "未记录"],
@@ -36,7 +36,7 @@ export default function AuditStatus() {
           ...(data.capture.last_error_code ? [["最近错误代码", data.capture.last_error_code] as const] : []),
         ]} /></CardContent>
       </Card>
-      <Card aria-label="记录与导出规则">
+      <Card aria-label="记录与导出规则" className="detail-section">
         <CardHeader><CardTitle role="heading" aria-level={2}>记录与导出规则</CardTitle></CardHeader>
         <CardContent className="flex flex-col gap-2 text-sm text-muted-foreground">
           <AuditRetention />

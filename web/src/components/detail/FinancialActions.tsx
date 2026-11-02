@@ -64,12 +64,14 @@ export function ReverseMatchAction({
   match,
   embedded = false,
   inline = false,
+  technical = true,
   includeOrderIdentifiers = false,
   movesOnSuccess = false,
 }: {
   match: PaymentMatchDetail;
   embedded?: boolean;
   inline?: boolean;
+  technical?: boolean;
   includeOrderIdentifiers?: boolean;
   /** The surrounding list moves a reversed record into its history section. */
   movesOnSuccess?: boolean;
@@ -83,6 +85,7 @@ export function ReverseMatchAction({
     <>
       <RecordTools
         inline={inline}
+        technical={technical}
         label="收款关联记录操作"
         data={match}
         identifiers={[

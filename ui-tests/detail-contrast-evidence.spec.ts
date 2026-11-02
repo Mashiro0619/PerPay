@@ -94,3 +94,37 @@ test("detail contrast evidence proves scroll reachability and restores the origi
   await target.evaluate(node => { node.setAttribute("inert", ""); });
   expect((await resolveDetailTextContrast(page, incomplete))[0]?.resolved).toBe(false);
 });
+
+test("record header evidence verifies wrapped title glyphs and rejects obscured or clipped titles", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 560 });
+  await page.setContent(`<style>
+    body { margin: 0; background: white; color: #222; font: 14px/1.5 Arial, sans-serif; }
+    [data-overlay-content] { position: fixed; inset: 0; padding: 24px 32px; background: white; }
+    [data-slot=dialog-header] { display: grid; grid-template-columns: minmax(0, 1fr) 64px 64px; align-items: center; gap: 8px; }
+    h1 { margin: 0; font-size: 40px; line-height: 1.4; overflow: hidden; overflow-wrap: anywhere; }
+    button { height: 64px; }
+  </style><div data-overlay-content data-overlay-record="true"><div data-overlay-primary>
+    <div data-slot="dialog-header"><h1 id="target">通知详情</h1><button>刷新</button><button>关闭</button></div>
+  </div></div>`);
+  const target = page.locator("#target");
+  const readable = (await resolveDetailTextContrast(page, incomplete))[0];
+  expect(readable?.resolved).toBe(true);
+  expect(readable?.measurement.initial.runs[0]?.characters).toHaveLength(4);
+  expect(readable?.measurement.initial.runs[0]?.contrast).toBeGreaterThanOrEqual(4.5);
+
+  await target.evaluate(node => {
+    const blocker = document.createElement("div");
+    blocker.id = "title-cover";
+    const box = node.getBoundingClientRect();
+    blocker.style.cssText = `position:fixed;left:${box.left}px;top:${box.top}px;width:40px;height:56px;background:white;pointer-events:none`;
+    node.parentElement!.append(blocker);
+  });
+  expect((await resolveDetailTextContrast(page, incomplete))[0]?.resolved).toBe(false);
+  await page.locator("#title-cover").evaluate(node => node.remove());
+  await target.evaluate(node => { (node as HTMLElement).style.height = "30px"; });
+  expect((await resolveDetailTextContrast(page, incomplete))[0]?.resolved).toBe(false);
+  await target.evaluate(node => { (node as HTMLElement).style.removeProperty("height"); (node as HTMLElement).style.color = "#bbb"; });
+  expect((await resolveDetailTextContrast(page, incomplete))[0]?.resolved).toBe(false);
+  await page.locator("[data-overlay-record]").evaluate(node => node.removeAttribute("data-overlay-record"));
+  expect(await target.evaluate(measureDetailTextContrast)).toBeNull();
+});

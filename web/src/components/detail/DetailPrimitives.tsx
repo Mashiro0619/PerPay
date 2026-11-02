@@ -2,7 +2,7 @@ import { useQuery } from '@/lib/workspace-query';
 import { useWorkspaceApi } from "@/workspace";
 import { useId, useRef, type ReactNode } from "react";
 import { useIsFetching } from '@tanstack/react-query';
-import { ArrowLeft, ExternalLink } from "lucide-react";
+import { ArrowLeft, ChevronDown, ExternalLink } from "lucide-react";
 import { result, type AdminOrderDetail, type ReconciliationOrder } from "@/api/client";
 import { Link } from "@/navigation";
 import { ListDateTime, ListMoney } from "@/components/list-primitives";
@@ -130,14 +130,17 @@ export function TechnicalDetails({ data, identifiers = [], title = "技术信息
   title?: string;
   children?: ReactNode;
 }) {
+  const overlay = useOverlayContext();
   return <Collapsible className="min-w-0" data-technical-information>
-    <CollapsibleTrigger render={<Button variant="ghost" size="sm" />}>
+    {overlay && <Separator className="mb-3" />}
+    <CollapsibleTrigger render={<Button variant="ghost" size="sm" className="w-full justify-between" />}>
       {title}
+      <ChevronDown aria-hidden="true" data-icon="inline-end" className="transition-transform group-data-panel-open/button:rotate-180 motion-reduce:transition-none" />
     </CollapsibleTrigger>
     <CollapsibleContent>
       <div className="flex min-w-0 flex-col gap-3 pt-3">
         {children}
-        {identifiers.some(([, value]) => !!value) && <DetailFields items={identifiers.filter((entry): entry is readonly [string, string] => !!entry[1])
+        {identifiers.some(([, value]) => !!value) && <DetailFields wide={identifiers.map(([name]) => name)} items={identifiers.filter((entry): entry is readonly [string, string] => !!entry[1])
           .map(([name, value]) => [name, <CopyValue value={value} label={"复制" + name} />])} />}
         <pre tabIndex={0} aria-label={title} className="max-w-full overflow-x-auto rounded-md bg-muted p-3 text-xs whitespace-pre-wrap break-all">{JSON.stringify(data, null, 2)}</pre>
       </div>
@@ -155,7 +158,7 @@ export function DetailCredentials({ items, title = "凭据编号", headingLevel 
   return <section className="flex min-w-0 flex-col gap-4" aria-labelledby={titleId} data-detail-credentials>
     <Separator />
     <Heading id={titleId} className="text-sm font-medium">{title}</Heading>
-    <DetailFields density="comfortable" items={items} />
+    <DetailFields density="comfortable" wide={items.map(([name]) => name)} items={items} />
   </section>;
 }
 export function TechnicalDetailsDialog({
@@ -188,6 +191,7 @@ export function TechnicalDetailsDialog({
         <div className="-mx-4 flex min-h-0 flex-col gap-4 overflow-auto px-4 pb-1">
           {identifiers.length > 0 && (
             <DetailFields
+              wide={identifiers.map(([name]) => name)}
               items={identifiers
                 .filter(
                   (entry): entry is readonly [string, string] => !!entry[1],

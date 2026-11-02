@@ -41,6 +41,7 @@ describe("settings summaries and owned editing overlays", () => {
       return undefined;
     } });
     const dialog = await screen.findByRole("dialog", { name: site.configuration.name });
+    expect(dialog).toHaveAttribute("data-overlay-record", "true");
     const metric = (label: string) => within(dialog).getByText(label, { selector: "dt" }).nextElementSibling;
     await waitFor(() => expect(metric("近 7 天实收")).toHaveTextContent("¥129.01"));
     expect(metric("收款确认笔数")).toHaveTextContent(/^17$/);
@@ -66,6 +67,7 @@ describe("settings summaries and owned editing overlays", () => {
     expect(screen.queryByLabelText("支付系统名称")).not.toBeInTheDocument();
     await user.click(edit);
     const dialog = await screen.findByRole("dialog", { name: "编辑界面显示" });
+    expect(dialog).not.toHaveAttribute("data-overlay-record");
     const name = within(dialog).getByLabelText("支付系统名称");
     await user.clear(name); await user.type(name, "尚未保存的名称");
     await user.click(footer(dialog).getByRole("button", { name: "关闭" }));

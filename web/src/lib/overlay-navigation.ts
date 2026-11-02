@@ -7,6 +7,15 @@ export const OVERLAY_HISTORY_KEY = "perpayOverlay";
 export type OverlayRouteKind = "order" | "notification" | "ledger" | "evidence" | "audit" | "audit-status" | "site" | "site-summary" | "site-defaults" | "account" | "settings" | "password" | "admin-access" | "session" | "test-payment";
 export type OverlayRoute = { kind: OverlayRouteKind; pattern: string; title: string; size: OverlaySize; parent: string };
 
+const recordDetailKinds = new Set<OverlayRouteKind>([
+  "order", "notification", "ledger", "evidence", "audit", "audit-status", "site-summary", "session",
+]);
+
+/** Reading presentation must not restyle editors that share the overlay host. */
+export function isRecordDetailRoute(route: OverlayRoute | null): boolean {
+  return route !== null && recordDetailKinds.has(route.kind);
+}
+
 const definitions: ReadonlyArray<{ pattern: string; kind: OverlayRouteKind; title: string; size: OverlaySize }> = [
   { pattern: "/orders/:orderId", kind: "order", title: "订单详情", size: "lg" },
   { pattern: "/sites/:clientId/orders/:orderId", kind: "order", title: "订单详情", size: "lg" },

@@ -38,11 +38,17 @@ export function DetailSections({ sections, label = "详情分类" }: {
   </Tabs>;
 }
 
-export function DetailSection({ title, children, actions }: { title: string; children: ReactNode; actions?: ReactNode }) {
+export function DetailSection({ title, children, actions, headingLevel = 2 }: {
+  title: string;
+  children: ReactNode;
+  actions?: ReactNode;
+  headingLevel?: 2 | 3 | 4;
+}) {
   const id = useId();
+  const Heading = `h${headingLevel}` as const;
   return <section aria-labelledby={id} className="detail-section flex min-w-0 flex-col gap-3">
     <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-      <h2 id={id} className="text-sm font-semibold">{title}</h2>
+      <Heading id={id} className="text-sm font-semibold">{title}</Heading>
       {actions}
     </div>
     {children}

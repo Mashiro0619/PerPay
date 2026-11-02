@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import type { AuditEventDetail, AuditEventPage, AuditMetadata } from "../src/shared/audit";
 import { test, expect, login, record } from "./fixtures";
 import { screenshot } from "./audit";
+import { expectDetailRecordLayout } from "./detail-layout";
 import { aggregateEvent, auditDetail, auditEvent, auditMetadata, auditPage } from "../web/test/audit-fixtures";
 
 test("audit reads actual saved events, opens a detail, and exports the matching filtered CSV", async ({ page, manifest }, info) => {
@@ -117,10 +118,13 @@ test("audit summaries, source details and configuration changes stay readable ac
     await expect(overlay).toBeVisible();
     await expect(page.getByRole("group", { name: "配置变更", exact: true })).toBeVisible();
     await expect(page.getByText("已更换（值不记录）", { exact: true })).toBeVisible();
-    await record(page, info, { auditSource: "synthetic edge cases", width, theme, view: "detail" });
+    const closedLayout = await expectDetailRecordLayout(page);
+    await record(page, info, { auditSource: "synthetic edge cases", width, theme, view: "detail", layout: closedLayout });
     if (width === 390 || width === 1680) await screenshot(page, info, `audit-detail-${width}-${theme}`);
     await page.getByRole("button", { name: "技术信息", exact: true }).click();
     await expect(overlay.getByLabel("技术信息", { exact: true })).toBeVisible();
+    const openLayout = await expectDetailRecordLayout(page);
+    await record(page, info, { auditSource: "synthetic edge cases", width, theme, view: "expanded technical information", layout: openLayout });
     await expect(page.getByRole("dialog")).toHaveCount(1);
     await page.keyboard.press("Escape");
     await expect(overlay).not.toBeVisible();

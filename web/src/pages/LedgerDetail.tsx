@@ -7,6 +7,7 @@ import { api, queryClient, result, type AdminLedgerDetail, type AdminLedgerMatch
 import { Link, useDetailBack } from "@/navigation";
 import { label } from "@/lib/labels";
 import { actualPageAddress } from "@/lib/navigation-selection";
+import { useOverlayContext } from "@/lib/overlay-context";
 import { useOptionalSystemStatus } from "@/features/system-status";
 import { PageHeading } from "@/components/page-heading";
 import { PageHeaderActions } from "@/components/page-header-actions";
@@ -34,6 +35,7 @@ function LedgerIdentifier({ value, name }: { value: string | null; name: string 
 }
 
 export default function LedgerDetail() {
+  const overlay = useOverlayContext();
   const { ledgerEntryId = "" } = useParams();
   const back = useDetailBack("/reconciliation", "返回对账");
   const location = useLocation();
@@ -88,9 +90,10 @@ export default function LedgerDetail() {
             ["支付宝商户单号", <LedgerIdentifier value={data.merchant_order_no} name="支付宝商户单号" />],
           ]} />
           <LedgerFreshness size="default" value={system && !system.checking && !system.unavailable ? system.status.data?.data.ledger.last_success_at : undefined} />
+          {overlay && <TechnicalDetails data={data} identifiers={[["内部流水编号（PerPay）", data.ledger_entry_id], ["支付宝流水号", data.external_event_id]]} />}
         </CardContent>
       </Card>
-      <TechnicalDetails data={data} identifiers={[["内部流水编号（PerPay）", data.ledger_entry_id], ["支付宝流水号", data.external_event_id]]} />
+      {!overlay && <TechnicalDetails data={data} identifiers={[["内部流水编号（PerPay）", data.ledger_entry_id], ["支付宝流水号", data.external_event_id]]} />}
         </> },
         { id: "payments", label: "收款关联", content: <LedgerMatches entry={data} />, anchorPrefixes: ["match-"] },
         { id: "sources", label: `采集记录 · ${data.sources.length}`, anchorPrefixes: ["source-", "candidate-"], content:
@@ -124,20 +127,24 @@ function LedgerWarnings({ entry }: { entry: AdminLedgerDetail }) {
 }
 
 function LedgerSource({ source, index, consistent, hasMatch }: { source: AdminLedgerSource; index: number; consistent: boolean; hasMatch: boolean }) {
+  const overlay = useOverlayContext();
+  const identifiers = [["内部流水编号（PerPay）", source.ledger_entry_id], ["原始事件编号", source.raw_event_id], ["支付宝 App ID", source.app_id], ["采集来源标识", source.provider_account_key], ["语义指纹", source.semantic_fingerprint]] as const;
+  const technicalInformation = overlay ? <TechnicalDetails data={source} identifiers={identifiers} /> : null;
   const heading = <h3 className="text-sm font-medium">查账记录 {index + 1}</h3>;
   const actions = <div className="flex max-w-full flex-wrap items-center gap-2">
     <span className="flex flex-wrap items-center gap-2"><span className="text-sm text-muted-foreground">PerPay 记录状态</span><Badge variant="secondary">{label(source.state)}</Badge></span>
     {source.direction === "CREDIT" && ["UNALLOCATED", "CANDIDATE", "CONFLICT"].includes(source.state) && <AssociateIncomeAction ledgerId={source.ledger_entry_id} ledgerLabel={money(source.amount_cents) + " · " + dateTime(source.occurred_at)} />}
-    <RecordTools inline data={source} identifiers={[["内部流水编号（PerPay）", source.ledger_entry_id], ["原始事件编号", source.raw_event_id], ["支付宝 App ID", source.app_id], ["采集来源标识", source.provider_account_key], ["语义指纹", source.semantic_fingerprint]]} label={"查账记录 " + (index + 1) + " 操作"} />
+    <RecordTools inline technical={!overlay} data={source} identifiers={identifiers} label={"查账记录 " + (index + 1) + " 操作"} />
   </div>;
   if (consistent) return <Item id={"source-" + source.ledger_entry_id} tabIndex={-1} variant="outline" role="listitem" className="min-w-0 scroll-mt-16 items-start" data-ledger-source={source.ledger_entry_id}>
     <ItemContent className="min-w-0 gap-4">
       <ItemHeader className="flex-wrap items-start gap-3">{heading}<ItemActions className="max-w-full flex-wrap">{actions}</ItemActions></ItemHeader>
-      <DetailFields density="comfortable" layout="flow" items={[
+      <DetailFields density="comfortable" layout="flow" wide={["内部流水编号（PerPay）"]} items={[
         ["内部流水编号（PerPay）", <CopyValue value={source.ledger_entry_id} label="复制内部流水编号（PerPay）" />],
         ["保存时间", <ListDateTime value={source.created_at} inline />],
       ]} />
       <LedgerSourceCandidates source={source} hasMatch={hasMatch} />
+      {technicalInformation}
     </ItemContent>
   </Item>;
   return <Card id={"source-" + source.ledger_entry_id} tabIndex={-1} className="scroll-mt-16" data-ledger-source={source.ledger_entry_id}>
@@ -160,6 +167,7 @@ function LedgerSource({ source, index, consistent, hasMatch }: { source: AdminLe
         ["支付宝商户单号", <LedgerIdentifier value={source.merchant_order_no} name="来源支付宝商户单号" />],
       ]} />
       <LedgerSourceCandidates source={source} hasMatch={hasMatch} />
+      {technicalInformation}
     </CardContent>
   </Card>;
 }
@@ -209,6 +217,7 @@ function LedgerMatch({ match, multiple }: { match: AdminLedgerMatch; index: numb
 }
 
 function LedgerConflicts({ entry }: { entry: AdminLedgerDetail }) {
+  const overlay = useOverlayContext();
   if (!entry.conflicts.length) return null;
   return <section className="flex min-w-0 flex-col gap-4" aria-labelledby="ledger-conflicts-heading">
     <h2 id="ledger-conflicts-heading" className="text-base font-semibold">账本冲突记录（{entry.conflicts.length}）</h2>
@@ -218,7 +227,7 @@ function LedgerConflicts({ entry }: { entry: AdminLedgerDetail }) {
         <CardAction className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
           <StatusBadge value={conflict.status} label={conflict.status === "OPEN" ? "待处理" : conflict.status === "IGNORED" ? "已确认隔离" : "已处理"} />
           <Link global to={"/reconciliation/conflicts/" + conflict.conflict_id} className={buttonVariants({ variant: "outline", size: "sm" })}>查看冲突记录</Link>
-          <RecordTools inline data={conflict} identifiers={[["账本冲突编号", conflict.conflict_id], ["关联内部流水编号（PerPay）", conflict.existing_ledger_entry_id]]} label="账本冲突记录操作" />
+          <RecordTools inline technical={!overlay} data={conflict} identifiers={[["账本冲突编号", conflict.conflict_id], ["关联内部流水编号（PerPay）", conflict.existing_ledger_entry_id]]} label="账本冲突记录操作" />
         </CardAction>
       </CardHeader>
       <CardContent className="flex min-w-0 flex-col gap-6">
@@ -229,6 +238,7 @@ function LedgerConflicts({ entry }: { entry: AdminLedgerDetail }) {
         <DetailCredentials title="问题对应的记录" headingLevel={4} items={[
           ["关联内部流水编号（PerPay）", <LedgerIdentifier value={conflict.existing_ledger_entry_id} name="冲突关联内部流水编号（PerPay）" />],
         ]} />
+        {overlay && <TechnicalDetails data={conflict} identifiers={[["账本冲突编号", conflict.conflict_id], ["关联内部流水编号（PerPay）", conflict.existing_ledger_entry_id]]} />}
       </CardContent>
     </Card>)}
   </section>;

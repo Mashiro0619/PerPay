@@ -2,7 +2,7 @@ import { Component, Suspense, createContext, lazy, useCallback, useContext, useE
 import { Navigate, Route, Routes, UNSAFE_NavigationContext, UNSAFE_RouteContext, createPath, useLocation, useNavigate, type Location, type NavigateOptions, type Navigator, type Path, type To } from "react-router";
 import { ArrowLeft, XIcon } from "lucide-react";
 import { OverlayActionsContext, OverlayCloseGuardContext, OverlayContext, OverlayNavigationContext, OverlayNestedModalContext, OverlayStepsContext, type OverlayNavigation, type OverlaySize } from "@/lib/overlay-context";
-import { OVERLAY_HISTORY_KEY, OVERLAY_PARAMETER, legacyOverlayLocation, overlayBackground, overlayRoute, overlayRouteDefinitions, parseOverlayTarget, readOverlayHistory, readOverlayTarget, stateRecord, withOverlayTarget, type OverlayHistory, type OverlayRouteKind } from "@/lib/overlay-navigation";
+import { OVERLAY_HISTORY_KEY, OVERLAY_PARAMETER, isRecordDetailRoute, legacyOverlayLocation, overlayBackground, overlayRoute, overlayRouteDefinitions, parseOverlayTarget, readOverlayHistory, readOverlayTarget, stateRecord, withOverlayTarget, type OverlayHistory, type OverlayRouteKind } from "@/lib/overlay-navigation";
 import { workspaceScope } from "@/lib/workspace-scope";
 import { ResourceWorkspaceProvider } from "@/workspace";
 import { useSession } from "@/auth";
@@ -229,6 +229,7 @@ export function OverlayHost({ routes }: { routes?: ReactNode }) {
   const presentation = target && definition ? { target, resourceScope, size: definition.size, requestClose: overlay.close } : null;
   return <Dialog open={overlay.hasOverlay} onOpenChange={(open, event) => { if (!open) { event.cancel(); overlay.close(); } }}>
     <DialogContent kind="detail" size={activeStep?.size ?? definition?.size ?? "md"} data-overlay-content data-overlay-size={activeStep?.size ?? definition?.size ?? "md"}
+      data-overlay-record={isRecordDetailRoute(definition) && !activeStep || undefined}
       role={activeStep ? "presentation" : "dialog"} aria-modal={activeStep ? false : true}
       initialFocus={() => nestedModals.current.size ? false : title.current} finalFocus={overlay.restoreFocus} showCloseButton={false}>
       <OverlayContext value={presentation}><OverlayCloseGuardContext value={overlay.registerCloseGuard}>

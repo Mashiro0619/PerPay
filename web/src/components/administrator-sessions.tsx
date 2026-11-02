@@ -15,7 +15,9 @@ import { useSuccessToast } from "@/components/Feedback";
 import { RefreshButton } from "@/components/refresh-button";
 import { ErrorNotice, Loading } from "@/components/request-state";
 import { PageHeading } from "@/components/page-heading";
-import { SettingsSummary } from "@/components/settings-summary";
+import { PageHeaderActions } from "@/components/page-header-actions";
+import { DetailFields, DetailPage } from "@/components/detail/DetailPrimitives";
+import { DetailSection } from "@/components/detail/DetailSections";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -130,17 +132,19 @@ export function AdministratorSessions({ detailSessionId }: { detailSessionId?: s
   ];
   return (
     <>
-      {detailSessionId ? <div className="flex min-w-0 flex-col gap-4">
+      {detailSessionId ? <DetailPage>
         <PageHeading title="登录会话详情" />
+        <PageHeaderActions><RefreshButton disabled={operation.isPending || sessions.isFetching} busy={sessions.isFetching} onClick={() => { void sessions.refetch(); }} /></PageHeaderActions>
         <ErrorNotice error={sessions.error} retry={() => { void sessions.refetch(); }} />
-        {sessions.isPending ? <Loading label="正在读取登录会话…" /> : selected ? <SettingsSummary title={sessionDevice(selected.user_agent).label} rows={[
-          ["当前会话", selected.is_current ? "是" : "否"], ["登录 IP", selected.ip_address ?? "未记录"], ["最近活跃", dateTime(selected.last_seen_at)], ["到期时间", dateTime(selected.expires_at)], ["登录方式", "密码"], ["设备信息", selected.user_agent ?? "未记录"],
-        ]} /> : !sessions.error && <Empty><EmptyHeader><EmptyTitle>此会话已结束</EmptyTitle><EmptyDescription>已失效的会话不再出现在有效会话列表中。</EmptyDescription></EmptyHeader></Empty>}
+        {sessions.isPending ? <Loading label="正在读取登录会话…" /> : selected ? <DetailSection title={sessionDevice(selected.user_agent).label}>
+          <DetailFields wide={["登录 IP", "设备信息"]} items={[
+          ["当前会话", selected.is_current ? "是" : "否"], ["登录方式", "密码"], ["最近活跃", dateTime(selected.last_seen_at)], ["到期时间", dateTime(selected.expires_at)], ["登录 IP", selected.ip_address ?? "未记录"], ["设备信息", selected.user_agent ?? "未记录"],
+        ]} /></DetailSection> : !sessions.error && <Empty><EmptyHeader><EmptyTitle>此会话已结束</EmptyTitle><EmptyDescription>已失效的会话不再出现在有效会话列表中。</EmptyDescription></EmptyHeader></Empty>}
         <OverlayActions>
           {overlay && <Button type="button" variant="outline" disabled={operation.isPending} onClick={() => overlay.requestClose()}>关闭</Button>}
           {selected && <Button variant="destructive" disabled={operation.isPending} onClick={event => open(selected.is_current ? { kind: "logout" } : { kind: "single", session: selected }, event.currentTarget)}>{selected.is_current ? "退出当前会话" : "撤销此会话"}</Button>}
         </OverlayActions>
-      </div> : <Card className="administrator-sessions-card" data-login-sessions>
+      </DetailPage> : <Card className="administrator-sessions-card" data-login-sessions>
         <CardHeader className="administrator-sessions-header">
           <CardTitle ref={heading} tabIndex={-1} role="heading" aria-level={2}>登录会话</CardTitle>
           <CardDescription>查看并退出当前正在使用此账号的登录会话。</CardDescription>

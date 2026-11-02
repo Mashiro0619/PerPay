@@ -1,6 +1,7 @@
 import { test, expect, login, record } from "./fixtures";
 import { screenshot } from "./audit";
 import { expectOverlayFits, openRecord } from "./overlay-fixtures";
+import { expectDetailRecordLayout } from "./detail-layout";
 import type { AdminOrderDetail, OrderWebhookDeliveryPageEnvelope } from "../web/src/api/generated/types.gen";
 
 test("order details keep complete business facts and load notifications only when selected", async ({ page, manifest }, info) => {
@@ -17,6 +18,7 @@ test("order details keep complete business facts and load notifications only whe
   await expect(dialog.getByRole("region", { name: "订单信息", exact: true })).toContainText(order.note!);
   await expect(dialog.getByRole("button", { name: "复制商户订单号" })).toBeVisible();
   await expect(dialog.getByRole("link", { name: "打开收银台", exact: true })).toHaveAttribute("target", "_blank");
+  const overviewLayout = await expectDetailRecordLayout(page);
   expect(reads.filter(path => path === notificationsApi)).toHaveLength(0);
   await dialog.getByRole("tab", { name: "通知", exact: true }).click();
   await expect(dialog.getByText("正在读取通知结果…", { exact: true })).toHaveCount(0);
@@ -24,7 +26,7 @@ test("order details keep complete business facts and load notifications only whe
   await expectOverlayFits(page);
   await dialog.getByRole("tab", { name: "概况", exact: true }).click();
   await expect(dialog.getByRole("region", { name: "订单信息", exact: true })).toContainText(order.note!);
-  await record(page, info, { feature: "order-record-facts-and-lazy-tabs", noteLength: order.note!.length });
+  await record(page, info, { feature: "order-record-facts-and-lazy-tabs", noteLength: order.note!.length, layout: overviewLayout });
   await screenshot(page, info, "order-detail-long-note");
 });
 
@@ -65,6 +67,7 @@ test("a refund mark becomes an internal step and retains its draft through respo
   const writes: string[] = [];
   page.on("request", request => { if (!["GET", "HEAD", "OPTIONS"].includes(request.method())) writes.push(request.method() + " " + new URL(request.url()).pathname); });
   const dialog = await openRecord(page, manifest, manifest.details.orderPaid!);
+  await expect(dialog).toHaveAttribute("data-overlay-record", "true");
   await dialog.getByRole("button", { name: "更多操作，订单操作", exact: true }).click();
   await page.getByRole("menuitem", { name: /^(标记已退款|撤销退款标记)$/ }).click();
   const step = page.locator("[data-overlay-step]:visible");
@@ -75,6 +78,7 @@ test("a refund mark becomes an internal step and retains its draft through respo
     await page.setViewportSize({ width, height: 900 }); await page.clock.runFor(100);
     await expect(page.getByRole("dialog")).toHaveCount(1);
     await expect(page.locator('[data-slot="dialog-overlay"]:visible')).toHaveCount(1);
+    await expect(dialog).not.toHaveAttribute("data-overlay-record", "true");
     await expect(note).toHaveValue(draft); await expect(note).toBeFocused();
     await expectOverlayFits(page);
   }
@@ -83,6 +87,7 @@ test("a refund mark becomes an internal step and retains its draft through respo
   await step.getByRole("button", { name: "取消", exact: true }).click();
   await expect(step).toHaveCount(0);
   await expect(dialog.getByRole("button", { name: "更多操作，订单操作", exact: true })).toBeFocused();
+  await expect(dialog).toHaveAttribute("data-overlay-record", "true");
   expect(writes).toEqual([]);
 });
 

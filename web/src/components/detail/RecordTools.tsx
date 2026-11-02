@@ -41,9 +41,10 @@ export function RecordTools({
   const overlay = useOverlayContext();
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement | null>(null);
+  if (!technical && actions.length === 0 && !to) return null;
   return (
     <>
-      <div className={cn("flex min-w-0 flex-wrap justify-end gap-2", inline && "inline-flex shrink-0")} data-record-tools>
+      <div className={cn("flex min-w-0 flex-wrap justify-end gap-2", inline && "inline-flex shrink-0", overlay && technical && "w-full flex-col items-stretch")} data-record-tools>
         {((technical && !overlay) || actions.length > 0 || to) &&
         <DropdownMenu>
           <Tooltip><TooltipTrigger render={<DropdownMenuTrigger
@@ -52,6 +53,7 @@ export function RecordTools({
                 ref={trigger}
                 variant="ghost"
                 size="sm"
+                className={overlay && technical ? "w-fit self-end" : undefined}
                 aria-label={label === "更多操作" ? label : `更多操作，${label}`}
               />
             }

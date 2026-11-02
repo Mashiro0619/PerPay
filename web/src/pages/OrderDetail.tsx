@@ -83,7 +83,7 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
     <DetailSections label="订单详情分类" sections={[
       { id: "overview", label: "概况", content: <>
         <DetailSection title="订单信息">
-          <DetailFields items={[
+          <DetailFields wide={["商户订单号", "商品名称", "订单备注"]} items={[
             ["商户订单号", <CopyValue value={order.merchant_order_no} label="复制商户订单号" />],
             ...(Array.from(order.product_name).length > 24 ? [["商品名称", order.product_name] as const] : []),
             ...(!clientId ? [["业务网站", <Link global to={"/sites/" + encodeURIComponent(order.api_client_id) + "/summary"}>{order.site_name ?? "业务网站名称暂不可用"}</Link>] as const] : []),

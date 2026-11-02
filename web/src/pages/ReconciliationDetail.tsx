@@ -27,9 +27,11 @@ import {
   DetailFields,
   DetailNavigation,
   DetailPage,
+  TechnicalDetails,
   type DetailDensity,
   useDetailFetching,
 } from "@/components/detail/DetailPrimitives";
+import { DetailSection } from "@/components/detail/DetailSections";
 import { RecordTools } from "@/components/detail/RecordTools";
 import { AssociateIncomeAction } from "@/components/detail/FinancialActions";
 import { buttonVariants } from "@/components/ui/button";
@@ -134,12 +136,12 @@ function ConflictDetail({ resourceId }: { resourceId: string }) {
       ),
   });
   return (
-    <>
+    <DetailPage>
       <EvidenceHeading title="账本冲突" section="conflicts" loaded={query.isSuccess} />
       <QueryView query={query}>
         {({ data }) => <ConflictCard detail={data} />}
       </QueryView>
-    </>
+    </DetailPage>
   );
 }
 function MatchDetail({ resourceId }: { resourceId: string }) {
@@ -196,16 +198,17 @@ function CandidateDetail({ resourceId }: { resourceId: string }) {
       ),
   });
   return (
-    <>
+    <DetailPage>
       <EvidenceHeading title="可能匹配的记录详情" loaded={query.isSuccess} />
       <QueryView query={query}>
         {({ data }) => <CandidateCard candidate={data} />}
       </QueryView>
-    </>
+    </DetailPage>
   );
 }
 function LedgerDetail({ resourceId }: { resourceId: string }) {
   const api = useWorkspaceApi();
+  const overlay = useOverlayContext();
   const ledger = useQuery({
     queryKey: ["ledger", resourceId],
     queryFn: ({ signal }) =>
@@ -228,7 +231,7 @@ function LedgerDetail({ resourceId }: { resourceId: string }) {
       ),
   });
   return (
-    <>
+    <DetailPage>
       <EvidenceHeading title="支付宝流水" loaded={ledger.isSuccess} />
       <QueryView query={ledger}>
         {({ data }) => (
@@ -241,11 +244,14 @@ function LedgerDetail({ resourceId }: { resourceId: string }) {
                 <CardDescription>PerPay 处理状态：{label(data.state)}</CardDescription>
               </CardHeader>
               <CardContent className="flex min-w-0 flex-col gap-4">
-                <LedgerFacts entry={data} />
-                <DetailFields
+                <LedgerFacts entry={data} density={overlay ? "comfortable" : "default"} layout={overlay ? "flow" : "columns"} groupIdentifiers={!!overlay} />
+                {overlay ? <DetailSection title="PerPay 记录" headingLevel={3}>
+                  <DetailFields items={[["写入时间", dateTime(data.created_at)]]} />
+                </DetailSection> : <DetailFields
                   items={[["写入时间", dateTime(data.created_at)]]}
-                />
+                />}
                 <RecordTools
+                  technical={!overlay}
                   data={data}
                   identifiers={[
                     ["内部流水编号（PerPay）", resourceId],
@@ -253,6 +259,10 @@ function LedgerDetail({ resourceId }: { resourceId: string }) {
                   ]}
                   label="流水记录操作"
                 />
+                {overlay && <TechnicalDetails data={data} identifiers={[
+                  ["内部流水编号（PerPay）", resourceId],
+                  ["支付宝流水号", data.external_event_id],
+                ]} />}
               </CardContent>
               {data.direction === "CREDIT" &&
                 ["UNALLOCATED", "CANDIDATE", "CONFLICT"].includes(
@@ -293,6 +303,6 @@ function LedgerDetail({ resourceId }: { resourceId: string }) {
           </>
         )}
       </QueryView>
-    </>
+    </DetailPage>
   );
 }

@@ -9,6 +9,7 @@ import { useFixedOperation } from "@/lib/fixed-operation";
 import { isRefundMarkReceipt, refundMarkNoteError } from "@/lib/refund-mark";
 import { useOperationNavigation } from "@/drafts";
 import { useOverlayContext } from "@/lib/overlay-context";
+import { cn } from "@/lib/utils";
 import { OverlayActions } from "@/components/overlay-actions";
 import { OperationRecoveryNotice } from "@/components/operation-recovery-notice";
 import { OperationNavigationDialog } from "@/components/operation-navigation-dialog";
@@ -73,7 +74,7 @@ export function RefundMarkPanel({
   if (!eligible && !mark.marked && !hasHistory && !includeOrderTools && !draft)
     return null;
   return (
-    <div className="flex flex-col gap-4">
+    <div className={cn(overlay ? "contents" : "flex flex-col gap-4")}>
       {(mark.marked || hasHistory) && (
         <section aria-label="管理员退款标记" className="flex flex-col gap-2">
           <Item className="record-list-row" size="sm">

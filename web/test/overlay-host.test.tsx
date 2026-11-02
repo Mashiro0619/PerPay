@@ -128,6 +128,7 @@ describe("one routed detail surface", () => {
     mount();
     await userEvent.click(screen.getByRole("link", { name: "打开记录" }));
     const dialog = await screen.findByRole("dialog", { name: "记录 order-1" });
+    expect(dialog).toHaveAttribute("data-overlay-record", "true");
     const refresh = within(dialog).getByRole("button", { name: "详情刷新" });
     expect(refresh.closest("[data-slot=dialog-header]")).not.toBeNull();
     expect(screen.getByTestId("parent-actions")).not.toHaveTextContent("详情刷新");

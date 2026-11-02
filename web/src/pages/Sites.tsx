@@ -6,6 +6,10 @@ import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useLocation, useNavigation, useParams } from "react-router";
 import { PageHeading } from "@/components/page-heading";
+import { PageHeaderActions } from "@/components/page-header-actions";
+import { RefreshButton } from "@/components/refresh-button";
+import { DetailFields, DetailPage } from "@/components/detail/DetailPrimitives";
+import { DetailSection } from "@/components/detail/DetailSections";
 import { ScrollingTabs } from "@/components/scrolling-tabs";
 import { SettingsSummary, type SettingsSummaryRow } from "@/components/settings-summary";
 import { OverlayActions } from "@/components/overlay-actions";
@@ -130,11 +134,16 @@ export function SiteSummaryOverlay() {
   const queries = overviewQueries(clientId ?? null, range);
   const analytics = useQuery({ ...queries.analytics, enabled: !!clientId, placeholderData: undefined });
   const work = useQuery(queries.workSummary);
-  return <QueryView query={site}>{({ site: current }) => <div className="flex min-w-0 flex-col gap-4">
+  return <QueryView query={site}>{({ site: current }) => <DetailPage>
     <PageHeading title={current.configuration.name} />
+    <PageHeaderActions><RefreshButton disabled={site.isFetching || analytics.isFetching || work.isFetching} busy={site.isFetching || analytics.isFetching || work.isFetching} onClick={() => {
+      void site.refetch();
+      void analytics.refetch();
+      void work.refetch();
+    }} /></PageHeaderActions>
     <ErrorNotice error={analytics.error} retry={() => { void analytics.refetch(); }} />
     <ErrorNotice error={work.error} retry={() => { void work.refetch(); }} />
-    <SettingsSummary title="网站概况" rows={[
+    <DetailSection title="网站概况"><DetailFields wide={["客户端 ID"]} items={[
       ["接单状态", <Badge variant={current.configuration.accepting_orders ? "success" : "warning"}>{current.configuration.accepting_orders ? "接单中" : "暂停接单"}</Badge>],
       ["通知", current.configuration.notifications_enabled ? "开启" : "关闭"],
       ["近 " + range + " 天实收", analytics.data ? money(analytics.data.data.confirmations.amount_cents) : analytics.isPending ? "正在读取…" : "暂不可用"],
@@ -142,12 +151,12 @@ export function SiteSummaryOverlay() {
       ["当前待付款", analytics.data ? count(analytics.data.data.pending.orders) : "—"],
       ["待处理", work.data?.data ? count(work.data.data.total) : "—"],
       ["客户端 ID", <CopyValue value={current.client_id} label="复制客户端 ID" />],
-    ]} />
+    ]} /></DetailSection>
     <OverlayActions>
       <Link to={"/sites/" + encodeURIComponent(current.client_id) + "/edit?section=basic"} className={buttonVariants({ variant: "outline" })}>编辑网站</Link>
       <Link to={"/sites/" + encodeURIComponent(current.client_id) + "?range=" + range} className={buttonVariants()}>进入后台</Link>
     </OverlayActions>
-  </div>}</QueryView>;
+  </DetailPage>}</QueryView>;
 }
 
 export function SiteEditorPage() {

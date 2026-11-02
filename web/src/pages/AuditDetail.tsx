@@ -5,12 +5,13 @@ import { auditActionLabel, auditClientLabel, auditContextUnavailable, auditDurat
 import { Link, useDetailBack } from "@/navigation";
 import { AuditActor, AuditAggregation, AuditCaptureNotice, AuditChanges, AuditRecordType, AuditResult, AuditSite, AuditTime } from "@/components/audit-record";
 import { DetailFields, DetailNavigation, DetailPage, TechnicalDetails } from "@/components/detail/DetailPrimitives";
+import { DetailSection } from "@/components/detail/DetailSections";
 import { CopyValue } from "@/components/copy-value";
 import { PageHeading } from "@/components/page-heading";
 import { PageHeaderActions } from "@/components/page-header-actions";
 import { RefreshButton } from "@/components/refresh-button";
 import { ErrorNotice, QueryView } from "@/components/request-state";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Item, ItemContent, ItemDescription, ItemGroup, ItemTitle } from "@/components/ui/item";
 
@@ -35,23 +36,25 @@ function AuditDetailView({ source, eventId }: { source: string; eventId: string 
     <ErrorNotice error={metadata.error} retry={() => { void metadata.refetch(); }} retainedData={!!metadata.data} />
     {!valid ? <ErrorNotice error={new Error("日志地址无效，请返回审计日志列表。")} /> : <QueryView query={event}>
       {({ data }) => <>
-        <Card aria-label="日志概况">
+        <Card aria-label="日志概况" className="detail-section" data-audit-summary>
           <CardHeader>
-            <CardTitle role="heading" aria-level={2} className="min-w-0 wrap-anywhere">{auditActionLabel(data.action)}</CardTitle>
-            <CardDescription><AuditRecordType event={data} /></CardDescription>
+            <div className="flex min-w-0 flex-wrap items-center gap-2" data-detail-summary>
+              <CardTitle role="heading" aria-level={2} className="min-w-0 wrap-anywhere">{auditActionLabel(data.action)}</CardTitle>
+              <AuditResult outcome={data.outcome} source_type={data.source_type} http_status={data.http_status} is_aggregate={data.is_aggregate} action={data.action} />
+              <AuditRecordType event={data} />
+            </div>
           </CardHeader>
-          <CardContent><DetailFields items={[
-            ["操作结果", <AuditResult outcome={data.outcome} source_type={data.source_type} http_status={data.http_status} is_aggregate={data.is_aggregate} action={data.action} />],
+          <CardContent><DetailSection title="操作信息" headingLevel={3}><DetailFields density="comfortable" items={[
             [data.is_aggregate ? "排序时间" : "发生时间", <AuditTime value={data.occurred_at} />],
             ["执行者", <AuditActor event={data} />],
             ["关联网站", <AuditSite event={data} deleted={metadata.data?.data.sites.some(site => site.site_id === data.site_id && site.deleted) ?? false} />],
             ["操作对象", auditSubjectLabel(data.subject_type)],
-          ]} /></CardContent>
+          ]} /></DetailSection></CardContent>
         </Card>
         <AuditAggregation event={data} />
-        <Card aria-label="来源与请求">
+        <Card aria-label="来源与请求" className="detail-section" data-audit-source>
           <CardHeader><CardTitle role="heading" aria-level={2}>来源与请求</CardTitle></CardHeader>
-          <CardContent><DetailFields wide={["接口路径"]} items={[
+          <CardContent><DetailFields density="comfortable" wide={["接口路径"]} items={[
             ["来源 IP", data.source_address ? <CopyValue value={data.source_address} label="复制来源 IP" /> : auditContextUnavailable(data)],
             ["设备 / 客户端", auditClientLabel(data)],
             ...(data.source_type === "HTTP" ? [
@@ -64,7 +67,7 @@ function AuditDetailView({ source, eventId }: { source: string; eventId: string 
         </Card>
         <AuditChanges changes={data.changes} category={data.category} />
         {data.related_activity_available === false && <Alert><AlertDescription>关联活动当前不可用，可能已超过保留期或未完整记录；这不影响当前核心审计记录。</AlertDescription></Alert>}
-        {data.related_events.length > 0 && <Card aria-label="关联日志">
+        {data.related_events.length > 0 && <Card aria-label="关联日志" className="detail-section">
           <CardHeader><CardTitle role="heading" aria-level={2}>关联日志</CardTitle></CardHeader>
           <CardContent><ItemGroup>{data.related_events.map(related => <Item role="listitem" key={`${related.source}:${related.event_id}`} className="px-0">
             <ItemContent><ItemTitle><Link global to={auditEventHref(related)} className="list-primary-link">{auditActionLabel(related.action)}</Link></ItemTitle>

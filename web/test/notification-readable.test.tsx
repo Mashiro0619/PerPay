@@ -58,6 +58,7 @@ describe("readable standalone notification detail", () => {
     expect(await screen.findByRole("heading", { name: "通知详情", level: 1 })).toBeVisible();
     const orderCard = await screen.findByRole("group", { name: "关联订单" });
     const information = screen.getByRole("group", { name: "通知信息" });
+    expect(screen.getAllByRole("heading", { level: 2 }).map(heading => heading.textContent)).toEqual(["通知信息", "关联订单"]);
     const orderLink = await within(orderCard).findByRole("link", { name: paidOrder.product_name });
     expect(orderLink).toHaveAttribute("href", (site ? "/sites/site_dense" : "") + "/orders/" + paidOrder.order_id);
     expect(within(information).getByText("等待重试")).toBeVisible();

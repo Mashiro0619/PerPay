@@ -9,6 +9,7 @@ import { Link } from "@/navigation";
 import { result, type OrderWebhookDeliveryDetail, type WebhookDeliveryDetail, type WebhookAttempt } from "@/api/client";
 import { refreshNotificationRecords } from "@/lib/record-refresh";
 import { useCursor } from "@/lib/cursor";
+import { useOverlayContext } from "@/lib/overlay-context";
 import {
   attemptResult,
   latestAttempt,
@@ -38,7 +39,7 @@ import {
   AccordionTrigger,
   AccordionContent,
 } from "@/components/ui/accordion";
-import { DetailFields } from "./DetailPrimitives";
+import { DetailFields, TechnicalDetails } from "./DetailPrimitives";
 import { RecordTools } from "./RecordTools";
 import { DeliveryAttempts } from "./DeliveryAttempts";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -66,6 +67,7 @@ export function DeliveryCard({
 }) {
   const api = useWorkspaceApi();
   const { clientId } = useWorkspace();
+  const overlay = useOverlayContext();
   const [snapshot, setSnapshot] = useState<DeliveryContext | null>(null);
   const [sent, setSent] = useState(false);
   const setMessage = useSuccessToast();
@@ -103,21 +105,24 @@ export function DeliveryCard({
       重新发送
     </Button>
   );
+  const technicalIdentifiers = [
+    ["客户端 ID", detail.target.api_client_id],
+    ["投递编号", delivery.delivery_id],
+    ["事件编号", detail.event.event_id],
+    ...(comfortable ? [
+      ["内部订单编号", detail.event.order_id],
+      ["通知目标编号", detail.target.target_id],
+      ["前次投递编号", delivery.predecessor_delivery_id],
+    ] as const : []),
+  ] as const;
+  const technicalInformation = overlay && <TechnicalDetails data={detail} identifiers={technicalIdentifiers} />;
   const tools = (
     <RecordTools
       inline={comfortable}
       label="通知记录操作"
       data={detail}
-      identifiers={[
-        ["客户端 ID", detail.target.api_client_id],
-        ["投递编号", delivery.delivery_id],
-        ["事件编号", detail.event.event_id],
-        ...(comfortable ? [
-          ["内部订单编号", detail.event.order_id],
-          ["通知目标编号", detail.target.target_id],
-          ["前次投递编号", delivery.predecessor_delivery_id],
-        ] as const : []),
-      ]}
+      technical={!overlay}
+      identifiers={technicalIdentifiers}
       to={embedded ? "/notifications/" + delivery.delivery_id : undefined}
       actions={
         delivery.status === "ACKNOWLEDGED" && detail.is_latest
@@ -202,6 +207,7 @@ export function DeliveryCard({
           }}
         >
           <DetailFields
+            wide={["通知地址"]}
             items={[
               ["事件", label(snapshot.event.event_type)],
               ["通知地址", snapshot.target.target_url],
@@ -210,17 +216,19 @@ export function DeliveryCard({
         </ReasonDialog>
   );
   if (comfortable) return <>
-    {section !== "attempts" && <Card aria-label="通知信息" data-notification-information>
+    {section !== "attempts" && <Card aria-label="通知信息" className="detail-section" data-notification-information>
       <CardHeader className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex min-w-0 flex-1 basis-48 flex-col gap-1">
-          <CardTitle role="heading" aria-level={2}>{sectionTitle ?? "通知信息"}</CardTitle>
+          <div className="flex min-w-0 flex-wrap items-center gap-2" data-detail-summary>
+            <CardTitle role="heading" aria-level={2}>{sectionTitle ?? "通知信息"}</CardTitle>
+            <StatusBadge value={delivery.status} />
+          </div>
           <CardDescription>{statusDescription}</CardDescription>
         </div>
-        <CardAction className="flex max-w-full flex-wrap items-center justify-end gap-2">
-          <StatusBadge value={delivery.status} />
+        {(!overlay || (detail.is_latest && terminal)) && <CardAction className="flex max-w-full flex-wrap items-center justify-end gap-2">
           {resend}
           {tools}
-        </CardAction>
+        </CardAction>}
       </CardHeader>
       <CardContent className="flex min-w-0 flex-col gap-6">
         {recovery && <Alert><Info /><AlertTitle>通知投递建议</AlertTitle><AlertDescription>{recovery}</AlertDescription></Alert>}
@@ -237,9 +245,10 @@ export function DeliveryCard({
             ...reasonFields,
           ]}
         />
+        {technicalInformation}
       </CardContent>
     </Card>}
-    {section !== "overview" && <Card aria-label="投递历史" data-notification-history>
+    {section !== "overview" && <Card aria-label="投递历史" className="detail-section" data-notification-history>
       <CardHeader>
         <CardTitle role="heading" aria-level={2}>投递历史</CardTitle>
         <CardDescription>{attemptDescription}{attemptsAvailable && detail.attempts.length > 0 ? " · 每页 10 条" : ""}</CardDescription>
@@ -267,6 +276,7 @@ export function DeliveryCard({
         <DetailFields wide={["所属网站", "通知地址", "重发理由"]} items={[...siteFields, targetField, ...deliveryFields, ...reasonFields]} />
         <DeliveryAttempts key={delivery.delivery_id} attempts={detail.attempts} available={attemptsAvailable} readState={attemptsReadState} pageKey={"attempts_" + delivery.delivery_id} />
         {tools}
+        {technicalInformation}
       </CardContent>
       {confirmation}
     </Card>

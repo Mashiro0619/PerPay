@@ -3,6 +3,8 @@ import { useId, useRef, useState } from "react";
 import { result, type LedgerConflictDetail } from "@/api/client";
 import { refreshFinancialRecords } from "@/lib/record-refresh";
 import { dateTime } from "@/lib/format";
+import { cn } from "@/lib/utils";
+import { useOverlayContext } from "@/lib/overlay-context";
 import { ConflictComparison } from "./ConflictComparison";
 import { label } from "@/lib/labels";
 import { ReasonDialog } from "@/components/ReasonDialog";
@@ -18,7 +20,8 @@ import {
   CardContent,
   CardFooter,
 } from "@/components/ui/card";
-import { DetailFields } from "./DetailPrimitives";
+import { DetailFields, TechnicalDetails } from "./DetailPrimitives";
+import { DetailSection } from "./DetailSections";
 import { RecordTools } from "./RecordTools";
 const explanations: Record<string, string> = {
   DUPLICATE_EXTERNAL_ID: "同一支付宝流水号对应不同交易内容，已有流水未被覆盖。",
@@ -35,6 +38,7 @@ const explanations: Record<string, string> = {
 
 export function ConflictCard({ detail }: { detail: LedgerConflictDetail }) {
   const api = useWorkspaceApi();
+  const overlay = useOverlayContext();
   const [confirm, setConfirm] = useState(false);
   const [completed, setCompleted] = useState(false);
   const finalFocus = useRef<HTMLElement | null>(null);
@@ -47,43 +51,41 @@ export function ConflictCard({ detail }: { detail: LedgerConflictDetail }) {
       ? "KEEP_EXISTING"
       : "ACKNOWLEDGE_ISOLATED";
   const collectionId = useId();
+  const stateBadge = <StatusBadge
+    value={conflict.reminder_ignored ? "NONE" : conflict.status}
+    label={conflict.status === "OPEN"
+      ? conflict.reminder_ignored ? "未处理 · 已忽略" : "待处理"
+      : conflict.status === "IGNORED" ? "已隔离" : "已处理"}
+  />;
+  const timing = <DetailFields items={[
+    ["发现时间", dateTime(conflict.created_at)],
+    ...(conflict.resolved_at ? [["处理时间", dateTime(conflict.resolved_at)] as const] : []),
+  ]} />;
+  const resolution = operation && <DetailFields wide={["处理理由"]} items={[
+    ["处理方式", label(operation.action)],
+    ["操作人", operation.actor_type === "SYSTEM" ? "系统" : (operation.actor_id ?? "未记录")],
+    ["处理理由", operation.reason],
+  ]} />;
   return (
     <Card aria-label="账本冲突证据">
       <CardHeader>
-        <CardTitle role="heading" aria-level={2}>
-          {label(conflict.conflict_type)}
-        </CardTitle>
+        <div className={cn(overlay && "flex min-w-0 flex-wrap items-center gap-2")}>
+          <CardTitle role="heading" aria-level={2}>
+            {label(conflict.conflict_type)}
+          </CardTitle>
+          {overlay && stateBadge}
+        </div>
         <CardDescription>
           {explanations[conflict.conflict_type]}
         </CardDescription>
-        <CardAction>
-          <StatusBadge
-            value={conflict.reminder_ignored ? "NONE" : conflict.status}
-            label={
-              conflict.status === "OPEN"
-                ? conflict.reminder_ignored
-                  ? "未处理 · 已忽略"
-                  : "待处理"
-                : conflict.status === "IGNORED"
-                  ? "已隔离"
-                  : "已处理"
-            }
-          />
-        </CardAction>
+        {!overlay && <CardAction>{stateBadge}</CardAction>}
       </CardHeader>
       <CardContent className="flex min-w-0 flex-col gap-4">
-        <DetailFields
-          items={[
-            ["发现时间", dateTime(conflict.created_at)],
-            ...(conflict.resolved_at
-              ? [["处理时间", dateTime(conflict.resolved_at)] as const]
-              : []),
-          ]}
-        />
+        {!overlay && timing}
         <ConflictComparison detail={detail} />
         {detail.raw_page && (
           <section
-            className="flex min-w-0 flex-col gap-3"
+            className={cn("flex min-w-0 flex-col gap-3", overlay && "detail-section")}
             aria-labelledby={collectionId}
           >
             <h3 id={collectionId} className="text-sm font-medium">
@@ -108,23 +110,10 @@ export function ConflictCard({ detail }: { detail: LedgerConflictDetail }) {
             />
           </section>
         )}
-        {operation && (
-          <DetailFields
-            wide={["处理理由"]}
-            items={[
-              ["处理方式", label(operation.action)],
-              [
-                "操作人",
-                operation.actor_type === "SYSTEM"
-                  ? "系统"
-                  : (operation.actor_id ?? "未记录"),
-              ],
-              ["处理理由", operation.reason],
-            ]}
-          />
-        )}
+        {overlay ? <DetailSection title="处理记录" headingLevel={3}>{timing}{resolution}</DetailSection> : resolution}
         <RecordTools
           label="冲突记录操作"
+          technical={!overlay}
           data={detail}
           identifiers={[["冲突编号", conflict.conflict_id]]}
           actions={
@@ -138,6 +127,7 @@ export function ConflictCard({ detail }: { detail: LedgerConflictDetail }) {
               : []
           }
         />
+        {overlay && <TechnicalDetails data={detail} identifiers={[["冲突编号", conflict.conflict_id]]} />}
       </CardContent>
       {conflict.status === "OPEN" &&
         conflict.conflict_type !== "RAW_PAGE_VARIANT" && (

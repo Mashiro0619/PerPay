@@ -3,6 +3,7 @@ import { ArrowLeftRight, CircleAlert } from "lucide-react";
 import type { LedgerConflictDetail } from "@/api/client";
 import { conflictComparison } from "@/lib/conflict-comparison";
 import { cn } from "@/lib/utils";
+import { useOverlayContext } from "@/lib/overlay-context";
 import { useListSize } from "@/hooks/use-list-size";
 import {
   Table,
@@ -54,13 +55,14 @@ function ComparisonContent({
   detail: LedgerConflictDetail;
 }) {
   const titleId = useId();
+  const overlay = useOverlayContext();
   const { ref, isSummary } = useListSize<HTMLElement>();
   const existing = detail.existing_ledger_entry;
   const rows = conflictComparison(detail);
   return (
     <section
       ref={ref}
-      className="flex w-full min-w-0 flex-col gap-3"
+      className={cn("flex w-full min-w-0 flex-col gap-3", overlay && "detail-section")}
       aria-labelledby={titleId}
       data-conflict-comparison
     >
