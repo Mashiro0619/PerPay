@@ -70,3 +70,11 @@ npm run test:ui -- ui-tests/settings.spec.ts ui-tests/session-management.spec.ts
 矩阵汇总另存于 `.ui-audit/console-lists/full-route-matrix-build8-summary.json`；矩阵与审计键盘专项的 264 份量测保留一致的管理端构建摘要。前期设置、账号与更新流程的 30 个不同定向用例分别在 Build6 通过 28 项、Build7 复验通过 2 项，作为补充记录，不表述为 Build8 单次执行了这 30 项。
 
 这些结果仅对应隔离的 Hono／SQLite 合成夹具和 Chromium 桌面仿真。260 次路由矩阵只覆盖管理后台；收银台构建与组件检查不等于公开收银台的本轮完整浏览器矩阵。真实支付宝查询／收款、外部通知、iOS／Android 物理设备、生产部署和生产财务验收不在本轮浏览器记录范围内。
+
+## 旧承载回归迁移
+
+旧详情页面的回归用例已迁移到统一弹层，覆盖 `detail-reading`、`exception-reading`、`frontend-polish`、`mobile-button-scale`、`polish-content-width`、`source-provenance` 与 `unified-reconciliation` 七份规格，共 45 个用例。它们继续核对来源、财务身份、失败重试、分页、草稿、键盘、触控和完整字段；地址检查同时验证父页与编码后的目标，技术信息在当前弹层内展开。
+
+内容宽度检查分别验证工作页布局和弹层尺寸。编辑中的草稿在视口变化后保持同一表单实例；背景宽度控件不能穿透弹层操作。长文本保留原始 Range 范围，再测量非空白字符，避免把行末空格的悬挂宽度当成可见文字裁切。开关透明触控区计入原始 `scrollWidth`，与实际绘制的控件、文字和页面溢出分别记录，保留原 1px 几何阈值。
+
+这组测试单独进行实际提交树的 UI 类型检查和完整浏览器验证，再使用仓库原有 SSH 配置签名与验签。记录保存在 `.ui-audit/ui-atomic-20261102/TEST-CLEANUP-RESULT.md`，原始失败和定向复测日志均保留，不把重跑数量累加成用例数量。

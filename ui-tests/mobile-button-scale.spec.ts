@@ -171,6 +171,10 @@ test.describe("compact mobile button visuals and separate touch targets", () => 
     await login(page, manifest);
     const group = page.getByRole("group", { name: "图表类型", exact: true });
     await expect(group).toBeVisible();
+    // The controls precede their analytics and metric cards. Finish that
+    // shared layout before scrolling them into the viewport for hit testing.
+    await expect(page.locator(".trend-card")).toHaveAttribute("aria-busy", "false");
+    await page.evaluate(() => document.fonts.ready);
     await group.scrollIntoViewIfNeeded();
     await page.clock.runFor(100);
     const choices = ["面积图", "柱状图", "折线图"].map(name => group.getByRole("button", { name, exact: true }));
@@ -198,9 +202,9 @@ test.describe("compact mobile button visuals and separate touch targets", () => 
     await record(page, info, { evidence: "browser touch viewport", joinedChoices: geometry });
   });
 
-  test("the first technical-detail copy action retains its full touch target at the scroll start", async ({ page, manifest }, info) => {
-    // The retired global secret dialog is no longer reachable. Exercise the
-    // same shared CopyValue control in a real synthetic ledger detail dialog.
+  test("the first inline technical copy action retains its full touch target at the section scroll start", async ({ page, manifest }, info) => {
+    // Technical information expands within the ledger's existing scroll body.
+    // Exercise the shared CopyValue control without opening a second dialog.
     await page.addInitScript(() => {
       Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async (value: string) => {
         (window as Window & { __copiedText?: string }).__copiedText = value;
@@ -208,35 +212,59 @@ test.describe("compact mobile button visuals and separate touch targets", () => 
     });
     await login(page, manifest);
     await page.goto(manifest.origin + "/admin" + manifest.details.ledgerAssociated);
-    const view = page.getByRole("button", { name: "更多操作，支付宝流水记录操作", exact: true });
-    await view.click();
-    await page.getByRole("menuitem", { name: "技术详情", exact: true }).click();
-    const dialog = page.getByRole("dialog", { name: "技术详情", exact: true });
-    const body = dialog.locator("[data-admin-dialog-scroll]");
-    await expect.poll(() => body.evaluate(element => element.scrollTop)).toBe(0);
-    const copy = dialog.getByRole("button", { name: "复制内部流水编号（PerPay）", exact: true });
-    await expect(dialog.getByRole("heading", { name: "技术详情", exact: true })).toBeFocused();
+    await expect.poll(() => new URL(page.url()).searchParams.get("overlay")).toBe(manifest.details.ledgerAssociated);
+    const sourceUrl = page.url();
+    const dialog = page.locator("[data-overlay-content]");
+    await expect(dialog.getByRole("tablist", { name: "流水详情分类", exact: true })).toBeVisible();
+    await expect(dialog.getByRole("tab", { name: "交易", exact: true })).toHaveAttribute("aria-selected", "true");
+    const technical = dialog.locator("[data-technical-information]");
+    const view = technical.getByRole("button", { name: "技术信息", exact: true });
+    await view.scrollIntoViewIfNeeded();
+    await view.focus();
+    await page.keyboard.press("Enter");
+    await expect(view).toHaveAttribute("aria-expanded", "true");
+    await expect(technical.locator('pre[aria-label="技术信息"]')).toBeVisible();
+    await expect(page.getByRole("dialog")).toHaveCount(1);
+    const body = dialog.locator("[data-overlay-detail]");
+    await expect(body).toHaveCSS("overflow-y", "auto");
+    await technical.evaluate(element => {
+      const scroll = element.closest<HTMLElement>("[data-overlay-detail]")!;
+      scroll.scrollTop += element.getBoundingClientRect().top - scroll.getBoundingClientRect().top;
+    });
+    const sectionStart = await technical.evaluate(element => ({
+      top: element.getBoundingClientRect().top,
+      bodyTop: element.closest("[data-overlay-detail]")!.getBoundingClientRect().top,
+    }));
+    expect(Math.abs(sectionStart.top - sectionStart.bodyTop)).toBeLessThanOrEqual(1);
+    const copy = technical.getByRole("button", { name: "复制内部流水编号（PerPay）", exact: true });
+    await expect(view).toBeFocused();
     await page.keyboard.press("Tab");
     await expect(copy).toBeFocused();
+    await expect(copy).toHaveAccessibleName("复制内部流水编号（PerPay）");
+    await expect(copy).toHaveAttribute("title", "复制内部流水编号（PerPay）");
     await copy.hover();
     await page.clock.runFor(200);
-    const tooltip = page.locator('[data-slot="tooltip-content"]').filter({ hasText: /^复制内部流水编号（PerPay）$/ });
-    await expect(tooltip).toBeVisible();
+    // The inline copy action uses its native title; no custom tooltip covers
+    // its touch extension. The complete surface is still probed below.
+    await expect(page.locator('[data-slot="tooltip-content"]:visible')).toHaveCount(0);
     const copyGeometry = await expectTouchSlot(copy);
-    const tooltipBounds = (await tooltip.boundingBox())!;
-    const overlapWidth = Math.min(copyGeometry.x + copyGeometry.width, tooltipBounds.x + tooltipBounds.width) - Math.max(copyGeometry.x, tooltipBounds.x);
-    const overlapHeight = Math.min(copyGeometry.y + copyGeometry.height, tooltipBounds.y + tooltipBounds.height) - Math.max(copyGeometry.y, tooltipBounds.y);
-    expect(overlapWidth <= 0 || overlapHeight <= 0, "the open tooltip stays outside the complete 40px copy touch target").toBe(true);
     expect(copyGeometry.visual.height).toBeCloseTo(32, 1);
     const bodyBox = (await body.boundingBox())!;
     expect(copyGeometry.y).toBeGreaterThanOrEqual(bodyBox.y);
+    expect(await dialog.evaluate(element => element.scrollTop), "the overlay shell remains stationary while its body scrolls").toBe(0);
     const copyTap = await tapOutsideVisible(page, copy, "top");
-    await expect(dialog.getByRole("status").filter({ hasText: "已复制" })).toHaveText("已复制");
+    await expect(copy).toBeFocused();
+    await expect(technical.getByRole("status").filter({ hasText: "已复制" })).toHaveText("已复制");
     expect(await page.evaluate(() => (window as Window & { __copiedText?: string }).__copiedText)).toBe(manifest.details.ledgerAssociated!.split("/").at(-1));
-    await record(page, info, { evidence: "real ledger technical dialog with synthetic domain data and clipboard", buttonScale: { copyGeometry, copyTap, tooltipBounds } });
-    await dialog.getByRole("button", { name: "关闭", exact: true }).click();
-    await expect(dialog).toHaveCount(0);
+    await record(page, info, { evidence: "real ledger overlay with inline technical information, synthetic domain data and clipboard", buttonScale: { copyGeometry, copyTap, sectionStart, nativeTitle: true } });
+    await view.scrollIntoViewIfNeeded();
+    await view.focus();
+    await page.keyboard.press("Enter");
+    await expect(view).toHaveAttribute("aria-expanded", "false");
+    await expect(technical.locator("pre")).toHaveCount(0);
     await expect(view).toBeFocused();
+    await expect(page.getByRole("dialog")).toHaveCount(1);
+    await expect(page).toHaveURL(sourceUrl);
   });
 
   test("200% text retains complete scrollable touch targets without fixed visual-size assertions", async ({ page, manifest }, info) => {

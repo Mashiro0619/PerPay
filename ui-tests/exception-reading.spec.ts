@@ -1,5 +1,6 @@
 import type { Page } from "@playwright/test";
 import { test, expect, login, record, type Manifest } from "./fixtures";
+import { expectOverlayFits, settleOverlay } from "./overlay-fixtures";
 import { audit, screenshot } from "./audit";
 import type { AdminOrderDetail, FinancialException, ReconciliationLedgerEntry } from "../web/src/api/generated/types.gen";
 
@@ -23,79 +24,102 @@ async function appearance(page: Page, theme: "light" | "dark", mode: "compact" |
 }
 async function open(page: Page, manifest: Manifest, key: string) {
   await page.goto(manifest.origin + "/admin" + path(manifest, key));
+  await settleOverlay(page);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("账务异常详情");
   const card = page.getByRole("group", { name: "账务异常记录", exact: true });
   await expect(card).toBeVisible();
-  await expect(page.locator('#main-content [data-slot="skeleton"]')).toHaveCount(0);
+  await expect(page.locator('[data-overlay-detail] [data-slot="skeleton"]')).toHaveCount(0);
   await page.evaluate(() => document.fonts.ready);
   return card;
 }
+// pre-wrap may hang line-ending spaces outside a line box. Check every
+// non-whitespace character with the same 1 px tolerance, and retain raw ranges
+// plus hanging whitespace as evidence instead of treating invisible advances as ink.
+function completeFieldGeometry(field: Element) {
+  const value = field.querySelector("dd")!, box = value.getBoundingClientRect();
+  const textElement = value.querySelector("span.break-all") ?? value;
+  const textBox = textElement.getBoundingClientRect();
+  const range = document.createRange(); range.selectNodeContents(textElement);
+  const raw = range.getBoundingClientRect();
+  const walker = document.createTreeWalker(textElement, NodeFilter.SHOW_TEXT);
+  const characters: Array<{ text: string; left: number; top: number; right: number; bottom: number }> = [];
+  const hangingWhitespace: Array<{ text: string; right: number; beyondRight: number }> = [];
+  while (walker.nextNode()) {
+    const node = walker.currentNode;
+    let offset = 0;
+    for (const text of node.textContent ?? "") {
+      const start = offset; offset += text.length;
+      range.setStart(node, start); range.setEnd(node, offset);
+      for (const rect of range.getClientRects()) {
+        if (!rect.width || !rect.height) continue;
+        if (text.trim()) characters.push({ text, left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom });
+        else if (rect.right > textBox.right + 1) hangingWhitespace.push({ text, right: rect.right, beyondRight: rect.right - textBox.right });
+      }
+    }
+  }
+  const top = Math.min(...characters.map(character => character.top));
+  const bottom = Math.max(...characters.map(character => character.bottom));
+  return { name: field.querySelector("dt")!.textContent, fieldWidth: field.getBoundingClientRect().width,
+    height: box.height, valueHeight: box.height, lineHeight: Number.parseFloat(getComputedStyle(value).lineHeight),
+    textHeight: bottom - top, boxHeight: textBox.height, textRight: Math.max(...characters.map(character => character.right)), boxRight: textBox.right,
+    textBottom: bottom, boxBottom: textBox.bottom, characterCount: characters.length, characterText: characters.map(character => character.text).join(""),
+    rawTextRight: raw.right, rawTextHeight: raw.height, hangingWhitespace };
+}
+
 async function geometry(page: Page, mode: "compact" | "full") {
-  const main = page.locator("#main-content");
-  const frame = await main.evaluate(main => {
-    const content = main.querySelector("[data-content-width]")!, detail = main.querySelector("[data-detail-page]")!;
-    return { width: content.getBoundingClientRect().width, maximum: Number.parseFloat(getComputedStyle(content).maxWidth), layout: content.getAttribute("data-content-layout"), gap: Number.parseFloat(getComputedStyle(detail).rowGap) };
-  });
-  expect(frame.layout).toBe("detail");
-  expect(frame.maximum).toBe(mode === "compact" ? 1024 : 1280);
-  expect(frame.width).toBeLessThanOrEqual(frame.maximum);
-  if (page.viewportSize()?.width === 2190) expect(frame.width).toBe(frame.maximum);
-  expect(frame.gap).toBe(24);
-  const groups = await main.locator('[data-detail-fields][data-density="comfortable"]').evaluateAll(containers => containers.map(container => {
+  const main = page.locator("[data-overlay-detail]");
+  await expect(page.locator("[data-content-width]")).toHaveAttribute("data-content-width", mode);
+  const frame = await expectOverlayFits(page);
+  await expect(main.locator("[data-detail-page]")).toHaveCSS("row-gap", "16px");
+  const groups = await main.locator('[data-detail-fields][data-density="comfortable"]:visible').evaluateAll(containers => containers.map(container => {
     const dl = container.querySelector("dl")!, bounds = container.getBoundingClientRect(), style = getComputedStyle(dl);
-    return { width: bounds.width, left: bounds.left, right: bounds.right, credentials: !!container.closest("[data-detail-credentials]"), layout: container.getAttribute("data-layout"), display: style.display,
-      columns: style.gridTemplateColumns.trim().split(/\s+/).length, columnGap: Number.parseFloat(style.columnGap), rowGap: Number.parseFloat(style.rowGap),
+    return { width: bounds.width, left: bounds.left, right: bounds.right, credentials: !!container.closest("[data-detail-credentials]"), compact: container.getAttribute("data-compact-fields"),
+      layout: container.getAttribute("data-layout"), display: style.display, direction: style.flexDirection, rowGap: Number.parseFloat(style.rowGap),
       fields: Array.from(dl.children).map(field => {
-        const box = field.getBoundingClientRect(), term = field.querySelector("dt")!, value = field.querySelector("dd")!;
-        return { name: term.textContent, wide: field.getAttribute("data-field-wide") === "true", width: box.width, left: box.left, right: box.right, top: box.top, bottom: box.bottom,
-          gap: value.getBoundingClientRect().top - term.getBoundingClientRect().bottom, scrollWidth: value.scrollWidth, clientWidth: value.clientWidth,
-          labelFont: Number.parseFloat(getComputedStyle(term).fontSize), valueFont: Number.parseFloat(getComputedStyle(value).fontSize) };
+        const box = field.getBoundingClientRect(), term = field.querySelector("dt")!, value = field.querySelector("dd")!, fieldStyle = getComputedStyle(field);
+        const labelBounds = term.getBoundingClientRect(), valueBounds = value.getBoundingClientRect();
+        return { name: term.textContent, width: box.width, left: box.left, right: box.right, top: box.top, bottom: box.bottom,
+          display: fieldStyle.display, columns: fieldStyle.gridTemplateColumns.trim().split(/\s+/).length,
+          gap: Number.parseFloat(fieldStyle.rowGap), columnGap: Number.parseFloat(fieldStyle.columnGap),
+          labelTop: labelBounds.top, labelBottom: labelBounds.bottom, labelRight: labelBounds.right, valueTop: valueBounds.top, valueLeft: valueBounds.left,
+          scrollWidth: value.scrollWidth, clientWidth: value.clientWidth, labelFont: Number.parseFloat(getComputedStyle(term).fontSize), valueFont: Number.parseFloat(getComputedStyle(value).fontSize) };
       }) };
   }));
   expect(groups.length).toBeGreaterThan(0);
   for (const group of groups) {
+    expect(group.compact).toBe("true");
     expect(group.layout).toBe(group.credentials ? "columns" : "flow");
-    expect(group.display).toBe(group.credentials ? "grid" : "flex");
-    expect(group.columnGap).toBe(group.credentials ? 16 : 24);
-    expect(group.rowGap).toBe(16);
-    if (group.credentials) expect(group.columns).toBe(group.width >= 640 ? 2 : 1);
-    const rows: Array<typeof group.fields> = [];
+    expect(group.display).toBe("flex");
+    expect(group.direction).toBe("column");
+    expect(group.rowGap).toBe(0);
+    expect(group.fields.length).toBeGreaterThan(0);
     for (const [index, field] of group.fields.entries()) {
+      expect(field.display).toBe("grid");
+      expect(field.columns).toBe(group.width <= 320 ? 1 : 2);
       expect(field.left).toBeGreaterThanOrEqual(group.left - 1);
       expect(field.right).toBeLessThanOrEqual(group.right + 1);
-      expect(field.scrollWidth).toBeLessThanOrEqual(field.clientWidth + 1);
-      expect(Math.abs(field.gap - 8)).toBeLessThanOrEqual(0.5);
-      expect(field.labelFont).toBeGreaterThanOrEqual(14);
+      expect(field.scrollWidth, field.name ?? "complete fact").toBeLessThanOrEqual(field.clientWidth + 1);
+      expect(field.labelFont).toBeGreaterThanOrEqual(13);
       expect(field.valueFont).toBeGreaterThanOrEqual(14);
-      if (group.credentials) expect(Math.abs(field.width - (group.width - (group.columns - 1) * 16) / group.columns)).toBeLessThanOrEqual(1);
-      else if (field.wide || group.width < 640) expect(Math.abs(field.width - group.width)).toBeLessThanOrEqual(1);
-      else { expect(field.width).toBeGreaterThanOrEqual(191); expect(field.width).toBeLessThanOrEqual(257); }
-      const previous = group.fields[index - 1];
-      if (previous) {
-        expect(field.top, "DOM reading order: " + field.name).toBeGreaterThanOrEqual(previous.top - 1);
-        if (Math.abs(field.top - previous.top) <= 1) expect(field.left).toBeGreaterThan(previous.left);
+      if (field.columns === 1) expect(Math.abs(field.valueTop - field.labelBottom - field.gap)).toBeLessThanOrEqual(1);
+      else {
+        expect(Math.abs(field.valueTop - field.labelTop)).toBeLessThanOrEqual(1);
+        expect(Math.abs(field.valueLeft - field.labelRight - field.columnGap)).toBeLessThanOrEqual(1);
       }
-      const row = rows.at(-1);
-      if (row && Math.abs(row[0]!.top - field.top) <= 1) row.push(field); else rows.push([field]);
-    }
-    for (const [index, row] of rows.entries()) {
-      expect(row.length).toBeLessThanOrEqual(group.credentials ? group.columns : 4);
-      expect(Math.abs(row[0]!.left - group.left)).toBeLessThanOrEqual(1);
-      if (!group.credentials && (group.width < 640 || row.some(field => field.wide))) expect(row).toHaveLength(1);
-      for (let item = 1; item < row.length; item++) expect(Math.abs(row[item]!.left - row[item - 1]!.right - group.columnGap)).toBeLessThanOrEqual(1);
-      const previous = rows[index - 1];
-      if (previous) expect(Math.abs(row[0]!.top - Math.max(...previous.map(field => field.bottom)) - 16)).toBeLessThanOrEqual(1);
+      const previous = group.fields[index - 1];
+      if (previous) expect(field.top, "DOM reading order: " + field.name).toBeGreaterThanOrEqual(previous.bottom - 1);
     }
   }
-  const card = page.locator("[data-financial-exception]");
-  await expect(card).toHaveAttribute("data-size", "default");
+  const card = main.locator("[data-financial-exception]");
+  await expect(card).toHaveCSS("border-radius", "0px");
+  await expect(card).toHaveCSS("box-shadow", "none");
   await expect(card.locator('[data-slot="card-footer"]')).toHaveCount(0);
-  await expect(card.locator('[data-slot="card-action"]').getByRole("button", { name: "更多操作，异常记录操作", exact: true })).toBeVisible();
+  await expect(card.getByRole("button", { name: "技术信息", exact: true })).toBeVisible();
   await expect(main.locator("[data-detail-identifier]")).toHaveCount(0);
   return { frame, groups };
 }
 
-test("exception global and site details retain standard cards across the complete reading matrix", async ({ page, manifest }, info) => {
+test("exception global and site overlays retain readable evidence across the complete reading matrix", async ({ page, manifest }, info) => {
   test.setTimeout(360_000);
   await login(page, manifest);
   const errors: string[] = [];
@@ -190,7 +214,7 @@ test("exception and source read failures stay explicit and recover only after re
       return unavailable ? route.fulfill({ status: 503, json: { error: { code: "synthetic_exception_unavailable", message: "合成的异常凭据读取失败" } } }) : route.continue();
     });
     await page.goto(manifest.origin + "/admin" + path(manifest, "exceptionOpen"));
-    const main = page.locator("#main-content");
+    const main = page.locator("[data-overlay-detail]");
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("账务异常详情");
     const alert = main.getByRole("alert").filter({ hasText: "合成的异常凭据读取失败" });
     await expect(alert).toBeVisible();
@@ -216,16 +240,22 @@ test("exception inline tools and manual confirmation preserve copy, scope and ke
   for (const key of ["exceptionOpen", "exceptionSite"]) {
     const exception = await read<FinancialException>(page, manifest, endpoint(manifest, key));
     const card = await open(page, manifest, key);
-    const tools = card.getByRole("button", { name: "更多操作，异常记录操作", exact: true });
+    const technical = card.locator("[data-technical-information]");
+    const tools = technical.getByRole("button", { name: "技术信息", exact: true });
+    await expect(tools).toHaveAttribute("aria-expanded", "false");
     await tools.focus();
     await page.keyboard.press("Enter");
-    await page.getByRole("menuitem", { name: "技术详情", exact: true }).click();
-    const technical = page.getByRole("dialog", { name: "技术详情", exact: true });
-    await expect(technical.getByRole("heading", { name: "技术详情", exact: true })).toBeFocused();
-    await technical.getByRole("button", { name: "复制异常编号", exact: true }).click();
+    await expect(tools).toHaveAttribute("aria-expanded", "true");
+    await expect(technical.locator("pre")).toBeVisible();
+    await expect(page.getByRole("dialog", { name: "技术详情", exact: true })).toHaveCount(0);
+    await page.keyboard.press("Tab");
+    await expect(technical.getByRole("button", { name: "复制异常编号", exact: true })).toBeFocused();
+    await page.keyboard.press("Enter");
     await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(exception.exception_id);
-    await page.keyboard.press("Escape");
-    await expect(technical).toHaveCount(0);
+    await tools.focus();
+    await page.keyboard.press("Enter");
+    await expect(tools).toHaveAttribute("aria-expanded", "false");
+    await expect(technical.locator("pre")).toBeHidden();
     await expect(tools).toBeFocused();
     const credentials = card.getByRole("region", { name: "核对凭据", exact: true });
     await credentials.getByRole("button", { name: "复制内部流水编号（PerPay）", exact: true }).click();
@@ -244,7 +274,9 @@ test("exception inline tools and manual confirmation preserve copy, scope and ke
     await expect(confirmation).toHaveCount(0);
     await expect(action).toBeFocused();
     const scope = path(manifest, key).split("/reconciliation/")[0];
-    await expect(card.locator('[data-detail-order-summary] a[href*="/orders/"]')).toHaveAttribute("href", "/admin" + scope + "/orders/" + exception.order_id);
+    const orderLink = card.locator('[data-detail-order-summary] [data-slot="item-title"] a');
+    const orderHref = new URL((await orderLink.getAttribute("href"))!, page.url());
+    expect(orderHref.searchParams.get("overlay")).toBe(scope + "/orders/" + exception.order_id);
     await record(page, info, { feature: "exception-inline-focus-copy", key, reasonLength: reason.length, evidence: "read-only-confirmation-open-and-cancel" });
   }
   expect(writes).toEqual([]);
@@ -257,7 +289,7 @@ test("exception back navigation preserves scoped filters and record identity", a
     const scope = path(manifest, key).split("/reconciliation/")[0];
     const listPath = scope ? scope + "/work-items?type=FINANCIAL_EXCEPTION&sort_by=created_at&sort_order=asc" : "/reconciliation?tab=exceptions&sort_by=created_at&sort_order=asc";
     await page.goto(manifest.origin + "/admin" + listPath);
-    const links = page.locator('[data-business-row] a[data-row-link][href*="/reconciliation/exceptions/"]');
+    const links = page.locator('[data-business-row] a[data-row-link][href*="%2Freconciliation%2Fexceptions%2F"]');
     await expect(links.first()).toBeVisible();
     const listUrl = page.url(), count = await links.count();
     const link = links.nth(count - 1), href = await link.getAttribute("href");
@@ -267,16 +299,19 @@ test("exception back navigation preserves scoped filters and record identity", a
     await page.keyboard.press("Enter");
     await expect(page).toHaveURL(manifest.origin + href);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("账务异常详情");
-    const back = page.locator("[data-detail-navigation]").getByRole("link").first();
-    await expect(back).toHaveAttribute("href", new URL(listUrl).pathname + new URL(listUrl).search);
-    await back.click();
+    const overlay = await settleOverlay(page);
+    await overlay.getByRole("button", { name: "关闭对话框", exact: true }).click();
     await expect(page).toHaveURL(listUrl);
+    await page.clock.runFor(250);
+    await expect(page.locator("[data-overlay-content]")).toHaveCount(0);
     await expect(links).toHaveCount(count);
     const scrollAfterReturn = await page.evaluate(() => scrollY);
     const returned = page.locator('[data-business-row] a[data-row-link][href="' + href + '"]');
     await expect(returned).toHaveCount(1);
     await expect(returned).toBeVisible();
-    await record(page, info, { feature: "exception-list-return", key, count, listUrl, recordHref: href, scrollBefore, scrollAfterReturn, scrollRestoration: "not-provided-by-existing-exception-navigation", evidence: "local-synthetic-domain" });
+    await expect(returned).toBeFocused();
+    expect(Math.abs(scrollAfterReturn - scrollBefore)).toBeLessThanOrEqual(5);
+    await record(page, info, { feature: "exception-list-return", key, count, listUrl, recordHref: href, scrollBefore, scrollAfterReturn, scrollRestoration: "overlay-retains-list-scroll-and-trigger-focus", evidence: "local-synthetic-domain" });
     await returned.focus();
     await page.keyboard.press("Enter");
     await expect(page).toHaveURL(manifest.origin + href);
@@ -311,12 +346,10 @@ test("exception long credentials, counterparties and multiline notes wrap comple
     for (const [name, value] of [["所属网站", site], ["支付宝交易对方", counterpart], ["支付宝订单号", number]]) {
       const field = card.locator("dt").filter({ hasText: new RegExp("^" + name + "$") }).locator("..");
       await expect(field.locator("dd")).toContainText(value!);
-      const measured = await field.evaluate(field => {
-        const value = field.querySelector("dd")!, box = value.getBoundingClientRect();
-        const textElement = value.querySelector("span.break-all") ?? value;
-        const range = document.createRange(); range.selectNodeContents(textElement);
-        const text = range.getBoundingClientRect(), textBox = textElement.getBoundingClientRect();
-        return { name: field.querySelector("dt")!.textContent, height: box.height, lineHeight: Number.parseFloat(getComputedStyle(value).lineHeight), textHeight: text.height, boxHeight: textBox.height, textRight: text.right, boxRight: textBox.right };
+      const measured = await field.evaluate(completeFieldGeometry);
+      expect(measured.characterText).toBe(value!.replace(/\s/gu, ""));
+      if (measured.hangingWhitespace.length || measured.textRight > measured.boxRight + 1) await info.attach(`text-bounds-${key}-${width}-${theme}-${name}`, {
+        body: JSON.stringify(measured, null, 2), contentType: "application/json",
       });
       expect(measured.height).toBeGreaterThan(measured.lineHeight * 2);
       expect(measured.textHeight).toBeLessThanOrEqual(measured.boxHeight + 1);

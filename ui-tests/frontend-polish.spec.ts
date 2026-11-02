@@ -70,8 +70,9 @@ function distribution(values: number[]) {
 }
 
 async function settle(page: Page) {
-  await expect(page.locator("#main-content")).toBeVisible();
-  await expect(page.locator('#main-content [data-slot="skeleton"]')).toHaveCount(0);
+  const root = page.locator(new URL(page.url()).searchParams.has("overlay") ? "[data-overlay-content]" : "#main-content");
+  await expect(root).toBeVisible();
+  await expect(root.locator('[data-slot="skeleton"]')).toHaveCount(0);
   await page.evaluate(() => document.fonts.ready);
   await page.waitForTimeout(300);
 }
@@ -98,6 +99,8 @@ async function checkpoint(page: Page, info: TestInfo, name: string, videoOffset:
   await page.screenshot({ path: imagePath, fullPage: true });
   await info.attach(`${phase}-${name}`, { path: imagePath, contentType: "image/png" });
   const geometry = await page.evaluate(() => {
+    const overlay = new URL(location.href).searchParams.has("overlay") ? document.querySelector("[data-overlay-content]") : null;
+    const foreground = overlay ?? document.querySelector("#main-content")!;
     const bounds = (element: Element | null) => {
       if (!element) return null;
       const rect = element.getBoundingClientRect();
@@ -109,10 +112,12 @@ async function checkpoint(page: Page, info: TestInfo, name: string, videoOffset:
       scrollWidth: document.documentElement.scrollWidth,
       overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
       theme: document.documentElement.classList.contains("dark") ? "dark" : "light",
-      heading: document.querySelector("#main-content h1")?.textContent,
-      main: bounds(document.querySelector("[data-content-width]")),
-      title: bounds(document.querySelector("[data-page-heading]")),
-      cards: [...document.querySelectorAll('#main-content [data-slot="card"]')].map(card => ({ title: card.querySelector('[data-slot="card-title"]')?.textContent, bounds: bounds(card) })),
+      foreground: overlay ? "overlay" : "page",
+      heading: foreground.querySelector(overlay ? '[data-slot="dialog-title"]' : "h1")?.textContent,
+      main: bounds(overlay ?? document.querySelector("[data-content-width]")),
+      title: bounds(foreground.querySelector(overlay ? '[data-slot="dialog-title"]' : "[data-page-heading]")),
+      cards: [...foreground.querySelectorAll('[data-slot="card"]')].map(card => ({ title: card.querySelector('[data-slot="card-title"]')?.textContent, bounds: bounds(card) })),
+      sections: [...foreground.querySelectorAll("section.detail-section")].map(section => ({ title: section.querySelector("h2")?.textContent, bounds: bounds(section) })),
       sidebar: document.querySelector('[data-slot="sidebar"][data-state]')?.getAttribute("data-state") ?? "mobile-drawer",
       fontStatus: document.fonts.status,
     };
@@ -228,15 +233,31 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
       await capture("orders");
       const order = page.locator('[data-business-table="orders"] a[data-row-link]').first();
       const selectedOrder = { title: await order.innerText(), href: await order.getAttribute("href") };
+      const ordersUrl = page.url();
+      expect(selectedOrder.href).toBeTruthy();
+      const detailUrl = new URL(selectedOrder.href!, manifest.origin);
+      if (phase === "final") {
+        expect(detailUrl.pathname).toBe(new URL(ordersUrl).pathname);
+        expect(detailUrl.searchParams.get("overlay")).toMatch(/^\/orders\/[^/?]+$/);
+      }
       observations.push(await observe(page, "open-order-detail", async () => {
         await order.click();
-        await expect(page).toHaveURL(/\/admin\/orders\/[^/?]+/);
+        await expect(page).toHaveURL(detailUrl.href);
+        if (phase === "final") {
+          await expect(page.getByRole("dialog")).toHaveCount(1);
+          await expect(page.getByRole("dialog")).toHaveAccessibleName(selectedOrder.title);
+          await expect(page.locator('[data-overlay-background="inactive"]')).toHaveAttribute("inert", "");
+        }
         await settle(page);
       }));
       await capture("order-detail");
       observations.push(await observe(page, "return-to-orders", async () => {
         await page.goBack();
-        await expect(page).toHaveURL(/\/admin\/orders(?:\?|$)/);
+        await expect(page).toHaveURL(ordersUrl);
+        if (phase === "final") {
+          await expect(page.locator("[data-overlay-content]")).toHaveCount(0);
+          await expect(order).toBeFocused();
+        }
         await settle(page);
       }));
 
