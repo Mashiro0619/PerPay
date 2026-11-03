@@ -18,6 +18,7 @@ import {
   ApiError,
   api,
   result,
+  type DashboardChartType,
   type RuntimeSettings,
 } from "@/api/client";
 import { Link } from "@/navigation";
@@ -36,6 +37,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   Select,
   SelectContent,
@@ -273,9 +275,13 @@ export function SettingsEditor({
   const [showProductName, setShowProductName] = useState(
     settings.display?.checkout_show_product_name ?? true,
   );
+  const [chartType, setChartType] = useState<DashboardChartType>(
+    initialSettings.display?.dashboard_chart_type ?? "AREA",
+  );
+  const [savedChartType, setSavedChartType] = useState(chartType);
   useEffect(() => {
     if (section === "display") draft.onChange();
-  }, [showProductName, section]);
+  }, [showProductName, chartType, section]);
   useEffect(() => {
     // Disabled optional fields enter/leave FormData after the checkbox's change event.
     if (section === "notifications") draft.onChange();
@@ -303,7 +309,7 @@ export function SettingsEditor({
       if (legacyProvider) throw new Error("旧沙箱接入已停用，请添加正式支付宝账号。");
       if (!onlineManager.isOnline() || !navigator.onLine)
         throw new Error("网络已断开，设置未提交。恢复连接后请重新提交。");
-      return saveSettings(section, form, settings);
+      return saveSettings(section, form, settings, savedChartType);
     },
     onSuccess: (data, form) => {
       if (!mounted.current) {
@@ -311,8 +317,13 @@ export function SettingsEditor({
         void queryClient.invalidateQueries({ queryKey: ["settings"], exact: true, refetchType: "none" });
         return;
       }
-      if (section === "display" && data.display?.system_name)
-        setSystemName(data.display.system_name);
+      if (section === "display") {
+        if (data.display?.system_name) setSystemName(data.display.system_name);
+        const savedType = data.display?.dashboard_chart_type ?? "AREA";
+        setChartType(savedType);
+        setSavedChartType(savedType);
+        form.set("dashboard_chart_type", savedType);
+      }
       draft.markSaved(form);
       const message = section === "backup" ? "备份策略已保存" : "已保存";
       setSavedMessage(message);
@@ -334,9 +345,10 @@ export function SettingsEditor({
   useEffect(() => {
     // A mutation can publish field errors before its disabled fieldset is released.
     if (save.isPending) return;
-    const field = draft.form.current?.elements.namedItem(
-      Object.keys(fieldErrors)[0] ?? "",
-    );
+    const name = Object.keys(fieldErrors)[0] ?? "";
+    const field = name === "dashboard_chart_type"
+      ? draft.form.current?.querySelector<HTMLElement>('[data-settings-chart-default] [aria-pressed="true"]')
+      : draft.form.current?.elements.namedItem(name);
     if (!(field instanceof HTMLElement)) return;
     revealField(field);
     requestAnimationFrame(() => field.focus());
@@ -697,7 +709,6 @@ export function SettingsEditor({
         <FieldLabel htmlFor="setting-system-name">支付系统名称</FieldLabel>
         <FieldContent className="min-w-0">
           <Input
-            className="max-w-md"
             id="setting-system-name"
             name="system_name"
             required
@@ -713,6 +724,37 @@ export function SettingsEditor({
               {fieldErrors.system_name}
             </FieldError>
           )}
+        </FieldContent>
+      </Field>
+      <Field orientation="vertical" className={displayRowClassName} data-invalid={!!fieldErrors.dashboard_chart_type}>
+        <FieldLabel id={formId + "-chart-label"}>收款趋势默认图形</FieldLabel>
+        <FieldContent className="min-w-0">
+          <input type="hidden" name="dashboard_chart_type" value={chartType} />
+          <ToggleGroup data-settings-chart-default variant="outline" value={[chartType]}
+            aria-labelledby={formId + "-chart-label"}
+            aria-describedby={formId + "-chart-hint" + (fieldErrors.dashboard_chart_type ? " " + formId + "-chart-error" : "")}
+            aria-invalid={!!fieldErrors.dashboard_chart_type}
+            className="w-full max-w-full flex-wrap items-stretch"
+            onValueChange={values => {
+              const value = values[0];
+              if (value !== "AREA" && value !== "BAR" && value !== "LINE") return;
+              setChartType(value);
+              setSavedMessage("");
+              save.reset();
+              setFieldErrors(current => {
+                if (!current.dashboard_chart_type) return current;
+                const next = { ...current };
+                delete next.dashboard_chart_type;
+                return next;
+              });
+            }}>
+            {([["AREA", "面积图"], ["BAR", "柱状图"], ["LINE", "折线图"]] as const).map(([value, label]) =>
+              <ToggleGroupItem key={value} value={value} type="button" disabled={save.isPending}
+                aria-invalid={!!fieldErrors.dashboard_chart_type}
+                className="h-auto min-h-8 min-w-0 flex-[1_1_6rem] whitespace-normal py-2 max-sm:min-h-11">{label}</ToggleGroupItem>)}
+          </ToggleGroup>
+          <FieldDescription id={formId + "-chart-hint"}>用于未设置个人图形偏好的浏览器。</FieldDescription>
+          {fieldErrors.dashboard_chart_type && <FieldError id={formId + "-chart-error"}>{fieldErrors.dashboard_chart_type}</FieldError>}
         </FieldContent>
       </Field>
       {!settings.site_mode && <>
@@ -890,7 +932,8 @@ export function SettingsEditor({
                 <FieldGroup
                   className={cn(
                     "grid items-start gap-6",
-                    section === "display" && "w-full max-w-2xl",
+                    section === "display" && "w-full",
+                    section === "display" && !overlay && "max-w-2xl",
                     panels.length > 1 && "@3xl/settings:grid-cols-2",
                   )}
                 >
@@ -954,6 +997,7 @@ async function saveSettings(
   section: ConfigurationSection,
   form: FormData,
   settings: RuntimeSettings,
+  savedChartType: DashboardChartType,
 ): Promise<RuntimeSettings> {
   const revision = settings.revision;
   const text = (key: string) => String(form.get(key) ?? "").trim();
@@ -1034,6 +1078,9 @@ async function saveSettings(
     ).data;
   }
   if (section === "display") {
+    const selectedType = text("dashboard_chart_type");
+    if (selectedType !== "AREA" && selectedType !== "BAR" && selectedType !== "LINE")
+      throw new SettingsInputError("dashboard_chart_type", "请选择有效的默认图形。");
     return (
       await result(
         api.updateDisplaySettings({
@@ -1041,7 +1088,9 @@ async function saveSettings(
             revision,
             system_name: text("system_name"),
             ...(settings.site_mode ? {} : { checkout_help_url: text("checkout_help_url") || null, checkout_show_product_name: form.has("checkout_show_product_name") }),
-            dashboard_chart_type: settings.display?.dashboard_chart_type ?? "AREA",
+            dashboard_chart_type: selectedType === savedChartType
+              ? settings.display?.dashboard_chart_type ?? "AREA"
+              : selectedType,
           },
         }),
       )

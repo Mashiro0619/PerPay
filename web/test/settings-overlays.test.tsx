@@ -69,6 +69,8 @@ describe("settings summaries and owned editing overlays", () => {
     const dialog = await screen.findByRole("dialog", { name: "编辑界面显示" });
     expect(dialog).not.toHaveAttribute("data-overlay-record");
     const name = within(dialog).getByLabelText("支付系统名称");
+    const chart = within(dialog).getByRole("group", { name: "收款趋势默认图形" });
+    await user.click(within(chart).getByRole("button", { name: "折线图" }));
     await user.clear(name); await user.type(name, "尚未保存的名称");
     await user.click(footer(dialog).getByRole("button", { name: "关闭" }));
     const guard = await screen.findByRole("alertdialog", { name: "放弃未保存的修改？" });
@@ -80,6 +82,7 @@ describe("settings summaries and owned editing overlays", () => {
     expect(view.router.state.location.pathname).toBe("/settings/display");
     expect(new URLSearchParams(view.router.state.location.search).get("selected_site")).toBe("site_test");
     expect(view.writes()).toHaveLength(0);
+    expect(view.saved.display.dashboard_chart_type).toBe("AREA");
   });
 
   it("submits the portalled settings action against its owning form and updates the summary", async () => {
@@ -88,14 +91,17 @@ describe("settings summaries and owned editing overlays", () => {
     await user.click(await screen.findByRole("link", { name: "编辑界面显示" }));
     const dialog = await screen.findByRole("dialog", { name: "编辑界面显示" });
     const field = within(dialog).getByLabelText("支付系统名称");
+    await user.click(within(dialog).getByRole("button", { name: "柱状图" }));
     await user.clear(field); await user.type(field, "保存后的系统名称");
     const save = footer(dialog).getByRole("button", { name: "保存" }) as HTMLButtonElement;
     expect(save.closest("form")).toBeNull();
     expect(save.form).toBe(field.closest("form"));
     await user.click(save);
     await waitFor(() => expect(view.saved.display.system_name).toBe("保存后的系统名称"));
+    expect(view.saved.display.dashboard_chart_type).toBe("BAR");
     expect(view.writes()).toHaveLength(1);
     expect(new URL(view.writes()[0]!.url).pathname).toBe("/api/admin/v1/settings/display");
+    expect(await view.writes()[0]!.clone().json()).toMatchObject({ dashboard_chart_type: "BAR" });
     await user.click(footer(dialog).getByRole("button", { name: "关闭" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(screen.getByText("保存后的系统名称", { exact: true, selector: "dd" })).toBeVisible();

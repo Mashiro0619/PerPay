@@ -1,7 +1,7 @@
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import { queryClient, type RuntimeSettings, type Site, type SiteConfiguration, type SitePolicy } from "../src/api/client";
+import { queryClient, type DashboardChartType, type RuntimeSettings, type Site, type SiteConfiguration, type SitePolicy } from "../src/api/client";
 import { json } from "./fixtures";
 import { configuredThrough, mountOnboarding } from "./onboarding-fixture";
 
@@ -26,7 +26,7 @@ function mount(path: string) {
     if (request.method === "GET") return json({ data });
     return request.json().then((body: Record<string, unknown>) => {
       writes.push(body);
-      data = { ...data, revision: data.revision + 1, display: { ...data.display, system_name: String(body.system_name) } };
+      data = { ...data, revision: data.revision + 1, display: { ...data.display, system_name: String(body.system_name), dashboard_chart_type: body.dashboard_chart_type as DashboardChartType } };
       return json({ data });
     });
   } });
@@ -52,12 +52,23 @@ describe("website-aware instance settings", () => {
     expect(screen.queryByRole("textbox", { name: "商家帮助链接" })).not.toBeInTheDocument();
     expect(screen.queryByRole("switch", { name: "收银台显示商品名称" })).not.toBeInTheDocument();
     expect(screen.queryByRole("group", { name: "首页图表样式" })).not.toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "收款趋势默认图形" })).toBeVisible();
     fireEvent.change(name, { target: { value: "新的后台" } });
     expect(screen.getByText("未保存")).toBeVisible();
     expect(view.writes).toHaveLength(0);
     fireEvent.submit(name.closest("form")!);
     await waitFor(() => expect(view.writes).toHaveLength(1));
     expect(view.writes[0]).toEqual({ revision: expect.any(Number), system_name: "新的后台", dashboard_chart_type: "AREA" });
+  });
+
+  it("edits the chart default in the instance display form without submitting website fields", async () => {
+    const view = mount("/settings/display/edit");
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "柱状图" }));
+    expect(view.writes).toHaveLength(0);
+    await user.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(view.writes).toHaveLength(1));
+    expect(view.writes[0]).toEqual({ revision: expect.any(Number), system_name: "实例后台", dashboard_chart_type: "BAR" });
   });
 
   it("explains the retired notification page and links to websites", async () => {

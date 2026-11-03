@@ -1,5 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { describe, expect, it, vi } from "vitest";
@@ -25,7 +25,7 @@ function mount(currentSettings: RuntimeSettings = settings) {
 }
 
 describe("instance display settings", () => {
-  it("keeps only field labels and controls without redundant headings or descriptions", () => {
+  it("keeps the display fields together and exposes the same chart default as the settings summary", () => {
     mount();
     const name = screen.getByRole("textbox", { name: "支付系统名称" });
     expect(name).toHaveAttribute("required");
@@ -33,23 +33,27 @@ describe("instance display settings", () => {
     expect(name).not.toHaveAttribute("aria-describedby");
     expect(screen.getByRole("switch", { name: "收银台显示商品名称" })).toBeVisible();
     expect(screen.getByRole("textbox", { name: "商家帮助链接" })).toBeVisible();
-    expect(screen.queryByRole("group", { name: "首页图表样式" })).not.toBeInTheDocument();
+    const chart = screen.getByRole("group", { name: "收款趋势默认图形" });
+    expect(within(chart).getByRole("button", { name: "面积图" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(chart).getByRole("button", { name: "柱状图" })).toHaveAttribute("aria-pressed", "false");
+    expect(within(chart).getByRole("button", { name: "折线图" })).toHaveAttribute("aria-pressed", "false");
     const form = name.closest("form")!;
     expect(form).toHaveClass("w-full");
     expect(form).not.toHaveClass("max-w-2xl");
     expect(form.querySelector("[data-slot=card-content] > [data-slot=field-group]")).toHaveClass("max-w-2xl");
     const displayFields = name.closest('[data-slot="field-group"]')!;
     const rows = [...displayFields.children];
-    expect(rows).toHaveLength(3);
+    expect(rows).toHaveLength(4);
     for (const row of rows) {
       expect(row).toHaveAttribute("data-orientation", "vertical");
       expect(row).not.toContainElement(row.querySelector("label input"));
     }
     expect(rows[0]).toContainElement(name);
-    expect(rows[1]).toContainElement(screen.getByRole("textbox", { name: "商家帮助链接" }));
-    expect(rows[2]).toContainElement(screen.getByRole("switch", { name: "收银台显示商品名称" }));
-    expect(form.elements.namedItem("dashboard_chart_type")).toBeNull();
-    expect(form.querySelector('[data-slot="field-description"]')).toBeNull();
+    expect(rows[1]).toContainElement(chart);
+    expect(rows[2]).toContainElement(screen.getByRole("textbox", { name: "商家帮助链接" }));
+    expect(rows[3]).toContainElement(screen.getByRole("switch", { name: "收银台显示商品名称" }));
+    expect(new FormData(form).get("dashboard_chart_type")).toBe("AREA");
+    expect(chart).toHaveAccessibleDescription("用于未设置个人图形偏好的浏览器。");
     expect(form.querySelector('[data-slot="card-header"]')).toHaveClass("sr-only");
     expect(form.querySelector('[data-slot="field-legend"]')).toHaveClass("sr-only");
     expect(screen.queryByText("系统名称", { exact: true })).not.toBeInTheDocument();
@@ -115,7 +119,47 @@ describe("instance display settings", () => {
       checkout_show_product_name: false,
       dashboard_chart_type: "LINE",
     });
+    expect(screen.getByRole("button", { name: "折线图" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.queryByText("未保存")).not.toBeInTheDocument();
+  });
+
+  it("keeps a selected chart as a draft, restores a clean default, and saves only the explicit selection", async () => {
+    const requests: Request[] = [];
+    const saved: RuntimeSettings = { ...settings, revision: settings.revision + 1,
+      display: { ...settings.display, dashboard_chart_type: "BAR" } };
+    vi.stubGlobal("fetch", vi.fn(async (request: Request) => { requests.push(request); return json({ data: saved }); }));
+    const { onSaved } = mount();
+    const user = userEvent.setup();
+    const chart = screen.getByRole("group", { name: "收款趋势默认图形" });
+    await user.click(within(chart).getByRole("button", { name: "柱状图" }));
+    expect(screen.getByText("未保存")).toBeVisible();
+    expect(requests).toHaveLength(0);
+    await user.click(within(chart).getByRole("button", { name: "面积图" }));
+    expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
+    expect(screen.queryByText("未保存")).not.toBeInTheDocument();
+    await user.click(within(chart).getByRole("button", { name: "柱状图" }));
+    await user.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalledWith(saved));
+    expect(requests).toHaveLength(1);
+    expect(await requests[0]!.json()).toMatchObject({ revision: settings.revision, dashboard_chart_type: "BAR" });
+    expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
+  });
+
+  it("preserves an explicitly edited chart when the settings revision and remote default change", async () => {
+    const requests: Request[] = [];
+    const latest: RuntimeSettings = { ...settings, revision: settings.revision + 2,
+      display: { ...settings.display, dashboard_chart_type: "LINE" } };
+    const saved: RuntimeSettings = { ...latest, revision: latest.revision + 1,
+      display: { ...latest.display, dashboard_chart_type: "BAR" } };
+    vi.stubGlobal("fetch", vi.fn(async (request: Request) => { requests.push(request); return json({ data: saved }); }));
+    const { onSaved, updateSettings } = mount();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "柱状图" }));
+    updateSettings(latest);
+    expect(screen.getByRole("button", { name: "柱状图" })).toHaveAttribute("aria-pressed", "true");
+    await user.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalledWith(saved));
+    expect(await requests[0]!.json()).toMatchObject({ revision: latest.revision, dashboard_chart_type: "BAR" });
   });
 
   it("recognizes restored defaults without making a request", async () => {
@@ -152,12 +196,14 @@ describe("instance display settings", () => {
     await user.click(
       screen.getByRole("switch", { name: "收银台显示商品名称" }),
     );
+    await user.click(screen.getByRole("button", { name: "柱状图" }));
     await user.click(screen.getByRole("button", { name: "保存" }));
     await screen.findByRole("alert");
     expect(
       screen.getByRole("switch", { name: "收银台显示商品名称" }),
     ).not.toBeChecked();
     expect(name).toHaveValue("尚未保存的名称");
+    expect(screen.getByRole("button", { name: "柱状图" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByText("未保存")).toBeVisible();
     expect(onSaved).not.toHaveBeenCalled();
   });

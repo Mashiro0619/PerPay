@@ -109,7 +109,7 @@ describe("official block composition", () => {
         expect(fields).toContainElement(screen.getByRole("textbox", { name: "支付系统名称" }));
         expect(fields).toContainElement(screen.getByRole("switch", { name: "收银台显示商品名称" }));
         expect(fields).toContainElement(screen.getByRole("textbox", { name: "商家帮助链接" }));
-        expect(screen.queryByRole("group", { name: "首页图表样式" })).not.toBeInTheDocument();
+        expect(fields).toContainElement(screen.getByRole("group", { name: "收款趋势默认图形" }));
         expect(fields.querySelector("[data-slot=field-legend]")).toHaveClass("sr-only");
       }
       expect(container.querySelectorAll("[data-slot=card]")).toHaveLength(1);
