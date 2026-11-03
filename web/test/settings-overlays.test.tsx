@@ -281,6 +281,18 @@ describe("settings summaries and owned editing overlays", () => {
     await waitFor(() => expect(privateKey).toHaveFocus());
     expect(view.writes()).toHaveLength(1);
     expect(await view.writes()[0]!.clone().json()).toMatchObject({ private_key: "invalid-imported-private-key" });
+    await user.click(within(dialog).getByRole("tab", { name: "基本信息" }));
+    expect(within(dialog).getByRole("tab", { name: "基本信息" })).toHaveAttribute("aria-selected", "true");
+    await user.click(within(dialog).getByRole("tab", { name: "使用情况" }));
+    expect(within(dialog).getByRole("tab", { name: "使用情况" })).toHaveAttribute("aria-selected", "true");
+    if (label === "保存草稿") {
+      await user.click(footer(dialog).getByRole("button", { name: "更多账号操作" }));
+      await user.click(await screen.findByRole("menuitem", { name: label }));
+    } else await user.click(footer(dialog).getByRole("button", { name: label }));
+    await waitFor(() => expect(view.writes()).toHaveLength(2));
+    await waitFor(() => expect(within(dialog).getByRole("tab", { name: "应用信息" })).toHaveAttribute("aria-selected", "true"));
+    await waitFor(() => expect(privateKey).toHaveFocus());
+    expect(within(dialog).getByRole("textbox", { name: "应用私钥（可选）" })).toHaveValue("invalid-imported-private-key");
     await user.clear(privateKey);
     await user.click(optional);
     expect(optional).toHaveAttribute("aria-expanded", "false");

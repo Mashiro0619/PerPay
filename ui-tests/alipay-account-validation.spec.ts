@@ -61,6 +61,12 @@ for (const layout of [{ width: 1440, height: 900, font: 100 }, { width: 390, hei
         await privateError.scrollIntoViewIfNeeded();
         await page.screenshot({ path: info.outputPath("private-key-validation.png") });
         expect((await read()).revision).toBe(account.revision);
+        await dialog.getByRole("tab", { name: "基本信息", exact: true }).click();
+        await expect(dialog.getByRole("tab", { name: "基本信息", exact: true })).toHaveAttribute("aria-selected", "true");
+        await dialog.getByRole("tab", { name: "使用情况", exact: true }).click();
+        await expect(dialog.getByRole("tab", { name: "使用情况", exact: true })).toHaveAttribute("aria-selected", "true");
+        await dialog.getByRole("tab", { name: "应用信息", exact: true }).click();
+        await expect(privateKey).toHaveValue("invalid-imported-private-key");
         await privateKey.fill("");
         await optional.click();
 

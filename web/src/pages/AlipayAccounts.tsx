@@ -244,6 +244,7 @@ export function AlipayAccountEditor({
   const [keyChangeId, setKeyChangeId] = useState(() => crypto.randomUUID());
   const form = useRef<HTMLFormElement>(null);
   const invalidDraftField = useRef<HTMLElement | null>(null);
+  const focusedSaveError = useRef<Error | null>(null);
   const mounted = useRef(true);
   const completedNavigation = useRef(false);
   useEffect(() => {
@@ -419,15 +420,16 @@ export function AlipayAccountEditor({
     if (tabbed) setPanel("application");
   }, [errors.private_key, save.isPending, tabbed]);
   useEffect(() => {
-    if (save.isPending || !save.error) return;
+    if (save.isPending || !save.error || focusedSaveError.current === save.error) return;
     const invalid = form.current?.querySelector<HTMLElement>(
       '[aria-invalid="true"]',
     );
     if (!invalid) return;
+    focusedSaveError.current = save.error;
     const nextPanel = invalid.closest<HTMLElement>("[data-account-panel]")?.dataset.accountPanel;
-    if (tabbed && nextPanel && nextPanel !== panel) setPanel(nextPanel);
+    if (tabbed && nextPanel) setPanel(nextPanel);
     requestAnimationFrame(() => { if (invalid.isConnected) invalid.focus(); });
-  }, [save.error, save.isPending, panel, tabbed, privateKeyOpen]);
+  }, [save.error, save.isPending, tabbed, privateKeyOpen]);
   useEffect(() => {
     if (key.isPending || !activationKeyError) return;
     if (tabbed) setPanel("application");
