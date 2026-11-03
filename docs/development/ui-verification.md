@@ -177,3 +177,11 @@ npm run test:ui -- ui-tests/detail-record-layout.spec.ts ui-tests/detail-reading
 本轮 30 项相关组件回归、管理端与 UI 类型检查、管理端构建通过。新增鼠标与触摸专项及原四类详情布局矩阵共 10 项浏览器回归通过，包含父详情 DOM、尺寸、非零滚动、URL 与焦点保持，Escape、关闭按钮、短屏和 200% 字号。原始记录为 `.ui-audit/runs/2026-11-03-tech-outside-dismissal/`。
 
 6192 已按 `--interactive` 重启，真实 HTTP 资源 `index-C94hzqsH.js`、弹窗壳、详情基础模块及样式与本轮本地构建 SHA-256 一致。预览另行通过鼠标／触摸点击父详情关闭按钮所在区域与页面背景共 4 次检查，均只关闭二级窗口并保留主详情和焦点；截图、资源哈希与前后几何量测见 `.ui-audit/runs/2026-11-03-tech-outside-preview/verification.json`。上述为本地合成数据与 Chromium 触摸仿真证据。
+
+### 2026-11-03 流水详情宽度统一
+
+流水与对账详情的当前入口及旧 `/ledger/:ledgerEntryId` 入口由 `xl` 调整为与订单、通知相同的 `lg`。默认字号下，桌面最大宽度由 1152px 改为 896px；小屏继续全屏。原宽版的几何量测作为前一阶段历史保留，不代表当前窗口高度。
+
+本轮 24 项路由与流水组件测试、管理端和 UI 类型检查、管理端构建通过。浏览器专项 4 项通过：实际窗口宽度一致、完整长字段换行、财务编号复制、单／多来源、争议版本与多条关联。原始记录为 `.ui-audit/runs/2026-11-03-ledger-width/`。
+
+6192 已按 `--interactive` 重启，订单、流水、通知在同一 1440px 视口下均实测为 896px；390px 均为 390px，768px、200% 字号时均为 672px。9 组预览场景的技术窗口打开／关闭均保留父详情几何、滚动和焦点，实际脚本及样式与本轮构建哈希一致。未替换 HTTP 响应的截图与量测见 `.ui-audit/runs/2026-11-03-ledger-width-preview/verification.json`，使用本地合成数据及 Chromium 仿真。

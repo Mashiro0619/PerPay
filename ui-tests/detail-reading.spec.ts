@@ -257,8 +257,12 @@ test("detail overlays separate facts into readable business sections", async ({ 
   await page.setViewportSize({ width: 1440, height: 900 });
   await login(page, manifest);
   await layout(page, "dark", "compact");
+  let readingWidth: number | undefined;
   for (const scenario of [...scenarios, { ...scenarios[0], key: "notificationHttp" }]) {
     await openDetail(page, manifest, scenario.key);
+    const width = (await foreground(page).boundingBox())!.width;
+    readingWidth ??= width;
+    expect(width, "notifications, payment evidence and transaction details share the same reading width").toBe(readingWidth);
     await expect(foreground(page).getByRole("tab")).toHaveCount(0);
     if (scenario.kind === "notification") {
       await expect(detailSection(page, "overview").getByRole("heading", { level: 2 })).toHaveText(["通知信息", "关联订单"]);
