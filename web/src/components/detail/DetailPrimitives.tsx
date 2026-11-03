@@ -176,6 +176,7 @@ export function TechnicalDetailsDialog({
     <Dialog presentation="dialog" open={open} onOpenChange={onOpenChange}>
       <DialogContent
         kind="technical"
+        backdropProps={{ forceRender: true }}
         data-technical-dialog
         showCloseButton={false}
         initialFocus={title}

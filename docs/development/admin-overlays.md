@@ -63,7 +63,7 @@ URL 能保存筛选与当前游标。已经访问的游标链、原触发元素�
 
 所属记录的“技术信息”入口打开独立的只读弹窗，展示完整标识符、原始数据与复制入口。业务核对需要的金额、编号、来源、时间和处理记录继续直接展示在主详情中。技术信息不再在原正文内展开，也不作为替换主正文的编辑步骤。
 
-打开或关闭技术弹窗时，父详情保留同一份 DOM、窗口尺寸和正文滚动位置，不改变详情地址或历史。技术弹窗的标题、顶部关闭按钮与底部关闭区固定在非滚动区域，只有正文纵向滚动；长编号和原始数据在正文中换行，不建立第二层滚动盒。打开时焦点进入标题，按 Escape 只关闭技术弹窗并恢复到原“技术信息”入口，父详情保持打开。
+打开或关闭技术弹窗时，父详情保留同一份 DOM、窗口尺寸和正文滚动位置，不改变详情地址或历史。技术弹窗的标题、顶部关闭按钮与底部关闭区固定在非滚动区域，只有正文纵向滚动；长编号和原始数据在正文中换行，不建立第二层滚动盒。打开时焦点进入标题，点击窗口外部或按 Escape 只关闭技术弹窗并恢复到原“技术信息”入口，父详情保持打开。技术窗口拥有自己的遮罩，外部点击不会穿透到主详情的按钮；从窗口内开始、在外部结束的拖动不作为关闭操作。
 
 小于 768px 时，技术信息使用全屏阅读窗口；长内容、200% 字号和短视口下仍保持标题、关闭入口与正文单滚动区。读取、滚动与复制只使用已读取的记录，不提交业务操作。
 
@@ -116,7 +116,7 @@ npm run demo:preview -- --interactive --port 6192
 - 网站配置、应用密钥、会话、向导、导航及操作恢复原有组件测试继续保留业务断言。
 - `ui-tests/settings.spec.ts`、`session-management.spec.ts`、`security-card-flow.spec.ts`、`mobile-settings-reflow.spec.ts`：真实浏览器中的摘要、弹层、横向分类键盘可达性、焦点和放大文本。
 - `ui-tests/alipay-accounts.spec.ts`、`site-required-fields.spec.ts`、`site-timeout.spec.ts`、`site-delete-navigation.spec.ts`：独立本地数据库中的保存、必填反馈、修订冲突与删除结果。
-- `ui-tests/detail-record-layout.spec.ts`、`detail-reading.spec.ts`、`order-card-flow.spec.ts`、`unified-reconciliation.spec.ts`、`copy-sources.spec.ts`、`mobile-dialog-flow.spec.ts`：连续详情、完整字段与复制来源、旧锚点、独立技术弹窗及其父详情的尺寸／滚动／DOM 保持、单滚动区域及滚动和缩放时的请求次数。
+- `ui-tests/detail-record-layout.spec.ts`、`detail-reading.spec.ts`、`order-card-flow.spec.ts`、`unified-reconciliation.spec.ts`、`copy-sources.spec.ts`、`mobile-dialog-flow.spec.ts`、`technical-dialog-dismissal.spec.ts`：连续详情、完整字段与复制来源、旧锚点、独立技术弹窗及其父详情的尺寸／滚动／DOM 保持、鼠标与触摸外部关闭及防止点击穿透、单滚动区域及滚动和缩放时的请求次数。
 
 构建与浏览器回归必须分开运行，不能在浏览器读取资源时清理 `web-dist`。截图、trace、实际视口与源码／构建摘要按[界面回归说明](ui-verification.md)保存在 `.ui-audit/runs/`。
 

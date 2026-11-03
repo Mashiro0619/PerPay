@@ -151,6 +151,18 @@ describe("one routed detail surface", () => {
     await user.click(within(await screen.findByRole("dialog", { name: "技术信息" })).getByRole("button", { name: "关闭技术信息" }));
     await waitFor(() => expect(trigger).toHaveFocus());
     expect(view.router.state.location).toBe(address);
+    await user.click(trigger);
+    const reader = await screen.findByRole("dialog", { name: "技术信息" });
+    const backdrop = reader.parentElement!.querySelector<HTMLElement>('[data-slot="dialog-overlay"]')!;
+    expect(backdrop).not.toBeNull();
+    await user.click(backdrop);
+    // Base UI probes preventScroll support before restoring outside-click focus;
+    // jsdom does not support that probe. The browser regression checks focus.
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "技术信息" })).not.toBeInTheDocument());
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByRole("dialog", { name: "记录 order-1" })).toBe(parent);
+    expect(parent.querySelector('[data-overlay-detail]')).toBe(body);
+    expect(view.router.state.location).toBe(address);
   });
 
   it.each([false, true])("keeps foreground header actions in the popup without relying on the parent menu, mobile=%s", async mobile => {

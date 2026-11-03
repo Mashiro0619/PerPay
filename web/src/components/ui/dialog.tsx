@@ -43,18 +43,20 @@ function DialogContent({
   children,
   showCloseButton = true,
   portalProps,
+  backdropProps,
   presentation = "dialog",
   style,
   ...props
 }: DialogPrimitive.Popup.Props & {
   showCloseButton?: boolean
   portalProps?: Pick<DialogPrimitive.Portal.Props, "keepMounted" | "hidden" | "inert" | "container">
+  backdropProps?: DialogPrimitive.Backdrop.Props
   presentation?: "dialog" | "step"
 }) {
   const viewportStyle = useOverlayViewport()
   return (
     <DialogPortal {...portalProps}>
-      {presentation === "dialog" && <DialogOverlay />}
+      {presentation === "dialog" && <DialogOverlay {...backdropProps} />}
       <DialogPrimitive.Popup
         data-slot="dialog-content"
         data-overlay-viewport={presentation === "dialog" ? "dialog" : undefined}
