@@ -64,7 +64,7 @@ function lists(): Scenario[] {
 
 function details(manifest: Manifest): Scenario[] {
   return [
-    { name: "order-detail", route: detailRoute(manifest, "orderLong"), kind: "detail", ready: '[data-order-card="amount"]', overlayRem: 56 },
+    { name: "order-detail", route: detailRoute(manifest, "orderLong"), kind: "detail", ready: '[data-detail-section="overview"] [data-detail-fields] dt:text-is("下单金额")', overlayRem: 56 },
     { name: "ledger-detail", route: detailRoute(manifest, "ledgerAssociated"), kind: "detail", ready: "[data-ledger-summary]", overlayRem: 72 },
     { name: "notification-detail", route: detailRoute(manifest, "notificationDns"), kind: "detail", ready: "[data-detail-order-summary]", overlayRem: 56 },
   ];
@@ -91,7 +91,7 @@ async function inspect(page: Page, scenario: Scenario, info: TestInfo, mode: Mod
     const blockSelector = kind === "list"
       ? '[data-business-table], .business-table-surface, [data-slot="table-container"], .list-toolbar'
       : kind === "detail"
-        ? '[data-detail-page], [data-order-card], [data-ledger-summary], [data-detail-fields]'
+        ? '[data-detail-page], [data-detail-section], [data-ledger-summary], [data-detail-fields]'
         : '.admin-settings-layout, [data-settings-content], [data-account-list], [data-slot="card"], [data-alipay-account-editor]';
     const blocks = [...content.querySelectorAll<HTMLElement>(blockSelector)].filter(node => node.getBoundingClientRect().width > 0).map(node => {
       const box = node.getBoundingClientRect();

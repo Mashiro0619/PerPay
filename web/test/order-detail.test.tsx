@@ -137,12 +137,16 @@ describe("order detail work surface", () => {
       }),
     ).toBeVisible();
     expect(await screen.findByText(/HTTP 200 · 对方的确认回执无效/)).toBeVisible();
-    for (const name of ["订单信息", "金额明细", "收款关联记录", "通知", "订单动态"]) {
+    for (const name of ["订单信息", "收款关联记录", "通知", "订单动态"]) {
       expect(screen.getAllByRole("heading", { name })).toHaveLength(1);
       expect(screen.getByRole("heading", { name })).toBeVisible();
     }
     expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "概况" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "金额明细" })).not.toBeInTheDocument();
+    const facts = within(screen.getByRole("region", { name: "订单信息" }));
+    expect(facts.getByText("下单金额").parentElement).toHaveTextContent("¥1.00");
+    expect(facts.getByText("加价金额").parentElement).toHaveTextContent("¥0.01");
     expect(requests).toHaveLength(2);
     expect(screen.getByText(detailLedger.provider_order_no!)).toBeVisible();
     expect(screen.getByText("测试买家")).toBeVisible();
@@ -206,10 +210,47 @@ describe("order detail work surface", () => {
       ).not.toBeInTheDocument();
       fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
       expect(
-        screen.getByRole("button", { name: "人工关联收款" }),
+        within(screen.getByRole("region", { name: "收款关联记录" })).getByRole("button", { name: "人工关联收款" }),
       ).toBeVisible();
     },
   );
+
+  it("retains complete order text and every event while older activity stays expandable", async () => {
+    const product = "跨平台桌面软件与移动设备长期授权，包含完整版本升级与离线使用支持";
+    const note = "适用于两台个人设备。\n请在下载页获取完整安装包并保留此订单号。";
+    const reason = "已核对完整交易凭据。\n记录本次人工确认的依据。";
+    const merchant = "2026110316010000000001";
+    const events: AdminOrderDetail["events"] = Array.from({ length: 8 }, (_, index) => ({
+      event_id: "timeline-event-" + index,
+      sequence: index + 1,
+      event_type: index === 0 ? "CREATED" : "PAYMENT_CONFIRMED",
+      occurred_at: new Date(Date.UTC(2026, 10, 3, 8, index)).toISOString(),
+      details: index === 0 ? {} : { evidence_type: "MANUAL", financial_operation_id: operation.financial_operation_id },
+    }));
+    mockData({ ...paidOrder, product_name: product, merchant_order_no: merchant, note, events,
+      reconciliation: { matches: [{ ...paymentMatch, evidence_type: "MANUAL", candidate: null,
+        creation_operation: { ...operation, operation_type: "MANUAL_SETTLEMENT", actor_type: "ADMIN", actor_id: "管理员甲", reason },
+        resolution_operation: null,
+      }], exceptions: [] },
+    }, []);
+    mount();
+    const facts = within(await screen.findByRole("region", { name: "订单信息" }));
+    expect(facts.getByText(product)).toBeVisible();
+    expect(facts.getByText(note, { normalizer: value => value })).toBeVisible();
+    const user = userEvent.setup();
+    await user.click(facts.getByRole("button", { name: "复制商户订单号" }));
+    expect(await navigator.clipboard.readText()).toBe(merchant);
+    const timeline = within(screen.getByRole("region", { name: "订单动态" }));
+    const visibleTimes = () => timeline.getAllByRole("listitem").map(item => item.querySelector("time")?.getAttribute("datetime"));
+    expect(visibleTimes()).toEqual(events.slice(2).reverse().map(event => event.occurred_at));
+    expect(timeline.getAllByText("管理员甲：" + reason, { normalizer: value => value })).toHaveLength(6);
+    await user.click(timeline.getByRole("button", { name: "更早动态（2）" }));
+    expect(visibleTimes()).toEqual([...events].reverse().map(event => event.occurred_at));
+    expect(timeline.getByText("订单已创建")).toBeVisible();
+    await user.click(timeline.getByRole("button", { name: "更早动态（2）" }));
+    expect(visibleTimes()).toHaveLength(6);
+    expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
+  });
 
   it("keeps ignored exceptions in expandable history and uses the embedded candidate and ledger", async () => {
     const { requests } = mockData({
@@ -650,7 +691,7 @@ describe("payment provenance", () => {
     const manual = currentPayment.queryAllByText(/管理员人工关联/);
     expect(inferred.length > 0).toBe(basis === "INFERRED");
     expect(manual.length > 0).toBe(basis === "MANUAL");
-    expect(within(screen.getByRole("region", { name: "金额明细" })).getByText(/0\.01/)).toBeVisible();
+    expect(within(screen.getByRole("region", { name: "订单信息" })).getByText("加价金额").parentElement).toHaveTextContent("¥0.01");
     expect(within(screen.getByRole("region", { name: "订单信息" })).getByText("业务网站传入的备注")).toBeVisible();
     expect(screen.queryByText(/数据截至/)).not.toBeInTheDocument();
   });

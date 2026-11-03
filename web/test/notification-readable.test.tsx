@@ -59,7 +59,8 @@ describe("readable standalone notification detail", () => {
     const orderLink = await within(orderCard).findByRole("link", { name: paidOrder.product_name });
     expect(orderLink).toHaveAttribute("href", (site ? "/sites/site_dense" : "") + "/orders/" + paidOrder.order_id);
     expect(within(information).getByText("等待重试")).toBeVisible();
-    expect(within(information).getByText("已尝试 1 次")).toBeVisible();
+    expect(within(information).getByText("已尝试 1 次").closest("[data-notification-summary]")).not.toBeNull();
+    expect(within(information).queryByText("尝试次数", { selector: "dt" })).not.toBeInTheDocument();
     const history = screen.getByRole("group", { name: "投递历史" });
     expect(history).toBeVisible();
     expect(screen.queryByText(deliveryId)).not.toBeInTheDocument();
@@ -69,6 +70,7 @@ describe("readable standalone notification detail", () => {
     expect(information.querySelectorAll('[data-detail-fields][data-layout="flow"]')).toHaveLength(1);
     expect(screen.getAllByRole("button", { name: "更多操作，通知记录操作" })).toHaveLength(1);
     expect(await within(history).findByRole("table", { name: "投递尝试（1）" })).toBeVisible();
+    expect(within(history).queryByRole("heading", { name: "投递尝试（1）" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "投递尝试（1）" })).not.toBeInTheDocument();
     expect(information).toBeVisible();
     expect(orderCard).toBeVisible();

@@ -94,7 +94,13 @@ test("one order's different incoming payments keep distinct list identities and 
     await page.keyboard.press("Enter");
     await expect(page).toHaveURL(manifest.origin + orderTarget);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(order.product_name);
-    await expect(page.locator('[data-order-card="amount"]')).toBeVisible();
+    const orderInformation = page.locator('[data-overlay-content] [data-detail-section="overview"]').getByRole("region", { name: "订单信息", exact: true });
+    await expect(orderInformation).toBeVisible();
+    for (const name of ["下单金额", "加价金额"]) {
+      const term = orderInformation.locator("dt").filter({ hasText: new RegExp("^" + name + "$") });
+      await expect(term).toBeVisible();
+      await expect(term.locator("..").locator("dd")).toHaveText(/^¥[\d,]+\.\d{2}$/);
+    }
     await page.goto(listUrl);
     const ledger = items[0]!.context.ledger_entry_summary;
     const ledgerLink = rows.first().getByRole("link", { name: /查看流水：/ });

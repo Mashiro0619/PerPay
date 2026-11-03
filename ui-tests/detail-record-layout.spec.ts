@@ -51,15 +51,19 @@ for (const layout of layouts) {
         const overview = await expectDetailRecordLayout(page);
         await expect(overlay.getByRole("tab")).toHaveCount(0);
         expect(await overlay.locator("[data-detail-section]").evaluateAll(sections => sections.map(section => section.getAttribute("data-detail-section")))).toEqual(scenario.sections);
-        if (layout.width < 768) expect(overview.fields.every(group => group.columns === 1)).toBe(true);
-        if (layout.width === 1440 && layout.text === 100) {
-          expect(overview.fields.some(group => group.columns === 2 && group.fields.filter(field => !field.wide).length >= 2), "desktop space presents short facts in two real columns").toBe(true);
-        }
         if (scenario.name === "notification") {
           await expect(detailSection(page, "overview").getByRole("heading", { level: 2 })).toHaveText(["通知信息", "关联订单"]);
+          await expect(detailSection(page, "attempts").getByRole("heading", { name: /^投递尝试/ })).toHaveCount(0);
+          if (layout.width === 1440 && layout.text === 100) {
+            const summary = overview.fields.find(group => group.orderSummary)!;
+            const shortFacts = ["应付金额", "实收金额", "所属网站"];
+            expect(summary, "the notification retains the related order's business facts").toBeTruthy();
+            expect(summary.rows.some(row => shortFacts.every(name => row.includes(name))), "three short order facts share a row when their content fits").toBe(true);
+            expect(summary.fields.filter(field => shortFacts.includes(field.name!)).every(field => field.inline), "short values remain beside their labels").toBe(true);
+          }
         }
         const id = `${scenario.name}-${layout.width}-${layout.text}-${layout.theme}`;
-        if (layout.width !== 320 || layout.text === 200) await screenshot(page, info, "detail-grid-" + id);
+        if (layout.width !== 320 || layout.text === 200) await screenshot(page, info, "detail-flow-" + id);
         if (scenario.name === "order") await revealDetailSection(page, "history");
         const technical = overlay.locator('[data-overlay-detail]').locator(scenario.technicalSelector);
         await expect(technical).toBeVisible();
@@ -78,8 +82,8 @@ for (const layout of layouts) {
         await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(scenario.path.split("/").at(-1));
         await record(page, info, { feature: "shared-detail-record-layout", scenario: scenario.name, layout,
           evidence: "named local domain records and saved local audit event; browser font and viewport simulation", overview, expanded, placement });
-        if (layout.text === 200 || layout.width === 1440) await screenshot(page, info, "detail-grid-technical-" + id);
-        if (layout.width === 320 && layout.text === 200) await audit(page, info, "detail-grid-" + id);
+        if (layout.text === 200 || layout.width === 1440) await screenshot(page, info, "detail-flow-technical-" + id);
+        if (layout.width === 320 && layout.text === 200) await audit(page, info, "detail-flow-" + id);
         await trigger.focus();
         await page.keyboard.press("Enter");
         await expect(trigger).toHaveAttribute("aria-expanded", "false");

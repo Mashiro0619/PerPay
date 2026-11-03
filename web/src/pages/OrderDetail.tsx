@@ -66,12 +66,19 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
     {exceptions.length > 0 && <p className="text-sm text-muted-foreground">{exceptions.length} 项待核对</p>}
     {exceptions.map(renderException)}
     {active.map(match => <MatchCard key={match.payment_match_id} match={match} embedded />)}
-    {!active.length && <DetailSection title="收款关联记录"><p className="text-sm text-muted-foreground">尚未关联收款。</p></DetailSection>}
+    {!active.length && <DetailSection title="收款关联记录">
+      <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2" data-order-association-prompt>
+        <p className="text-sm text-muted-foreground">尚未关联收款。</p>
+        {order.payment.status === "UNPAID" && <AssociateIncomeAction orderId={order.order_id} orderLabel={order.product_name} />}
+      </div>
+    </DetailSection>}
     {reversed.length > 0 && <Accordion><AccordionItem value="reversed">
       <AccordionTrigger>已撤销的收款关联（{reversed.length}）</AccordionTrigger>
       <AccordionContent><div className="flex flex-col gap-4">{reversed.map(match => <MatchCard key={match.payment_match_id} match={match} embedded />)}</div></AccordionContent>
     </AccordionItem></Accordion>}
-    {order.payment.status === "UNPAID" && <AssociateIncomeAction orderId={order.order_id} orderLabel={order.product_name} />}
+    {active.length > 0 && order.payment.status === "UNPAID" && <div className="flex min-w-0 flex-wrap items-center gap-2">
+      <AssociateIncomeAction orderId={order.order_id} orderLabel={order.product_name} />
+    </div>}
   </>;
   return <>
     <div className="detail-record-summary flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2" role="group" aria-label="PerPay 收款状态">
@@ -84,23 +91,19 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
     <DetailSections label="订单详情内容" sections={[
       { id: "overview", label: "概况", content: <>
         <DetailSection title="订单信息">
-          <DetailFields wide={["商户订单号", "商品名称", "订单备注"]} items={[
+          <DetailFields wide={["商品名称", "订单备注"]} items={[
             ["商户订单号", <CopyValue value={order.merchant_order_no} label="复制商户订单号" />],
             ...(Array.from(order.product_name).length > 24 ? [["商品名称", order.product_name] as const] : []),
             ...(!clientId ? [["业务网站", <Link global to={"/sites/" + encodeURIComponent(order.api_client_id) + "/summary"}>{order.site_name ?? "业务网站名称暂不可用"}</Link>] as const] : []),
             ["收款账号", <AlipayAccountIdentity id={order.alipay_account_id} name={order.alipay_account_name} />],
+            ["下单金额", <ListMoney value={order.requested_amount_cents} secondary />],
+            ["加价金额", <ListMoney value={order.payable_amount_cents - order.requested_amount_cents} secondary />],
             ...(confirmed ? [["确认收款时间", dateTime(confirmed.occurred_at)] as const] : []),
             ["收银台状态", <StatusBadge value={order.checkout.status} />],
             ["有效期至", dateTime(order.checkout.expires_at)],
             ...(order.note ? [["订单备注", order.note] as const] : []),
           ]} />
         </DetailSection>
-        <section data-order-card="amount"><DetailSection title="金额明细">
-          <DetailFields items={[
-            ["下单金额", <ListMoney value={order.requested_amount_cents} secondary />],
-            ["加价金额", <ListMoney value={order.payable_amount_cents - order.requested_amount_cents} secondary />],
-          ]} />
-        </DetailSection></section>
         <RefundMarkPanel key={order.order_id} order={order} includeOrderTools footerActions={
           <a className={buttonVariants({ variant: "outline", size: "sm" })}
             href={"/api/admin/v1" + (clientId ? "/sites/" + encodeURIComponent(clientId) : "") + "/orders/" + encodeURIComponent(order.order_id) + "/checkout"}
@@ -136,7 +139,7 @@ function OrderTimeline({
   );
   const ordered = [...events].sort((a, b) => b.sequence - a.sequence);
   const entries = (values: AdminOrderEvent[]) => (
-    <ItemGroup className="record-list list-timeline" data-density="compact">
+    <ItemGroup className="record-list list-timeline" data-density="compact" data-order-timeline>
       {values.map((event) => {
         const operationId = event.details.financial_operation_id;
         const operation =
@@ -145,7 +148,7 @@ function OrderTimeline({
             : undefined;
         const explanation = eventExplanation(event);
         return (
-          <Item key={event.event_id} className="record-list-row" size="sm" role="listitem">
+          <Item key={event.event_id} className="record-list-row px-0 py-1" size="xs" role="listitem">
             <ItemMedia variant="icon">
               {event.event_type === "PAYMENT_CONFIRMED" ? (
                 <Check />
@@ -156,19 +159,17 @@ function OrderTimeline({
               )}
             </ItemMedia>
             <ItemContent className="min-w-0">
-              <ItemTitle className="record-list-title">{label(event.event_type)}</ItemTitle>
-              <ItemDescription className="record-list-meta">
-                <ListDateTime value={event.occurred_at} inline />
-              </ItemDescription>
-              {explanation && (
-                <p className="record-list-meta">{explanation}</p>
-              )}
-              {operation?.reason && (
-                <p className="record-list-meta">
+              <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-0.5">
+                <ItemTitle className="record-list-title">{label(event.event_type)}</ItemTitle>
+                <ItemDescription className="record-list-meta">
+                  <ListDateTime value={event.occurred_at} inline />
+                </ItemDescription>
+                {explanation && <p className="record-list-meta">{explanation}</p>}
+                {operation?.reason && <p className="record-list-meta whitespace-pre-wrap">
                   {operation.actor_id ? operation.actor_id + "：" : ""}
                   {operation.reason}
-                </p>
-              )}
+                </p>}
+              </div>
             </ItemContent>
           </Item>
         );
@@ -176,7 +177,7 @@ function OrderTimeline({
     </ItemGroup>
   );
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-2">
       {ordered.length ? (
         entries(ordered.slice(0, 6))
       ) : (

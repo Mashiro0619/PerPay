@@ -145,7 +145,7 @@ describe("official block composition", () => {
     expect(password).toHaveValue("unsubmitted-password");
     expect(password).toHaveFocus();
   });
-  it("keeps amount and order cards independent in the original reading order", async () => {
+  it("keeps amount breakdown with the order facts before the related records", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (request: Request) => {
@@ -170,15 +170,14 @@ describe("official block composition", () => {
       </QueryClientProvider>,
     );
     await screen.findByRole("heading", { name: "订单信息" });
-    const amount = screen.getByRole("region", { name: "金额明细" });
     const information = screen.getByRole("region", { name: "订单信息" });
-    expect(amount).not.toBeNull();
-    expect(information).not.toBeNull();
-    expect(amount).not.toBe(information);
+    for (const name of ["下单金额", "加价金额"]) {
+      expect(within(information).getByText(name, { selector: "dt" })).toBeVisible();
+    }
+    expect(screen.queryByRole("region", { name: "金额明细" })).not.toBeInTheDocument();
     expect(information.closest("[data-detail-section]")).toHaveAttribute("data-detail-section", "overview");
-    expect(amount.closest("[data-detail-section]")).toBe(information.closest("[data-detail-section]"));
     expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
-    expect(information!.compareDocumentPosition(amount!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(information.compareDocumentPosition(screen.getByRole("region", { name: "收款关联记录" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(
       screen.getByRole("heading", { name: order.product_name }),
     ).toBeVisible();

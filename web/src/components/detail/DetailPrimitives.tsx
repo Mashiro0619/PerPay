@@ -248,14 +248,14 @@ export function OrderFacts({
   const basis = paymentBasisDescription("payment" in order ? order.payment.basis : order.payment_basis);
   if (density === "comfortable") return <Item className="items-start" data-detail-order-summary>
     <ItemContent className="min-w-0 gap-4">
-      <ItemHeader className={cn("flex-wrap items-start gap-3", layout === "flow" && "justify-start")}>
+      <ItemHeader className="flex-wrap items-baseline justify-start gap-x-3 gap-y-1">
         <ItemTitle className="line-clamp-none whitespace-normal wrap-anywhere" title={order.product_name}>
           {linked ? <Link to={"/orders/" + order.order_id}>{order.product_name}</Link> : order.product_name}
         </ItemTitle>
         <ItemActions><StatusBadge value={payment} /></ItemActions>
+        {basis && <span className="text-sm text-muted-foreground">{basis}</span>}
       </ItemHeader>
-      {basis && <p className="text-sm text-muted-foreground">{basis}</p>}
-      <DetailFields density="comfortable" layout={layout} wide={["商户订单号（业务网站）"]} items={[
+      <DetailFields density="comfortable" layout={layout} items={[
         ["应付金额", <ListMoney value={order.payable_amount_cents} label="应付金额" />],
         ["实收金额", <ListMoney value={order.received_amount_cents} label="实收金额" />],
         ["所属网站", <Link global to={"/sites/" + encodeURIComponent(order.api_client_id) + "/summary"}>{order.site_name ?? "名称不可用"}</Link>],

@@ -1,6 +1,7 @@
 import { test, expect, login, record } from "./fixtures";
 import { screenshot } from "./audit";
 import { expectOverlayTarget, settleOverlay } from "./overlay-fixtures";
+import { money } from "../web/src/lib/format";
 import type { AdminLedgerPageEnvelope, AdminOrderDetailEnvelope } from "../web/src/api/generated/types.gen";
 
 const endpoint = "/api/admin/v1/ledger/entries";
@@ -102,9 +103,13 @@ for (const scenario of [
     // identity. The generic heading exists only before its order query loads.
     const overlay = await settleOverlay(page);
     await expect(overlay.getByRole("heading", { level: 1 })).toHaveText(targetOrder.product_name);
-    const identity = page.getByRole("region", { name: "订单信息", exact: true });
+    const identity = overlay.locator('[data-detail-section="overview"]').getByRole("region", { name: "订单信息", exact: true });
     await expect(identity.getByText(targetOrder.merchant_order_no, { exact: true })).toBeVisible();
-    await expect(page.locator('[data-order-card="amount"]')).toBeVisible();
+    for (const [name, cents] of [["下单金额", targetOrder.requested_amount_cents], ["加价金额", targetOrder.payable_amount_cents - targetOrder.requested_amount_cents]] as const) {
+      const term = identity.locator("dt").filter({ hasText: new RegExp("^" + name + "$") });
+      await expect(term).toBeVisible();
+      await expect(term.locator("..").locator("dd")).toHaveText(money(cents));
+    }
     await record(page, info, { feature: "ledger-order-keyboard-target", orderId: targetOrder.order_id, product: targetOrder.product_name, merchantOrderNo: targetOrder.merchant_order_no, evidence: "loaded-real-fixture-order-after-synthetic-list-link" });
   });
 }

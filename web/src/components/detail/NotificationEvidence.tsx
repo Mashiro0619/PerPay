@@ -217,20 +217,21 @@ export function DeliveryCard({
   );
   if (comfortable) return <>
     {section !== "attempts" && <Card aria-label="通知信息" className="detail-section" data-notification-information>
-      <CardHeader className="flex flex-wrap items-start justify-between gap-4">
-        <div className="flex min-w-0 flex-1 basis-48 flex-col gap-1">
+      <CardHeader className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+        <div className="flex min-w-0 flex-1 basis-64 flex-wrap items-center gap-x-3 gap-y-1" data-notification-summary>
           <div className="flex min-w-0 flex-wrap items-center gap-2" data-detail-summary>
             <CardTitle role="heading" aria-level={2}>{sectionTitle ?? "通知信息"}</CardTitle>
             <StatusBadge value={delivery.status} />
           </div>
           <CardDescription>{statusDescription}</CardDescription>
+          <CardDescription className="whitespace-nowrap">已尝试 {delivery.attempt_count} 次</CardDescription>
         </div>
         {(!overlay || (detail.is_latest && terminal)) && <CardAction className="flex max-w-full flex-wrap items-center justify-end gap-2">
           {resend}
           {tools}
         </CardAction>}
       </CardHeader>
-      <CardContent className="flex min-w-0 flex-col gap-6">
+      <CardContent className="flex min-w-0 flex-col gap-3">
         {recovery && <Alert><Info /><AlertTitle>通知投递建议</AlertTitle><AlertDescription>{recovery}</AlertDescription></Alert>}
         <DetailFields
           density="comfortable"
@@ -238,7 +239,6 @@ export function DeliveryCard({
           wide={["通知地址", "重发理由"]}
           items={[
             ["通知事件", label(detail.event.event_type)],
-            ["尝试次数", "已尝试 " + delivery.attempt_count + " 次"],
             ...siteFields,
             ...deliveryFields,
             targetField,
@@ -249,13 +249,13 @@ export function DeliveryCard({
       </CardContent>
     </Card>}
     {section !== "overview" && <Card aria-label="投递历史" className="detail-section" data-notification-history>
-      <CardHeader>
+      <CardHeader className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1" data-notification-history-heading>
         <CardTitle role="heading" aria-level={2}>投递历史</CardTitle>
         <CardDescription>{attemptDescription}{attemptsAvailable && detail.attempts.length > 0 ? " · 每页 10 条" : ""}</CardDescription>
       </CardHeader>
-      <CardContent className="flex min-w-0 flex-col gap-4">
+      <CardContent className="flex min-w-0 flex-col gap-3">
         <ErrorNotice scope="page" error={attemptsError} retry={retryAttempts} />
-        <DeliveryAttempts key={delivery.delivery_id} attempts={detail.attempts} available={attemptsAvailable} readState={attemptsReadState} density="comfortable" pageKey={"attempts_" + delivery.delivery_id} />
+        <DeliveryAttempts key={delivery.delivery_id} attempts={detail.attempts} available={attemptsAvailable} readState={attemptsReadState} density="comfortable" pageKey={"attempts_" + delivery.delivery_id} showHeading={false} />
       </CardContent>
     </Card>}
     {confirmation}

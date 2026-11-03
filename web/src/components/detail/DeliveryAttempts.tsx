@@ -31,6 +31,7 @@ type DeliveryAttemptsProps = {
   readState?: "loading" | "failed";
   density?: "default" | "comfortable";
   pageKey?: string;
+  showHeading?: boolean;
 };
 
 export function DeliveryAttempts(props: DeliveryAttemptsProps) {
@@ -56,6 +57,7 @@ function DeliveryAttemptsContent({
   available,
   readState,
   density = "default",
+  showHeading = true,
   pagination,
 }: DeliveryAttemptsProps & { pagination?: { page: number; change: (page: number) => void } }) {
   const titleId = useId();
@@ -73,11 +75,11 @@ function DeliveryAttemptsContent({
   const page = Math.min(requestedPage, pages);
   const rows = ordered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
   const comfortable = density === "comfortable";
+  const heading = <>投递尝试{available ? "（" + attempts.length + "）" : ""}</>;
   return (
     <section ref={ref} className={cn("flex min-w-0 flex-col", comfortable ? "gap-4" : "gap-3")} aria-labelledby={titleId} data-delivery-attempts data-density={comfortable ? "comfortable" : undefined}>
-      <h3 id={titleId} className="text-sm font-medium">
-        投递尝试{available ? "（" + attempts.length + "）" : ""}
-      </h3>
+      {showHeading ? <h3 id={titleId} className="text-sm font-medium">{heading}</h3>
+        : <span id={titleId} className="sr-only">{heading}</span>}
       {available ? (
         <>
           {isSummary && comfortable ? (

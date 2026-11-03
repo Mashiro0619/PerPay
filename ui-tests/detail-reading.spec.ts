@@ -73,6 +73,14 @@ async function openDetail(page: Page, manifest: Manifest, key: string) {
 async function fields(owner: Locator, names: readonly string[]) {
   for (const name of names) await expect(owner.locator("dt").filter({ hasText: new RegExp("^" + name + "$") })).toBeVisible();
 }
+
+async function expectAttemptHistory(owner: Locator, count: number) {
+  const name = `投递尝试（${count}）`;
+  const contents = owner.getByRole("table", { name, exact: true }).or(owner.getByRole("list", { name, exact: true }));
+  await expect(contents, "the visible history retains its accessible count without a repeated heading").toBeVisible();
+  await expect(owner.getByRole("heading", { name, exact: true })).toHaveCount(0);
+  return contents;
+}
 async function technicalSection(page: Page, label: string) {
   if (label.includes("支付宝流水记录")) {
     await readDetailSection(page, "交易");
@@ -266,7 +274,7 @@ test("detail overlays separate facts into readable business sections", async ({ 
       await expect(detailBody(page).getByRole("group", { name: "通知信息", exact: true }).getByRole("button", { name: "技术信息", exact: true })).toBeVisible();
       await readDetailSection(page, "投递记录");
       await expect(detailSection(page, "attempts").getByRole("heading", { level: 2 })).toHaveText(["投递历史"]);
-      await expect(detailBody(page).getByRole("group", { name: "投递历史", exact: true }).getByRole("heading", { name: "投递尝试（1）", exact: true })).toBeVisible();
+      await expectAttemptHistory(detailBody(page).getByRole("group", { name: "投递历史", exact: true }), 1);
       await readDetailSection(page, "概况");
     } else if (scenario.kind === "match") {
       await expect(detailBody(page).getByRole("heading", { level: 2 })).toHaveText(["关联摘要与订单", "支付宝交易", "匹配依据与处理记录"]);
@@ -294,136 +302,147 @@ test("detail overlays separate facts into readable business sections", async ({ 
   }
 });
 
-test("summaries and credentials use the 36rem container boundary without changing reading order", async ({ page, manifest }, info) => {
+test("summaries and credentials wrap at their content widths without stretching short facts", async ({ page, manifest }, info) => {
   await page.setViewportSize({ width: 2190, height: 900 });
   await login(page, manifest);
   await layout(page, "dark", "full");
-  const checkBoundaries = async (container: Locator) => {
+  const checkWrapping = async (container: Locator) => {
     const originalWidth = await container.evaluate(element => (element as HTMLElement).style.width);
     const originalFont = await page.evaluate(() => document.documentElement.style.fontSize);
-    const originalViewport = page.viewportSize()!;
     const names = await container.locator("dt").allTextContents();
-    const boundaries = [];
+    const wrapping = [];
     try {
       for (const textPercent of [100, 200]) {
         await page.evaluate(percent => document.documentElement.style.fontSize = percent + "%", textPercent);
-        const rootFont = await page.evaluate(() => Number.parseFloat(getComputedStyle(document.documentElement).fontSize));
-        const breakpoint = rootFont * 36;
-        for (const requestedWidth of [320, breakpoint - 1, breakpoint, breakpoint + 1]) {
+        const samples: Awaited<ReturnType<typeof expectDetailFields>> = [];
+        for (const requestedWidth of [320, 480, 720, 960]) {
           await container.evaluate((element, width) => { (element as HTMLElement).style.width = width + "px"; }, requestedWidth);
           const measured = (await expectDetailFields(container))[0]!;
           expect(measured.width).toBe(requestedWidth);
           expect(measured.fields.map(field => field.name)).toEqual(names);
           expect(measured.rows.flat(), "responsive wrapping retains DOM reading order").toEqual(names);
-          expect(measured.columns).toBe(requestedWidth >= breakpoint ? 2 : 1);
-          boundaries.push({ textPercent, requestedWidth, breakpoint, rows: measured.rows, columns: measured.columns,
-            fieldWidths: measured.fields.map(field => ({ name: field.name, wide: field.wide, width: field.width })) });
+          samples.push(measured);
+          wrapping.push({ textPercent, requestedWidth, height: measured.height, rows: measured.rows,
+            fieldWidths: measured.fields.map(field => ({ name: field.name, wide: field.wide, width: field.width, inline: field.inline })) });
         }
-        if (textPercent === 100) {
-          await container.evaluate((element, width) => { (element as HTMLElement).style.width = width + "px"; }, breakpoint + 1);
-          for (const width of [767, 768]) {
-            await page.setViewportSize({ width, height: originalViewport.height });
-            await page.clock.runFor(100);
-            const measured = (await expectDetailFields(container))[0]!;
-            expect(measured.columns, "a wide container still needs a desktop viewport for two columns").toBe(width >= 768 ? 2 : 1);
+        const narrow = samples[0]!, roomy = samples.at(-1)!;
+        expect(roomy.height, "additional width never adds vertical space to the same facts").toBeLessThanOrEqual(narrow.height + 1);
+        if (roomy.orderSummary) {
+          const shortFacts = ["应付金额", "实收金额", "所属网站"];
+          expect(roomy.rows.some(row => shortFacts.every(name => row.includes(name))), "at least three short facts fit together when their natural widths fit").toBe(true);
+          expect(roomy.rows.length, "narrow layouts wrap the same complete facts into more rows").toBeLessThan(narrow.rows.length);
+          expect(roomy.height, "content wrapping produces a shorter summary when space is available").toBeLessThan(narrow.height);
+          for (const name of shortFacts.slice(0, 2)) {
+            const first = narrow.fields.find(field => field.name === name)!, last = roomy.fields.find(field => field.name === name)!;
+            expect(first.inline, name + " remains beside its label even in the narrow sample").toBe(true);
+            expect(last.inline).toBe(true);
+            expect(Math.abs(first.width - last.width), name + " does not grow to fill a fraction of the wider container").toBeLessThanOrEqual(1);
           }
-          await page.setViewportSize(originalViewport);
+          expect(roomy.fields.find(field => field.name === "商户订单号（业务网站）")?.wide, "the merchant reference uses natural wrapping, not a forced whole row").toBe(false);
         }
       }
     } finally {
       await container.evaluate((element, width) => { (element as HTMLElement).style.width = width; }, originalWidth);
       await page.evaluate(font => document.documentElement.style.fontSize = font, originalFont);
-      await page.setViewportSize(originalViewport);
     }
-    return boundaries;
+    return wrapping;
   };
   await openDetail(page, manifest, "notificationDns");
-  const boundaries = await checkBoundaries(page.locator('[data-detail-order-summary] [data-detail-fields]'));
-  await record(page, info, { feature: "detail-flow-container-breakpoints", boundaries });
-  await screenshot(page, info, "reading-flow-boundaries-restored");
+  const wrapping = await checkWrapping(page.locator('[data-detail-order-summary] [data-detail-fields]'));
+  await record(page, info, { feature: "detail-flow-content-wrapping", wrapping });
+  await screenshot(page, info, "reading-flow-wrapping-restored");
 
   await openDetail(page, manifest, "matchSite");
   const flows = await readingFlowGeometry(page);
   const twoFacts = flows.find(group => group.fields.length === 2 && group.fields.map(field => field.name).join("/") === "关联方式/关联时间");
   expect(twoFacts, "the genuine inferred match has two short processing facts").toBeTruthy();
-  expect(twoFacts!.width).toBeGreaterThanOrEqual(36 * twoFacts!.rootFont);
   expect(twoFacts!.rows).toEqual([["关联方式", "关联时间"]]);
-  expect(Math.abs(twoFacts!.fields[0]!.width - twoFacts!.fields[1]!.width)).toBeLessThanOrEqual(1);
+  expect(twoFacts!.fields.every(field => field.inline), "both short facts keep their labels and values on one line").toBe(true);
+  const occupiedWidth = twoFacts!.fields.at(-1)!.right - twoFacts!.fields[0]!.left;
+  expect(twoFacts!.width - occupiedWidth, "two short facts leave unused space at the row end instead of stretching into halves").toBeGreaterThan(twoFacts!.rootFont);
   await record(page, info, { feature: "detail-flow-two-facts", evidence: "local-synthetic-domain", geometry: twoFacts });
   await screenshot(page, info, "reading-flow-two-facts");
 
   await openDetail(page, manifest, "ledgerAssociated");
-  const credentialBoundaries = await checkBoundaries(page.locator('[data-ledger-summary] [data-detail-credentials] [data-detail-fields]'));
-  await record(page, info, { feature: "detail-credential-container-breakpoints", credentialBoundaries });
+  const credentialWrapping = await checkWrapping(page.locator('[data-ledger-summary] [data-detail-credentials] [data-detail-fields]'));
+  await record(page, info, { feature: "detail-credential-content-wrapping", credentialWrapping });
 });
 
-test("three detail types retain expanded facts across widths, themes and content modes", async ({ page, manifest }, info) => {
-  test.setTimeout(600_000);
-  await login(page, manifest);
-  const errors: string[] = [];
-  page.on("pageerror", error => errors.push(error.message));
-  for (const width of [320, 390, 1440, 2190]) for (const theme of ["light", "dark"] as const) for (const mode of ["compact", "full"] as const) {
-    await page.setViewportSize({ width, height: 900 });
-    await layout(page, theme, mode);
-    for (const scenario of layoutScenarios) {
-      await openDetail(page, manifest, scenario.key);
-      await expect(foreground(page).getByRole("heading", { level: 1 })).toHaveText(scenario.heading);
-      await expect(foreground(page).getByRole("heading", { level: 1 })).toHaveCount(1);
-      await expect(page.locator("[data-content-width]")).toHaveAttribute("data-content-width", mode);
-      await expect(page.locator("html")).toHaveClass(theme === "dark" ? /dark/ : /^(?!.*\bdark\b)/);
-      if (scenario.kind === "notification") {
-        await fields(detailSection(page, "overview").locator("[data-notification-information]"), scenario.key === "notificationSite" ? ["下次重试", "通知地址"] : ["所属网站", "下次重试", "通知地址"]);
-        await expect(detailSection(page, "overview").locator("[data-detail-order-summary]")).toBeVisible();
-        await readDetailSection(page, "投递记录");
-        await expect(detailBody(page).getByRole("heading", { name: "投递尝试（1）", exact: true })).toBeVisible();
-        await expect(detailSection(page, "attempts").getByText(/通知域名解析失败/)).toBeVisible();
-        await readingLayout(page, mode, "投递尝试（1）");
-        await readDetailSection(page, "概况");
-      } else if (scenario.kind === "match") {
-        await fields(detailBody(page), ["支付宝交易金额", "支付宝交易时间", "支付宝交易对方", "支付宝订单号", "支付宝交易备注", "金额占用时间"]);
-        await expect(page.getByRole("heading", { name: "匹配依据", exact: true })).toBeVisible();
-        await expect(page.getByRole("button", { name: "匹配依据", exact: true })).toHaveCount(0);
-      } else {
-        await readDetailSection(page, "交易");
-        await fields(detailSection(page, "transaction"), ["支付宝流水号", "交易金额", "收支方向", "交易时间"]);
-        await expect(detailBody(page).locator('dt').filter({ hasText: /^支付宝 App ID$/ })).toHaveCount(0);
-        await expect(detailBody(page).locator('[data-ledger-summary] [data-detail-credentials]')).toBeVisible();
-        await readingCredentialsGeometry(page);
-        await readDetailSection(page, /^采集记录/);
-        await expect(detailBody(page).locator("#ledger-sources-heading")).toBeVisible();
-        await expect(detailBody(page).locator("[data-ledger-source]").first()).toBeVisible();
-        const sourceFacts = detailSection(page, "sources").locator("[data-ledger-source]")
-          .filter({ has: page.getByRole("heading", { name: "查账记录 1", exact: true }) })
-          .locator(':scope > [data-slot="item-content"] > [data-detail-fields], :scope > [data-slot="card-content"] > [data-detail-credentials]');
-        await fields(sourceFacts, ["内部流水编号（PerPay）"]);
-        await readingFlowGeometry(page);
-        await readDetailSection(page, "收款关联");
-        await expect(detailBody(page).locator("#ledger-matches-heading")).toBeVisible();
-        await expect(detailBody(page).locator("[data-ledger-match]").first()).toBeVisible();
-        await readingFlowGeometry(page);
-        await expect(detailSection(page, "conflicts")).toHaveCount(0);
-        await readDetailSection(page, "交易");
+test.describe("detail reading width matrix", () => {
+  // Give each viewport its own trace and let both workers share the 80 scenarios.
+  test.describe.configure({ mode: "parallel" });
+  for (const width of [320, 390, 1440, 2190]) {
+    test(`${width}px: three detail types retain expanded facts across themes and content modes`, async ({ page, manifest }, info) => {
+      test.setTimeout(600_000);
+      await login(page, manifest);
+      const errors: string[] = [];
+      page.on("pageerror", error => errors.push(error.message));
+      for (const theme of ["light", "dark"] as const) for (const mode of ["compact", "full"] as const) {
+        await page.setViewportSize({ width, height: 900 });
+        await layout(page, theme, mode);
+        for (const scenario of layoutScenarios) {
+          await openDetail(page, manifest, scenario.key);
+          await expect(foreground(page).getByRole("heading", { level: 1 })).toHaveText(scenario.heading);
+          await expect(foreground(page).getByRole("heading", { level: 1 })).toHaveCount(1);
+          await expect(page.locator("[data-content-width]")).toHaveAttribute("data-content-width", mode);
+          await expect(page.locator("html")).toHaveClass(theme === "dark" ? /dark/ : /^(?!.*\bdark\b)/);
+          if (scenario.kind === "notification") {
+            await fields(detailSection(page, "overview").locator("[data-notification-information]"), scenario.key === "notificationSite" ? ["下次重试", "通知地址"] : ["所属网站", "下次重试", "通知地址"]);
+            await expect(detailSection(page, "overview").locator("[data-detail-order-summary]")).toBeVisible();
+            await readDetailSection(page, "投递记录");
+            await expectAttemptHistory(detailSection(page, "attempts"), 1);
+            await expect(detailSection(page, "attempts").getByText(/通知域名解析失败/)).toBeVisible();
+            await readingLayout(page, mode, "投递尝试（1）");
+            await readDetailSection(page, "概况");
+          } else if (scenario.kind === "match") {
+            await fields(detailBody(page), ["支付宝交易金额", "支付宝交易时间", "支付宝交易对方", "支付宝订单号", "支付宝交易备注", "金额占用时间"]);
+            await expect(page.getByRole("heading", { name: "匹配依据", exact: true })).toBeVisible();
+            await expect(page.getByRole("button", { name: "匹配依据", exact: true })).toHaveCount(0);
+          } else {
+            await readDetailSection(page, "交易");
+            await fields(detailSection(page, "transaction"), ["支付宝流水号", "交易金额", "收支方向", "交易时间"]);
+            await expect(detailBody(page).locator('dt').filter({ hasText: /^支付宝 App ID$/ })).toHaveCount(0);
+            await expect(detailBody(page).locator('[data-ledger-summary] [data-detail-credentials]')).toBeVisible();
+            await readingCredentialsGeometry(page);
+            await readDetailSection(page, /^采集记录/);
+            await expect(detailBody(page).locator("#ledger-sources-heading")).toBeVisible();
+            await expect(detailBody(page).locator("[data-ledger-source]").first()).toBeVisible();
+            const sourceFacts = detailSection(page, "sources").locator("[data-ledger-source]")
+              .filter({ has: page.getByRole("heading", { name: "查账记录 1", exact: true }) })
+              .locator(':scope > [data-slot="item-content"] > [data-detail-fields], :scope > [data-slot="card-content"] > [data-detail-credentials]');
+            await fields(sourceFacts, ["内部流水编号（PerPay）"]);
+            await readingFlowGeometry(page);
+            await readDetailSection(page, "收款关联");
+            await expect(detailBody(page).locator("#ledger-matches-heading")).toBeVisible();
+            await expect(detailBody(page).locator("[data-ledger-match]").first()).toBeVisible();
+            await readingFlowGeometry(page);
+            await expect(detailSection(page, "conflicts")).toHaveCount(0);
+            await readDetailSection(page, "交易");
+          }
+          const flows = await readingFlowGeometry(page);
+          const geometry = await readingLayout(page, mode);
+          if (width === 1440) await keyboardTools(page, scenario.tools);
+          const id = `reading-${scenario.key}-${width}-${theme}-${mode}`;
+          const credentials = await readingCredentialsGeometry(page);
+          await record(page, info, { feature: "detail-reading-matrix", width, theme, mode, scenario: scenario.key, flows, credentials, geometry, evidence: "local-synthetic-domain" });
+          await screenshot(page, info, id);
+          if (width === 320 && mode === "compact") await audit(page, info, id);
+        }
       }
-      const flows = await readingFlowGeometry(page);
-      const geometry = await readingLayout(page, mode);
-      if (width === 1440) await keyboardTools(page, scenario.tools);
-      const id = `reading-${scenario.key}-${width}-${theme}-${mode}`;
-      const credentials = await readingCredentialsGeometry(page);
-      await record(page, info, { feature: "detail-reading-matrix", width, theme, mode, scenario: scenario.key, flows, credentials, geometry, evidence: "local-synthetic-domain" });
-      await screenshot(page, info, id);
-      if (width === 320 && mode === "compact") await audit(page, info, id);
-    }
+      if (width === 2190) {
+        // Exercise the intermediate viewport as well as the explicit container
+        // widths above; each real fact group chooses its own natural wrapping.
+        await page.setViewportSize({ width: 1100, height: 900 });
+        await layout(page, "dark", "full");
+        await openDetail(page, manifest, "ledgerAssociated");
+        await readingFlowGeometry(page);
+        await page.setViewportSize({ width: 2190, height: 900 });
+        await openDetail(page, manifest, "ledgerAssociated");
+        await readingFlowGeometry(page);
+      }
+      expect(errors).toEqual([]);
+    });
   }
-  // Exercise the intermediate viewport as well as the explicit container
-  // boundaries above; each real fact group chooses its own natural wrapping.
-  await page.setViewportSize({ width: 1100, height: 900 });
-  await layout(page, "dark", "full");
-  await openDetail(page, manifest, "ledgerAssociated");
-  await readingFlowGeometry(page);
-  await page.setViewportSize({ width: 2190, height: 900 });
-  await openDetail(page, manifest, "ledgerAssociated");
-  await readingFlowGeometry(page);
-  expect(errors).toEqual([]);
 });
 
 test("coarse-pointer detail actions retain compact touch targets in both content modes", async ({ browser, manifest }, info) => {
@@ -473,12 +492,14 @@ test("named notification scenarios retain delivery facts and safe resend recover
     const card = page.getByRole("group", { name: "通知信息", exact: true });
     const history = page.getByRole("group", { name: "投递历史", exact: true });
     await expect(card.getByText(detail.target.target_url, { exact: true })).toBeVisible();
+    await expect(card.locator('[data-slot="card-header"]').getByText(`已尝试 ${detail.delivery.attempt_count} 次`, { exact: true })).toBeVisible();
+    await expect(card.locator("dt").filter({ hasText: /^尝试次数$/ })).toHaveCount(0);
     if (key === "notificationSite") {
       const order = detailBody(page).locator('[data-detail-order-summary] [data-slot="item-title"] a');
       expect(targetUrl(page, (await order.getAttribute("href"))!).pathname).toBe("/sites/" + detail.target.api_client_id + "/orders/" + detail.event.order_id);
     }
     await readDetailSection(page, "投递记录");
-    await expect(history.getByRole("heading", { name: `投递尝试（${detail.delivery.attempt_count}）`, exact: true })).toBeVisible();
+    await expectAttemptHistory(history, detail.delivery.attempt_count);
     await expect(history.getByRole("button", { name: /^投递尝试（/ })).toHaveCount(0);
     if (key === "notificationPending") {
       expect(detail.delivery.attempt_count).toBe(0);
@@ -536,7 +557,7 @@ test("notification history loads after its delivery succeeds and does not reload
     expect(attemptReads, "history cannot start before the delivery read succeeds").toBe(0);
     release();
     await expect.poll(() => attemptReads).toBe(1);
-    await expect(detailSection(page, "attempts").getByRole("heading", { name: `投递尝试（${detail.delivery.attempt_count}）`, exact: true })).toBeVisible();
+    await expectAttemptHistory(detailSection(page, "attempts"), detail.delivery.attempt_count);
     await expect(detailSection(page, "overview").locator("[data-notification-information]")).toBeVisible();
     for (const width of [390, 768, 1440]) {
       await page.setViewportSize({ width, height: 900 });
@@ -862,7 +883,7 @@ test("long products, complete identifiers and multiline details wrap without cli
     await page.route(manifest.origin + path, route => route.fulfill({ status: 200, json: { data: full } }));
   }
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"], { origin: manifest.origin });
-  for (const width of [320, 1440]) for (const theme of ["light", "dark"] as const) {
+  for (const width of [320, 390, 1440]) for (const theme of ["light", "dark"] as const) {
     await page.setViewportSize({ width, height: 900 });
     await layout(page, theme, "compact");
     for (const scenario of scenarios) {
@@ -913,7 +934,7 @@ test("long products, complete identifiers and multiline details wrap without cli
         if (wrapped.hangingWhitespace.length || wrapped.textRight > wrapped.boxRight + 1) await info.attach(`text-bounds-${scenario.key}-${width}-${theme}-${name}`, {
           body: JSON.stringify(wrapped, null, 2), contentType: "application/json",
         });
-        expect(wrapped.fieldWidth, "long facts remain inside their assigned grid cell").toBeLessThanOrEqual(wrapped.containerWidth + 1);
+        expect(wrapped.fieldWidth, "long facts wrap inside their available content width").toBeLessThanOrEqual(wrapped.containerWidth + 1);
         expect(wrapped.valueHeight).toBeGreaterThan(wrapped.lineHeight * 2);
         expect(wrapped.textRight).toBeLessThanOrEqual(wrapped.boxRight + 1);
         expect(wrapped.textBottom).toBeLessThanOrEqual(wrapped.boxBottom + 1);

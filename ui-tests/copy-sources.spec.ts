@@ -242,7 +242,7 @@ test("a genuine associated order summary keeps a contract-length synthetic merch
       const orderSummary = card.locator('[data-detail-order-summary]');
       const merchantField = orderSummary.locator('dl > div').filter({ has: page.getByText("商户订单号（业务网站）", { exact: true }) });
       const reference = merchantField.locator("dd span.break-all");
-      await expect(merchantField).toHaveAttribute("data-field-wide", "true");
+      await expect(merchantField).not.toHaveAttribute("data-field-wide", "true");
       await expect(reference).toContainText(merchantOrderNo);
       const created = orderSummary.locator('dl > div').filter({ has: page.getByText("创建时间", { exact: true }) });
       await expect(created.locator("time")).toHaveAttribute("datetime", original.created_at);

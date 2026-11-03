@@ -131,7 +131,8 @@ describe("readable payment match detail", () => {
     expect(screen.queryByRole("button", { name: "匹配依据" })).not.toBeInTheDocument();
     for (const label of ["商户订单号（业务网站）", "支付宝订单号", "支付宝商户单号", "支付宝交易备注", "金额占用时间", "关联理由", "撤销理由"]) {
       const field = screen.getByText(label, { selector: "dt" }).parentElement;
-      expect(field).toHaveAttribute("data-field-wide", "true");
+      if (label === "商户订单号（业务网站）") expect(field).not.toHaveAttribute("data-field-wide", "true");
+      else expect(field).toHaveAttribute("data-field-wide", "true");
       expect(field?.closest('[data-detail-fields]')).toHaveAttribute("data-layout", "flow");
       expect(field?.querySelector("dd")).not.toBeEmptyDOMElement();
     }
