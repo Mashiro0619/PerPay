@@ -217,18 +217,23 @@ export function AlipayAccountEditor({
   const location = useLocation();
   const navigationFeedback = location.state as {
     savedAccountId?: string;
+    savedAccountRevision?: number;
     checkFailure?: string;
   } | null;
+  const hasSavedFeedback = initial !== null &&
+    navigationFeedback?.savedAccountId === initial.id &&
+    navigationFeedback?.savedAccountRevision === initial.revision;
   const [saved, setSaved] = useState(initial);
   const historical = saved?.environment === "SANDBOX";
   const [draft, setDraft] = useState(() => accountConfiguration(initial));
   const [privateKey, setPrivateKey] = useState("");
+  const [privateKeyOpen, setPrivateKeyOpen] = useState(false);
   const [decoding, setDecoding] = useState(false);
   const [savedMessage, setSavedMessage] = useState(() =>
-    navigationFeedback?.savedAccountId === initial?.id ? "账号已保存" : "",
+    hasSavedFeedback ? "账号已保存" : "",
   );
   const [initialCheckFailure, setInitialCheckFailure] = useState(() =>
-    navigationFeedback?.savedAccountId === initial?.id
+    hasSavedFeedback
       ? navigationFeedback?.checkFailure
       : undefined,
   );
@@ -256,6 +261,8 @@ export function AlipayAccountEditor({
 
   async function accepted(account: AlipayAccount, message: string) {
     if (mounted.current) {
+      check.reset();
+      setInitialCheckFailure(undefined);
       setSaved(account);
       setDraft(accountConfiguration(account));
       setPrivateKey("");
@@ -319,7 +326,7 @@ export function AlipayAccountEditor({
         completedNavigation.current = true;
         void navigate("/settings/accounts/" + account.id, {
           replace: true,
-          state: { savedAccountId: account.id, checkFailure },
+          state: { savedAccountId: account.id, savedAccountRevision: account.revision, checkFailure },
         });
       }
     },
@@ -405,6 +412,12 @@ export function AlipayAccountEditor({
   // A confirmed create/delete may navigate before React Query clears isPending.
   useOverlayCloseGuard(() => decoding || (busy && !completedNavigation.current));
   const errors = save.error instanceof ApiError ? save.error.fields : {};
+  const activationKeyError = key.error instanceof ApiError ? key.error.fields.platform_public_key : undefined;
+  useEffect(() => {
+    if (save.isPending || !errors.private_key) return;
+    setPrivateKeyOpen(true);
+    if (tabbed) setPanel("application");
+  }, [errors.private_key, save.isPending, tabbed]);
   useEffect(() => {
     if (save.isPending || !save.error) return;
     const invalid = form.current?.querySelector<HTMLElement>(
@@ -414,7 +427,12 @@ export function AlipayAccountEditor({
     const nextPanel = invalid.closest<HTMLElement>("[data-account-panel]")?.dataset.accountPanel;
     if (tabbed && nextPanel && nextPanel !== panel) setPanel(nextPanel);
     requestAnimationFrame(() => { if (invalid.isConnected) invalid.focus(); });
-  }, [save.error, save.isPending, panel, tabbed]);
+  }, [save.error, save.isPending, panel, tabbed, privateKeyOpen]);
+  useEffect(() => {
+    if (key.isPending || !activationKeyError) return;
+    if (tabbed) setPanel("application");
+    requestAnimationFrame(() => form.current?.querySelector<HTMLElement>("#alipay-activation-key")?.focus());
+  }, [activationKeyError, key.isPending, tabbed]);
   function change<T extends keyof typeof draft>(
     field: T,
     value: (typeof draft)[T],
@@ -439,6 +457,7 @@ export function AlipayAccountEditor({
   }
   const error = save.error || key.error || remove.error;
   const pending = historical ? null : saved?.pending_application_key;
+  const platformKeyError = pending ? activationKeyError : errors.platform_public_key;
   const checkResult = historical ? null : check.data?.data ?? (!dirty ? saved?.last_check : null);
   const checkFailure = historical ? undefined : check.error?.message ?? initialCheckFailure;
   return (
@@ -616,10 +635,10 @@ export function AlipayAccountEditor({
                       onClick={() => saved?.application_public_key ? setConfirmation("regenerate") : key.mutate("generate")}>
                       <KeyRound data-icon="inline-start" />{saved?.application_public_key ? "更换应用密钥" : "生成应用密钥"}
                     </Button>}
-                    {saved && <a data-external-link href={alipayApplicationUrl(saved.app_id)} target="_blank" rel="noopener noreferrer"
+                    {saved && <a data-external-link href={alipayApplicationUrl(draft.app_id)} target="_blank" rel="noopener noreferrer"
                       className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-auto min-h-8 max-w-full whitespace-normal py-1.5")}>打开支付宝应用管理</a>}
                   </div>}
-                  <Field data-invalid={!pending && !!errors.platform_public_key}>
+                  <Field data-invalid={!!platformKeyError}>
                     <FieldLabel htmlFor={pending ? "alipay-activation-key" : "alipay-platform-key"}>
                       {pending ? "新的支付宝公钥" : "支付宝公钥"}
                     </FieldLabel>
@@ -629,17 +648,22 @@ export function AlipayAccountEditor({
                       rows={4}
                       className="settings-long-text"
                       value={pending ? activationKey : draft.platform_public_key}
-                      onChange={(event) => pending ? setActivationKey(event.currentTarget.value) : change("platform_public_key", event.currentTarget.value)}
+                      onChange={(event) => {
+                        if (pending) {
+                          setActivationKey(event.currentTarget.value);
+                          key.reset();
+                        } else change("platform_public_key", event.currentTarget.value);
+                      }}
                       maxLength={16384}
                       autoComplete="off"
                       spellCheck={false}
-                      aria-invalid={!pending && !!errors.platform_public_key}
+                      aria-invalid={!!platformKeyError}
                     />
                     <FieldDescription>
                       上传应用公钥后，将支付宝提供的“支付宝公钥”填到这里。
                     </FieldDescription>
-                    {!pending && errors.platform_public_key && (
-                      <FieldError>{errors.platform_public_key}</FieldError>
+                    {platformKeyError && (
+                      <FieldError>{platformKeyError}</FieldError>
                     )}
                   </Field>
                   {pending && <div className="flex flex-wrap gap-2">
@@ -648,7 +672,7 @@ export function AlipayAccountEditor({
                   </div>}
                   <FieldDescription>应用私钥保存在服务器，无需上传到支付宝。{dirty && saved ? "先保存当前修改，再操作应用密钥。" : ""}</FieldDescription>
                 </FieldSet>
-                {!pending && <Collapsible className="flex min-w-0 flex-col gap-2">
+                {!pending && <Collapsible open={privateKeyOpen} onOpenChange={setPrivateKeyOpen} className="flex min-w-0 flex-col gap-2">
                   <CollapsibleTrigger
                     render={<Button type="button" variant="outline" size="sm" className="h-auto min-h-8 max-w-full justify-between whitespace-normal py-1.5" />}
                   >

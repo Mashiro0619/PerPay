@@ -73,6 +73,8 @@ for (const width of [390, 1440]) {
       );
       await page.context().addCookies(fixture.cookies);
       await page.goto(fixture.origin + "/admin/settings/accounts/new");
+      await expect(page.getByLabel("账号名称", { exact: true })).toBeVisible();
+      await expect(page.getByText("账号已保存", { exact: true })).toHaveCount(0);
       await page.getByLabel("账号名称", { exact: true }).fill("备用账号");
       await page.getByRole("button", { name: "更多账号操作", exact: true }).click();
       await page.getByRole("menuitem", { name: "保存草稿", exact: true }).click();
@@ -89,6 +91,10 @@ for (const width of [390, 1440]) {
       await expect(page.getByRole("tab", { name: "应用密钥", exact: true })).toHaveCount(0);
       await expect(page.locator("[data-account-public-key]")).toHaveCount(1);
       await expect(page.getByRole("textbox", { name: "应用公钥", exact: true })).not.toHaveValue("");
+      await page.reload();
+      await expect(page.getByLabel("账号名称", { exact: true })).toBeVisible();
+      await expect(page.getByText("账号已保存", { exact: true })).toHaveCount(0);
+      await page.getByRole("tab", { name: "应用信息", exact: true }).click();
       await page
         .getByLabel("应用 ID（App ID）", { exact: true })
         .fill("2026000000000002");

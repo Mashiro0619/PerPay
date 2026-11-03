@@ -160,6 +160,7 @@ describe("settings summaries and owned editing overlays", () => {
     await user.click(within(dialog).getByRole("tab", { name: "应用信息" }));
     const appId = within(dialog).getByLabelText("应用 ID（App ID）");
     await user.clear(appId); await user.type(appId, "app-updated");
+    expect(new URL(within(dialog).getByRole("link", { name: "打开支付宝应用管理" }).getAttribute("href")!).searchParams.get("appId")).toBe("app-updated");
     await user.click(within(dialog).getByRole("tab", { name: "收款码" }));
     await user.click(within(dialog).getByRole("tab", { name: "基本信息" }));
     expect(within(dialog).getByLabelText("账号名称")).toHaveValue("跨分组账号");
@@ -248,6 +249,116 @@ describe("settings summaries and owned editing overlays", () => {
     expect(view.writes()).toHaveLength(0);
   });
 
+  it.each(["保存草稿", "保存并检查"])("reopens a collapsed private-key import and focuses its validation error after %s in another tab", async label => {
+    const account = sampleAccount();
+    const message = "应用私钥格式不正确，请粘贴完整的 RSA 私钥。";
+    const view = mountOnboarding({ stage: 4, path: "/settings/accounts/" + account.id, handle: request => {
+      const path = new URL(request.url).pathname;
+      if (path === "/api/admin/v1/alipay-accounts") return json({ data: [account] });
+      if (path !== "/api/admin/v1/alipay-accounts/" + account.id) return undefined;
+      return request.method === "GET" ? json({ data: account }) : json({ error: {
+        code: "settings_validation_failed", message, request_id: "private-key-review", fields: { private_key: message },
+      } }, 422);
+    } });
+    const user = userEvent.setup();
+    const dialog = await screen.findByRole("dialog", { name: "支付宝账号" });
+    await user.click(await within(dialog).findByRole("tab", { name: "应用信息" }));
+    const optional = within(dialog).getByRole("button", { name: "导入已有应用私钥（可选）" });
+    await user.click(optional);
+    await user.type(within(dialog).getByRole("textbox", { name: "应用私钥（可选）" }), "invalid-imported-private-key");
+    await user.click(optional);
+    await user.click(within(dialog).getByRole("tab", { name: "基本信息" }));
+    if (label === "保存草稿") {
+      await user.click(footer(dialog).getByRole("button", { name: "更多账号操作" }));
+      await user.click(await screen.findByRole("menuitem", { name: label }));
+    } else await user.click(footer(dialog).getByRole("button", { name: label }));
+    const privateKey = await within(dialog).findByRole("textbox", { name: "应用私钥（可选）" });
+    expect(privateKey).toHaveValue("invalid-imported-private-key");
+    expect(privateKey).toHaveAttribute("aria-invalid", "true");
+    expect(within(privateKey.closest('[data-slot="field"]') as HTMLElement).getByText(message)).toBeVisible();
+    expect(within(dialog).getByRole("tab", { name: "应用信息" })).toHaveAttribute("aria-selected", "true");
+    expect(optional).toHaveAttribute("aria-expanded", "true");
+    await waitFor(() => expect(privateKey).toHaveFocus());
+    expect(view.writes()).toHaveLength(1);
+    expect(await view.writes()[0]!.clone().json()).toMatchObject({ private_key: "invalid-imported-private-key" });
+    await user.clear(privateKey);
+    await user.click(optional);
+    expect(optional).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("clears the earlier connection failure after a new application key is verified and activated", async () => {
+    const pending = { change_id: "33333333-3333-4333-8333-333333333333", public_key: "verified-public-key",
+      fingerprint: "b".repeat(64), app_id: "app-original", environment: "PRODUCTION" as const, created_at: "2026-11-04T00:00:00Z" };
+    let account: AlipayAccount = { ...sampleAccount(), pending_application_key: pending };
+    const view = mountOnboarding({ stage: 4, path: "/settings/accounts/" + account.id, handle: request => {
+      const path = new URL(request.url).pathname;
+      if (path === "/api/admin/v1/alipay-accounts") return json({ data: [account] });
+      if (path === "/api/admin/v1/alipay-accounts/" + account.id) return json({ data: account });
+      if (path.endsWith("/check")) return json({ data: { ok: false, checked_at: "2026-11-04T00:00:00Z", message: "之前的密钥未通过检查" } });
+      if (path.endsWith("/application-key/activate")) {
+        account = { ...account, application_public_key: pending.public_key, pending_application_key: null,
+          platform_public_key: "verified-platform-key", revision: 2, last_check: null };
+        return json({ data: account });
+      }
+      return undefined;
+    } });
+    const user = userEvent.setup();
+    const dialog = await screen.findByRole("dialog", { name: "支付宝账号" });
+    await user.click(await within(dialog).findByRole("tab", { name: "基本信息" }));
+    await user.click(footer(dialog).getByRole("button", { name: "更多账号操作" }));
+    await user.click(await screen.findByRole("menuitem", { name: "重新检查" }));
+    expect(await within(dialog).findByText("连接检查未通过")).toBeVisible();
+    await user.click(within(dialog).getByRole("tab", { name: "应用信息" }));
+    await user.type(within(dialog).getByLabelText("新的支付宝公钥"), "verified-platform-key");
+    await user.click(within(dialog).getByRole("button", { name: "验证并启用" }));
+    expect(await within(dialog).findByText("新应用密钥已启用")).toBeVisible();
+    expect(within(dialog).queryByText("连接检查未通过")).not.toBeInTheDocument();
+    expect(within(dialog).queryByText("之前的密钥未通过检查")).not.toBeInTheDocument();
+    expect(view.writes().map(request => new URL(request.url).pathname)).toEqual([
+      "/api/admin/v1/alipay-accounts/" + account.id + "/check",
+      "/api/admin/v1/alipay-accounts/" + account.id + "/application-key/activate",
+    ]);
+  });
+
+  it("shows and focuses pending platform-key validation without losing the key draft, then retries activation", async () => {
+    const pending = { change_id: "33333333-3333-4333-8333-333333333333", public_key: "pending-public-key",
+      fingerprint: "b".repeat(64), app_id: "app-original", environment: "PRODUCTION" as const, created_at: "2026-11-04T00:00:00Z" };
+    let account: AlipayAccount = { ...sampleAccount(), pending_application_key: pending };
+    let attempts = 0;
+    const message = "请粘贴支付宝提供的完整 RSA 公钥，不要填写应用公钥。";
+    const view = mountOnboarding({ stage: 4, path: "/settings/accounts/" + account.id, handle: request => {
+      const path = new URL(request.url).pathname;
+      if (path === "/api/admin/v1/alipay-accounts") return json({ data: [account] });
+      if (path === "/api/admin/v1/alipay-accounts/" + account.id) return json({ data: account });
+      if (!path.endsWith("/application-key/activate")) return undefined;
+      if (++attempts === 1) return json({ error: { code: "settings_validation_failed", message,
+        request_id: "activation-key-review", fields: { platform_public_key: message } } }, 422);
+      account = { ...account, application_public_key: pending.public_key, pending_application_key: null,
+        platform_public_key: "corrected-platform-key", revision: 2 };
+      return json({ data: account });
+    } });
+    const user = userEvent.setup();
+    const dialog = await screen.findByRole("dialog", { name: "支付宝账号" });
+    const platformKey = await within(dialog).findByRole("textbox", { name: "新的支付宝公钥" });
+    await user.type(platformKey, "incorrect-platform-key");
+    await user.click(within(dialog).getByRole("button", { name: "验证并启用" }));
+    expect(await within(platformKey.closest('[data-slot="field"]') as HTMLElement).findByText(message)).toBeVisible();
+    expect(platformKey).toHaveAttribute("aria-invalid", "true");
+    expect(platformKey).toHaveValue("incorrect-platform-key");
+    expect(within(dialog).getByRole("textbox", { name: "待启用应用公钥" })).toHaveValue(pending.public_key);
+    await waitFor(() => expect(platformKey).toHaveFocus());
+    await user.clear(platformKey); await user.type(platformKey, "corrected-platform-key");
+    expect(platformKey).toHaveAttribute("aria-invalid", "false");
+    expect(within(dialog).queryByText(message)).not.toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: "验证并启用" }));
+    expect(await within(dialog).findByText("新应用密钥已启用")).toBeVisible();
+    expect(within(dialog).getByRole("textbox", { name: "支付宝公钥" })).toHaveValue("corrected-platform-key");
+    expect(view.writes().map(request => new URL(request.url).pathname)).toEqual([
+      "/api/admin/v1/alipay-accounts/" + account.id + "/application-key/activate",
+      "/api/admin/v1/alipay-accounts/" + account.id + "/application-key/activate",
+    ]);
+  });
+
   it("activates a pending key from the single application flow without submitting the account form", async () => {
     const pending = { change_id: "33333333-3333-4333-8333-333333333333", public_key: "pending-public-key",
       fingerprint: "b".repeat(64), app_id: "app-original", environment: "PRODUCTION" as const, created_at: "2026-11-03T00:00:00Z" };
@@ -306,7 +417,9 @@ describe("settings summaries and owned editing overlays", () => {
       return undefined;
     } });
     const user = userEvent.setup();
-    await user.type(await screen.findByLabelText("账号名称"), account.name);
+    const name = await screen.findByLabelText("账号名称");
+    expect(screen.queryByText("账号已保存", { exact: true })).not.toBeInTheDocument();
+    await user.type(name, account.name);
     if (label === "保存草稿") {
       await user.click(screen.getByRole("button", { name: "更多账号操作" }));
       await user.click(await screen.findByRole("menuitem", { name: label }));
@@ -319,6 +432,50 @@ describe("settings summaries and owned editing overlays", () => {
     await waitFor(() => expect(new URLSearchParams(view.router.state.location.search).get("overlay")).toBe("/settings/accounts/" + account.id));
     expect(view.writes()).toHaveLength(label === "保存并检查" ? 2 : 1);
     expect(screen.getByLabelText("账号名称")).toHaveValue(account.name);
+    expect(view.router.state.location.state).toMatchObject({ perpayOverlay: { detailState: {
+      savedAccountId: account.id, savedAccountRevision: account.revision,
+    } } });
+    expect(screen.getByText("账号已保存", { exact: true })).toBeVisible();
+  });
+
+  it("retains a failed creation check for its version and drops the feedback after generating a key and reopening", async () => {
+    let account: AlipayAccount = { ...sampleAccount(), revision: 0, configured: false, app_id: null, code_payload: null,
+      platform_public_key: null, application_public_key: null, application_key_fingerprint: null };
+    const view = mountOnboarding({ stage: 4, path: "/settings/accounts/new", handle: request => {
+      const path = new URL(request.url).pathname;
+      if (path === "/api/admin/v1/alipay-accounts") return json({ data: request.method === "POST" ? account : [account] }, request.method === "POST" ? 201 : 200);
+      if (path === "/api/admin/v1/alipay-accounts/" + account.id) return json({ data: account });
+      if (path.endsWith("/check")) return apiError("internal_error", "创建时的连接检查暂不可用", 503);
+      if (path.endsWith("/application-key")) {
+        account = { ...account, revision: 1, application_public_key: "generated-application-public-key", application_key_fingerprint: "b".repeat(64) };
+        return json({ data: account });
+      }
+      return undefined;
+    } });
+    const user = userEvent.setup();
+    const name = await screen.findByLabelText("账号名称");
+    const originalForm = name.closest("form")!;
+    await user.type(name, account.name);
+    await user.click(screen.getByRole("button", { name: "保存并检查" }));
+    await waitFor(() => expect(new URLSearchParams(view.router.state.location.search).get("overlay")).toBe("/settings/accounts/" + account.id));
+    await waitFor(() => expect(originalForm).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("创建时的连接检查暂不可用")).toBeVisible());
+    const creationLocation = view.router.state.location;
+    await user.click(screen.getByRole("tab", { name: "应用信息" }));
+    await user.click(screen.getByRole("button", { name: "生成应用密钥" }));
+    expect(await screen.findByText("应用密钥已保存，请把应用公钥上传到支付宝")).toBeVisible();
+    expect(screen.queryByText("创建时的连接检查暂不可用")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "关闭对话框" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "支付宝账号" })).not.toBeInTheDocument());
+    queryClient.removeQueries({ queryKey: ["alipay-accounts", account.id], exact: true });
+    await act(async () => { await view.router.navigate({ pathname: creationLocation.pathname, search: creationLocation.search }, { state: creationLocation.state }); });
+    await screen.findByLabelText("账号名称");
+    expect(screen.queryByText("创建时的连接检查暂不可用")).not.toBeInTheDocument();
+    expect(screen.queryByText("账号已保存", { exact: true })).not.toBeInTheDocument();
+    expect(view.writes().map(request => new URL(request.url).pathname)).toEqual([
+      "/api/admin/v1/alipay-accounts", "/api/admin/v1/alipay-accounts/" + account.id + "/check",
+      "/api/admin/v1/alipay-accounts/" + account.id + "/application-key",
+    ]);
   });
 
   it("closes an account after confirmed deletion and evicts the deleted editor", async () => {
