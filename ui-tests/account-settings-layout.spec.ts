@@ -51,7 +51,7 @@ async function reachField(control: Locator, dialog: Locator) {
 for (const layout of [{ width: 1440, height: 900, font: 100 }, { width: 390, height: 844, font: 100 }, { width: 768, height: 480, font: 200 }, { width: 320, height: 560, font: 200 }]) {
   test.describe(`${layout.width}px ${layout.font}% text`, () => {
   test.use({ hasTouch: layout.width < 768, isMobile: layout.width < 768 });
-  test(`account settings card and five editor panels preserve alignment at ${layout.width}px and ${layout.font}% text`, async ({ page, manifest }, info) => {
+  test(`account settings card and four editor panels preserve alignment at ${layout.width}px and ${layout.font}% text`, async ({ page, manifest }, info) => {
     await page.setViewportSize({ width: layout.width, height: layout.height });
     await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
     await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
@@ -88,12 +88,14 @@ for (const layout of [{ width: 1440, height: 900, font: 100 }, { width: 390, hei
     const dialog = page.locator("[data-overlay-content]");
     const editor = dialog.locator("[data-alipay-account-editor]");
     await expect(editor).toBeVisible();
+    await expect(editor.getByRole("tab", { name: "应用密钥", exact: true })).toHaveCount(0);
+    await expect(editor.locator("[data-account-public-key]")).toHaveCount(1);
     const accountPath = new URL(page.url()).searchParams.get("overlay")!;
     const accountResponse = await page.request.get(manifest.origin + "/api/admin/v1/alipay-accounts/" + accountPath.split("/").at(-1));
     expect(accountResponse.ok()).toBe(true);
     const account = (await accountResponse.json()).data as { application_public_key: string | null };
     const evidence = [];
-    for (const [panel, name] of [["basic", "基本信息"], ["application", "应用信息"], ["collection", "收款码"], ["keys", "应用密钥"], ["usage", "使用情况"]] as const) {
+    for (const [panel, name] of [["basic", "基本信息"], ["application", "应用信息"], ["collection", "收款码"], ["usage", "使用情况"]] as const) {
       const tab = editor.getByRole("tab", { name, exact: true });
       await tab.scrollIntoViewIfNeeded(); await tab.click();
       await expect(tab).toHaveAttribute("aria-selected", "true");
@@ -109,7 +111,7 @@ for (const layout of [{ width: 1440, height: 900, font: 100 }, { width: 390, hei
       await expect(dialog.getByRole("button", { name: "关闭对话框", exact: true })).toBeVisible();
       const save = actions.getByRole("button", { name: "保存并检查", exact: true });
       let saveGeometry;
-      if (panel === "keys" || panel === "usage") await expect(save).toHaveCount(0);
+      if (panel === "usage") await expect(save).toHaveCount(0);
       else {
         await expect(save).toBeVisible();
         saveGeometry = await completeLabel(save);
@@ -147,14 +149,6 @@ for (const layout of [{ width: 1440, height: 900, font: 100 }, { width: 390, hei
         const reached = await reachField(active.getByRole("textbox", { name: "支付宝公钥", exact: true }), dialog);
         evidence.push({ panel, measures, saveGeometry, reached });
       } else evidence.push({ panel, measures, saveGeometry });
-      if (panel === "keys") {
-        const expectedKey = account.application_public_key;
-        expect(expectedKey).toBeTruthy();
-        const copy = active.getByRole("button", { name: "复制应用公钥", exact: true });
-        await copy.scrollIntoViewIfNeeded(); await copy.click();
-        await expect(copy).toHaveAttribute("data-copy-state", "success");
-        expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(expectedKey);
-      }
       if (panel === "usage") await expect(active.locator('[data-slot="card-footer"]')).toHaveCount(0);
       await page.mouse.move(0, 0);
       await page.screenshot({ path: info.outputPath(`account-${panel}.png`), fullPage: false });

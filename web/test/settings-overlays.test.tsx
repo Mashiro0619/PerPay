@@ -194,6 +194,13 @@ describe("settings summaries and owned editing overlays", () => {
     expect(publicKey).toHaveAttribute("readonly");
     expect(within(dialog).getByRole("textbox", { name: "支付宝公钥" })).toHaveValue(account.platform_public_key ?? "");
     expect(within(dialog).getByRole("button", { name: "复制应用公钥" })).toBeVisible();
+    expect(within(dialog).queryByRole("tab", { name: "应用密钥" })).not.toBeInTheDocument();
+    expect(dialog.querySelectorAll("[data-account-public-key]")).toHaveLength(1);
+    const applicationFields = publicKey.closest('[data-account-application]')!;
+    expect([...applicationFields.querySelectorAll('input, textarea')].map(field => field.id)).toEqual([
+      "alipay-app-id", publicKey.id, "alipay-platform-key",
+    ]);
+    expect(within(applicationFields as HTMLElement).getByRole("button", { name: "更换应用密钥" })).toBeVisible();
     expect(within(dialog).queryByText(/下方应用公钥/)).not.toBeInTheDocument();
     const optional = within(dialog).getByRole("button", { name: "导入已有应用私钥（可选）" });
     expect(optional).toHaveAttribute("aria-expanded", "false");
@@ -217,7 +224,7 @@ describe("settings summaries and owned editing overlays", () => {
     expect(privateKey).toHaveValue("");
   });
 
-  it("omits save actions on clean key and usage panels while retaining them for an unsaved account draft", async () => {
+  it("retains saving in the unified application panel and omits it only on a clean usage panel", async () => {
     const account = sampleAccount();
     const view = mountOnboarding({ stage: 4, path: "/settings/accounts/" + account.id, handle: request => {
       const path = new URL(request.url).pathname;
@@ -228,10 +235,10 @@ describe("settings summaries and owned editing overlays", () => {
     const user = userEvent.setup();
     const dialog = await screen.findByRole("dialog", { name: "支付宝账号" });
     await within(dialog).findByLabelText("账号名称");
-    for (const name of ["应用密钥", "使用情况"]) {
-      await user.click(within(dialog).getByRole("tab", { name }));
-      expect(within(dialog).queryByRole("button", { name: "保存并检查" })).not.toBeInTheDocument();
-    }
+    await user.click(within(dialog).getByRole("tab", { name: "应用信息" }));
+    expect(footer(dialog).getByRole("button", { name: "保存并检查" })).toBeVisible();
+    await user.click(within(dialog).getByRole("tab", { name: "使用情况" }));
+    expect(within(dialog).queryByRole("button", { name: "保存并检查" })).not.toBeInTheDocument();
     expect(dialog.querySelector('[data-account-usage-card] [data-slot="card-footer"]')).toBeNull();
     await user.click(within(dialog).getByRole("tab", { name: "基本信息" }));
     fireEvent.change(within(dialog).getByLabelText("账号名称"), { target: { value: "未保存的账号名称" } });
@@ -239,6 +246,39 @@ describe("settings summaries and owned editing overlays", () => {
     expect(footer(dialog).getByRole("button", { name: "保存并检查" })).toBeVisible();
     expect(within(dialog).getByRole("button", { name: "删除账号" })).toBeDisabled();
     expect(view.writes()).toHaveLength(0);
+  });
+
+  it("activates a pending key from the single application flow without submitting the account form", async () => {
+    const pending = { change_id: "33333333-3333-4333-8333-333333333333", public_key: "pending-public-key",
+      fingerprint: "b".repeat(64), app_id: "app-original", environment: "PRODUCTION" as const, created_at: "2026-11-03T00:00:00Z" };
+    let account: AlipayAccount = { ...sampleAccount(), pending_application_key: pending };
+    const writes: Array<{ path: string; body: unknown }> = [];
+    mountOnboarding({ stage: 4, path: "/settings/accounts/" + account.id, handle: request => {
+      const path = new URL(request.url).pathname;
+      if (path === "/api/admin/v1/alipay-accounts") return json({ data: [account] });
+      if (path === "/api/admin/v1/alipay-accounts/" + account.id) return json({ data: account });
+      if (path.endsWith("/application-key/activate")) return (async () => {
+        writes.push({ path, body: await request.clone().json() });
+        account = { ...account, application_public_key: pending.public_key, pending_application_key: null,
+          platform_public_key: "returned-platform-public-key", revision: 2 };
+        return json({ data: account });
+      })();
+      return undefined;
+    } });
+    const user = userEvent.setup();
+    const dialog = await screen.findByRole("dialog", { name: "支付宝账号" });
+    const publicKey = await within(dialog).findByRole("textbox", { name: "待启用应用公钥" });
+    expect(publicKey).toHaveValue(pending.public_key);
+    expect(dialog.querySelectorAll("[data-account-public-key]")).toHaveLength(1);
+    expect(within(dialog).getByRole("tab", { name: "应用信息" })).toHaveAttribute("aria-selected", "true");
+    expect(within(dialog).getByLabelText("应用 ID（App ID）")).toBeDisabled();
+    expect(within(dialog).queryByRole("button", { name: "保存并检查" })).not.toBeInTheDocument();
+    await user.type(within(dialog).getByLabelText("新的支付宝公钥"), "returned-platform-public-key");
+    await user.click(within(dialog).getByRole("button", { name: "验证并启用" }));
+    await waitFor(() => expect(within(dialog).getByRole("textbox", { name: "应用公钥" })).toHaveValue(pending.public_key));
+    expect(within(dialog).getByRole("textbox", { name: "支付宝公钥" })).toHaveValue("returned-platform-public-key");
+    expect(writes).toEqual([{ path: "/api/admin/v1/alipay-accounts/" + account.id + "/application-key/activate",
+      body: { revision: 1, change_id: pending.change_id, platform_public_key: "returned-platform-public-key" } }]);
   });
 
   it("returns secondary-action validation focus to an invalid field in another account tab without writing", async () => {

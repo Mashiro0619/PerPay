@@ -232,6 +232,9 @@ describe("支付宝账号设置", () => {
         initial={{ ...first, pending_application_key: pending }}
       />,
     );
+    expect(screen.getAllByRole("textbox", { name: "待启用应用公钥" })).toHaveLength(1);
+    expect(screen.getByRole("textbox", { name: "待启用应用公钥" })).toHaveValue(pending.public_key);
+    expect(screen.queryByRole("textbox", { name: "当前应用公钥" })).not.toBeInTheDocument();
     const user = userEvent.setup();
     await user.type(
       screen.getByLabelText("新的支付宝公钥"),

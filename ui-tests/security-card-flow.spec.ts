@@ -249,7 +249,7 @@ test("account key content, drafts and confirmation focus survive content-width c
   expect(account, "the isolated fixture has a configured account with a public key").toBeTruthy();
   await page.getByRole("link", { name: "配置" + account!.name, exact: true }).click();
   await expect.poll(() => new URL(page.url()).searchParams.get("overlay")).toBe("/settings/accounts/" + account!.id);
-  const keyCard = page.locator("[data-account-key-card]");
+  const keyCard = page.locator("[data-account-application]");
   const publicKey = keyCard.locator('[data-account-public-key] textarea');
   await expect(publicKey).toHaveValue(account!.application_public_key!);
   await keyCard.evaluate(element => element.setAttribute("data-security-flow-key-card", "original"));
@@ -267,7 +267,7 @@ test("account key content, drafts and confirmation focus survive content-width c
     await expect(publicKey).toHaveValue(account!.application_public_key!);
   }
   await name.fill(account!.name);
-  await page.getByRole("tab", { name: "应用密钥", exact: true }).click();
+  await page.getByRole("tab", { name: "应用信息", exact: true }).click();
   const copy = keyCard.getByRole("button", { name: "复制应用公钥", exact: true });
   await copy.focus();
   await page.keyboard.press("Enter");

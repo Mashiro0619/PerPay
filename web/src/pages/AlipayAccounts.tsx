@@ -179,7 +179,7 @@ function accountConfiguration(account: AlipayAccount | null) {
   };
 }
 
-const accountSections = [["basic", "基本信息"], ["application", "应用信息"], ["collection", "收款码"], ["keys", "应用密钥"], ["usage", "使用情况"]] as const;
+const accountSections = [["basic", "基本信息"], ["application", "应用信息"], ["collection", "收款码"], ["usage", "使用情况"]] as const;
 function AccountPanel({ tabbed, value, children }: { tabbed: boolean; value: string; children: ReactNode }) {
   return tabbed ? <TabsContent value={value} keepMounted data-account-panel={value}><FieldGroup>{children}</FieldGroup></TabsContent> : <>{children}</>;
 }
@@ -196,7 +196,7 @@ function AccountPublicKeyField({ value, title = "应用公钥", copyLabel = "复
         <CopyValue value={value} label={copyLabel} buttonOnly />
       </InputGroupAddon>
     </InputGroup>
-    <FieldDescription>复制并上传到对应的支付宝开放平台应用。</FieldDescription>
+    <FieldDescription>上传到对应的支付宝应用，再将支付宝提供的公钥填入下方。</FieldDescription>
   </Field>;
 }
 
@@ -212,7 +212,7 @@ export function AlipayAccountEditor({
   const overlay = useOverlayContext();
   const tabbed = !!overlay && !onBack;
   const formId = useId();
-  const [panel, setPanel] = useState(initial?.pending_application_key ? "keys" : "basic");
+  const [panel, setPanel] = useState(initial?.pending_application_key ? "application" : "basic");
   const navigate = useNavigate();
   const location = useLocation();
   const navigationFeedback = location.state as {
@@ -250,7 +250,7 @@ export function AlipayAccountEditor({
   const dirty =
     JSON.stringify(draft) !== JSON.stringify(accountConfiguration(saved)) ||
     privateKey !== "";
-  const showFormActions = !tabbed || (panel !== "keys" && panel !== "usage") || dirty;
+  const showFormActions = (!tabbed || panel !== "usage" || dirty) && !(tabbed && !historical && panel === "application" && saved?.pending_application_key && !dirty);
   const clear = useDirtyDraft(dirty);
   const clearActivationDraft = useDirtyDraft(activationKey !== "");
 
@@ -438,7 +438,7 @@ export function AlipayAccountEditor({
     save.mutate(false);
   }
   const error = save.error || key.error || remove.error;
-  const pending = saved?.pending_application_key;
+  const pending = historical ? null : saved?.pending_application_key;
   const checkResult = historical ? null : check.data?.data ?? (!dirty ? saved?.last_check : null);
   const checkFailure = historical ? undefined : check.error?.message ?? initialCheckFailure;
   return (
@@ -528,7 +528,7 @@ export function AlipayAccountEditor({
         }}
       >
         <FieldSet disabled={busy || historical}>
-          <Card className={tabbed && (panel === "keys" || panel === "usage") ? "hidden" : undefined}>
+          <Card className={tabbed && panel === "usage" ? "hidden" : undefined}>
             <CardHeader hidden={tabbed && panel !== "basic"}>
               <CardTitle>账号信息</CardTitle>
               <CardDescription>
@@ -572,7 +572,7 @@ export function AlipayAccountEditor({
                 </FieldGroup>
                 </AccountPanel>
                 <AccountPanel tabbed={tabbed} value="application">
-                <FieldSet>
+                <FieldSet data-account-application>
                   <FieldLegend>开放平台应用</FieldLegend>
                   <FieldDescription>
                     请使用状态为“已上线”的支付宝应用；“开发中”的应用无法查账。
@@ -586,6 +586,7 @@ export function AlipayAccountEditor({
                       name="app_id"
                       value={draft.app_id}
                       maxLength={64}
+                      disabled={!!pending}
                       onChange={(event) =>
                         change("app_id", event.currentTarget.value)
                       }
@@ -594,44 +595,60 @@ export function AlipayAccountEditor({
                     />
                     {errors.app_id && <FieldError>{errors.app_id}</FieldError>}
                   </Field>
-                  {saved?.application_public_key && !privateKey.trim() ? (
-                    <AccountPublicKeyField value={saved.application_public_key} title={pending ? "当前应用公钥" : "应用公钥"} />
+                  {pending && <Alert>
+                    <AlertTitle>新应用密钥待启用</AlertTitle>
+                    <AlertDescription>当前仍使用原密钥。上传下面的待启用应用公钥，再填入支付宝提供的公钥并验证启用。</AlertDescription>
+                  </Alert>}
+                  {(pending?.public_key || saved?.application_public_key) && !privateKey.trim() ? (
+                    <AccountPublicKeyField value={pending?.public_key ?? saved!.application_public_key!}
+                      title={pending ? "待启用应用公钥" : "应用公钥"} copyLabel={pending ? "复制待启用应用公钥" : "复制应用公钥"} />
                   ) : (
                     <Field>
                       <FieldLabel>应用公钥</FieldLabel>
                       <FieldDescription>
-                        {privateKey.trim() ? "保存导入的应用私钥后，这里会显示对应的应用公钥。" : saved ? "尚未生成应用密钥。请在“应用密钥”中由系统生成密钥对，或导入已有应用私钥。" : "先填写账号名称并保存草稿，再在“应用密钥”中由系统生成密钥对。"}
+                        {privateKey.trim() ? "保存导入的应用私钥后，这里会显示对应的应用公钥。" : saved ? "点击“生成应用密钥”由系统生成密钥对，再将应用公钥上传到支付宝。" : "先填写账号名称并保存草稿，再点击“生成应用密钥”。"}
                       </FieldDescription>
-                      {tabbed && !privateKey.trim() && <Button type="button" variant="outline" size="sm" className="h-auto min-h-8 max-w-full self-start whitespace-normal py-1.5" onClick={() => setPanel("keys")}>前往应用密钥</Button>}
                     </Field>
                   )}
-                  <Field data-invalid={!!errors.platform_public_key}>
-                    <FieldLabel htmlFor="alipay-platform-key">
-                      支付宝公钥
+                  {!historical && <div className="flex min-w-0 flex-wrap items-center gap-2" data-account-key-actions>
+                    {!pending && !privateKey.trim() && <Button type="button" variant="outline" size="sm"
+                      className="h-auto min-h-8 max-w-full whitespace-normal py-1.5" disabled={busy || dirty || !saved}
+                      onClick={() => saved?.application_public_key ? setConfirmation("regenerate") : key.mutate("generate")}>
+                      <KeyRound data-icon="inline-start" />{saved?.application_public_key ? "更换应用密钥" : "生成应用密钥"}
+                    </Button>}
+                    {saved && <a data-external-link href={alipayApplicationUrl(saved.app_id)} target="_blank" rel="noopener noreferrer"
+                      className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-auto min-h-8 max-w-full whitespace-normal py-1.5")}>打开支付宝应用管理</a>}
+                  </div>}
+                  <Field data-invalid={!pending && !!errors.platform_public_key}>
+                    <FieldLabel htmlFor={pending ? "alipay-activation-key" : "alipay-platform-key"}>
+                      {pending ? "新的支付宝公钥" : "支付宝公钥"}
                     </FieldLabel>
                     <Textarea
-                      id="alipay-platform-key"
-                      name="platform_public_key"
+                      id={pending ? "alipay-activation-key" : "alipay-platform-key"}
+                      name={pending ? undefined : "platform_public_key"}
                       rows={4}
                       className="settings-long-text"
-                      value={draft.platform_public_key}
-                      onChange={(event) =>
-                        change("platform_public_key", event.currentTarget.value)
-                      }
+                      value={pending ? activationKey : draft.platform_public_key}
+                      onChange={(event) => pending ? setActivationKey(event.currentTarget.value) : change("platform_public_key", event.currentTarget.value)}
                       maxLength={16384}
                       autoComplete="off"
                       spellCheck={false}
-                      aria-invalid={!!errors.platform_public_key}
+                      aria-invalid={!pending && !!errors.platform_public_key}
                     />
                     <FieldDescription>
                       上传应用公钥后，将支付宝提供的“支付宝公钥”填到这里。
                     </FieldDescription>
-                    {errors.platform_public_key && (
+                    {!pending && errors.platform_public_key && (
                       <FieldError>{errors.platform_public_key}</FieldError>
                     )}
                   </Field>
+                  {pending && <div className="flex flex-wrap gap-2">
+                    <Button type="button" disabled={busy || dirty || !activationKey.trim()} onClick={() => key.mutate("activate")}>验证并启用</Button>
+                    <Button type="button" variant="outline" disabled={busy || dirty} onClick={() => setConfirmation("discard")}>放弃新密钥</Button>
+                  </div>}
+                  <FieldDescription>应用私钥保存在服务器，无需上传到支付宝。{dirty && saved ? "先保存当前修改，再操作应用密钥。" : ""}</FieldDescription>
                 </FieldSet>
-                <Collapsible className="flex min-w-0 flex-col gap-2">
+                {!pending && <Collapsible className="flex min-w-0 flex-col gap-2">
                   <CollapsibleTrigger
                     render={<Button type="button" variant="outline" size="sm" className="h-auto min-h-8 max-w-full justify-between whitespace-normal py-1.5" />}
                   >
@@ -660,14 +677,14 @@ export function AlipayAccountEditor({
                         aria-invalid={!!errors.private_key}
                       />
                       <FieldDescription>
-                        留空会保留当前密钥；尚未生成时，请在“应用密钥”中生成。保存后不会回显私钥。
+                        留空会保留当前密钥；没有密钥时，可点击上方“生成应用密钥”。保存后不会回显私钥。
                       </FieldDescription>
                       {errors.private_key && (
                         <FieldError>{errors.private_key}</FieldError>
                       )}
                     </Field>
                   </CollapsibleContent>
-                </Collapsible>
+                </Collapsible>}
                 </AccountPanel>
                 <AccountPanel tabbed={tabbed} value="collection">
                 <FieldSet>
@@ -739,115 +756,6 @@ export function AlipayAccountEditor({
           </Card>
         </FieldSet>
       </form>
-      <AccountPanel tabbed={tabbed} value="keys">
-      <Card data-account-key-card>
-        <CardHeader>
-          <CardTitle>应用密钥</CardTitle>
-          <CardDescription>
-            由系统生成密钥对，或导入已有应用私钥。私钥保存在服务器，应用公钥用于配置支付宝。
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex min-w-0 flex-col gap-4">
-          {historical ? (
-            <p className="text-sm text-muted-foreground">此账号仅保留历史记录。</p>
-          ) : !saved ? (
-            <p className="text-sm text-muted-foreground">
-              先填写账号名称并保存草稿，即可生成应用密钥。
-            </p>
-          ) : pending ? (
-            <>
-              <Alert>
-                <AlertTitle>新应用密钥待启用</AlertTitle>
-                <AlertDescription>
-                  当前仍使用原密钥。把下面的新公钥上传到支付宝应用{" "}
-                  {pending.app_id}，再填写新的支付宝公钥并验证启用。
-                </AlertDescription>
-              </Alert>
-              <AccountPublicKeyField
-                value={pending.public_key}
-                title="待启用应用公钥"
-                copyLabel="复制待启用应用公钥"
-              />
-              <Field>
-                <FieldLabel htmlFor="alipay-activation-key">
-                  新的支付宝公钥
-                </FieldLabel>
-                <Textarea
-                  id="alipay-activation-key"
-                  rows={4}
-                  value={activationKey}
-                  onChange={(event) =>
-                    setActivationKey(event.currentTarget.value)
-                  }
-                  className="settings-long-text"
-                  autoComplete="off"
-                  spellCheck={false}
-                  disabled={busy}
-                />
-              </Field>
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  disabled={busy || dirty || !activationKey.trim()}
-                  onClick={() => key.mutate("activate")}
-                >
-                  验证并启用
-                </Button>
-                <Button
-                  variant="outline"
-                  disabled={busy || dirty}
-                  onClick={() => setConfirmation("discard")}
-                >
-                  放弃新密钥
-                </Button>
-              </div>
-            </>
-          ) : saved.application_public_key ? (
-            <>
-              {tabbed && <AccountPublicKeyField
-                value={saved.application_public_key}
-              />}
-              <Button
-                className="self-start"
-                variant="outline"
-                disabled={busy || dirty}
-                onClick={() => setConfirmation("regenerate")}
-              >
-                <KeyRound data-icon="inline-start" />
-                更换应用密钥
-              </Button>
-            </>
-          ) : (
-            <Button
-              className="self-start"
-              disabled={busy || dirty}
-              onClick={() => key.mutate("generate")}
-            >
-              <KeyRound data-icon="inline-start" />
-              生成应用密钥
-            </Button>
-          )}
-          {saved && !historical && (
-            <a
-              data-external-link
-              href={alipayApplicationUrl(saved.app_id)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={buttonVariants({
-                variant: "outline",
-                className: "self-start",
-              })}
-            >
-              打开支付宝应用管理
-            </a>
-          )}
-          {dirty && saved && (
-            <p className="text-sm text-muted-foreground">
-              先保存当前修改，再操作应用密钥。
-            </p>
-          )}
-        </CardContent>
-      </Card>
-      </AccountPanel>
       {saved && (
         <AccountPanel tabbed={tabbed} value="usage">
         <Card data-account-usage-card>

@@ -79,14 +79,16 @@ for (const width of [390, 1440]) {
       await expect(page.getByText("账号已保存", { exact: true })).toBeVisible();
       await expect.poll(() => new URL(page.url()).searchParams.get("overlay")).toMatch(/^\/settings\/accounts\/alipay_[0-9a-f-]+$/);
       await page.reload();
-      await page.getByRole("tab", { name: "应用密钥", exact: true }).click();
+      await page.getByRole("tab", { name: "应用信息", exact: true }).click();
       await page
         .getByRole("button", { name: "生成应用密钥", exact: true })
         .click();
       await expect(
         page.getByRole("button", { name: "复制应用公钥", exact: true }),
       ).toBeVisible();
-      await page.getByRole("tab", { name: "应用信息", exact: true }).click();
+      await expect(page.getByRole("tab", { name: "应用密钥", exact: true })).toHaveCount(0);
+      await expect(page.locator("[data-account-public-key]")).toHaveCount(1);
+      await expect(page.getByRole("textbox", { name: "应用公钥", exact: true })).not.toHaveValue("");
       await page
         .getByLabel("应用 ID（App ID）", { exact: true })
         .fill("2026000000000002");

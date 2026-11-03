@@ -129,8 +129,9 @@ test("account list and detail retain their console hierarchy across themes and w
     await record(page, info, { feature: "account-list-polish", width, theme });
     await name.click();
     await expect(page).toHaveURL(manifest.origin + href);
-    await page.getByRole("tab", { name: "应用密钥", exact: true }).click();
-    await expect(page.locator("[data-account-key-card]")).toBeVisible();
+    await page.getByRole("tab", { name: "应用信息", exact: true }).click();
+    await expect(page.locator("[data-account-public-key]")).toHaveCount(1);
+    await expect(page.getByRole("tab", { name: "应用密钥", exact: true })).toHaveCount(0);
     await expect(page.getByLabel("密钥内容", { exact: true })).toHaveCount(0);
     await record(page, info, { feature: "account-detail-polish", width, theme, keysRemainHidden: true });
   }
