@@ -15,6 +15,7 @@ import {
   type AlipayAccount,
 } from "@/lib/alipay-accounts";
 import { alipayApplicationUrl } from "@/lib/application-key";
+import { cn } from "@/lib/utils";
 import { dateTime } from "@/lib/format";
 import { PageHeading } from "@/components/page-heading";
 import { BusinessTable, type BusinessColumn } from "@/components/business-table";
@@ -29,6 +30,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -40,6 +42,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Card,
+  CardAction,
   CardContent,
   CardDescription,
   CardFooter,
@@ -97,6 +100,8 @@ export default function AlipayAccountsPage() {
 
 export function AlipayAccountList({ onSelect }: { onSelect?: (id: string) => void }) {
   const accounts = useQuery(alipayAccountsQuery);
+  const titleId = useId();
+  const addClassName = "h-auto min-h-8 max-w-full whitespace-normal py-1.5";
   const columns: BusinessColumn<AlipayAccount>[] = [
     { id: "name", label: "账号", layout: "identity", hideable: false, cell: account => onSelect
       ? <Button variant="link" className="h-auto justify-start p-0" onClick={() => onSelect(account.id)}>{account.name}</Button>
@@ -109,13 +114,18 @@ export function AlipayAccountList({ onSelect }: { onSelect?: (id: string) => voi
       ? <Button variant="outline" size="sm" onClick={() => onSelect(account.id)}>配置</Button>
       : <Link to={"/settings/accounts/" + encodeURIComponent(account.id)} className={buttonVariants({ variant: "outline", size: "sm" })} aria-label={"配置" + account.name}>配置</Link> },
   ];
-  return <div className="flex min-w-0 flex-col gap-4" data-account-list>
-    <div className="flex flex-wrap items-center justify-between gap-3">
-      <p className="text-sm text-muted-foreground">每个账号分别保存收款码和开放平台应用信息，再分配给业务网站。</p>
-      {onSelect ? <Button size="sm" onClick={() => onSelect("new")}><Plus data-icon="inline-start" />添加支付宝账号</Button> : <Link to="/settings/accounts/new" className={buttonVariants({ size: "sm" })}><Plus data-icon="inline-start" />添加支付宝账号</Link>}
-    </div>
-    <QueryView query={accounts}>{({ data }) => data.length ? <BusinessTable id="alipay-accounts" items={data} columns={columns} rowId={account => account.id} density="compact" columnsMenu={false} aria-label="支付宝账号列表" /> : <Empty><EmptyHeader><EmptyTitle>还没有支付宝账号</EmptyTitle><EmptyDescription>先添加一个账号，完成应用密钥、开放平台信息和收款码配置。</EmptyDescription></EmptyHeader></Empty>}</QueryView>
-  </div>;
+  return <Card size="sm" className="min-w-0" data-account-list aria-labelledby={titleId}>
+    <CardHeader className="min-w-0">
+      <CardTitle id={titleId} role="heading" aria-level={2}>支付宝账号</CardTitle>
+      <CardDescription>每个账号分别保存收款码和开放平台应用信息，再分配给业务网站。</CardDescription>
+      <CardAction className="max-w-full">
+        {onSelect ? <Button size="sm" className={addClassName} onClick={() => onSelect("new")}><Plus data-icon="inline-start" /><span className="min-w-0">添加支付宝账号</span></Button> : <Link to="/settings/accounts/new" className={cn(buttonVariants({ size: "sm" }), addClassName)}><Plus data-icon="inline-start" /><span className="min-w-0">添加支付宝账号</span></Link>}
+      </CardAction>
+    </CardHeader>
+    <CardContent>
+      <QueryView query={accounts}>{({ data }) => data.length ? <BusinessTable id="alipay-accounts" items={data} columns={columns} rowId={account => account.id} density="compact" columnsMenu={false} aria-label="支付宝账号列表" /> : <Empty><EmptyHeader><EmptyTitle>还没有支付宝账号</EmptyTitle><EmptyDescription>先添加一个账号，完成应用密钥、开放平台信息和收款码配置。</EmptyDescription></EmptyHeader></Empty>}</QueryView>
+    </CardContent>
+  </Card>;
 }
 
 export function AlipayAccountDetail({
@@ -169,6 +179,9 @@ function accountConfiguration(account: AlipayAccount | null) {
 const accountSections = [["basic", "基本信息"], ["application", "应用信息"], ["collection", "收款码"], ["keys", "应用密钥"], ["usage", "使用情况"]] as const;
 function AccountPanel({ tabbed, value, children }: { tabbed: boolean; value: string; children: ReactNode }) {
   return tabbed ? <TabsContent value={value} keepMounted data-account-panel={value}><FieldGroup>{children}</FieldGroup></TabsContent> : <>{children}</>;
+}
+function AccountFormFooter({ tabbed, children }: { tabbed: boolean; children: ReactNode }) {
+  return tabbed ? <>{children}</> : <CardFooter className="flex flex-wrap gap-2">{children}</CardFooter>;
 }
 
 export function AlipayAccountEditor({
@@ -527,7 +540,7 @@ export function AlipayAccountEditor({
                   {errors.name && <FieldError>{errors.name}</FieldError>}
                 </Field>
                 <Field orientation="horizontal">
-                  <FieldContent>
+                  <FieldContent className="min-w-0">
                     <FieldLabel htmlFor="alipay-enabled">接收新订单</FieldLabel>
                     <FieldDescription>
                       暂停只影响新订单，已有订单继续查账。
@@ -646,10 +659,10 @@ export function AlipayAccountEditor({
                 </AccountPanel>
               </FieldGroup>
             </CardContent>
-            <CardFooter className="flex flex-wrap gap-2">
-              <OverlayActions className={tabbed ? "w-full flex-nowrap" : undefined}>
+            <AccountFormFooter tabbed={tabbed}>
+              <OverlayActions className={tabbed ? "w-full" : undefined}>
               {overlay && !tabbed && <Button type="button" variant="outline" disabled={busy || decoding} onClick={() => overlay.requestClose()}>关闭</Button>}
-              <Button form={formId} type="submit" className={tabbed ? "h-auto min-h-8 min-w-0 flex-1 whitespace-normal py-1.5" : undefined} disabled={busy || decoding || historical}>
+              <Button form={formId} type="submit" className={tabbed ? "h-auto min-h-8 min-w-0 whitespace-normal py-1.5 max-sm:flex-1" : undefined} disabled={busy || decoding || historical}>
                 {save.isPending && <Spinner data-icon="inline-start" />}
                 <span className="min-w-0">{save.isPending ? "正在保存…" : "保存并检查"}</span>
               </Button>
@@ -659,12 +672,14 @@ export function AlipayAccountEditor({
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" side="top" aria-label="更多账号操作"
                   finalFocus={() => invalidDraftField.current?.isConnected ? invalidDraftField.current : true}>
-                  <DropdownMenuItem disabled={busy || decoding || historical || (!dirty && !!saved)} onClick={saveDraft}>
-                    保存草稿
-                  </DropdownMenuItem>
-                  {saved && <DropdownMenuItem disabled={busy || dirty || historical} onClick={() => check.mutate(saved.id)}>
-                    <RefreshCw aria-hidden="true" />重新检查
-                  </DropdownMenuItem>}
+                  <DropdownMenuGroup>
+                    <DropdownMenuItem disabled={busy || decoding || historical || (!dirty && !!saved)} onClick={saveDraft}>
+                      保存草稿
+                    </DropdownMenuItem>
+                    {saved && <DropdownMenuItem disabled={busy || dirty || historical} onClick={() => check.mutate(saved.id)}>
+                      <RefreshCw aria-hidden="true" />重新检查
+                    </DropdownMenuItem>}
+                  </DropdownMenuGroup>
                 </DropdownMenuContent>
               </DropdownMenu> : <>
               <Button
@@ -688,7 +703,7 @@ export function AlipayAccountEditor({
               )}
               </>}
               </OverlayActions>
-            </CardFooter>
+            </AccountFormFooter>
           </Card>
         </FieldSet>
       </form>

@@ -424,6 +424,12 @@ a:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .admin-settings-layout input[type="number"] { width: 100%; max-width: 12rem; }
 .admin-settings-layout [data-slot="field"][data-orientation="horizontal"] { max-width: 28rem; }
 .admin-settings-layout [data-slot="field"][data-orientation="horizontal"] > [data-slot="field-label"] { flex: 0 1 auto; }
+.admin-settings-layout [data-alipay-account-editor] [data-slot="field"][data-orientation="horizontal"] { max-width: none; align-items: center; }
+[data-account-list] { container: account-settings / inline-size; }
+@container account-settings (max-width: 35.999rem) {
+  [data-account-list] > [data-slot="card-header"] { grid-template-columns: minmax(0, 1fr); }
+  [data-account-list] > [data-slot="card-header"] > [data-slot="card-action"] { grid-column: 1; grid-row: auto; justify-self: start; margin-top: 0.5rem; }
+}
 .settings-fields { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; gap: 1.25rem 2rem; }
 .settings-fields > [data-slot="field-legend"], .settings-fields > [data-slot="field-description"] { grid-column: 1 / -1; }
 @container main (min-width: 38rem) { .settings-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
