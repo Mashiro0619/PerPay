@@ -1,12 +1,10 @@
 import { useIsFetching, useQuery } from "@tanstack/react-query";
 import { AlipayAccountIdentity } from "@/components/alipay-account-identity";
-import { useLayoutEffect, useRef } from "react";
 import { CircleAlert } from "lucide-react";
-import { useLocation, useParams } from "react-router";
+import { useParams } from "react-router";
 import { api, queryClient, result, type AdminLedgerDetail, type AdminLedgerMatch, type AdminLedgerSource } from "@/api/client";
 import { Link, useDetailBack } from "@/navigation";
 import { label } from "@/lib/labels";
-import { actualPageAddress } from "@/lib/navigation-selection";
 import { useOverlayContext } from "@/lib/overlay-context";
 import { useOptionalSystemStatus } from "@/features/system-status";
 import { PageHeading } from "@/components/page-heading";
@@ -38,24 +36,10 @@ export default function LedgerDetail() {
   const overlay = useOverlayContext();
   const { ledgerEntryId = "" } = useParams();
   const back = useDetailBack("/reconciliation", "返回对账");
-  const location = useLocation();
-  const positioned = useRef<string | null>(null);
-  const address = actualPageAddress(location) + location.hash;
   const system = useOptionalSystemStatus();
   const query = useQuery({ queryKey: ["administrator-ledger-detail", ledgerEntryId], queryFn: ({ signal }) => result(api.getAdministratorLedgerEntry({ signal, path: { ledgerEntryId } })) });
   const relatedIds = new Set([ledgerEntryId, ...query.data?.data.sources.map(source => source.ledger_entry_id) ?? [], ...query.data?.data.matches.map(match => match.payment_match_id) ?? [], ...query.data?.data.conflicts.map(conflict => conflict.conflict_id) ?? []]);
   const fetching = useIsFetching({ predicate: item => item.queryKey.some(value => typeof value === "string" && relatedIds.has(value)) });
-  useLayoutEffect(() => {
-    if (!location.hash) { positioned.current = null; return; }
-    if (!query.data || fetching || positioned.current === address) return;
-    let id: string;
-    try { id = decodeURIComponent(location.hash.slice(1)); } catch { return; }
-    const target = document.getElementById(id);
-    if (!target) return;
-    positioned.current = address;
-    target.scrollIntoView?.({ block: "start" });
-    target.focus({ preventScroll: true });
-  }, [query.data, fetching, location.hash, address]);
   return <DetailPage>
     <PageHeading title="流水与对账详情" />
     <DetailNavigation back={back} global>
@@ -66,7 +50,7 @@ export default function LedgerDetail() {
     </DetailNavigation>
     <QueryView query={query}>{({ data }) => <>
       <LedgerWarnings entry={data} />
-      <DetailSections label="流水详情分类" sections={[
+      <DetailSections label="流水详情内容" sections={[
         { id: "transaction", label: "交易", content: <>
       <Card data-ledger-summary>
         <CardHeader className="flex min-w-0 flex-row flex-wrap items-start justify-between gap-x-3 gap-y-2">

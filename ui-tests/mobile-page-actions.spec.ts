@@ -110,7 +110,8 @@ test.describe("mobile page action menus support real keyboard navigation", () =>
       expect(orderPath).toMatch(/^\/orders\/[^/]+$/);
       await page.goto(manifest.origin + "/admin" + orderPath);
       const order = page.locator('[data-overlay-content]');
-      await expect(order.getByRole("tablist", { name: "订单详情分类", exact: true })).toBeVisible();
+      await expect(order.locator('[data-detail-section="overview"]')).toBeVisible();
+      await expect(order.getByRole("tablist")).toHaveCount(0);
       await expect(order.locator('[data-slot="skeleton"]')).toHaveCount(0);
       await setTextSize(page, font);
       const orderUrl = page.url();

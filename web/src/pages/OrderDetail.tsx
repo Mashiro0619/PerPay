@@ -63,6 +63,7 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
     ledger={exception.ledger_entry_id ? ledgers.get(exception.ledger_entry_id) : undefined}
     order={order} embedded />;
   const association = <>
+    {exceptions.length > 0 && <p className="text-sm text-muted-foreground">{exceptions.length} 项待核对</p>}
     {exceptions.map(renderException)}
     {active.map(match => <MatchCard key={match.payment_match_id} match={match} embedded />)}
     {!active.length && <DetailSection title="收款关联记录"><p className="text-sm text-muted-foreground">尚未关联收款。</p></DetailSection>}
@@ -80,7 +81,7 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
       <ListDateTime value={order.created_at} inline />
       {basis && <p className="basis-full text-xs text-muted-foreground">{basis}</p>}
     </div>
-    <DetailSections label="订单详情分类" sections={[
+    <DetailSections label="订单详情内容" sections={[
       { id: "overview", label: "概况", content: <>
         <DetailSection title="订单信息">
           <DetailFields wide={["商户订单号", "商品名称", "订单备注"]} items={[

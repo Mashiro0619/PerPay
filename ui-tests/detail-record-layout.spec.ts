@@ -2,7 +2,7 @@ import type { AuditEventPage } from "../src/shared/audit";
 import { test, expect, login, record } from "./fixtures";
 import { audit, screenshot } from "./audit";
 import { settleOverlay } from "./overlay-fixtures";
-import { expectDetailRecordLayout, expectTechnicalPlacement } from "./detail-layout";
+import { detailSection, expectDetailRecordLayout, expectTechnicalPlacement, revealDetailSection } from "./detail-layout";
 
 // Cover each responsive transition and both themes without multiplying every
 // viewport by every font size, content-width mode and record state.
@@ -32,10 +32,10 @@ for (const layout of layouts) {
     const savedAudit = (await auditResponse.json() as AuditEventPage).data[0];
     expect(savedAudit, "a saved local audit event supplies the real detail identity").toBeTruthy();
     const scenarios = [
-      { name: "order", path: manifest.details.orderLong!, copy: "复制内部订单编号", technicalTab: "动态与记录" },
-      { name: "notification", path: manifest.details.notificationDns!, copy: "复制投递编号", technicalTab: null },
-      { name: "exception", path: manifest.details.exceptionOpen!, copy: "复制异常编号", technicalTab: null },
-      { name: "audit", path: `/audit/${savedAudit!.source}/${savedAudit!.event_id}`, copy: "复制日志编号", technicalTab: null },
+      { name: "order", path: manifest.details.orderLong!, copy: "复制内部订单编号", technicalSelector: '[data-detail-section="history"] > .detail-section-content > [data-technical-information]', sections: ["overview", "payments", "notifications", "history"] },
+      { name: "notification", path: manifest.details.notificationDns!, copy: "复制投递编号", technicalSelector: '[data-notification-information] > [data-slot="card-content"] > [data-technical-information]', sections: ["overview", "attempts"] },
+      { name: "exception", path: manifest.details.exceptionOpen!, copy: "复制异常编号", technicalSelector: '[data-financial-exception] > [data-slot="card-content"] > [data-technical-information]', sections: [] },
+      { name: "audit", path: `/audit/${savedAudit!.source}/${savedAudit!.event_id}`, copy: "复制日志编号", technicalSelector: '[data-detail-page] > [data-technical-information]', sections: [] },
     ];
     const writes: string[] = [], errors: string[] = [];
     page.on("request", request => { if (!["GET", "HEAD", "OPTIONS"].includes(request.method())) writes.push(request.method() + " " + new URL(request.url()).pathname); });
@@ -49,21 +49,19 @@ for (const layout of layouts) {
         await page.clock.runFor(100);
         await expect(page.locator("[data-content-width]")).toHaveAttribute("data-content-width", layout.mode);
         const overview = await expectDetailRecordLayout(page);
+        await expect(overlay.getByRole("tab")).toHaveCount(0);
+        expect(await overlay.locator("[data-detail-section]").evaluateAll(sections => sections.map(section => section.getAttribute("data-detail-section")))).toEqual(scenario.sections);
         if (layout.width < 768) expect(overview.fields.every(group => group.columns === 1)).toBe(true);
         if (layout.width === 1440 && layout.text === 100) {
           expect(overview.fields.some(group => group.columns === 2 && group.fields.filter(field => !field.wide).length >= 2), "desktop space presents short facts in two real columns").toBe(true);
         }
         if (scenario.name === "notification") {
-          await expect(overlay.locator('[data-overlay-detail]').getByRole("heading", { level: 2 })).toHaveText(["通知信息", "关联订单"]);
+          await expect(detailSection(page, "overview").getByRole("heading", { level: 2 })).toHaveText(["通知信息", "关联订单"]);
         }
         const id = `${scenario.name}-${layout.width}-${layout.text}-${layout.theme}`;
         if (layout.width !== 320 || layout.text === 200) await screenshot(page, info, "detail-grid-" + id);
-        if (scenario.technicalTab) {
-          const tab = overlay.getByRole("tab", { name: scenario.technicalTab, exact: true });
-          await tab.click();
-          await expect(tab).toHaveAttribute("aria-selected", "true");
-        }
-        const technical = overlay.locator('[data-overlay-detail] [data-technical-information]:visible').last();
+        if (scenario.name === "order") await revealDetailSection(page, "history");
+        const technical = overlay.locator('[data-overlay-detail]').locator(scenario.technicalSelector);
         await expect(technical).toBeVisible();
         const placement = await expectTechnicalPlacement(technical);
         const trigger = technical.getByRole("button", { name: "技术信息", exact: true });

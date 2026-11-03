@@ -215,9 +215,9 @@ test.describe("compact mobile button visuals and separate touch targets", () => 
     await expect.poll(() => new URL(page.url()).searchParams.get("overlay")).toBe(manifest.details.ledgerAssociated);
     const sourceUrl = page.url();
     const dialog = page.locator("[data-overlay-content]");
-    await expect(dialog.getByRole("tablist", { name: "流水详情分类", exact: true })).toBeVisible();
-    await expect(dialog.getByRole("tab", { name: "交易", exact: true })).toHaveAttribute("aria-selected", "true");
-    const technical = dialog.locator("[data-technical-information]");
+    await expect(dialog.locator('[data-detail-section="transaction"]')).toBeVisible();
+    await expect(dialog.getByRole("tablist")).toHaveCount(0);
+    const technical = dialog.locator('[data-detail-section="transaction"] [data-ledger-summary] [data-technical-information]');
     const view = technical.getByRole("button", { name: "技术信息", exact: true });
     await view.scrollIntoViewIfNeeded();
     await view.focus();

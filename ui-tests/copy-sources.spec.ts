@@ -1,3 +1,4 @@
+import { revealDetailSection } from "./detail-layout";
 import type { Locator, Page } from "@playwright/test";
 import { test, expect, login, record, type Manifest } from "./fixtures";
 import { screenshot } from "./audit";
@@ -90,31 +91,33 @@ test("ledger credentials keep genuine Alipay, website and PerPay identities dist
       await page.goto(manifest.origin + "/admin" + scenario.path);
       const overlay = await settleOverlay(page);
       expect(new URL(page.url()).searchParams.get("overlay")).toMatch(/\/(?:ledger|reconciliation\/transactions)\//);
-      const summary = page.locator("[data-ledger-summary]");
+      const summary = overlay.locator('[data-detail-section="transaction"] [data-ledger-summary]');
       await expect(summary).toBeVisible();
       await expect(summary.getByText("PerPay 处理状态", { exact: true })).toHaveCount(0);
       const credentials = summary.locator("[data-detail-credentials]");
       await copyField(page, credentials, "支付宝流水号", entry.external_event_id);
       await optionalCopyField(page, credentials, "支付宝订单号", entry.provider_order_no, "复制支付宝订单号");
       await optionalCopyField(page, credentials, "支付宝商户单号", entry.merchant_order_no, "复制支付宝商户单号");
-      await overlay.getByRole("tab", { name: /^采集记录/ }).click();
+      await revealDetailSection(page, "sources");
       await expect(page.locator("[data-ledger-source]")).toHaveCount(entry.sources.length);
       for (const source of entry.sources) {
         const card = page.locator('[data-ledger-source="' + source.ledger_entry_id + '"]');
-        await expect(card.getByText("PerPay 记录状态", { exact: true })).toBeVisible();
-        await copyField(page, card, "内部流水编号（PerPay）", source.ledger_entry_id);
+        const header = card.locator(':scope > [data-slot="item-content"] > [data-slot="item-header"], :scope > [data-slot="card-header"]');
+        const facts = card.locator(':scope > [data-slot="item-content"] > [data-detail-fields], :scope > [data-slot="card-content"] > [data-detail-credentials]');
+        await expect(header.getByText("PerPay 记录状态", { exact: true })).toBeVisible();
+        await copyField(page, facts, "内部流水编号（PerPay）", source.ledger_entry_id);
         if (!entry.content_consistent) {
-          await optionalCopyField(page, card, "支付宝订单号", source.provider_order_no, "复制来源支付宝订单号");
-          await optionalCopyField(page, card, "支付宝商户单号", source.merchant_order_no, "复制来源支付宝商户单号");
+          await optionalCopyField(page, facts, "支付宝订单号", source.provider_order_no, "复制来源支付宝订单号");
+          await optionalCopyField(page, facts, "支付宝商户单号", source.merchant_order_no, "复制来源支付宝商户单号");
         } else {
-          await expect(card.locator("[data-detail-fields]").first().locator("dt")).toHaveText(["内部流水编号（PerPay）", "保存时间"]);
+          await expect(facts.locator("dt")).toHaveText(["内部流水编号（PerPay）", "保存时间"]);
         }
         await expect(card.getByRole("link", { name: "查看记录与处理", exact: true })).toHaveCount(0);
         const eligible = source.direction === "CREDIT" && ["UNALLOCATED", "CANDIDATE", "CONFLICT"].includes(source.state);
-        const actions = card.locator('[data-slot="item-actions"], [data-slot="card-action"]').first();
+        const actions = header.locator('[data-slot="item-actions"], [data-slot="card-action"]');
         await expect(actions.getByRole("button", { name: "人工关联收款", exact: true })).toHaveCount(eligible ? 1 : 0);
       }
-      await overlay.getByRole("tab", { name: "收款关联", exact: true }).click();
+      await revealDetailSection(page, "payments");
       await expect(page.locator("[data-ledger-match]")).toHaveCount(entry.matches.length);
       for (const match of entry.matches) {
         const card = page.locator('[data-ledger-match="' + match.payment_match_id + '"]');
@@ -128,7 +131,7 @@ test("ledger credentials keep genuine Alipay, website and PerPay identities dist
         expect(new URL(sourceTarget, manifest.origin).hash).toBe("#source-" + match.ledger_entry_id);
         await sourceLink.click();
         await expect(page.locator('[data-ledger-source="' + match.ledger_entry_id + '"]')).toBeFocused();
-        await overlay.getByRole("tab", { name: "收款关联", exact: true }).click();
+        await revealDetailSection(page, "payments");
         await expect(card.getByText("支付宝交易金额", { exact: true })).toHaveCount(0);
         const technical = card.locator("[data-technical-information]");
         const trigger = technical.getByRole("button", { name: "技术信息", exact: true });
@@ -185,8 +188,12 @@ test("overview and normal notifications label payable amounts and actual events 
     await row.locator("a[data-row-link]").click();
     const notificationOverlay = await settleOverlay(page);
     await expect(notificationOverlay.getByRole("group", { name: "通知信息", exact: true }).getByText("收款已确认", { exact: true })).toBeVisible();
-    await expect(notificationOverlay).toContainText(order.merchant_order_no);
-    await expect(notificationOverlay.getByText(amount, { exact: true }).first()).toBeVisible();
+    const orderSummary = notificationOverlay.locator('[data-detail-section="overview"] [data-detail-order-summary]');
+    const merchantOrder = orderSummary.locator("dt").filter({ hasText: /^商户订单号（业务网站）$/ }).locator("..").locator("dd");
+    await expect(merchantOrder.getByText(order.merchant_order_no, { exact: true })).toBeVisible();
+    const detailPayable = orderSummary.locator("dt").filter({ hasText: /^应付金额$/ }).locator("..").locator("dd");
+    await expect(detailPayable).toHaveText(amount);
+    await expect(detailPayable).toBeVisible();
     await record(page, info, { feature: "copy-source-notification", evidence: "isolated-local-domain-api", width, theme, eventType: item.event.event_type, payableAmountCents: order.payable_amount_cents });
     await screenshot(page, info, "copy-source-notification-" + width + "-" + theme);
 
@@ -211,7 +218,7 @@ test("overview and normal notifications label payable amounts and actual events 
   expect(writes).toEqual([]);
 });
 
-test("a genuine default order summary keeps a contract-length synthetic merchant reference fully wrapped", async ({ page, manifest }, info) => {
+test("a genuine associated order summary keeps a contract-length synthetic merchant reference fully wrapped", async ({ page, manifest }, info) => {
   const writes = observeWrites(page, manifest);
   await login(page, manifest);
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"], { origin: manifest.origin });
@@ -232,9 +239,13 @@ test("a genuine default order summary keeps a contract-length synthetic merchant
       await presentation(page, width, theme);
       await page.goto(manifest.origin + "/admin" + candidatePath!);
       const card = page.getByRole("group", { name: "可能匹配的记录", exact: true });
-      const reference = card.locator('[data-slot="item-description"]').filter({ hasText: "商户订单号（业务网站）：" });
+      const orderSummary = card.locator('[data-detail-order-summary]');
+      const merchantField = orderSummary.locator('dl > div').filter({ has: page.getByText("商户订单号（业务网站）", { exact: true }) });
+      const reference = merchantField.locator("dd span.break-all");
+      await expect(merchantField).toHaveAttribute("data-field-wide", "true");
       await expect(reference).toContainText(merchantOrderNo);
-      await expect(reference.locator("time")).toHaveAttribute("datetime", original.created_at);
+      const created = orderSummary.locator('dl > div').filter({ has: page.getByText("创建时间", { exact: true }) });
+      await expect(created.locator("time")).toHaveAttribute("datetime", original.created_at);
       const measured = await reference.evaluate(element => {
         const range = document.createRange();
         range.selectNodeContents(element);
@@ -245,11 +256,11 @@ test("a genuine default order summary keeps a contract-length synthetic merchant
           scrollHeight: element.scrollHeight, clientHeight: element.clientHeight, lines: lines.size };
       });
       expect(measured.clamp).toBe("none");
-      expect(measured.whiteSpace).toBe("normal");
+      expect(measured.whiteSpace).toBe("pre-wrap");
       expect(measured.textHeight).toBeLessThanOrEqual(measured.height + 1);
       expect(measured.scrollWidth).toBeLessThanOrEqual(measured.clientWidth + 1);
       expect(measured.scrollHeight).toBeLessThanOrEqual(measured.clientHeight + 1);
-      if (width === 390) expect(measured.lines).toBeGreaterThan(2);
+      if (width === 390) expect(measured.lines).toBeGreaterThan(1);
       await record(page, info, { feature: "copy-source-default-order-reference", evidence: "synthetic-order-get-reference-only-within-64-character-contract", width, theme, measured });
       await screenshot(page, info, "copy-source-default-order-reference-" + width + "-" + theme);
       await card.getByRole("link", { name: original.product_name, exact: true }).click();

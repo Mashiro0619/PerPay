@@ -1,3 +1,4 @@
+import { revealDetailSection } from "./detail-layout";
 import type { Locator, Page, TestInfo } from "@playwright/test";
 import { test, expect, login, record } from "./fixtures";
 import type { AdminLedgerPageEnvelope, AdminOrderDetailEnvelope } from "../web/src/api/generated/types.gen";
@@ -125,8 +126,9 @@ test.describe("mobile consecutive record rows", () => {
       if (textPercent === 100) await capture(page, info, `mobile-ledger-${width}`);
       await ledgerPrimary.tap();
       await expect(overlay.getByRole("heading", { name: "支付宝交易", exact: true })).toBeVisible();
-      await overlay.getByRole("tab", { name: "收款关联", exact: true }).tap();
-      const related = overlay.locator('a[href*="' + entry.active_match!.order_id + '"]').first();
+      await revealDetailSection(page, "payments");
+      const related = overlay.locator('[data-detail-section="payments"] [data-ledger-match="' + entry.active_match!.payment_match_id + '"] [data-detail-order-summary]')
+        .getByRole("link", { name: entry.active_match!.product_name, exact: true });
       await expect(related).toBeVisible();
       const relatedTarget = await related.getAttribute("href");
       await related.tap();

@@ -1,3 +1,4 @@
+import { revealDetailSection } from "./detail-layout";
 import { test, expect, login, record } from "./fixtures";
 import type { AdminLedgerPageEnvelope } from "../web/src/api/generated/types.gen";
 
@@ -26,8 +27,9 @@ for (const { width, hiddenOrder } of [{ width: 1440, hiddenOrder: false }, { wid
       await page.keyboard.press("Enter");
       await expect(page).toHaveURL(manifest.origin + recordHref);
       const overlay = page.locator("[data-overlay-content]");
-      await overlay.getByRole("tab", { name: "收款关联", exact: true }).click();
-      const relatedOrder = overlay.locator('a[href*="' + entry!.active_match!.order_id + '"]').first();
+      await revealDetailSection(page, "payments");
+      const relatedOrder = overlay.locator('[data-detail-section="payments"] [data-ledger-match="' + entry!.active_match!.payment_match_id + '"] [data-detail-order-summary]')
+        .getByRole("link", { name: entry!.active_match!.product_name, exact: true });
       await expect(relatedOrder).toBeVisible();
       const orderHref = await relatedOrder.getAttribute("href");
       expect(new URL(orderHref!, manifest.origin).searchParams.get("overlay")).toContain("/orders/" + entry!.active_match!.order_id);

@@ -171,15 +171,13 @@ describe("administrator ledger pages", () => {
     await waitFor(() => expect(scroll).toHaveBeenCalledWith({ top: 725, left: 0, behavior: "instant" }));
   });
 
-  it("displays every source and reversed match with links to real evidence IDs", async () => {
-    mount("/reconciliation/transactions/" + ledgerId);
+  it("displays every detail section together and reads each source and match only once", async () => {
+    const router = mount("/reconciliation/transactions/" + ledgerId);
     await screen.findByRole("heading", { name: "支付宝交易" });
     expect(document.querySelector("[data-ledger-summary]")).not.toHaveTextContent("real-order");
-    await userEvent.setup().click(screen.getByRole("tab", { name: "采集记录 · 2" }));
     expect(await screen.findByRole("heading", { name: "查账记录（2）" })).toBeVisible();
     expect(document.getElementById("source-" + ledgerId)).toBeVisible();
     expect(document.getElementById("source-" + secondSourceId)).toBeVisible();
-    await userEvent.setup().click(screen.getByRole("tab", { name: "收款关联" }));
     await screen.findByRole("heading", { name: "当前关联订单" });
     await screen.findByRole("heading", { name: "已撤销的关联" });
     expect(screen.getByText("已撤销", { exact: true })).toBeVisible();
@@ -195,8 +193,78 @@ describe("administrator ledger pages", () => {
       expect(within(card).getByRole("link", { name: "实际关联商品" })).toHaveAttribute("href", "/orders/" + orderId);
       expect(within(card).getByText("real-order", { exact: true })).toBeVisible();
     }
-    expect(document.querySelector("[data-ledger-summary]")).toBeNull();
+    expect(document.querySelector("[data-ledger-summary]")).toBeVisible();
+    expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
+    for (const name of ["支付宝交易", "对应订单", "查账记录（2）"]) {
+      expect(screen.getAllByRole("heading", { name })).toHaveLength(1);
+      expect(screen.getByRole("heading", { name })).toBeVisible();
+    }
     expect(screen.queryByText(/账本冲突记录（/)).not.toBeInTheDocument();
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0));
+    const reads = fetchMock.mock.calls.map(([request]) => new URL(request.url).pathname);
+    expect(reads).toHaveLength(5);
+    expect(new Set(reads).size).toBe(reads.length);
+    await userEvent.setup().click(screen.getByRole("button", { name: "切换网站记忆" }));
+    expect(router.state.location.search).toContain("selected_site=site-b");
+    expect(document.querySelector('[data-ledger-match="' + match.payment_match_id + '"]')).toBe(settledCard);
+    expect(fetchMock).toHaveBeenCalledTimes(5);
+  });
+
+  it("keeps legacy evidence hashes usable while all sections stay mounted", async () => {
+    const scroll = vi.spyOn(HTMLElement.prototype, "scrollIntoView");
+    const anchor = "match-" + match.payment_match_id;
+    const router = mount("/reconciliation/transactions/" + ledgerId + "?section=sources#" + anchor);
+    await screen.findByRole("heading", { name: "当前关联订单" });
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0));
+    const associated = document.getElementById(anchor)!;
+    await waitFor(() => expect(associated).toHaveFocus());
+    expect(scroll.mock.contexts).toContain(associated);
+    expect(router.state.location.hash).toBe("#" + anchor);
+    for (const name of ["支付宝交易", "对应订单", "查账记录（2）"]) {
+      expect(screen.getByRole("heading", { name })).toBeVisible();
+    }
+    await userEvent.setup().click(within(associated).getByRole("link", { name: "核对这份记录" }));
+    await waitFor(() => expect(router.state.location.hash).toBe("#source-" + secondSourceId));
+    await waitFor(() => expect(document.getElementById("source-" + secondSourceId)).toHaveFocus());
+    expect(fetchMock).toHaveBeenCalledTimes(5);
+    expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
+  });
+
+  it.each(["match", "source"] as const)("locates an asynchronous %s once and leaves focus alone when later evidence arrives", async kind => {
+    const scroll = vi.spyOn(HTMLElement.prototype, "scrollIntoView");
+    const originalFetch = fetchMock.getMockImplementation()!;
+    const anchor = kind === "match" ? "match-" + match.payment_match_id : "source-" + ledgerId;
+    const targetSuffix = kind === "match" ? "/matches/" + match.payment_match_id : "/ledger-entries/" + ledgerId + "/candidates";
+    const lateSuffix = "/ledger-entries/" + secondSourceId + "/candidates";
+    let finishTarget!: (response: Response) => void;
+    let finishLate!: (response: Response) => void;
+    const targetResponse = new Promise<Response>(resolve => { finishTarget = resolve; });
+    const lateResponse = new Promise<Response>(resolve => { finishLate = resolve; });
+    fetchMock.mockImplementation(async request => {
+      const path = new URL(request.url).pathname;
+      if (path.endsWith(targetSuffix)) return targetResponse;
+      if (path.endsWith(lateSuffix)) return lateResponse;
+      return originalFetch(request);
+    });
+    mount("/reconciliation/transactions/" + ledgerId + "#" + anchor);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(5));
+    const target = document.getElementById(anchor)!;
+    expect(target).not.toHaveFocus();
+    expect(scroll).not.toHaveBeenCalled();
+    const request = fetchMock.mock.calls.find(([request]) => new URL(request.url).pathname.endsWith(targetSuffix))![0];
+    await act(async () => { finishTarget(await originalFetch(request)); });
+    await waitFor(() => expect(target).toHaveFocus());
+    expect(scroll.mock.contexts).toEqual([target]);
+    expect(queryClient.isFetching()).toBe(1);
+
+    const readingElsewhere = screen.getByRole("button", { name: "切换网站记忆" });
+    readingElsewhere.focus();
+    await act(async () => { finishLate(json({ data: [] })); });
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0));
+    await act(() => new Promise<void>(resolve => requestAnimationFrame(() => resolve())));
+    expect(readingElsewhere).toHaveFocus();
+    expect(scroll.mock.contexts).toEqual([target]);
+    expect(fetchMock).toHaveBeenCalledTimes(5);
   });
 
   it("renders disputed facts without inventing zero or selecting a settled match", async () => {
@@ -207,11 +275,9 @@ describe("administrator ledger pages", () => {
     expect(await screen.findByText("同一笔流水关联了多个订单")).toBeVisible();
     expect(screen.getAllByText("有争议").length).toBeGreaterThanOrEqual(3);
     expect(screen.getByText("有 2 条有效关联，无法确定唯一订单，请核对下方记录。")).toBeVisible();
-    await userEvent.setup().click(screen.getByRole("tab", { name: "收款关联" }));
     expect(await screen.findAllByText("仍生效 · 存在多条关联", { exact: true })).toHaveLength(2);
     expect(screen.queryByText("已关联订单", { exact: true })).not.toBeInTheDocument();
     expect(screen.queryByText("当前实际关联")).not.toBeInTheDocument();
-    await userEvent.setup().click(screen.getByRole("tab", { name: "冲突 · 1" }));
     expect(screen.getByRole("link", { name: "查看冲突记录" })).toHaveAttribute("href", "/reconciliation/conflicts/66666666-6666-4666-8666-666666666666");
     expect(screen.queryByText("¥0.00")).not.toBeInTheDocument();
   });
@@ -226,7 +292,6 @@ describe("administrator ledger pages", () => {
     }
     expect(within(card).getAllByText("有争议")).toHaveLength(1);
     expect(screen.getByText("账单信息存在不同版本", { exact: true })).toBeVisible();
-    await userEvent.setup().click(screen.getByRole("tab", { name: "采集记录 · 2" }));
     expect(screen.getByText("各份采集记录存在差异，请逐份核对。")).toBeVisible();
     expect(screen.queryByText(/冲突详情/)).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "查看冲突记录" })).not.toBeInTheDocument();

@@ -186,7 +186,6 @@ describe("order and notification copy follows its actual source", () => {
       return json({ data: { ...delivery, delivery: { ...delivery.delivery, attempt_count: 0 } } });
     }));
     mount(<Routes><Route path="/notifications/:deliveryId" element={<NotificationDetail />} /></Routes>, "/notifications/" + delivery.delivery.delivery_id);
-    await userEvent.setup().click(await screen.findByRole("tab", { name: "投递记录" }));
     const history = await screen.findByRole("group", { name: "投递历史" });
     expect(within(history).getByText("正在读取发送记录…")).toBeVisible();
     expect(within(history).queryByText("暂无尝试明细")).not.toBeInTheDocument();

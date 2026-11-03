@@ -1,10 +1,10 @@
 import { test, expect, login, record } from "./fixtures";
 import { screenshot } from "./audit";
 import { expectOverlayFits, openRecord } from "./overlay-fixtures";
-import { expectDetailRecordLayout } from "./detail-layout";
+import { detailSection, expectDetailRecordLayout, revealDetailSection } from "./detail-layout";
 import type { AdminOrderDetail, OrderWebhookDeliveryPageEnvelope } from "../web/src/api/generated/types.gen";
 
-test("order details keep complete business facts and load notifications only when selected", async ({ page, manifest }, info) => {
+test("order details show all business sections and load notifications with the order", async ({ page, manifest }, info) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.emulateMedia({ reducedMotion: "reduce" });
   await login(page, manifest);
@@ -15,22 +15,28 @@ test("order details keep complete business facts and load notifications only whe
   const reads: string[] = [];
   page.on("request", request => { if (request.method() === "GET") reads.push(new URL(request.url()).pathname); });
   const dialog = await openRecord(page, manifest, path);
-  await expect(dialog.getByRole("region", { name: "订单信息", exact: true })).toContainText(order.note!);
-  await expect(dialog.getByRole("button", { name: "复制商户订单号" })).toBeVisible();
-  await expect(dialog.getByRole("link", { name: "打开收银台", exact: true })).toHaveAttribute("target", "_blank");
-  const overviewLayout = await expectDetailRecordLayout(page);
-  expect(reads.filter(path => path === notificationsApi)).toHaveLength(0);
-  await dialog.getByRole("tab", { name: "通知", exact: true }).click();
-  await expect(dialog.getByText("正在读取通知结果…", { exact: true })).toHaveCount(0);
+  const overview = detailSection(page, "overview"), notifications = detailSection(page, "notifications");
+  await expect(overview.getByRole("region", { name: "订单信息", exact: true })).toContainText(order.note!);
+  await expect(overview.getByRole("button", { name: "复制商户订单号" })).toBeVisible();
+  await expect(dialog.locator('[data-overlay-footer]').getByRole("link", { name: "打开收银台", exact: true })).toHaveAttribute("target", "_blank");
+  await expect(dialog.getByRole("tab")).toHaveCount(0);
+  expect(await dialog.locator("[data-detail-section]").evaluateAll(sections => sections.map(section => section.getAttribute("data-detail-section"))))
+    .toEqual(["overview", "payments", "notifications", "history"]);
   await expect.poll(() => reads.filter(path => path === notificationsApi).length).toBe(1);
+  await expect(notifications.getByText("正在读取通知结果…", { exact: true })).toHaveCount(0);
+  const overviewLayout = await expectDetailRecordLayout(page);
+  const address = page.url();
+  await revealDetailSection(page, "notifications");
   await expectOverlayFits(page);
-  await dialog.getByRole("tab", { name: "概况", exact: true }).click();
-  await expect(dialog.getByRole("region", { name: "订单信息", exact: true })).toContainText(order.note!);
-  await record(page, info, { feature: "order-record-facts-and-lazy-tabs", noteLength: order.note!.length, layout: overviewLayout });
+  await revealDetailSection(page, "overview");
+  await expect(overview.getByRole("region", { name: "订单信息", exact: true })).toContainText(order.note!);
+  expect(page.url()).toBe(address);
+  expect(reads.filter(path => path === notificationsApi)).toHaveLength(1);
+  await record(page, info, { feature: "order-continuous-record-sections", noteLength: order.note!.length, layout: overviewLayout });
   await screenshot(page, info, "order-detail-long-note");
 });
 
-test("notification loading and historical deliveries stay within their order tab", async ({ page, manifest }, info) => {
+test("notification loading and historical deliveries stay within their order section", async ({ page, manifest }, info) => {
   await login(page, manifest);
   const path = manifest.details.orderHistory ?? "/orders/" + (await (await page.request.get(manifest.origin + "/api/admin/v1" + manifest.details.notificationHistory!.replace("/notifications/", "/webhooks/deliveries/"))).json()).data.event.order_id;
   const notificationPath = "/api/admin/v1" + path + "/notifications/deliveries";
@@ -43,19 +49,25 @@ test("notification loading and historical deliveries stay within their order tab
     const response = await route.fetch(); await gate; await route.fulfill({ response });
   });
   try {
-    const dialog = await openRecord(page, manifest, path);
-    await dialog.getByRole("tab", { name: "通知", exact: true }).click();
-    await expect(dialog.getByText("正在读取通知结果…", { exact: true })).toBeAttached();
-    await expect(dialog.getByRole("tab", { name: "概况", exact: true })).toBeEnabled();
+    // The notification response is deliberately held; the rest of the record
+    // must be usable before the common loading checks can settle.
+    await page.goto(manifest.origin + "/admin" + path);
+    const dialog = page.locator("[data-overlay-content]");
+    await expect(detailSection(page, "overview").getByRole("region", { name: "订单信息", exact: true })).toBeVisible();
+    const notifications = detailSection(page, "notifications");
+    await expect(notifications.getByText("正在读取通知结果…", { exact: true })).toBeAttached();
+    await expect(detailSection(page, "overview").getByRole("region", { name: "订单信息", exact: true })).toBeVisible();
+    await expect(dialog.getByRole("tab")).toHaveCount(0);
     release();
-    await expect(dialog.getByRole("group", { name: "通知记录", exact: true })).toHaveCount(1);
-    const history = dialog.locator('[data-slot="accordion-trigger"]').first();
+    await expect(notifications.getByRole("group", { name: "通知记录", exact: true })).toHaveCount(1);
+    // The first older delivery is selected from this order's notification history.
+    const history = notifications.locator('[data-slot="accordion-trigger"]').first();
     await history.focus(); await page.keyboard.press("Enter");
     await expect(history).toHaveAttribute("aria-expanded", "true");
-    await expect(dialog.getByRole("group", { name: "通知记录", exact: true })).toHaveCount(2);
+    await expect(notifications.getByRole("group", { name: "通知记录", exact: true })).toHaveCount(2);
     await page.keyboard.press("Enter");
     await expect(history).toHaveAttribute("aria-expanded", "false");
-    await expect(dialog.getByRole("group", { name: "通知记录", exact: true })).toHaveCount(1);
+    await expect(notifications.getByRole("group", { name: "通知记录", exact: true })).toHaveCount(1);
     await expectOverlayFits(page);
     await screenshot(page, info, "order-notification-history");
   } finally { release(); }
@@ -91,7 +103,7 @@ test("a refund mark becomes an internal step and retains its draft through respo
   expect(writes).toEqual([]);
 });
 
-test("resizing a displayed order does not repeat its reads or lose the selected section", async ({ page, manifest }, info) => {
+test("resizing a displayed order preserves every section without repeating its reads", async ({ page, manifest }, info) => {
   await page.emulateMedia({ reducedMotion: "reduce" }); await login(page, manifest);
   const path = manifest.details.orderPaid!, orderApi = "/api/admin/v1" + path;
   const notificationApi = orderApi + "/notifications/deliveries";
@@ -101,11 +113,15 @@ test("resizing a displayed order does not repeat its reads or lose the selected 
     if (request.method() === "GET" && [orderApi, notificationApi].includes(url.pathname)) reads.push(url.pathname);
   });
   const dialog = await openRecord(page, manifest, path);
-  await dialog.getByRole("tab", { name: "通知", exact: true }).click();
   await expect.poll(() => reads.length).toBe(2); await expectOverlayFits(page);
+  const notifications = detailSection(page, "notifications");
+  await expect(notifications.getByText("正在读取通知结果…", { exact: true })).toHaveCount(0);
+  const notificationNode = await notifications.elementHandle();
   for (const width of [320, 390, 768, 1280, 1440, 1680]) {
     await page.setViewportSize({ width, height: 900 }); await expectOverlayFits(page);
-    await expect(dialog.getByRole("tab", { name: "通知", exact: true })).toHaveAttribute("aria-selected", "true");
+    await expect(dialog.getByRole("tab")).toHaveCount(0);
+    await expect(notifications).toBeVisible();
+    expect(await notifications.evaluate((element, previous) => element === previous, notificationNode)).toBe(true);
     expect(reads).toEqual([orderApi, notificationApi]);
   }
   await record(page, info, { feature: "order-overlay-query-stability", reads });

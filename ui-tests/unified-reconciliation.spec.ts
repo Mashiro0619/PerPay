@@ -1,3 +1,4 @@
+import { detailSection, revealDetailSection } from "./detail-layout";
 import type { Locator, Page } from "@playwright/test";
 import { test, expect, login, record } from "./fixtures";
 import { screenshot } from "./audit";
@@ -195,25 +196,25 @@ test("legacy global details resolve the unified transaction while site evidence 
     await expectOverlayTarget(page, target);
     expect(new URL(page.url()).pathname).toBe("/admin/reconciliation");
     const overlay = await settleOverlay(page);
-    await overlay.getByRole("tab", { name: "交易", exact: true }).click();
+    await revealDetailSection(page, "transaction");
     await expect(overlay.locator("[data-ledger-summary]")).toContainText(group.external_event_id);
-    await overlay.getByRole("tab", { name: "收款关联", exact: true }).click();
+    await revealDetailSection(page, "payments");
     await expect(overlay.locator('[data-ledger-match="' + match.payment_match_id + '"]')).toBeVisible();
   }
   const overlay = await settleOverlay(page);
-  // Each section owns its reads. Visit the sources before refreshing, then
-  // revisit them to verify invalidated source evidence is fetched on demand.
-  await overlay.getByRole("tab", { name: /^采集记录/ }).click();
+  // All sections share the open record; refresh updates both matching and
+  // source evidence without requiring navigation to a hidden panel.
+  await revealDetailSection(page, "sources");
   await expect(overlay.locator("[data-ledger-source]")).toHaveCount(group.sources.length);
   await expect(overlay.getByRole("button", { name: "刷新", exact: true })).toBeEnabled();
-  await overlay.getByRole("tab", { name: "收款关联", exact: true }).click();
+  await revealDetailSection(page, "payments");
   await expect(overlay.locator('[data-ledger-match="' + match.payment_match_id + '"]')).toBeVisible();
   const refreshed: string[] = [];
   const refreshedRequest = (request: { url(): string }) => refreshed.push(new URL(request.url()).pathname);
   page.on("request", refreshedRequest);
   await overlay.getByRole("button", { name: "刷新", exact: true }).click();
   await expect.poll(() => refreshed.includes("/api/admin/v1/reconciliation/matches/" + match.payment_match_id)).toBe(true);
-  await overlay.getByRole("tab", { name: /^采集记录/ }).click();
+  await revealDetailSection(page, "sources");
   await expect.poll(() => [
     groupedApi + "/" + match.ledger_entry_id,
     "/api/admin/v1/reconciliation/matches/" + match.payment_match_id,
@@ -267,7 +268,7 @@ test("source anchors preserve the originating page and scroll across overlay clo
   await expectOverlayTarget(page, target!);
   const overlay = await settleOverlay(page);
   const popup = await overlay.elementHandle();
-  await overlay.getByRole("tab", { name: "收款关联", exact: true }).click();
+  await revealDetailSection(page, "payments");
   const matchCard = overlay.locator('[data-ledger-match="' + current.payment_match_id + '"]');
   const sourceLink = matchCard.getByRole("link", { name: "核对这份记录", exact: true });
   const sourceHref = await sourceLink.getAttribute("href");
@@ -277,7 +278,8 @@ test("source anchors preserve the originating page and scroll across overlay clo
   await sourceLink.click();
   await expect(page).toHaveURL(manifest.origin + sourceHref);
   const sourceCard = overlay.locator('[data-ledger-source="' + current.ledger_entry_id + '"]');
-  await expect(overlay.getByRole("tab", { name: /^采集记录/ })).toHaveAttribute("aria-selected", "true");
+  await expect(detailSection(page, "sources")).toBeInViewport();
+  await expect(overlay.getByRole("tab")).toHaveCount(0);
   await expect(sourceCard).toBeFocused();
   await expect(sourceCard).toContainText(current.ledger_entry_id);
   expect(await popup!.evaluate(element => element.isConnected)).toBe(true);
@@ -336,7 +338,7 @@ test("source anchors preserve the originating page and scroll across overlay clo
   await selected.focus();
   await selected.press("Enter");
   await settleOverlay(page);
-  await overlay.getByRole("tab", { name: "收款关联", exact: true }).click();
+  await revealDetailSection(page, "payments");
   await matchCard.getByRole("link", { name: "核对这份记录", exact: true }).click();
   await expect(sourceCard).toBeFocused();
   const reopened = new URL(page.url());
@@ -375,8 +377,8 @@ test("merged financial actions keep the chosen source and match identity without
   });
   await page.goto(manifest.origin + "/admin" + detailPath(before.ledger_entry_id));
   const overlay = await settleOverlay(page);
-  await overlay.getByRole("tab", { name: /^采集记录/ }).click();
-  const sourceCard = page.locator('[data-ledger-source="' + source!.ledger_entry_id + '"]');
+  await revealDetailSection(page, "sources");
+  const sourceCard = overlay.locator('[data-detail-section="sources"] [data-ledger-source="' + source!.ledger_entry_id + '"]');
   const associate = sourceCard.getByRole("button", { name: "人工关联收款", exact: true });
   await associate.click();
   const financial = page.getByRole("dialog", { name: "人工关联收款", exact: true });
@@ -418,7 +420,7 @@ test("merged financial actions keep the chosen source and match identity without
 
   const match = await matchDetail(page, manifest.origin, manifest.details.matchManual!);
   await page.goto(manifest.origin + "/admin" + detailPath(match.ledger_entry_id));
-  await (await settleOverlay(page)).getByRole("tab", { name: "收款关联", exact: true }).click();
+  await revealDetailSection(page, "payments");
   const matchCard = page.locator('[data-ledger-match="' + match.payment_match_id + '"]');
   const tools = matchCard.getByRole("button", { name: "更多操作，收款关联记录操作", exact: true });
   await tools.click();

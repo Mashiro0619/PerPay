@@ -175,7 +175,9 @@ describe("official block composition", () => {
     expect(amount).not.toBeNull();
     expect(information).not.toBeNull();
     expect(amount).not.toBe(information);
-    expect(amount?.closest("[data-slot=tabs-content]")).toBe(information?.closest("[data-slot=tabs-content]"));
+    expect(information.closest("[data-detail-section]")).toHaveAttribute("data-detail-section", "overview");
+    expect(amount.closest("[data-detail-section]")).toBe(information.closest("[data-detail-section]"));
+    expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
     expect(information!.compareDocumentPosition(amount!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(
       screen.getByRole("heading", { name: order.product_name }),

@@ -3,7 +3,7 @@ import { test, expect, login, record, type Manifest } from "./fixtures";
 import { audit, screenshot } from "./audit";
 import { expectOverlayTarget, settleOverlay } from "./overlay-fixtures";
 import { expectTouchTarget, measureTouchTarget, waitForControlAnimations } from "./touch-targets";
-import { expectDetailFields, expectDetailRecordLayout } from "./detail-layout";
+import { detailSection, expectDetailFields, expectDetailRecordLayout } from "./detail-layout";
 import type { AdminLedgerDetail, AdminOrderDetail, PaymentMatchDetail, WebhookAttempt, WebhookDeliveryDetail } from "../web/src/api/generated/types.gen";
 
 const scenarios = [
@@ -47,35 +47,49 @@ function targetUrl(page: Page, href = page.url()) {
   expect(target, "record links retain an explicit overlay resource").toBeTruthy();
   return new URL(target!, outer.origin);
 }
-async function selectDetailTab(page: Page, name: string | RegExp) {
-  const tab = foreground(page).getByRole("tab", { name, exact: true });
-  await tab.click();
-  await expect(tab).toHaveAttribute("aria-selected", "true");
-  await settleOverlay(page);
+async function readDetailSection(page: Page, name: string | RegExp) {
+  const section = detailBody(page).getByRole("region", { name, exact: true }).and(detailBody(page).locator("[data-detail-section]"));
+  await expect(section).toBeVisible();
+  await section.evaluate(element => element.scrollIntoView({ block: "start", behavior: "instant" }));
+  await expect(section).toBeInViewport();
+  return section;
 }
 async function openDetail(page: Page, manifest: Manifest, key: string) {
   await page.goto(manifest.origin + "/admin" + detailPath(manifest, key));
   await settleOverlay(page);
   await expect(detailBody(page).locator("[data-detail-page]")).toBeVisible();
-  if (key.startsWith("notification") || key.startsWith("match")) await expect(detailBody(page).locator("[data-detail-order-summary]")).toBeVisible();
+  if (key.startsWith("notification")) await expect(detailSection(page, "overview").locator("[data-detail-order-summary]")).toBeVisible();
+  else if (key.startsWith("match")) {
+    const target = targetUrl(page);
+    const matchId = detailPath(manifest, key).split("/").at(-1)!;
+    const owner = target.pathname.startsWith("/sites/") ? detailBody(page).locator("[data-match-summary]") : detailBody(page).locator(`[data-ledger-match="${matchId}"]`);
+    await expect(owner.locator("[data-detail-order-summary]")).toBeVisible();
+  }
   else await expect(detailBody(page).locator("[data-ledger-summary]")).toBeVisible();
   await expect(detailBody(page).locator('[data-slot="skeleton"]')).toHaveCount(0);
   await expect(detailBody(page).locator("[data-detail-identifier]")).toHaveCount(0);
   await page.evaluate(() => document.fonts.ready);
 }
-async function fields(page: Page, names: readonly string[]) {
-  for (const name of names) await expect(detailBody(page).locator("dt").filter({ hasText: new RegExp("^" + name + "$") }).first()).toBeVisible();
+async function fields(owner: Locator, names: readonly string[]) {
+  for (const name of names) await expect(owner.locator("dt").filter({ hasText: new RegExp("^" + name + "$") })).toBeVisible();
 }
 async function technicalSection(page: Page, label: string) {
   if (label.includes("支付宝流水记录")) {
-    await selectDetailTab(page, "交易");
-    return detailBody(page).locator('[data-slot="tabs-content"]:visible [data-technical-information]').first();
+    await readDetailSection(page, "交易");
+    return detailSection(page, "transaction").locator('[data-ledger-summary] [data-technical-information]');
   }
   if (label.includes("查账记录")) {
-    await selectDetailTab(page, /^采集记录/);
-    return detailBody(page).locator('[data-ledger-source]').first().locator('[data-technical-information]');
+    await readDetailSection(page, /^采集记录/);
+    const heading = /查账记录 \d+/.exec(label)![0];
+    return detailSection(page, "sources").locator('[data-ledger-source]')
+      .filter({ has: page.getByRole("heading", { name: heading, exact: true }) })
+      .locator(':scope > [data-slot="item-content"] > [data-technical-information], :scope > [data-slot="card-content"] > [data-technical-information]');
   }
-  return detailBody(page).locator(label.includes("通知") ? '[data-notification-information] [data-technical-information]' : '[data-match-evidence] [data-technical-information]');
+  if (label.includes("通知")) return detailSection(page, "overview").locator('[data-notification-information] [data-technical-information]');
+  const matchId = /^#match-(.+)$/.exec(targetUrl(page).hash)?.[1];
+  return matchId
+    ? detailSection(page, "payments").locator(`[data-ledger-match="${matchId}"] [data-match-summary] > [data-slot="card-content"] > [data-technical-information]`)
+    : detailBody(page).locator('[data-match-evidence] > [data-slot="card-content"] > [data-technical-information]');
 }
 async function keyboardTools(page: Page, label: string) {
   const technical = await technicalSection(page, label);
@@ -245,34 +259,33 @@ test("detail overlays separate facts into readable business sections", async ({ 
   await layout(page, "dark", "compact");
   for (const scenario of [...scenarios, { ...scenarios[0], key: "notificationHttp" }]) {
     await openDetail(page, manifest, scenario.key);
-    const headings = detailBody(page).getByRole("heading", { level: 2 });
+    await expect(foreground(page).getByRole("tab")).toHaveCount(0);
     if (scenario.kind === "notification") {
-      await expect(foreground(page).getByRole("tab")).toHaveText(["概况", "投递记录"]);
-      await expect(headings).toHaveText(["通知信息", "关联订单"]);
+      await expect(detailSection(page, "overview").getByRole("heading", { level: 2 })).toHaveText(["通知信息", "关联订单"]);
       await expect(detailBody(page).getByRole("group", { name: "关联订单", exact: true }).locator("[data-detail-order-summary]")).toBeVisible();
       await expect(detailBody(page).getByRole("group", { name: "通知信息", exact: true }).getByRole("button", { name: "技术信息", exact: true })).toBeVisible();
-      await selectDetailTab(page, "投递记录");
-      await expect(headings).toHaveText(["投递历史"]);
+      await readDetailSection(page, "投递记录");
+      await expect(detailSection(page, "attempts").getByRole("heading", { level: 2 })).toHaveText(["投递历史"]);
       await expect(detailBody(page).getByRole("group", { name: "投递历史", exact: true }).getByRole("heading", { name: "投递尝试（1）", exact: true })).toBeVisible();
-      await selectDetailTab(page, "概况");
+      await readDetailSection(page, "概况");
     } else if (scenario.kind === "match") {
-      await expect(headings).toHaveText(["关联摘要与订单", "支付宝交易", "匹配依据与处理记录"]);
+      await expect(detailBody(page).getByRole("heading", { level: 2 })).toHaveText(["关联摘要与订单", "支付宝交易", "匹配依据与处理记录"]);
       await expect(detailBody(page).getByRole("group", { name: "收款关联记录", exact: true }).locator("[data-detail-order-summary]")).toBeVisible();
       await expect(detailBody(page).getByRole("group", { name: "匹配依据与处理记录", exact: true }).getByRole("heading", { name: "匹配依据", exact: true })).toBeVisible();
     } else {
-      await expect(headings).toHaveText(["支付宝交易"]);
+      await expect(detailSection(page, "transaction").getByRole("heading", { level: 2 })).toHaveText(["支付宝交易"]);
       await expect(detailBody(page).locator('dt').filter({ hasText: /^支付宝 App ID$/ })).toHaveCount(0);
       await expect(detailBody(page).locator('[data-ledger-summary] [data-layout="flow"] dt')).toHaveText(["交易金额", "收款账号", "收支方向", "交易时间", "对方", "支付宝备注"]);
       await expect(detailBody(page).locator('[data-ledger-summary] [data-detail-credentials] dt')).toHaveText(["支付宝流水号", "支付宝订单号", "支付宝商户单号"]);
       await expect(detailBody(page).locator('[data-ledger-summary] dt').filter({ hasText: /业务网站|PerPay/ })).toHaveCount(0);
-      await selectDetailTab(page, "收款关联");
-      await expect(headings).toHaveText(["对应订单"]);
+      await readDetailSection(page, "收款关联");
+      await expect(detailSection(page, "payments").getByRole("heading", { level: 2 })).toHaveText(["对应订单"]);
       await expect(detailBody(page).locator("[data-ledger-match]").first()).toBeVisible();
-      await selectDetailTab(page, /^采集记录/);
-      await expect(headings).toHaveText([/^查账记录（\d+）$/]);
+      await readDetailSection(page, /^采集记录/);
+      await expect(detailSection(page, "sources").getByRole("heading", { level: 2 })).toHaveText([/^查账记录（\d+）$/]);
       await expect(detailBody(page).locator("[data-ledger-source]").first()).toBeVisible();
-      await expect(foreground(page).getByRole("tab", { name: /^冲突/ })).toHaveCount(0);
-      await selectDetailTab(page, "交易");
+      await expect(detailSection(page, "conflicts")).toHaveCount(0);
+      await readDetailSection(page, "交易");
     }
     const geometry = await readingLayout(page, "compact");
     const flows = await readingFlowGeometry(page);
@@ -359,34 +372,37 @@ test("three detail types retain expanded facts across widths, themes and content
       await expect(page.locator("[data-content-width]")).toHaveAttribute("data-content-width", mode);
       await expect(page.locator("html")).toHaveClass(theme === "dark" ? /dark/ : /^(?!.*\bdark\b)/);
       if (scenario.kind === "notification") {
-        await fields(page, scenario.key === "notificationSite" ? ["下次重试", "通知地址"] : ["所属网站", "下次重试", "通知地址"]);
-        await expect(detailBody(page).locator("[data-detail-order-summary]")).toBeVisible();
-        await selectDetailTab(page, "投递记录");
+        await fields(detailSection(page, "overview").locator("[data-notification-information]"), scenario.key === "notificationSite" ? ["下次重试", "通知地址"] : ["所属网站", "下次重试", "通知地址"]);
+        await expect(detailSection(page, "overview").locator("[data-detail-order-summary]")).toBeVisible();
+        await readDetailSection(page, "投递记录");
         await expect(detailBody(page).getByRole("heading", { name: "投递尝试（1）", exact: true })).toBeVisible();
-        await expect(detailBody(page).getByText(/通知域名解析失败/).first()).toBeVisible();
+        await expect(detailSection(page, "attempts").getByText(/通知域名解析失败/)).toBeVisible();
         await readingLayout(page, mode, "投递尝试（1）");
-        await selectDetailTab(page, "概况");
+        await readDetailSection(page, "概况");
       } else if (scenario.kind === "match") {
-        await fields(page, ["支付宝交易金额", "支付宝交易时间", "支付宝交易对方", "支付宝订单号", "支付宝交易备注", "金额占用时间"]);
+        await fields(detailBody(page), ["支付宝交易金额", "支付宝交易时间", "支付宝交易对方", "支付宝订单号", "支付宝交易备注", "金额占用时间"]);
         await expect(page.getByRole("heading", { name: "匹配依据", exact: true })).toBeVisible();
         await expect(page.getByRole("button", { name: "匹配依据", exact: true })).toHaveCount(0);
       } else {
-        await selectDetailTab(page, "交易");
-        await fields(page, ["支付宝流水号", "交易金额", "收支方向", "交易时间"]);
+        await readDetailSection(page, "交易");
+        await fields(detailSection(page, "transaction"), ["支付宝流水号", "交易金额", "收支方向", "交易时间"]);
         await expect(detailBody(page).locator('dt').filter({ hasText: /^支付宝 App ID$/ })).toHaveCount(0);
         await expect(detailBody(page).locator('[data-ledger-summary] [data-detail-credentials]')).toBeVisible();
         await readingCredentialsGeometry(page);
-        await selectDetailTab(page, /^采集记录/);
+        await readDetailSection(page, /^采集记录/);
         await expect(detailBody(page).locator("#ledger-sources-heading")).toBeVisible();
         await expect(detailBody(page).locator("[data-ledger-source]").first()).toBeVisible();
-        await fields(page, ["内部流水编号（PerPay）"]);
+        const sourceFacts = detailSection(page, "sources").locator("[data-ledger-source]")
+          .filter({ has: page.getByRole("heading", { name: "查账记录 1", exact: true }) })
+          .locator(':scope > [data-slot="item-content"] > [data-detail-fields], :scope > [data-slot="card-content"] > [data-detail-credentials]');
+        await fields(sourceFacts, ["内部流水编号（PerPay）"]);
         await readingFlowGeometry(page);
-        await selectDetailTab(page, "收款关联");
+        await readDetailSection(page, "收款关联");
         await expect(detailBody(page).locator("#ledger-matches-heading")).toBeVisible();
         await expect(detailBody(page).locator("[data-ledger-match]").first()).toBeVisible();
         await readingFlowGeometry(page);
-        await expect(foreground(page).getByRole("tab", { name: /^冲突/ })).toHaveCount(0);
-        await selectDetailTab(page, "交易");
+        await expect(detailSection(page, "conflicts")).toHaveCount(0);
+        await readDetailSection(page, "交易");
       }
       const flows = await readingFlowGeometry(page);
       const geometry = await readingLayout(page, mode);
@@ -461,7 +477,7 @@ test("named notification scenarios retain delivery facts and safe resend recover
       const order = detailBody(page).locator('[data-detail-order-summary] [data-slot="item-title"] a');
       expect(targetUrl(page, (await order.getAttribute("href"))!).pathname).toBe("/sites/" + detail.target.api_client_id + "/orders/" + detail.event.order_id);
     }
-    await selectDetailTab(page, "投递记录");
+    await readDetailSection(page, "投递记录");
     await expect(history.getByRole("heading", { name: `投递尝试（${detail.delivery.attempt_count}）`, exact: true })).toBeVisible();
     await expect(history.getByRole("button", { name: /^投递尝试（/ })).toHaveCount(0);
     if (key === "notificationPending") {
@@ -470,7 +486,7 @@ test("named notification scenarios retain delivery facts and safe resend recover
     }
     if (key === "notificationDns" || key === "notificationSite") await expect(history.getByText(/通知域名解析失败/)).toBeVisible();
     if (key === "notificationHttp") await expect(history.getByText(/HTTP 503/)).toBeVisible();
-    await selectDetailTab(page, "概况");
+    await readDetailSection(page, "概况");
     if (key === "notificationHistory") {
       expect(detail.is_latest).toBe(false);
       await expect(card.getByText(/历史投递/)).toBeVisible();
@@ -496,6 +512,53 @@ test("named notification scenarios retain delivery facts and safe resend recover
   }
 });
 
+test("notification history loads after its delivery succeeds and does not reload when sections reflow", async ({ page, manifest }, info) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await login(page, manifest);
+  const route = detailPath(manifest, "notificationHttp"), deliveryPath = apiPath(route);
+  const detail = await data<WebhookDeliveryDetail>(page, manifest, deliveryPath);
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  let deliveryReads = 0, attemptReads = 0, available = true;
+  await page.route(manifest.origin + deliveryPath, async request => {
+    deliveryReads++;
+    await gate;
+    return available
+      ? request.fulfill({ status: 200, json: { data: detail } })
+      : request.fulfill({ status: 503, json: { error: { code: "synthetic_delivery_unavailable", message: "合成的通知详情读取失败" } } });
+  });
+  await page.route(manifest.origin + deliveryPath + "/attempts", request => { attemptReads++; return request.continue(); });
+  try {
+    await page.goto(manifest.origin + "/admin" + route);
+    await expect.poll(() => deliveryReads).toBe(1);
+    await expect(foreground(page).getByRole("heading", { level: 1 })).toHaveText("通知详情");
+    await page.clock.runFor(100);
+    expect(attemptReads, "history cannot start before the delivery read succeeds").toBe(0);
+    release();
+    await expect.poll(() => attemptReads).toBe(1);
+    await expect(detailSection(page, "attempts").getByRole("heading", { name: `投递尝试（${detail.delivery.attempt_count}）`, exact: true })).toBeVisible();
+    await expect(detailSection(page, "overview").locator("[data-notification-information]")).toBeVisible();
+    for (const width of [390, 768, 1440]) {
+      await page.setViewportSize({ width, height: 900 });
+      await revealHistory();
+      expect({ deliveryReads, attemptReads }).toEqual({ deliveryReads: 1, attemptReads: 1 });
+    }
+    const successfulReads = { deliveryReads, attemptReads };
+    available = false;
+    attemptReads = 0;
+    await page.reload();
+    await expect(foreground(page).getByText("合成的通知详情读取失败", { exact: true })).toBeVisible();
+    expect(attemptReads, "a failed delivery never starts an unrelated attempt read").toBe(0);
+    await record(page, info, { feature: "notification-dependent-history-read", evidence: "gated local delivery response and real local attempts; no sends", successfulReads, failedDeliveryAttemptReads: attemptReads });
+  } finally { release(); }
+
+  async function revealHistory() {
+    await readDetailSection(page, "投递记录");
+    await expect(foreground(page).getByRole("tab")).toHaveCount(0);
+    await page.clock.runFor(100);
+  }
+});
+
 test("a clearly synthetic 21-attempt response stays expanded and pages newest-first without loss", async ({ page, manifest }, info) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await login(page, manifest);
@@ -516,7 +579,7 @@ test("a clearly synthetic 21-attempt response stays expanded and pages newest-fi
   await page.route(manifest.origin + path, route => route.fulfill({ status: 200, json: { data: attempts } }));
   await openDetail(page, manifest, "notificationHttp");
   await expect(detailBody(page).getByText("已尝试 21 次", { exact: true })).toBeVisible();
-  await selectDetailTab(page, "投递记录");
+  await readDetailSection(page, "投递记录");
   const table = page.getByRole("table", { name: "投递尝试（21）", exact: true });
   await expect(table).toBeVisible();
   await expect(page.getByRole("button", { name: "投递尝试（21）", exact: true })).toHaveCount(0);
@@ -550,7 +613,7 @@ test("failed attempt reads retain an accurate unknown history and recover on exp
       : route.fulfill({ status: 200, json: { data: original } });
   });
   await openDetail(page, manifest, "notificationHttp");
-  await selectDetailTab(page, "投递记录");
+  await readDetailSection(page, "投递记录");
   const main = detailBody(page);
   const history = page.getByRole("group", { name: "投递历史", exact: true });
   await expect(history.getByText("发送记录读取失败，请重试；这不代表没有发送过。", { exact: true })).toBeVisible();
@@ -563,7 +626,7 @@ test("failed attempt reads retain an accurate unknown history and recover on exp
   unavailable = false;
   await alert.getByRole("button", { name: "重试", exact: true }).click();
   await expect(main.getByRole("table", { name: "投递尝试（1）", exact: true })).toBeVisible();
-  await expect(main.getByText(/HTTP 503/)).toBeVisible();
+  await expect(history.getByText(/HTTP 503/)).toBeVisible();
   await expect(history.getByText("发送记录读取失败，请重试；这不代表没有发送过。", { exact: true })).toHaveCount(0);
   await expect(history.locator('[data-slot="card-description"]')).toHaveText("投递尝试按时间倒序显示 · 每页 10 条");
   await expect(alert).toHaveCount(0);
@@ -578,8 +641,9 @@ test("automatic, manual and reversed matches keep full evidence in unified and s
   for (const key of ["matchInferred", "matchManual", "matchReversed", "matchSite"]) {
     await openDetail(page, manifest, key);
     const match = await data<PaymentMatchDetail>(page, manifest, apiPath(detailPath(manifest, key)));
-    const card = page.getByRole("group", { name: "收款关联记录", exact: true });
     const scoped = key === "matchSite";
+    const card = scoped ? detailBody(page).getByRole("group", { name: "收款关联记录", exact: true })
+      : detailSection(page, "payments").locator(`[data-ledger-match="${match.payment_match_id}"]`).getByRole("group", { name: "收款关联记录", exact: true });
     const transaction = scoped ? page.getByRole("group", { name: "支付宝交易", exact: true }) : page.locator("[data-ledger-summary]");
     const evidence = scoped ? page.getByRole("group", { name: "匹配依据与处理记录", exact: true }) : card.locator("[data-match-evidence]");
     if (!scoped) {
@@ -588,9 +652,9 @@ test("automatic, manual and reversed matches keep full evidence in unified and s
       const sourceLink = card.getByRole("link", { name: "核对这份记录", exact: true });
       expect(targetUrl(page, (await sourceLink.getAttribute("href"))!).hash).toBe("#source-" + match.ledger_entry_id);
     }
-    if (!scoped) await selectDetailTab(page, "交易");
+    if (!scoped) await readDetailSection(page, "交易");
     await expect(transaction.getByText(match.ledger_entry.provider_order_no!, { exact: true })).toBeVisible();
-    if (!scoped) await selectDetailTab(page, "收款关联");
+    if (!scoped) await readDetailSection(page, "收款关联");
     await expect(card.locator("[data-detail-order-summary]")).toContainText(match.order.merchant_order_no);
     if (match.candidate) {
       await expect(evidence.getByRole("heading", { name: "匹配依据", exact: true })).toBeVisible();
@@ -602,7 +666,7 @@ test("automatic, manual and reversed matches keep full evidence in unified and s
       await expect(evidence.locator("dd").filter({ hasText: match.creation_operation.reason! })).toBeVisible();
     }
     if (match.status === "REVERSED") {
-      await fields(page, ["撤销时间", "撤销操作人", "撤销理由"]);
+      await fields(evidence, ["撤销时间", "撤销操作人", "撤销理由"]);
       expect(match.resolution_operation?.reason).toBeTruthy();
       await expect(evidence.locator("dd").filter({ hasText: match.resolution_operation!.reason! })).toBeVisible();
       await expect(card.getByRole("button", { name: "更多操作，收款关联记录操作", exact: true })).toHaveCount(0);
@@ -634,36 +698,41 @@ test("all genuine ledger versions and synthetic simultaneous associations remain
   for (const key of ["ledgerAssociated", "ledgerIdentical", "ledgerDisputed"]) {
     const entry = await data<AdminLedgerDetail>(page, manifest, apiPath(detailPath(manifest, key)));
     await openDetail(page, manifest, key);
-    await expect(detailBody(page).locator("[data-detail-credentials]")).toHaveCount(1);
+    await expect(detailSection(page, "transaction").locator("[data-detail-credentials]")).toHaveCount(1);
     if (key === "ledgerDisputed") await expect(detailBody(page).locator("[data-ledger-summary]")).toContainText("有争议");
-    await selectDetailTab(page, "收款关联");
+    await readDetailSection(page, "收款关联");
     await expect(detailBody(page).locator("[data-ledger-match]")).toHaveCount(entry.matches.length);
     if (entry.conflicts.length) {
-      await selectDetailTab(page, /^冲突/);
+      await readDetailSection(page, /^冲突/);
       await expect(detailBody(page).locator("[data-ledger-conflict]")).toHaveCount(entry.conflicts.length);
-      await expect(detailBody(page).locator("[data-detail-credentials]")).toHaveCount(entry.conflicts.length);
-    } else await expect(foreground(page).getByRole("tab", { name: /^冲突/ })).toHaveCount(0);
-    await selectDetailTab(page, /^采集记录/);
+      await expect(detailSection(page, "conflicts").locator("[data-detail-credentials]")).toHaveCount(entry.conflicts.length);
+    } else await expect(detailSection(page, "conflicts")).toHaveCount(0);
+    await readDetailSection(page, /^采集记录/);
     await expect(detailBody(page).locator("[data-ledger-source]")).toHaveCount(entry.sources.length);
-    await expect(detailBody(page).locator("[data-detail-credentials]")).toHaveCount(entry.content_consistent ? 0 : entry.sources.length);
-    for (const source of entry.sources) await expect(page.locator(`[data-ledger-source="${source.ledger_entry_id}"]`).getByText(source.ledger_entry_id, { exact: true })).toBeVisible();
+    await expect(detailSection(page, "sources").locator('[data-ledger-source] > [data-slot="card-content"] > [data-detail-credentials]')).toHaveCount(entry.content_consistent ? 0 : entry.sources.length);
+    for (const source of entry.sources) {
+      const facts = page.locator(`[data-ledger-source="${source.ledger_entry_id}"]`)
+        .locator(':scope > [data-slot="item-content"] > [data-detail-fields], :scope > [data-slot="card-content"] > [data-detail-credentials]');
+      await expect(facts.getByText(source.ledger_entry_id, { exact: true })).toBeVisible();
+    }
     if (key === "ledgerIdentical") { expect(entry.content_consistent).toBe(true); expect(entry.sources.length).toBeGreaterThan(1); }
     if (key === "ledgerDisputed") {
       expect(entry.content_consistent).toBe(false);
       await expect(page.locator("[data-ledger-warning]")).toContainText("账单记录有差异");
       for (const source of entry.sources) {
         const card = page.locator(`[data-ledger-source="${source.ledger_entry_id}"]`);
-        await expect(card.locator('[data-layout="flow"] dt')).toHaveText(["交易金额", "收支方向", "交易时间", "对方", "保存时间", "支付宝备注"]);
-        if (source.memo) await expect(card.getByText(source.memo, { exact: true })).toBeVisible();
-        if (source.provider_order_no) await expect(card.getByText(source.provider_order_no, { exact: true })).toBeVisible();
+        const facts = card.locator(':scope > [data-slot="card-content"] > [data-detail-fields]');
+        await expect(facts.locator("dt")).toHaveText(["交易金额", "收支方向", "交易时间", "对方", "保存时间", "支付宝备注"]);
+        if (source.memo) await expect(facts.getByText(source.memo, { exact: true })).toBeVisible();
+        if (source.provider_order_no) await expect(card.locator(':scope > [data-slot="card-content"] > [data-detail-credentials]').getByText(source.provider_order_no, { exact: true })).toBeVisible();
       }
     } else {
       for (const source of entry.sources) {
         const card = page.locator(`[data-ledger-source="${source.ledger_entry_id}"]`);
-        await expect(card.locator("[data-detail-fields]").first().locator("dt")).toHaveText(["内部流水编号（PerPay）", "保存时间"]);
+        await expect(card.locator(':scope > [data-slot="item-content"] > [data-detail-fields] dt')).toHaveText(["内部流水编号（PerPay）", "保存时间"]);
         await expect(card.getByRole("link", { name: "查看记录与处理", exact: true })).toHaveCount(0);
         const eligible = source.direction === "CREDIT" && ["UNALLOCATED", "CANDIDATE", "CONFLICT"].includes(source.state);
-        const actions = card.locator('[data-slot="item-actions"], [data-slot="card-action"]').first();
+        const actions = card.locator(':scope > [data-slot="item-content"] > [data-slot="item-header"] > [data-slot="item-actions"], :scope > [data-slot="card-header"] > [data-slot="card-action"]');
         await expect(actions.getByRole("button", { name: "人工关联收款", exact: true })).toHaveCount(eligible ? 1 : 0);
       }
     }
@@ -686,7 +755,7 @@ test("all genuine ledger versions and synthetic simultaneous associations remain
   await openDetail(page, manifest, "ledgerAssociated");
   await expect(page.locator("[data-ledger-warning]")).toContainText(`有 ${entry.active_match_count} 条有效关联`);
   await expect(page.locator("[data-ledger-warning]")).toContainText("无法确定唯一订单");
-  await selectDetailTab(page, "收款关联");
+  await readDetailSection(page, "收款关联");
   await expect(detailBody(page).locator("[data-ledger-match]")).toHaveCount(entry.matches.length);
   await expect(detailBody(page).getByText("当前实际关联", { exact: true })).toHaveCount(0);
   for (const match of [settled!, second]) {
@@ -798,8 +867,15 @@ test("long products, complete identifiers and multiline details wrap without cli
     await layout(page, theme, "compact");
     for (const scenario of scenarios) {
       await openDetail(page, manifest, scenario.key);
-      if (scenario.kind === "ledger") await selectDetailTab(page, "收款关联");
-      const title = detailBody(page).locator('[data-detail-order-summary] [data-slot="item-title"]').first();
+      if (scenario.kind === "ledger") await readDetailSection(page, "收款关联");
+      const orderOwner = scenario.kind === "ledger"
+        ? detailSection(page, "payments").locator(`[data-ledger-match="${ledger.matches[0]!.payment_match_id}"]`)
+        : scenario.kind === "notification" ? detailSection(page, "overview").getByRole("group", { name: "关联订单", exact: true })
+          : detailBody(page).getByRole("group", { name: "收款关联记录", exact: true });
+      const factsOwner = scenario.kind === "ledger" ? detailSection(page, "transaction").locator("[data-ledger-summary]")
+        : scenario.kind === "notification" ? detailSection(page, "overview").locator("[data-notification-information]")
+          : detailBody(page).getByRole("group", { name: "支付宝交易", exact: true });
+      const title = orderOwner.locator('[data-detail-order-summary] [data-slot="item-title"]');
       await expect(title).toHaveText(product);
       const bounds = await title.evaluate(element => {
         const range = document.createRange(); range.selectNodeContents(element);
@@ -808,14 +884,14 @@ test("long products, complete identifiers and multiline details wrap without cli
       });
       expect(bounds.textHeight).toBeLessThanOrEqual(bounds.boxHeight + 1);
       expect(bounds.textRight).toBeLessThanOrEqual(bounds.boxRight + 1);
-      if (scenario.kind === "ledger") await selectDetailTab(page, "交易");
-      await expect(detailBody(page).locator("dd").filter({ hasText: "第三行：可见末尾标记" }).first()).toHaveText(memo);
+      if (scenario.kind === "ledger") await readDetailSection(page, "交易");
+      await expect(factsOwner.locator("dd").filter({ hasText: "第三行：可见末尾标记" })).toHaveText(memo);
       if (scenario.kind === "notification") {
-        await expect(page.getByText(targetUrl, { exact: true })).toBeVisible();
-        await page.getByRole("button", { name: "复制通知地址", exact: true }).click();
+        await expect(factsOwner.getByText(targetUrl, { exact: true })).toBeVisible();
+        await factsOwner.getByRole("button", { name: "复制通知地址", exact: true }).click();
         await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(targetUrl);
       } else {
-        await expect(page.getByText(identifier, { exact: true }).first()).toBeVisible();
+        await expect(factsOwner.getByText(identifier, { exact: true })).toBeVisible();
         if (scenario.kind === "ledger") {
           for (const [name, value] of [["支付宝流水号", externalIdentifier], ["支付宝订单号", identifier], ["支付宝商户单号", merchantIdentifier]]) {
             const credential = page.locator('[data-ledger-summary] [data-detail-credentials]');
@@ -828,7 +904,8 @@ test("long products, complete identifiers and multiline details wrap without cli
       const longFacts = scenario.kind === "notification" ? [["所属网站", siteName]] : scenario.kind === "match" ? [["所属网站", siteName], ["支付宝交易对方", counterparty]] : [["对方", counterparty]];
       const wrappedFacts = [];
       for (const [name, value] of longFacts) {
-        const field = page.locator("[data-overlay-detail] dt").filter({ hasText: new RegExp("^" + name + "$") }).first().locator("..");
+        const fieldOwner = name === "所属网站" && scenario.kind === "match" ? orderOwner : factsOwner;
+        const field = fieldOwner.locator("dt").filter({ hasText: new RegExp("^" + name + "$") }).locator("..");
         await expect(field).not.toHaveAttribute("data-field-wide", "true");
         await expect(field.locator("dd")).toHaveText(value!);
         const wrapped = await field.evaluate(completeFieldGeometry);

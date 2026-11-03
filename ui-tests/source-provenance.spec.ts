@@ -1,3 +1,4 @@
+import { detailSection, revealDetailSection } from "./detail-layout";
 import { test, expect, login, record } from "./fixtures";
 import { test as browserTest } from "@playwright/test";
 import { createSettingsServer } from "./settings-server";
@@ -46,8 +47,8 @@ test("order and ledger sources remain distinct at desktop and 320 pixels", async
     const orderPath = info.outputPath(`order-sources-${width}.png`);
     await websiteOrder.screenshot({ path: orderPath });
     await info.attach(`order-sources-${width}`, { path: orderPath, contentType: "image/png" });
-    await orderOverlay.getByRole("tab", { name: /^收款关联/ }).click();
-    const associations = orderOverlay.getByRole("tabpanel").locator('[aria-label="收款关联记录"]');
+    await revealDetailSection(page, "payments");
+    const associations = detailSection(page, "payments").getByRole("group", { name: "收款关联记录", exact: true });
     await expect(associations).toHaveCount(matches.length);
     for (const [index, match] of matches.entries()) {
       const association = associations.nth(index);
@@ -60,7 +61,7 @@ test("order and ledger sources remain distinct at desktop and 320 pixels", async
     await page.goto(manifest.origin + "/admin" + ledgerRoute);
     await expectOverlayTarget(page, "/reconciliation/transactions/" + selectedMatch.ledger_entry_id + "#source-" + selectedMatch.ledger_entry_id);
     const ledgerOverlay = await settleOverlay(page);
-    await ledgerOverlay.getByRole("tab", { name: "交易", exact: true }).click();
+    await revealDetailSection(page, "transaction");
     const ledger = ledgerOverlay.locator("[data-ledger-summary]");
     await expect(ledger.getByRole("heading", { name: "支付宝交易", exact: true })).toBeVisible();
     for (const label of ["交易金额", "交易时间", "支付宝订单号", "对方"]) {
@@ -73,16 +74,17 @@ test("order and ledger sources remain distinct at desktop and 320 pixels", async
     const ledgerPath = info.outputPath(`ledger-sources-${width}.png`);
     await ledger.screenshot({ path: ledgerPath });
     await info.attach(`ledger-sources-${width}`, { path: ledgerPath, contentType: "image/png" });
-    await ledgerOverlay.getByRole("tab", { name: /^采集记录/ }).click();
+    await revealDetailSection(page, "sources");
     await expect(ledgerOverlay.locator("#ledger-sources-heading")).toContainText("查账记录");
     await expect(ledgerOverlay.locator("[data-ledger-source]")).toHaveCount(grouped.sources.length);
     const source = ledgerOverlay.locator('[data-ledger-source="' + selectedMatch.ledger_entry_id + '"]');
     const sourceId = await source.getAttribute("data-ledger-source");
     expect(sourceId).toBe(selectedMatch.ledger_entry_id);
     await expect(source.getByText("PerPay 记录状态", { exact: true })).toBeVisible();
-    await expect(source.getByText("内部流水编号（PerPay）", { exact: true })).toBeVisible();
-    await expect(source.getByText(sourceId!, { exact: true })).toBeVisible();
-    await expect(source.getByRole("button", { name: "复制内部流水编号（PerPay）", exact: true })).toBeVisible();
+    const sourceFacts = source.locator(':scope > [data-slot="item-content"] > [data-detail-fields], :scope > [data-slot="card-content"] > [data-detail-credentials]');
+    await expect(sourceFacts.getByText("内部流水编号（PerPay）", { exact: true })).toBeVisible();
+    await expect(sourceFacts.getByText(sourceId!, { exact: true })).toBeVisible();
+    await expect(sourceFacts.getByRole("button", { name: "复制内部流水编号（PerPay）", exact: true })).toBeVisible();
     await record(page, info, { feature: "ledger-provenance", width, sourceId, transaction: grouped.external_event_id, sourceCount: grouped.sources.length });
   }
 });

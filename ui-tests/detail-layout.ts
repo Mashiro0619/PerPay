@@ -2,6 +2,19 @@ import type { Locator, Page } from "@playwright/test";
 import { expect } from "./fixtures";
 import { expectOverlayFits } from "./overlay-fixtures";
 
+export function detailSection(page: Page, id: string) {
+  return page.locator(`[data-overlay-content] [data-overlay-detail] [data-detail-section="${id}"]`);
+}
+
+/** Reveal a section in the existing detail scroller; reading does not navigate. */
+export async function revealDetailSection(page: Page, id: string) {
+  const section = detailSection(page, id);
+  await expect(section).toBeVisible();
+  await section.evaluate(element => element.scrollIntoView({ block: "start", behavior: "instant" }));
+  await expect(section).toBeInViewport();
+  return section;
+}
+
 /** Measure the field container, rather than inferring columns from screen size. */
 export async function expectDetailFields(containers: Locator) {
   const groups = await containers.evaluateAll(containers => containers.map(container => {
@@ -107,7 +120,7 @@ export async function expectDetailFields(containers: Locator) {
 
 export async function expectTechnicalPlacement(technical: Locator) {
   const placements = await technical.evaluateAll(items => items.map(element => {
-    const owner = element.closest('[data-slot="card"], .detail-section, [data-detail-page]')!;
+    const owner = element.closest('[data-slot="card"], [data-ledger-source], [data-ledger-match], .detail-section, [data-detail-section], [data-detail-page]')!;
     const followingFacts = [...owner.querySelectorAll("dt")].filter(term =>
       !term.closest("[data-technical-information]") &&
       term.getBoundingClientRect().width > 0 && term.getBoundingClientRect().height > 0 &&
@@ -129,6 +142,8 @@ export async function expectDetailRecordLayout(page: Page, alternativeTable?: st
   const overlay = page.locator('[data-overlay-content][data-overlay-record="true"]');
   await expect(overlay).toBeVisible();
   const body = overlay.locator("[data-overlay-detail]");
+  await expect(body.getByRole("tablist"), "record sections share one reading surface").toHaveCount(0);
+  await expect(body.getByRole("tabpanel")).toHaveCount(0);
   const firstFields = body.locator("[data-detail-fields]:visible").first();
   await expect(alternativeTable
     ? firstFields.or(body.getByRole("table", { name: alternativeTable, exact: true })).first()

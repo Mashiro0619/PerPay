@@ -123,7 +123,7 @@ test.describe("enlarged admin dialogs keep fields and decisions reachable", () =
       });
       const ledgerDialog = await openRecord(page, manifest, ledgerPath);
       await page.evaluate(font => document.documentElement.style.fontSize = font + "%", font);
-      const technical = ledgerDialog.locator("[data-technical-information]");
+      const technical = ledgerDialog.locator('[data-detail-section="transaction"] [data-ledger-summary] [data-technical-information]');
       const trigger = technical.getByRole("button", { name: "技术信息", exact: true });
       await reveal(trigger, page);
       await trigger.tap();
@@ -173,7 +173,8 @@ test.describe("enlarged admin dialogs keep fields and decisions reachable", () =
 
       const matchDialog = await openRecord(page, manifest, manifest.details.matchManual!);
       await page.evaluate(font => document.documentElement.style.fontSize = font + "%", font);
-      const operations = matchDialog.getByRole("button", { name: "更多操作，收款关联记录操作", exact: true });
+      const operations = matchDialog.locator('[data-detail-section="payments"] [data-ledger-match="' + manifest.details.matchManual!.split("/").at(-1) + '"]')
+        .getByRole("button", { name: "更多操作，收款关联记录操作", exact: true });
       await operations.click();
       await page.getByRole("menuitem", { name: "撤销错误关联", exact: true }).click();
       const reasonDialog = page.locator("[data-overlay-step]:visible");

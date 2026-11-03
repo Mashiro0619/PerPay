@@ -384,8 +384,6 @@ export function NotificationDetail() {
 }
 function DeliveryDetail({ deliveryId }: { deliveryId: string }) {
   const api = useWorkspaceApi();
-  const [detailSearch] = useSearchParams();
-  const showAttempts = detailSearch.get("section") === "attempts";
   const back = useDetailBack("/notifications", "通知");
   const delivery = useQuery({
     queryKey: ["notification", deliveryId],
@@ -394,7 +392,7 @@ function DeliveryDetail({ deliveryId }: { deliveryId: string }) {
   });
   const attempts = useQuery({
     queryKey: ["notification-attempts", deliveryId],
-    enabled: showAttempts,
+    enabled: delivery.isSuccess,
     queryFn: ({ signal }) =>
       result(api.listWebhookDeliveryAttempts({ path: { deliveryId }, signal })),
   });
@@ -409,7 +407,7 @@ function DeliveryDetail({ deliveryId }: { deliveryId: string }) {
       </DetailNavigation>
       <QueryView query={delivery}>
         {({ data }) => (
-          <DetailSections label="通知详情分类" sections={[
+          <DetailSections label="通知详情内容" sections={[
             { id: "overview", label: "概况", content: <>
             <DeliveryCard
               detail={{ ...data, attempts: attempts.data?.data ?? [] }}

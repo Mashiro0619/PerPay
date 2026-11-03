@@ -1,3 +1,4 @@
+import { revealDetailSection } from "./detail-layout";
 import { test, expect, login, record } from "./fixtures";
 import { audit, screenshot } from "./audit";
 import { settleOverlay } from "./overlay-fixtures";
@@ -139,7 +140,7 @@ test("unified transactions render both themes and width modes at 320, 390, 1440 
       if (path === transactions) await expect(page.locator("[data-business-row]")).toHaveCount(20);
       else {
         const overlay = await settleOverlay(page);
-        await overlay.getByRole("tab", { name: /^采集记录/ }).click();
+        await revealDetailSection(page, "sources");
         await expect(overlay.locator("#ledger-sources-heading")).toContainText("查账记录");
       }
       await record(page, info, { width, theme, mode, source: "local-synthetic-unified-transactions" });
@@ -168,12 +169,13 @@ test("ledger tells the current order apart from reversed history without repeati
   await expect(overlay.getByRole("heading", { name: "支付宝交易", exact: true })).toBeVisible();
   await expect(summary.getByText("已分配", { exact: true })).toHaveCount(0);
   await expect(summary.locator("dt").filter({ hasText: /商户订单号（业务网站）|内部流水编号/ })).toHaveCount(0);
-  await overlay.getByRole("tab", { name: "收款关联", exact: true }).click();
+  await revealDetailSection(page, "payments");
   await expect(page.locator("#ledger-matches-heading")).toBeVisible();
   await expect(currentCard.getByText("已关联", { exact: true })).toBeVisible();
   await expect(currentCard.locator("dt").filter({ hasText: /^撤销时间$/ })).toHaveCount(0);
-  await overlay.getByRole("tab", { name: /^采集记录/ }).click();
-  await expect(page.locator("[data-ledger-source]").first().locator("dt").filter({ hasText: /^(内部流水编号（PerPay）|保存时间)$/ })).toHaveCount(2);
+  await revealDetailSection(page, "sources");
+  await expect(page.locator('[data-ledger-source="' + entry.sources[0]!.ledger_entry_id + '"] > [data-slot="item-content"] > [data-detail-fields] dt')
+    .filter({ hasText: /^(内部流水编号（PerPay）|保存时间)$/ })).toHaveCount(2);
   await expect(page.locator("#ledger-conflicts-heading")).toHaveCount(0);
   await screenshot(page, info, "ledger-current-order-reading");
 
@@ -185,7 +187,7 @@ test("ledger tells the current order apart from reversed history without repeati
   const reversed = (await reversedResponse.json() as { data: AdminLedgerDetail }).data;
   expect(reversed.matches.some(match => match.payment_match_id === oldMatch.payment_match_id && match.status === "REVERSED")).toBe(true);
   await page.goto(manifest.origin + "/admin" + transactionDetail(reversed.ledger_entry_id));
-  await (await settleOverlay(page)).getByRole("tab", { name: "收款关联", exact: true }).click();
+  await revealDetailSection(page, "payments");
   if (reversed.active_match_count === 0) {
     await expect(page.locator("[data-ledger-unmatched]")).toContainText("当前没有对应的收款订单");
     await expect(page.locator("[data-ledger-unmatched]")).toContainText("可在对应查账记录中人工关联。");
@@ -231,8 +233,8 @@ test("closed ledger conflicts remain history while only open conflicts require a
     entry.conflicts[0]!.resolved_at = status === "OPEN" ? null : new Date(manifest.epoch + 60_000).toISOString();
     await page.goto(manifest.origin + "/admin" + path);
     const overlay = await settleOverlay(page);
-    await overlay.getByRole("tab", { name: /^冲突/ }).click();
-    const conflict = page.locator("[data-ledger-conflict]");
+    await revealDetailSection(page, "conflicts");
+    const conflict = overlay.locator('[data-detail-section="conflicts"] [data-ledger-conflict]');
     await expect(page.locator("#ledger-conflicts-heading")).toHaveText("账本冲突记录（1）");
     await expect(conflict.getByText(visibleStatus, { exact: true })).toBeVisible();
     const href = await conflict.getByRole("link", { name: "查看冲突记录", exact: true }).getAttribute("href");
@@ -240,9 +242,9 @@ test("closed ledger conflicts remain history while only open conflicts require a
     if (status === "OPEN") await expect(page.locator("[data-ledger-warning]")).toContainText("有 1 条账本冲突待处理");
     else {
       await expect(page.locator("[data-ledger-warning]")).toHaveCount(0);
-      await expect(overlay.getByText("待处理", { exact: true })).toHaveCount(0);
+      await expect(conflict.getByText("待处理", { exact: true })).toHaveCount(0);
     }
-    await overlay.getByRole("tab", { name: "收款关联", exact: true }).click();
+    await revealDetailSection(page, "payments");
     await expect(page.locator("[data-ledger-match]").getByText("已关联", { exact: true })).toBeVisible();
     await record(page, info, { feature: "ledger-conflict-reading-status", evidence: "synthetic-read-response-only", status, activeMatchCount: entry.active_match_count });
     await screenshot(page, info, "ledger-conflict-status-" + status.toLowerCase());

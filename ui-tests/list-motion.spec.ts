@@ -50,7 +50,8 @@ test.describe("compact list record navigation", () => {
       await page.keyboard.press("Enter");
       await expect(overlay).toBeVisible();
       await expect(page.getByRole("dialog")).toHaveCount(1);
-      await expect(overlay.getByRole("tab", { name: "概况", exact: true })).toBeVisible();
+      await expect(overlay.locator('[data-detail-section="overview"]')).toBeVisible();
+      await expect(overlay.getByRole("tab")).toHaveCount(0);
       expect(await original!.evaluate(element => element.isConnected)).toBe(true);
       expect(await row.getAttribute("data-business-row")).toBe(identity);
       expect(await row.locator(".list-money").allTextContents()).toEqual(amounts);

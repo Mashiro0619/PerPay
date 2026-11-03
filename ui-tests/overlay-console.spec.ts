@@ -1,6 +1,7 @@
 import { test, expect, login, record } from "./fixtures";
 import { audit, screenshot } from "./audit";
 import { expectOverlayFits, openRecord } from "./overlay-fixtures";
+import { revealDetailSection } from "./detail-layout";
 
 for (const width of [320, 390, 768, 1280, 1440, 1680]) {
   test(`${width}: compact workspaces and record overlays in both themes`, async ({ page, manifest }, info) => {
@@ -40,11 +41,14 @@ for (const width of [320, 390, 768, 1280, 1440, 1680]) {
       }
       for (const path of [order, notification, ledger]) {
         const dialog = await openRecord(page, manifest, path);
-        await expect(dialog.getByRole("tablist")).toBeVisible();
+        await expect(dialog.getByRole("tablist")).toHaveCount(0);
+        await expect(dialog.getByRole("tabpanel")).toHaveCount(0);
+        const sections = await dialog.locator("[data-detail-section]").evaluateAll(items => items.map(item => item.getAttribute("data-detail-section")!));
+        expect(sections.length).toBeGreaterThan(0);
         await expectOverlayFits(page);
         await record(page, info, { feature: "record-overlay-matrix", path, width, theme });
-        for (const tab of await dialog.getByRole("tab").all()) {
-          await tab.click();
+        for (const section of sections) {
+          await revealDetailSection(page, section);
           await expectOverlayFits(page);
         }
         if (width === 390 && theme === "dark") await screenshot(page, info, "record-" + path.split("/")[1]);
