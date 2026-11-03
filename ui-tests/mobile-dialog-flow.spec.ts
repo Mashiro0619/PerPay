@@ -82,7 +82,7 @@ test.describe("enlarged admin dialogs keep fields and decisions reachable", () =
       }, font);
       const accountScroll = await scrollRegion(accountDialog, "detail");
       await accountDialog.getByRole("tab", { name: "应用密钥", exact: true }).click();
-      const publicText = accountDialog.locator("[data-account-key-card]").getByRole("textbox", { name: "可复制内容", exact: true });
+      const publicText = accountDialog.locator("[data-account-key-card]").getByRole("textbox", { name: "应用公钥", exact: true });
       await expect(publicText).toHaveValue(syntheticPublicKey);
       await publicText.scrollIntoViewIfNeeded();
       const publicTextGeometry = await publicText.evaluate(element => {

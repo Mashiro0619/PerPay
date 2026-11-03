@@ -1460,6 +1460,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 [data-mobile="true"] > [data-slot="sheet-close"] { top: max(0.5rem, env(safe-area-inset-top)); }
 [data-header-mobile-actions] a > span { display: inline; }
 .settings-long-text { field-sizing: fixed; min-height: 6rem; height: 12rem; max-height: min(16rem, 40dvh); overflow-y: auto; }
+[data-account-public-key] [data-slot="input-group-control"] { min-width: 0; min-height: 0; height: 6rem; max-height: min(8rem, 35dvh); }
 [data-list-display-body] .list-columns-slot { display: flex; align-items: stretch; flex-direction: column; }
 [data-list-mobile-actions] { flex-wrap: wrap; }
 [data-list-menu-feedback] { flex-basis: 100%; }

@@ -108,12 +108,16 @@ for (const layout of [{ width: 1440, height: 900, font: 100 }, { width: 390, hei
       const actions = dialog.locator("[data-overlay-footer] [data-overlay-actions]");
       await expect(dialog.getByRole("button", { name: "关闭对话框", exact: true })).toBeVisible();
       const save = actions.getByRole("button", { name: "保存并检查", exact: true });
-      await expect(save).toBeVisible();
-      const saveGeometry = await completeLabel(save);
-      expect(saveGeometry.complete).toBe(true);
-      expect(saveGeometry.lineCount, "the primary action does not stack individual characters vertically").toBeLessThanOrEqual(2);
-      if (layout.width === 1440) expect(saveGeometry.width).toBeLessThan(220);
-      if (layout.width < 768) await expectTouchTarget(save);
+      let saveGeometry;
+      if (panel === "keys" || panel === "usage") await expect(save).toHaveCount(0);
+      else {
+        await expect(save).toBeVisible();
+        saveGeometry = await completeLabel(save);
+        expect(saveGeometry.complete).toBe(true);
+        expect(saveGeometry.lineCount, "the primary action does not stack individual characters vertically").toBeLessThanOrEqual(2);
+        if (layout.width === 1440) expect(saveGeometry.width).toBeLessThan(220);
+        if (layout.width < 768) await expectTouchTarget(save);
+      }
       if (panel === "basic") {
         const reached = await reachField(active.getByRole("textbox", { name: "账号名称", exact: true }), dialog);
         const toggle = active.getByRole("switch", { name: "接收新订单", exact: true });
@@ -126,6 +130,20 @@ for (const layout of [{ width: 1440, height: 900, font: 100 }, { width: 390, hei
         expect(Math.abs(switchBox.switchCenter - switchBox.fieldCenter)).toBeLessThanOrEqual(1);
         evidence.push({ panel, measures, saveGeometry, switchBox, reached });
       } else if (panel === "application") {
+        const applicationPublicKey = active.getByRole("textbox", { name: "应用公钥", exact: true });
+        await expect(applicationPublicKey).toHaveValue(account.application_public_key!);
+        await expect(applicationPublicKey).toHaveAttribute("readonly", "");
+        const copy = active.getByRole("button", { name: "复制应用公钥", exact: true });
+        await copy.scrollIntoViewIfNeeded(); await copy.click();
+        expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(account.application_public_key);
+        const optional = active.getByRole("button", { name: "导入已有应用私钥（可选）", exact: true });
+        await optional.scrollIntoViewIfNeeded();
+        expect((await completeLabel(optional)).complete).toBe(true);
+        if (layout.width < 768) await expectTouchTarget(optional);
+        await optional.click();
+        const imported = active.getByRole("textbox", { name: "应用私钥（可选）", exact: true });
+        await expect(imported).not.toHaveAttribute("required");
+        await optional.click();
         const reached = await reachField(active.getByRole("textbox", { name: "支付宝公钥", exact: true }), dialog);
         evidence.push({ panel, measures, saveGeometry, reached });
       } else evidence.push({ panel, measures, saveGeometry });
@@ -137,6 +155,7 @@ for (const layout of [{ width: 1440, height: 900, font: 100 }, { width: 390, hei
         await expect(copy).toHaveAttribute("data-copy-state", "success");
         expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(expectedKey);
       }
+      if (panel === "usage") await expect(active.locator('[data-slot="card-footer"]')).toHaveCount(0);
       await page.mouse.move(0, 0);
       await page.screenshot({ path: info.outputPath(`account-${panel}.png`), fullPage: false });
     }
@@ -144,6 +163,8 @@ for (const layout of [{ width: 1440, height: 900, font: 100 }, { width: 390, hei
     const accountName = editor.getByRole("textbox", { name: "账号名称", exact: true });
     await accountName.fill("待保存布局检查");
     await editor.getByRole("tab", { name: "应用信息", exact: true }).click();
+    await editor.getByRole("tab", { name: "使用情况", exact: true }).click();
+    await expect(dialog.getByRole("button", { name: "保存并检查", exact: true })).toBeVisible();
     await editor.getByRole("tab", { name: "基本信息", exact: true }).click();
     await expect(accountName).toHaveValue("待保存布局检查");
     await dialog.getByRole("button", { name: "关闭对话框", exact: true }).click();

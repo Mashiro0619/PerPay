@@ -170,6 +170,77 @@ describe("settings summaries and owned editing overlays", () => {
     expect(writes[0]).toMatchObject({ name: "跨分组账号", app_id: "app-updated", code_payload: "https://qr.alipay.com/overlay", revision: 1 });
   });
 
+  it("shows the application public key beside the platform key and imports a private key only when supplied", async () => {
+    let account: AlipayAccount = { ...sampleAccount(), configured: false, platform_public_key: null };
+    const writes: Record<string, unknown>[] = [];
+    mountOnboarding({ stage: 4, path: "/settings/accounts/" + account.id, handle: request => {
+      const path = new URL(request.url).pathname;
+      if (path === "/api/admin/v1/alipay-accounts") return json({ data: [account] });
+      if (path !== "/api/admin/v1/alipay-accounts/" + account.id) return undefined;
+      if (request.method === "GET") return json({ data: account });
+      return (async () => {
+        const input = await request.clone().json() as Record<string, unknown>;
+        writes.push(input);
+        account = { ...account, name: input.name as string, revision: account.revision + 1,
+          application_public_key: input.private_key ? "imported-public-key" : account.application_public_key };
+        return json({ data: account });
+      })();
+    } });
+    const user = userEvent.setup();
+    const dialog = await screen.findByRole("dialog", { name: "支付宝账号" });
+    await user.click(await within(dialog).findByRole("tab", { name: "应用信息" }));
+    const publicKey = within(dialog).getByRole("textbox", { name: "应用公钥" });
+    expect(publicKey).toHaveValue(account.application_public_key);
+    expect(publicKey).toHaveAttribute("readonly");
+    expect(within(dialog).getByRole("textbox", { name: "支付宝公钥" })).toHaveValue(account.platform_public_key ?? "");
+    expect(within(dialog).getByRole("button", { name: "复制应用公钥" })).toBeVisible();
+    expect(within(dialog).queryByText(/下方应用公钥/)).not.toBeInTheDocument();
+    const optional = within(dialog).getByRole("button", { name: "导入已有应用私钥（可选）" });
+    expect(optional).toHaveAttribute("aria-expanded", "false");
+    await user.click(within(dialog).getByRole("tab", { name: "基本信息" }));
+    fireEvent.change(within(dialog).getByLabelText("账号名称"), { target: { value: "仅修改名称" } });
+    await user.click(footer(dialog).getByRole("button", { name: "更多账号操作" }));
+    await user.click(await screen.findByRole("menuitem", { name: "保存草稿" }));
+    await waitFor(() => expect(writes).toHaveLength(1));
+    expect(writes[0]).not.toHaveProperty("private_key");
+    await user.click(within(dialog).getByRole("tab", { name: "应用信息" }));
+    await user.click(optional);
+    const privateKey = within(dialog).getByRole("textbox", { name: "应用私钥（可选）" });
+    expect(privateKey).not.toBeRequired();
+    await user.type(privateKey, "test-imported-private-key");
+    expect(within(dialog).queryByRole("textbox", { name: "应用公钥" })).not.toBeInTheDocument();
+    await user.click(footer(dialog).getByRole("button", { name: "更多账号操作" }));
+    await user.click(await screen.findByRole("menuitem", { name: "保存草稿" }));
+    await waitFor(() => expect(writes).toHaveLength(2));
+    expect(writes[1]).toHaveProperty("private_key", "test-imported-private-key");
+    await waitFor(() => expect(within(dialog).getByRole("textbox", { name: "应用公钥" })).toHaveValue("imported-public-key"));
+    expect(privateKey).toHaveValue("");
+  });
+
+  it("omits save actions on clean key and usage panels while retaining them for an unsaved account draft", async () => {
+    const account = sampleAccount();
+    const view = mountOnboarding({ stage: 4, path: "/settings/accounts/" + account.id, handle: request => {
+      const path = new URL(request.url).pathname;
+      if (path === "/api/admin/v1/alipay-accounts") return json({ data: [account] });
+      if (path === "/api/admin/v1/alipay-accounts/" + account.id) return json({ data: account });
+      return undefined;
+    } });
+    const user = userEvent.setup();
+    const dialog = await screen.findByRole("dialog", { name: "支付宝账号" });
+    await within(dialog).findByLabelText("账号名称");
+    for (const name of ["应用密钥", "使用情况"]) {
+      await user.click(within(dialog).getByRole("tab", { name }));
+      expect(within(dialog).queryByRole("button", { name: "保存并检查" })).not.toBeInTheDocument();
+    }
+    expect(dialog.querySelector('[data-account-usage-card] [data-slot="card-footer"]')).toBeNull();
+    await user.click(within(dialog).getByRole("tab", { name: "基本信息" }));
+    fireEvent.change(within(dialog).getByLabelText("账号名称"), { target: { value: "未保存的账号名称" } });
+    await user.click(within(dialog).getByRole("tab", { name: "使用情况" }));
+    expect(footer(dialog).getByRole("button", { name: "保存并检查" })).toBeVisible();
+    expect(within(dialog).getByRole("button", { name: "删除账号" })).toBeDisabled();
+    expect(view.writes()).toHaveLength(0);
+  });
+
   it("returns secondary-action validation focus to an invalid field in another account tab without writing", async () => {
     const view = mountOnboarding({ stage: 4, path: "/settings/accounts/new" });
     const user = userEvent.setup();

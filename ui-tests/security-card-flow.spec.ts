@@ -250,8 +250,8 @@ test("account key content, drafts and confirmation focus survive content-width c
   await page.getByRole("link", { name: "配置" + account!.name, exact: true }).click();
   await expect.poll(() => new URL(page.url()).searchParams.get("overlay")).toBe("/settings/accounts/" + account!.id);
   const keyCard = page.locator("[data-account-key-card]");
-  const publicKey = keyCard.getByText(account!.application_public_key!, { exact: true });
-  await expect(publicKey).toHaveText(account!.application_public_key!);
+  const publicKey = keyCard.locator('[data-account-public-key] textarea');
+  await expect(publicKey).toHaveValue(account!.application_public_key!);
   await keyCard.evaluate(element => element.setAttribute("data-security-flow-key-card", "original"));
   const name = page.getByLabel("账号名称", { exact: true });
   const draft = account!.name + " · 未保存的宽度验证";
@@ -264,7 +264,7 @@ test("account key content, drafts and confirmation focus survive content-width c
     await expect(name).toBeFocused();
     await expect(name).toHaveAttribute("data-security-flow-draft", "account");
     await expect(keyCard).toHaveAttribute("data-security-flow-key-card", "original");
-    await expect(publicKey).toHaveText(account!.application_public_key!);
+    await expect(publicKey).toHaveValue(account!.application_public_key!);
   }
   await name.fill(account!.name);
   await page.getByRole("tab", { name: "应用密钥", exact: true }).click();
@@ -295,7 +295,7 @@ test("account key content, drafts and confirmation focus survive content-width c
   await expect(keyDialog).toHaveCount(0);
   await expect(regenerate).toBeFocused();
   await expect(regenerate).toHaveAttribute("data-security-flow-view", "original");
-  await expect(publicKey).toHaveText(account!.application_public_key!);
+  await expect(publicKey).toHaveValue(account!.application_public_key!);
   expect(writes).toEqual([]);
   await record(page, info, { feature: "account-key-content-and-modal-focus-retained", keyCharacters: account!.application_public_key!.length, writes, evidence: "real account reads from the isolated synthetic fixture; no secret reveal or key change" });
   await capture(page, info, "account-key-modal-focus-restored");

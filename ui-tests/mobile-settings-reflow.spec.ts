@@ -70,11 +70,11 @@ test.describe("narrow settings and overview controls remain usable", () => {
     await expect(page.getByRole("combobox", { name: "支付宝环境", exact: true })).toHaveCount(0);
     await page.evaluate(() => document.documentElement.style.fontSize = "200%");
     await page.getByRole("tab", { name: "应用信息", exact: true }).tap();
-    const disclosure = page.getByRole("button", { name: "导入已有应用私钥", exact: true });
+    const disclosure = page.getByRole("button", { name: "导入已有应用私钥（可选）", exact: true });
     const disclosureGeometry = await completeButtonLabel(disclosure, page);
     await disclosure.tap();
     await expect(disclosure).toHaveAttribute("aria-expanded", "true");
-    await expect(page.getByRole("textbox", { name: "应用私钥", exact: true })).toBeVisible();
+    await expect(page.getByRole("textbox", { name: "应用私钥（可选）", exact: true })).toBeVisible();
     await disclosure.tap();
     await expect(disclosure).toHaveAttribute("aria-expanded", "false");
     await page.getByRole("tab", { name: "基本信息", exact: true }).tap();
@@ -101,7 +101,7 @@ test.describe("narrow settings and overview controls remain usable", () => {
     await login(page, manifest);
     const writes = await openAccountDraft(page, manifest, "collection");
     await page.getByRole("tab", { name: "应用信息", exact: true }).tap();
-    const disclosure = page.getByRole("button", { name: "导入已有应用私钥", exact: true });
+    const disclosure = page.getByRole("button", { name: "导入已有应用私钥（可选）", exact: true });
     await expect(disclosure).toBeVisible();
     await page.evaluate(() => {
       window.setTimeout(() => document.documentElement.style.fontSize = "200%", 50);
@@ -112,7 +112,7 @@ test.describe("narrow settings and overview controls remain usable", () => {
     await expect(page.locator("html")).toHaveCSS("font-size", "32px");
     await disclosure.tap();
     await expect(disclosure).toHaveAttribute("aria-expanded", "true");
-    await expect(page.getByRole("textbox", { name: "应用私钥", exact: true })).toBeVisible();
+    await expect(page.getByRole("textbox", { name: "应用私钥（可选）", exact: true })).toBeVisible();
     expect(writes).toEqual([]);
     await record(page, info, { evidence: "real account draft form with desktop browser touch emulation; no account submitted", rootFont: 200, delayedReflow: true, disclosureGeometry: geometry, legacyRedirect: "collection", writes });
   });
