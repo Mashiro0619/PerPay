@@ -3,7 +3,7 @@ import { test, expect, login, record, type Manifest } from "./fixtures";
 import { audit, screenshot } from "./audit";
 import { expectOverlayTarget, settleOverlay } from "./overlay-fixtures";
 import { expectTouchTarget, measureTouchTarget, waitForControlAnimations } from "./touch-targets";
-import { detailSection, expectDetailFields, expectDetailRecordLayout } from "./detail-layout";
+import { closeTechnicalDialog, detailSection, expectDetailFields, expectDetailRecordLayout, expectTechnicalDialogLayout, openTechnicalDialog } from "./detail-layout";
 import type { AdminLedgerDetail, AdminOrderDetail, PaymentMatchDetail, WebhookAttempt, WebhookDeliveryDetail } from "../web/src/api/generated/types.gen";
 
 const scenarios = [
@@ -81,16 +81,15 @@ async function expectAttemptHistory(owner: Locator, count: number) {
   await expect(owner.getByRole("heading", { name, exact: true })).toHaveCount(0);
   return contents;
 }
-async function technicalSection(page: Page, label: string) {
+async function technicalSection(page: Page, label: string, sourceId?: string) {
   if (label.includes("支付宝流水记录")) {
     await readDetailSection(page, "交易");
     return detailSection(page, "transaction").locator('[data-ledger-summary] [data-technical-information]');
   }
   if (label.includes("查账记录")) {
     await readDetailSection(page, /^采集记录/);
-    const heading = /查账记录 \d+/.exec(label)![0];
-    return detailSection(page, "sources").locator('[data-ledger-source]')
-      .filter({ has: page.getByRole("heading", { name: heading, exact: true }) })
+    expect(sourceId, "technical source tools retain the owning source identity").toBeTruthy();
+    return detailSection(page, "sources").locator(`[data-ledger-source="${sourceId}"]`)
       .locator(':scope > [data-slot="item-content"] > [data-technical-information], :scope > [data-slot="card-content"] > [data-technical-information]');
   }
   if (label.includes("通知")) return detailSection(page, "overview").locator('[data-notification-information] [data-technical-information]');
@@ -101,22 +100,14 @@ async function technicalSection(page: Page, label: string) {
 }
 async function keyboardTools(page: Page, label: string) {
   const technical = await technicalSection(page, label);
-  const trigger = technical.getByRole("button", { name: "技术信息", exact: true });
-  await expect(trigger).toHaveAttribute("aria-expanded", "false");
-  await trigger.focus();
-  await page.keyboard.press("Enter");
-  await expect(trigger).toHaveAttribute("aria-expanded", "true");
-  await expect(technical.locator("pre")).toBeVisible();
-  await expectDetailFields(technical.locator('[data-detail-fields]:visible'));
-  await expect(page.getByRole("dialog", { name: "技术详情", exact: true })).toHaveCount(0);
+  const session = await openTechnicalDialog(page, technical);
   await page.keyboard.press("Tab");
-  await expect(technical.getByRole("button", { name: /^复制/ }).first()).toBeFocused();
-  await trigger.focus();
-  await page.keyboard.press("Enter");
-  await expect(trigger).toHaveAttribute("aria-expanded", "false");
-  await expect(technical.locator("pre")).toBeHidden();
-  await expect(trigger).toBeFocused();
-  await expect(foreground(page)).toBeVisible();
+  await expect(session.close).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(session.body.getByRole("button", { name: /^复制/ }).first()).toBeFocused();
+  const secondary = await expectTechnicalDialogLayout(session);
+  const restored = await closeTechnicalDialog(session);
+  return { secondary, parentOpened: session.opened, restored };
 }
 // pre-wrap may hang line-ending spaces outside a line box. Check every
 // non-whitespace character with the same 1 px tolerance, and retain raw ranges
@@ -161,7 +152,8 @@ async function readingFlowGeometry(page: Page, _longContent = false) {
 async function readingCredentialsGeometry(page: Page) {
   const sections = detailBody(page).locator("[data-detail-credentials]:visible");
   for (const section of await sections.all()) {
-    await expect(section.getByRole("heading")).toBeVisible();
+    await expect(section).toHaveAccessibleName(/.+/);
+    await expect(section.getByRole("heading")).toHaveCount(1);
     await expect(section.locator("button[aria-expanded]")).toHaveCount(0);
   }
   return expectDetailFields(sections.locator("[data-detail-fields]"));
@@ -283,7 +275,7 @@ test("detail overlays separate facts into readable business sections", async ({ 
     } else {
       await expect(detailSection(page, "transaction").getByRole("heading", { level: 2 })).toHaveText(["支付宝交易"]);
       await expect(detailBody(page).locator('dt').filter({ hasText: /^支付宝 App ID$/ })).toHaveCount(0);
-      await expect(detailBody(page).locator('[data-ledger-summary] [data-layout="flow"] dt')).toHaveText(["交易金额", "收款账号", "收支方向", "交易时间", "对方", "支付宝备注"]);
+      await expect(detailBody(page).locator('[data-ledger-summary] > [data-slot="card-content"] > [data-detail-fields] dt')).toHaveText(["交易金额", "收款账号", "收支方向", "交易时间", "对方", "支付宝备注"]);
       await expect(detailBody(page).locator('[data-ledger-summary] [data-detail-credentials] dt')).toHaveText(["支付宝流水号", "支付宝订单号", "支付宝商户单号"]);
       await expect(detailBody(page).locator('[data-ledger-summary] dt').filter({ hasText: /业务网站|PerPay/ })).toHaveCount(0);
       await readDetailSection(page, "收款关联");
@@ -407,8 +399,7 @@ test.describe("detail reading width matrix", () => {
             await readDetailSection(page, /^采集记录/);
             await expect(detailBody(page).locator("#ledger-sources-heading")).toBeVisible();
             await expect(detailBody(page).locator("[data-ledger-source]").first()).toBeVisible();
-            const sourceFacts = detailSection(page, "sources").locator("[data-ledger-source]")
-              .filter({ has: page.getByRole("heading", { name: "查账记录 1", exact: true }) })
+            const sourceFacts = detailSection(page, "sources").locator("[data-ledger-source]").first()
               .locator(':scope > [data-slot="item-content"] > [data-detail-fields], :scope > [data-slot="card-content"] > [data-detail-credentials]');
             await fields(sourceFacts, ["内部流水编号（PerPay）"]);
             await readingFlowGeometry(page);
@@ -421,10 +412,10 @@ test.describe("detail reading width matrix", () => {
           }
           const flows = await readingFlowGeometry(page);
           const geometry = await readingLayout(page, mode);
-          if (width === 1440) await keyboardTools(page, scenario.tools);
+          const technicalDialog = await keyboardTools(page, scenario.tools);
           const id = `reading-${scenario.key}-${width}-${theme}-${mode}`;
           const credentials = await readingCredentialsGeometry(page);
-          await record(page, info, { feature: "detail-reading-matrix", width, theme, mode, scenario: scenario.key, flows, credentials, geometry, evidence: "local-synthetic-domain" });
+          await record(page, info, { feature: "detail-reading-matrix", width, theme, mode, scenario: scenario.key, flows, credentials, geometry, technicalDialog, evidence: "local-synthetic-domain" });
           await screenshot(page, info, id);
           if (width === 320 && mode === "compact") await audit(page, info, id);
         }
@@ -743,17 +734,17 @@ test("all genuine ledger versions and synthetic simultaneous associations remain
       for (const source of entry.sources) {
         const card = page.locator(`[data-ledger-source="${source.ledger_entry_id}"]`);
         const facts = card.locator(':scope > [data-slot="card-content"] > [data-detail-fields]');
-        await expect(facts.locator("dt")).toHaveText(["交易金额", "收支方向", "交易时间", "对方", "保存时间", "支付宝备注"]);
+        await expect(facts.locator("dt")).toHaveText([...(entry.sources.length === 1 ? ["PerPay 记录状态"] : []), "交易金额", "收支方向", "交易时间", "对方", "保存时间", "支付宝备注"]);
         if (source.memo) await expect(facts.getByText(source.memo, { exact: true })).toBeVisible();
         if (source.provider_order_no) await expect(card.locator(':scope > [data-slot="card-content"] > [data-detail-credentials]').getByText(source.provider_order_no, { exact: true })).toBeVisible();
       }
     } else {
       for (const source of entry.sources) {
         const card = page.locator(`[data-ledger-source="${source.ledger_entry_id}"]`);
-        await expect(card.locator(':scope > [data-slot="item-content"] > [data-detail-fields] dt')).toHaveText(["内部流水编号（PerPay）", "保存时间"]);
+        await expect(card.locator(':scope > [data-slot="item-content"] > [data-detail-fields] dt')).toHaveText([...(entry.sources.length === 1 ? ["PerPay 记录状态"] : []), "内部流水编号（PerPay）", "保存时间"]);
         await expect(card.getByRole("link", { name: "查看记录与处理", exact: true })).toHaveCount(0);
         const eligible = source.direction === "CREDIT" && ["UNALLOCATED", "CANDIDATE", "CONFLICT"].includes(source.state);
-        const actions = card.locator(':scope > [data-slot="item-content"] > [data-slot="item-header"] > [data-slot="item-actions"], :scope > [data-slot="card-header"] > [data-slot="card-action"]');
+        const actions = entry.sources.length === 1 ? card.locator(':scope > [data-slot="item-content"] > div.flex.max-w-full') : card.locator(':scope > [data-slot="item-content"] > [data-slot="item-header"] > [data-slot="item-actions"], :scope > [data-slot="card-header"] > [data-slot="card-action"]');
         await expect(actions.getByRole("button", { name: "人工关联收款", exact: true })).toHaveCount(eligible ? 1 : 0);
       }
     }
@@ -802,34 +793,29 @@ test("technical record identifiers remain copyable without crowding the business
     { key: "notificationDns", tools: "更多操作，通知记录操作", values: [["投递编号", notification.delivery.delivery_id], ["事件编号", notification.event.event_id]] },
     { key: "matchInferred", tools: "更多操作，收款关联记录操作", values: [["关联编号", match.payment_match_id], ["流水编号", match.ledger_entry_id]] },
     { key: "ledgerAssociated", tools: "更多操作，支付宝流水记录操作", values: [["内部流水编号（PerPay）", ledger.ledger_entry_id]] },
-    { key: "ledgerAssociated", tools: "更多操作，查账记录 1 操作", values: [["支付宝 App ID", source.app_id], ["采集来源标识", source.provider_account_key]] },
+    { key: "ledgerAssociated", tools: "更多操作，查账记录 1 操作", sourceId: source.ledger_entry_id, values: [["支付宝 App ID", source.app_id], ["采集来源标识", source.provider_account_key]] },
   ];
   for (const scenario of cases) {
     await openDetail(page, manifest, scenario.key);
     await expect(detailBody(page).locator('dt').filter({ hasText: /^支付宝 App ID$/ })).toHaveCount(0);
-    const technical = await technicalSection(page, scenario.tools);
-    const trigger = technical.getByRole("button", { name: "技术信息", exact: true });
-    await expect(trigger).toHaveAttribute("aria-expanded", "false");
-    await trigger.focus();
-    await page.keyboard.press("Enter");
-    await expect(trigger).toHaveAttribute("aria-expanded", "true");
-    await expect(technical.locator("pre")).toBeVisible();
-    await expect(page.getByRole("dialog", { name: "技术详情", exact: true })).toHaveCount(0);
+    const technical = await technicalSection(page, scenario.tools, "sourceId" in scenario ? scenario.sourceId : undefined);
+    const session = await openTechnicalDialog(page, technical);
     await page.keyboard.press("Tab");
-    await expect(technical.getByRole("button", { name: /^复制/ }).first()).toBeFocused();
+    await expect(session.close).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(session.body.getByRole("button", { name: /^复制/ }).first()).toBeFocused();
     for (const [name, value] of scenario.values) {
       expect(value, name).toBeTruthy();
-      await technical.getByRole("button", { name: "复制" + name, exact: true }).click();
+      await expect(session.body.getByText(value!, { exact: true })).toBeVisible();
+      await session.body.getByRole("button", { name: "复制" + name, exact: true }).click();
       await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(value);
     }
-    await record(page, info, { feature: "detail-technical-identifiers", scenario: scenario.key, tools: scenario.tools, copiedFields: scenario.values.map(([name]) => name), evidence: "local-synthetic-domain" });
+    const secondary = await expectTechnicalDialogLayout(session);
     await screenshot(page, info, "reading-technical-" + scenario.tools);
-    await trigger.focus();
-    await page.keyboard.press("Enter");
-    await expect(trigger).toHaveAttribute("aria-expanded", "false");
-    await expect(technical.locator("pre")).toBeHidden();
-    await expect(trigger).toBeFocused();
-    await expect(foreground(page)).toBeVisible();
+    const restored = await closeTechnicalDialog(session);
+    await expect(detailBody(page).locator('dt').filter({ hasText: /^支付宝 App ID$/ })).toHaveCount(0);
+    await record(page, info, { feature: "detail-technical-identifiers", scenario: scenario.key, tools: scenario.tools,
+      copiedFields: scenario.values.map(([name]) => name), secondary, parentOpened: session.opened, restored, evidence: "local-synthetic-domain" });
   }
 });
 

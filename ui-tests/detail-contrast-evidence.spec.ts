@@ -128,3 +128,25 @@ test("record header evidence verifies wrapped title glyphs and rejects obscured 
   await page.locator("[data-overlay-record]").evaluate(node => node.removeAttribute("data-overlay-record"));
   expect(await target.evaluate(measureDetailTextContrast)).toBeNull();
 });
+
+test("technical reader contrast evidence verifies its own scrollable text and rejects hidden or low-contrast values", async ({ page }) => {
+  await page.setContent(`<style>
+    body { margin: 0; font: 14px/1.5 Arial, sans-serif; }
+    [data-technical-dialog] { padding: 12px; width: 300px; background: white; color: #444; }
+    [data-admin-dialog-body] { height: 100px; overflow: auto; }
+    .spacer { height: 180px; }
+    p { margin: 0; }
+  </style><div data-technical-dialog role="dialog" aria-label="技术信息"><h2>技术信息</h2>
+    <div data-admin-dialog-body><div class="spacer"></div><p id="target">完整内部编号</p></div>
+  </div>`);
+  const target = page.locator("#target");
+  const review = (await resolveDetailTextContrast(page, incomplete))[0];
+  expect(review?.resolved).toBe(true);
+  expect(review?.measurement.initial.passed).toBe(false);
+  expect(review?.measurement.revealed?.passed).toBe(true);
+  expect(await page.locator("[data-admin-dialog-body]").evaluate(node => node.scrollTop)).toBe(0);
+  await target.evaluate(node => { (node as HTMLElement).style.color = "#bbb"; });
+  expect((await resolveDetailTextContrast(page, incomplete))[0]?.resolved).toBe(false);
+  await target.evaluate(node => { (node as HTMLElement).style.color = "#444"; node.setAttribute("inert", ""); });
+  expect((await resolveDetailTextContrast(page, incomplete))[0]?.resolved).toBe(false);
+});

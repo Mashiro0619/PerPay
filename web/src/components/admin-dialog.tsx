@@ -28,13 +28,20 @@ function useDialogSuspension(props: Pick<ComponentProps<typeof DialogUI.Dialog>,
 }
 // Release modal effects while the destination is being prepared. Keep the
 // original open state and content so cancelling restores the same draft.
-export function Dialog(props: ComponentProps<typeof DialogUI.Dialog>) {
+export function Dialog({ presentation = "auto", ...props }: ComponentProps<typeof DialogUI.Dialog> & { presentation?: "auto" | "dialog" }) {
   const state = useDialogSuspension(props);
   const steps = useContext(OverlayStepsContext);
+  const registerNested = useContext(OverlayNestedModalContext);
   const id = useId();
-  const step = steps ? { id, open: state.requestedOpen } : null;
+  const step = steps && presentation === "auto" ? { id, open: state.requestedOpen } : null;
+  const nested = presentation === "dialog" && !!registerNested;
+  useLayoutEffect(() => {
+    if (!nested) return;
+    registerNested?.(id, state.root.open);
+    return () => registerNested?.(id, false);
+  }, [id, nested, registerNested, state.root.open]);
   return <StepDialogContext value={step}><RetainDialogContext value={state.requestedOpen}>
-    <DialogUI.Dialog {...props} {...state.root} {...(steps ? { modal: false } : {})} />
+    <DialogUI.Dialog {...props} {...state.root} {...(step ? { modal: false } : {})} />
   </RetainDialogContext></StepDialogContext>;
 }
 export function AlertDialog(props: ComponentProps<typeof AlertUI.AlertDialog>) {
@@ -156,7 +163,7 @@ export function DialogContent({ className, kind = "form", size, children, initia
     hidden: switching || stepHidden || props.portalProps?.hidden, inert: switching || stepHidden || props.portalProps?.inert }} data-admin-dialog={kind} data-overlay-step={step ? step.id : undefined}
     className={cn(className, step ? "flex min-h-0 max-h-full w-full flex-1 flex-col overflow-hidden" : content,
       !step && (kind === "detail" ? detailClass : "max-md:translate-x-0 max-md:translate-y-0 " + (kind === "technical" ? "sm:max-w-3xl" : "sm:max-w-xl")))}>
-    <LocalRequestNotices>{kind === "detail" ? children : step
+    <LocalRequestNotices>{kind === "detail" || (kind === "technical" && !step) ? children : step
       ? <StepDialogLayout layoutRef={scrollRef}>{children}</StepDialogLayout>
       : <DialogScroll scrollRef={scrollRef}>{children}</DialogScroll>}</LocalRequestNotices>
   </DialogUI.DialogContent>;

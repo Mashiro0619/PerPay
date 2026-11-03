@@ -2,7 +2,7 @@ import type { AuditEventPage } from "../src/shared/audit";
 import { test, expect, login, record } from "./fixtures";
 import { audit, screenshot } from "./audit";
 import { settleOverlay } from "./overlay-fixtures";
-import { detailSection, expectDetailRecordLayout, expectTechnicalPlacement, revealDetailSection } from "./detail-layout";
+import { closeTechnicalDialog, detailSection, expectDetailRecordLayout, expectTechnicalDialogLayout, expectTechnicalPlacement, openTechnicalDialog, revealDetailSection } from "./detail-layout";
 
 // Cover each responsive transition and both themes without multiplying every
 // viewport by every font size, content-width mode and record state.
@@ -18,7 +18,7 @@ const layouts = [
 ] as const;
 
 for (const layout of layouts) {
-  test(`${layout.width}x${layout.height}, ${layout.text}% ${layout.theme}: four record details share readable fields and inline technical evidence`, async ({ page, manifest }, info) => {
+  test(`${layout.width}x${layout.height}, ${layout.text}% ${layout.theme}: four record details keep their layout while a secondary dialog shows technical evidence`, async ({ page, manifest }, info) => {
     await page.setViewportSize({ width: layout.width, height: layout.height });
     await page.emulateMedia({ colorScheme: layout.theme, reducedMotion: "reduce" });
     await page.addInitScript(({ theme, mode }) => {
@@ -68,27 +68,25 @@ for (const layout of layouts) {
         const technical = overlay.locator('[data-overlay-detail]').locator(scenario.technicalSelector);
         await expect(technical).toBeVisible();
         const placement = await expectTechnicalPlacement(technical);
-        const trigger = technical.getByRole("button", { name: "技术信息", exact: true });
-        await expect(trigger).toHaveAttribute("aria-expanded", "false");
-        await trigger.focus();
-        await page.keyboard.press("Enter");
-        await expect(trigger).toHaveAttribute("aria-expanded", "true");
-        await expect(technical.getByLabel("技术信息", { exact: true })).toBeVisible();
-        await expect(page.getByRole("dialog")).toHaveCount(1);
-        const expanded = await expectDetailRecordLayout(page);
+        const session = await openTechnicalDialog(page, technical);
+        if (scenario.name === "order" && layout.width === 320 && layout.text === 200) {
+          expect(session.opened.before.scroll.top, "the long main detail starts this preservation check at a nonzero scroll position").toBeGreaterThan(0);
+        }
         await page.keyboard.press("Tab");
-        await expect(technical.getByRole("button", { name: /^复制/ }).first()).toBeFocused();
-        await technical.getByRole("button", { name: scenario.copy, exact: true }).click();
+        await expect(session.close).toBeFocused();
+        await page.keyboard.press("Tab");
+        await expect(session.body.getByRole("button", { name: /^复制/ }).first()).toBeFocused();
+        await session.body.getByRole("button", { name: scenario.copy, exact: true }).click();
         await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(scenario.path.split("/").at(-1));
+        const secondary = await expectTechnicalDialogLayout(session, { requireScroll: scenario.name === "order" });
+        if (layout.text === 200 || layout.width === 1440) await screenshot(page, info, "detail-technical-dialog-" + id);
+        if (layout.width === 320 && layout.text === 200) await audit(page, info, "detail-technical-dialog-" + id);
+        const restored = await closeTechnicalDialog(session, layout.theme === "dark" ? "escape" : scenario.name === "audit" ? "footer" : "header");
+        const after = await expectDetailRecordLayout(page);
         await record(page, info, { feature: "shared-detail-record-layout", scenario: scenario.name, layout,
-          evidence: "named local domain records and saved local audit event; browser font and viewport simulation", overview, expanded, placement });
-        if (layout.text === 200 || layout.width === 1440) await screenshot(page, info, "detail-flow-technical-" + id);
+          evidence: "named local domain records and saved local audit event; browser font and viewport simulation",
+          overview, after, placement, secondary, parentOpened: session.opened, restored });
         if (layout.width === 320 && layout.text === 200) await audit(page, info, "detail-flow-" + id);
-        await trigger.focus();
-        await page.keyboard.press("Enter");
-        await expect(trigger).toHaveAttribute("aria-expanded", "false");
-        await expect(trigger).toBeFocused();
-        await expect(technical.getByLabel("技术信息", { exact: true })).toHaveCount(0);
       });
     }
     expect(writes, "reading, resizing and copying never submit a business action").toEqual([]);

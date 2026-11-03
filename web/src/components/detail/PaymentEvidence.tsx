@@ -247,10 +247,10 @@ export function MatchCard({
           <ReverseMatchAction match={match} inline technical={!overlay} includeOrderIdentifiers movesOnSuccess />
         </CardAction>
       </CardHeader>
-      <CardContent className="flex min-w-0 flex-col gap-6">
+      <CardContent className="flex min-w-0 flex-col gap-2">
         <OrderFacts order={match.order} density="comfortable" layout="flow" />
         <MatchProcessingHistory match={match} />
-        <DetailFields density="comfortable" layout="flow" wide={["使用的查账记录"]} items={[
+        <DetailFields density="comfortable" layout="flow" items={[
           ["使用的查账记录", <div className="flex flex-wrap items-center gap-3"><CopyValue value={match.ledger_entry_id} label="复制使用的查账记录编号" /><Link to={"#source-" + match.ledger_entry_id} onClick={() => document.getElementById("source-" + match.ledger_entry_id)?.scrollIntoView({ block: "start" })}>核对这份记录</Link></div>],
         ]} />
         {technicalInformation}
@@ -365,7 +365,7 @@ function MatchProcessingHistory({ match }: { match: PaymentMatchDetail }) {
   const manual = match.evidence_type === "MANUAL";
   const operation = match.creation_operation;
   const reversal = match.status === "REVERSED" ? match.resolution_operation : null;
-  return <div className="flex min-w-0 flex-col gap-6" data-match-evidence>
+  return <div className="flex min-w-0 flex-col gap-2" data-match-evidence>
     {match.candidate && <CandidateEvidence candidate={match.candidate} ledger={match.ledger_entry} density="comfortable" layout="flow" />}
     <section aria-label={manual ? "人工关联记录" : "关联记录"} className={cn("flex min-w-0 flex-col gap-4", overlay && "detail-section")}>
       <h4 className="text-sm font-medium">{manual ? "人工关联记录" : "关联记录"}</h4>

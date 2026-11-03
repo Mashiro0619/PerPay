@@ -262,7 +262,7 @@ describe("audit log browsing", () => {
 });
 
 describe("audit event details", () => {
-  it("keeps core record identifiers and absent request timings in the collapsed technical information", async () => {
+  it("keeps core identifiers and absent timings inside a technical dialog that returns focus on Escape", async () => {
     const subjectId = "session-private-identifier";
     backend({ detail: { ...auditDetail(), action: "admin.login", category: "identity", subject_type: "admin_session", subject_id: subjectId, duration_ms: null, http_method: null, route: null, http_status: null } });
     mount(`/audit/core/${auditEvent.event_id}`);
@@ -272,11 +272,19 @@ describe("audit event details", () => {
     expect(screen.queryByText("HTTP 方法")).not.toBeInTheDocument();
     expect(screen.queryByText("耗时")).not.toBeInTheDocument();
     expect(screen.queryByText(/客户端名称根据 User-Agent/)).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "技术信息" }));
-    expect(await screen.findByLabelText("技术信息")).toHaveTextContent(subjectId);
-    expect(screen.getByLabelText("技术信息")).toHaveTextContent('"duration_ms": null');
-    expect(screen.getByLabelText("技术信息")).toHaveTextContent('"http_method": null');
-    expect(screen.getByText(/客户端名称根据 User-Agent/)).toBeVisible();
+    const user = userEvent.setup();
+    const trigger = screen.getByRole("button", { name: "技术信息" });
+    await user.click(trigger);
+    const technical = await screen.findByRole("dialog", { name: "技术信息" });
+    const data = within(technical).getByLabelText("技术信息", { selector: "pre" });
+    expect(data).toHaveTextContent(subjectId);
+    expect(data).toHaveTextContent('"duration_ms": null');
+    expect(data).toHaveTextContent('"http_method": null');
+    expect(within(technical).getByText(/客户端名称根据 User-Agent/)).toBeVisible();
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "技术信息" })).not.toBeInTheDocument());
+    await waitFor(() => expect(trigger).toHaveFocus());
+    expect(screen.getByRole("group", { name: "日志概况" })).toBe(summary);
   });
   it.each([
     { source_type: "HTTP", http_status: 202, outcome: "SUCCESS", is_aggregate: false, label: "已接受" },
@@ -312,12 +320,15 @@ describe("audit event details", () => {
     expect(within(changes).queryByRole("separator")).not.toBeInTheDocument();
     expect(screen.getByText(/关联活动当前不可用/)).toBeVisible();
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "技术信息" }));
-    expect(await screen.findByLabelText("技术信息")).toBeVisible();
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    const trigger = screen.getByRole("button", { name: "技术信息" });
+    await user.click(trigger);
+    const technical = await screen.findByRole("dialog", { name: "技术信息" });
+    expect(within(technical).getByLabelText("技术信息", { selector: "pre" })).toBeVisible();
     expect(screen.queryByText(/suppressed-before|suppressed-after/)).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "技术信息" }));
-    expect(screen.getByRole("button", { name: "技术信息" })).toHaveFocus();
+    await user.click(within(technical).getByRole("button", { name: "关闭" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "技术信息" })).not.toBeInTheDocument());
+    await waitFor(() => expect(trigger).toHaveFocus());
+    expect(screen.getByRole("group", { name: "配置变更" })).toBe(changes);
   });
 
   it("does not turn a historical source hash into a real IP or claim that missing changes did not happen", async () => {
@@ -345,8 +356,8 @@ describe("audit event details", () => {
     expect(within(summary).getByText("排序时间")).toBeVisible();
     expect(within(summary).getByText("2026/11/01 10:03:05")).toBeVisible();
     await userEvent.click(screen.getByRole("button", { name: "技术信息" }));
-    expect(screen.getByText(/分钟汇总，不对应单次请求/)).toBeVisible();
-    const technical = (await screen.findByLabelText("技术信息")).closest<HTMLElement>("[data-technical-information]")!;
+    const technical = await screen.findByRole("dialog", { name: "技术信息" });
+    expect(within(technical).getByText(/分钟汇总，不对应单次请求/)).toBeVisible();
     expect(within(technical).getByText("汇总组编号")).toBeVisible();
     expect(within(technical).getByText("aggregate-group-identifier")).toBeVisible();
   });
@@ -359,7 +370,8 @@ describe("audit event details", () => {
     expect(within(source).getByText("Chrome · Windows")).toBeVisible();
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "技术信息" }));
-    expect(await screen.findByLabelText("技术信息")).toHaveTextContent(auditEvent.user_agent!);
+    const technical = await screen.findByRole("dialog", { name: "技术信息" });
+    expect(within(technical).getByLabelText("技术信息", { selector: "pre" })).toHaveTextContent(auditEvent.user_agent!);
   });
 
   it.each([

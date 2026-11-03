@@ -19,6 +19,7 @@ import { PageHeading } from "../src/components/page-heading";
 import { PageHeaderActions, PageHeaderActionsProvider, PageHeaderActionsSlot } from "../src/components/page-header-actions";
 import { Dialog, DialogContent, DialogHeader, DialogBody, DialogFooter, DialogTitle, AlertDialog, AlertDialogContent, AlertDialogTitle, AlertDialogCancel } from "../src/components/admin-dialog";
 import { useWorkspace } from "../src/workspace";
+import { TechnicalDetails } from "../src/components/detail/DetailPrimitives";
 
 let mounts = 0;
 const parentFailure = new Error("父页面读取失败");
@@ -88,6 +89,7 @@ function Detail() {
     <button onClick={() => navigate({ hash: "#source-record" })}>定位内部记录</button>
     <button onClick={() => navigate("?section=events", { replace: true })}>切换内部查询</button>
     <section id="source-record" tabIndex={-1}>查账记录锚点</section>
+    <TechnicalDetails data={{ record: orderId ?? deliveryId }} identifiers={[["记录编号", orderId ?? deliveryId ?? ""]]} />
     <OverlayActions><button ref={trigger} onClick={() => setEdit(true)}>编辑内部步骤</button><button onClick={overlay.requestClose}>完成查看</button></OverlayActions>
     {edit && <Dialog open onOpenChange={setEdit}>
       <DialogContent finalFocus={search.has("default_step_focus") ? undefined : trigger}>
@@ -123,6 +125,34 @@ function mount(entries: NonNullable<Parameters<typeof createMemoryRouter>[1]>["i
 beforeEach(() => { mounts = 0; retryDetail.mockClear(); vi.spyOn(window, "scrollTo").mockImplementation(() => {}); });
 
 describe("one routed detail surface", () => {
+  it("keeps the detail mounted while an independent technical dialog owns Escape and focus", async () => {
+    const view = mount();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("link", { name: "打开记录" }));
+    const parent = await screen.findByRole("dialog", { name: "记录 order-1" });
+    const primary = parent.querySelector('[data-overlay-primary]')!;
+    const body = parent.querySelector('[data-overlay-detail]')!;
+    const address = view.router.state.location;
+    const trigger = within(parent).getByRole("button", { name: "技术信息" });
+    await user.click(trigger);
+    const technical = await screen.findByRole("dialog", { name: "技术信息" });
+    expect(technical.closest('[data-overlay-content]')).toBeNull();
+    expect(technical).not.toHaveAttribute("data-overlay-step");
+    expect(parent).toHaveAttribute("data-overlay-record", "true");
+    expect(primary).not.toHaveAttribute("hidden");
+    expect(body.querySelector("pre")).toBeNull();
+    expect(view.router.state.location).toBe(address);
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(trigger).toHaveFocus());
+    expect(screen.getByRole("dialog", { name: "记录 order-1" })).toBe(parent);
+    expect(parent.querySelector('[data-overlay-detail]')).toBe(body);
+    expect(screen.queryByRole("dialog", { name: "技术信息" })).not.toBeInTheDocument();
+    await user.click(trigger);
+    await user.click(within(await screen.findByRole("dialog", { name: "技术信息" })).getByRole("button", { name: "关闭技术信息" }));
+    await waitFor(() => expect(trigger).toHaveFocus());
+    expect(view.router.state.location).toBe(address);
+  });
+
   it.each([false, true])("keeps foreground header actions in the popup without relying on the parent menu, mobile=%s", async mobile => {
     vi.stubGlobal("matchMedia", vi.fn((media: string) => ({ media, matches: mobile, addEventListener() {}, removeEventListener() {} })));
     mount();

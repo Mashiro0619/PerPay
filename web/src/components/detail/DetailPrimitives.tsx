@@ -1,15 +1,14 @@
 import { useQuery } from '@/lib/workspace-query';
 import { useWorkspaceApi } from "@/workspace";
-import { useId, useRef, type ReactNode } from "react";
+import { useId, useRef, useState, type ReactNode } from "react";
 import { useIsFetching } from '@tanstack/react-query';
-import { ArrowLeft, ChevronDown, ExternalLink } from "lucide-react";
+import { ArrowLeft, Code, ExternalLink, X } from "lucide-react";
 import { result, type AdminOrderDetail, type ReconciliationOrder } from "@/api/client";
 import { Link } from "@/navigation";
 import { ListDateTime, ListMoney } from "@/components/list-primitives";
 import { cn } from "@/lib/utils";
 import { CopyValue } from "@/components/copy-value";
 import { useOverlayContext } from "@/lib/overlay-context";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { StatusBadge, paymentBasisDescription } from "@/components/business-status";
 import { ErrorNotice, Loading } from "@/components/request-state";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -21,6 +20,7 @@ import {
   DialogTitle,
   DialogFooter,
   DialogClose,
+  DialogBody,
 } from "@/components/admin-dialog";
 import {
   Item,
@@ -130,22 +130,15 @@ export function TechnicalDetails({ data, identifiers = [], title = "技术信息
   title?: string;
   children?: ReactNode;
 }) {
-  const overlay = useOverlayContext();
-  return <Collapsible className="min-w-0" data-technical-information>
-    {overlay && <Separator className="mb-3" />}
-    <CollapsibleTrigger render={<Button variant="ghost" size="sm" className="w-full justify-between" />}>
+  const [open, setOpen] = useState(false);
+  const trigger = useRef<HTMLButtonElement>(null);
+  return <div className="min-w-0" data-technical-information>
+    <Button ref={trigger} variant="ghost" size="sm" aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(true)}>
       {title}
-      <ChevronDown aria-hidden="true" data-icon="inline-end" className="transition-transform group-data-panel-open/button:rotate-180 motion-reduce:transition-none" />
-    </CollapsibleTrigger>
-    <CollapsibleContent>
-      <div className="flex min-w-0 flex-col gap-3 pt-3">
-        {children}
-        {identifiers.some(([, value]) => !!value) && <DetailFields wide={identifiers.map(([name]) => name)} items={identifiers.filter((entry): entry is readonly [string, string] => !!entry[1])
-          .map(([name, value]) => [name, <CopyValue value={value} label={"复制" + name} />])} />}
-        <pre tabIndex={0} aria-label={title} className="max-w-full overflow-x-auto rounded-md bg-muted p-3 text-xs whitespace-pre-wrap break-all">{JSON.stringify(data, null, 2)}</pre>
-      </div>
-    </CollapsibleContent>
-  </Collapsible>;
+      <Code aria-hidden="true" data-icon="inline-end" />
+    </Button>
+    <TechnicalDetailsDialog open={open} onOpenChange={setOpen} finalFocus={() => trigger.current} data={data} identifiers={identifiers} title={title}>{children}</TechnicalDetailsDialog>
+  </div>;
 }
 export function DetailCredentials({ items, title = "凭据编号", headingLevel = 3 }: {
   items: ReadonlyArray<readonly [string, ReactNode]>;
@@ -167,28 +160,35 @@ export function TechnicalDetailsDialog({
   finalFocus,
   data,
   identifiers = [],
+  title: titleText = "技术详情",
+  children,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   finalFocus: () => HTMLElement | null;
   data: unknown;
   identifiers?: ReadonlyArray<readonly [string, string | null]>;
+  title?: string;
+  children?: ReactNode;
 }) {
   const title = useRef<HTMLHeadingElement>(null);
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog presentation="dialog" open={open} onOpenChange={onOpenChange}>
       <DialogContent
         kind="technical"
-        className="flex max-h-[calc(100dvh-2rem)] flex-col sm:max-w-3xl"
+        data-technical-dialog
+        showCloseButton={false}
         initialFocus={title}
         finalFocus={finalFocus}
       >
-        <DialogHeader className="shrink-0 pr-8">
+        <DialogHeader className="flex-row items-center justify-between gap-2 pr-0">
           <DialogTitle ref={title} tabIndex={-1}>
-            技术详情
+            {titleText}
           </DialogTitle>
+          <DialogClose render={<Button variant="ghost" size="icon" aria-label={"关闭" + titleText} />}><X /></DialogClose>
         </DialogHeader>
-        <div className="-mx-4 flex min-h-0 flex-col gap-4 overflow-auto px-4 pb-1">
+        <DialogBody>
+          {children}
           {identifiers.length > 0 && (
             <DetailFields
               wide={identifiers.map(([name]) => name)}
@@ -198,19 +198,19 @@ export function TechnicalDetailsDialog({
                 )
                 .map(([name, value]) => [
                   name,
-                  <CopyValue tooltip value={value} label={"复制" + name} />,
+                  <CopyValue value={value} label={"复制" + name} />,
                 ])}
             />
           )}
           <pre
             tabIndex={0}
-            aria-label="技术详情"
+            aria-label={titleText}
             role="group"
             className="shrink-0 rounded-md bg-muted p-4 text-xs whitespace-pre-wrap break-all"
           >
             {JSON.stringify(data, null, 2)}
           </pre>
-        </div>
+        </DialogBody>
         <DialogFooter className="shrink-0">
           <DialogClose render={<Button variant="outline" />}>关闭</DialogClose>
         </DialogFooter>

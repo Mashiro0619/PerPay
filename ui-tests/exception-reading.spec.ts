@@ -192,7 +192,7 @@ test("exception and source read failures stay explicit and recover only after re
   }
 });
 
-test("exception inline tools and manual confirmation preserve copy, scope and keyboard focus without writes", async ({ page, manifest }, info) => {
+test("exception technical dialogs and manual confirmation preserve copy, scope and keyboard focus without writes", async ({ page, manifest }, info) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await login(page, manifest);
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"], { origin: manifest.origin });
@@ -201,23 +201,39 @@ test("exception inline tools and manual confirmation preserve copy, scope and ke
   for (const key of ["exceptionOpen", "exceptionSite"]) {
     const exception = await read<FinancialException>(page, manifest, endpoint(manifest, key));
     const card = await open(page, manifest, key);
-    const technical = card.locator("[data-technical-information]");
-    const tools = technical.getByRole("button", { name: "技术信息", exact: true });
-    await expect(tools).toHaveAttribute("aria-expanded", "false");
+    const entry = card.locator("[data-technical-information]");
+    const tools = entry.getByRole("button", { name: "技术信息", exact: true });
+    const parent = page.locator("[data-overlay-content]");
     await tools.focus();
+    const parentGeometry = () => parent.evaluate(element => {
+      const bounds = element.getBoundingClientRect();
+      const body = element.querySelector<HTMLElement>("[data-overlay-detail]")!;
+      return { width: bounds.width, height: bounds.height, contentHeight: body.scrollHeight, scrollTop: body.scrollTop };
+    });
+    const beforeTechnical = await parentGeometry();
+    const detailUrl = page.url();
     await page.keyboard.press("Enter");
-    await expect(tools).toHaveAttribute("aria-expanded", "true");
-    await expect(technical.locator("pre")).toBeVisible();
-    await expect(page.getByRole("dialog", { name: "技术详情", exact: true })).toHaveCount(0);
+    const technical = page.getByRole("dialog", { name: "技术信息", exact: true });
+    await expect(technical).toBeVisible();
+    await expect(technical.locator('pre[aria-label="技术信息"]')).toBeVisible();
+    await expect(entry.locator("pre")).toHaveCount(0);
+    expect(await technical.evaluate(element => !!element.closest("[data-overlay-content]"))).toBe(false);
+    const duringTechnical = await parentGeometry();
+    for (const name of ["width", "height", "contentHeight", "scrollTop"] as const) expect(duringTechnical[name]).toBeCloseTo(beforeTechnical[name], 1);
+    expect(page.url()).toBe(detailUrl);
+    await page.keyboard.press("Tab");
+    await expect(technical.getByRole("button", { name: "关闭技术信息", exact: true })).toBeFocused();
     await page.keyboard.press("Tab");
     await expect(technical.getByRole("button", { name: "复制异常编号", exact: true })).toBeFocused();
     await page.keyboard.press("Enter");
     await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(exception.exception_id);
-    await tools.focus();
-    await page.keyboard.press("Enter");
-    await expect(tools).toHaveAttribute("aria-expanded", "false");
-    await expect(technical.locator("pre")).toBeHidden();
+    if (key === "exceptionOpen") await page.keyboard.press("Escape");
+    else await technical.getByRole("button", { name: "关闭", exact: true }).click();
+    await expect(technical).toHaveCount(0);
+    await expect(parent).toBeVisible();
     await expect(tools).toBeFocused();
+    const afterTechnical = await parentGeometry();
+    for (const name of ["width", "height", "contentHeight", "scrollTop"] as const) expect(afterTechnical[name]).toBeCloseTo(beforeTechnical[name], 1);
     const credentials = card.getByRole("region", { name: "核对凭据", exact: true });
     await credentials.getByRole("button", { name: "复制内部流水编号（PerPay）", exact: true }).click();
     await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(exception.ledger_entry_id);
@@ -240,7 +256,7 @@ test("exception inline tools and manual confirmation preserve copy, scope and ke
     const orderLink = card.locator('[data-detail-order-summary] [data-slot="item-title"] a');
     const orderHref = new URL((await orderLink.getAttribute("href"))!, page.url());
     expect(orderHref.searchParams.get("overlay")).toBe(scope + "/orders/" + exception.order_id);
-    await record(page, info, { feature: "exception-inline-focus-copy", key, reasonLength: reason.length, evidence: "read-only-confirmation-open-and-cancel" });
+    await record(page, info, { feature: "exception-technical-dialog-focus-copy", key, reasonLength: reason.length, parentBefore: beforeTechnical, parentDuring: duringTechnical, parentAfter: afterTechnical, evidence: "read-only-technical-dialog-and-confirmation-open-and-cancel" });
   }
   expect(writes).toEqual([]);
 });

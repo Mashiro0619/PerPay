@@ -6,9 +6,15 @@ import { measureAxisContrast, resolveSvgContrast } from "./contrast-evidence";
 import { resolveDialogDescriptionContrast } from "./dialog-contrast-evidence";
 import { resolveDetailTextContrast, resolveScrollingTabContrast } from "./detail-contrast-evidence";
 export async function audit(page: Page, info: TestInfo, id: string) {
-  const result = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"]).analyze();
+  const activeTechnicalDialog = await page.locator("[data-technical-dialog]:visible").count() > 0;
+  const builder = new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"]);
+  // The parent record is deliberately inert while the technical reader is open.
+  // Audit that record separately after closing the reader.
+  if (activeTechnicalDialog) builder.include("[data-technical-dialog]");
+  const result = await builder.analyze();
+  const surface = page.locator(activeTechnicalDialog ? "[data-technical-dialog]" : "body");
   const axes = [];
-  for (const axis of await page.locator("text.recharts-cartesian-axis-tick, .recharts-cartesian-axis-tick text, text.recharts-cartesian-axis-tick-value").all()) {
+  for (const axis of await surface.locator("text.recharts-cartesian-axis-tick, .recharts-cartesian-axis-tick text, text.recharts-cartesian-axis-tick-value").all()) {
     if (await axis.isVisible()) axes.push(await axis.evaluate(measureAxisContrast));
   }
   const svgReviews = await resolveSvgContrast(page, result);
@@ -25,7 +31,7 @@ export async function audit(page: Page, info: TestInfo, id: string) {
   });
   const unresolvedContrast = contrastReviews.filter(review => !review.resolved);
   const path = info.outputPath(id + "-accessibility.json");
-  writeFileSync(path, JSON.stringify({ url: page.url(),
+  writeFileSync(path, JSON.stringify({ url: page.url(), scope: activeTechnicalDialog ? "technical-dialog" : "document",
     passed: result.passes.map(rule => ({ id: rule.id, nodes: rule.nodes.length })), failed: result.violations,
     undetermined: result.incomplete, excluded: result.inapplicable.map(rule => rule.id), manualReviewEvidence: { svgAxes: axes,
       colorContrastIncomplete: { nodeCount: contrastReviews.length, resolvedCount: contrastReviews.length - unresolvedContrast.length,
@@ -33,13 +39,16 @@ export async function audit(page: Page, info: TestInfo, id: string) {
       note: "Raw axe incomplete results are retained. SVG imgNode cases use axis paint/geometry evidence. Selected ToggleGroup bgOverlap cases require opaque, settled decoration and verified plain text or a non-overlapping decorative icon with a plain label. Plain HTML descriptions, detail text and horizontal tabs use actual foreground compositing on an opaque background, per-character hit and clipping evidence. Text can additionally be proven readable after using a real scrollable ancestor, with original scroll positions restored; tab review changes only horizontal scrolling. Keyboard tab visibility is verified separately. Hidden clipping, low contrast, unsupported paint and overlapping paint remain unresolved. Other uncertain nodes remain unresolved." } }, null, 2));
   await info.attach(id + "-accessibility", { path, contentType: "application/json" });
   expect.soft(result.violations, page.url()).toEqual([]);
-  if (await page.locator(".recharts-surface").count()) expect.soft(axes.length, "SVG tick labels were measured").toBeGreaterThan(0);
+  if (await surface.locator(".recharts-surface").count()) expect.soft(axes.length, "SVG tick labels were measured").toBeGreaterThan(0);
   expect.soft(axes.filter(axis => axis === null || axis.contrast === null || axis.contrast < 4.5), "SVG axis contrast against its actual background").toEqual([]);
   expect.soft(axes.filter(axis => !axis?.passed), "SVG tick labels remain readable and unclipped").toEqual([]);
   expect.soft(unresolvedContrast, "every axe color-contrast incomplete node has explicit resolution evidence").toEqual([]);
 }
 export async function screenshot(page: Page, info: TestInfo, id: string) {
   const path = info.outputPath(id + ".png");
-  await page.screenshot({ path, fullPage: true });
+  // Full-page capture can change viewport metrics for a tall background page.
+  // Fixed readers must be captured at their actual viewport size.
+  const fixedDetail = await page.locator("[data-overlay-content]:visible, [data-technical-dialog]:visible").count() > 0;
+  await page.screenshot({ path, fullPage: !fixedDetail });
   await info.attach(id, { path, contentType: "image/png" });
 }

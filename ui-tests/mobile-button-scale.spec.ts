@@ -202,9 +202,8 @@ test.describe("compact mobile button visuals and separate touch targets", () => 
     await record(page, info, { evidence: "browser touch viewport", joinedChoices: geometry });
   });
 
-  test("the first inline technical copy action retains its full touch target at the section scroll start", async ({ page, manifest }, info) => {
-    // Technical information expands within the ledger's existing scroll body.
-    // Exercise the shared CopyValue control without opening a second dialog.
+  test("the first technical copy action retains its full touch target in the independent reader", async ({ page, manifest }, info) => {
+    // The parent record keeps its geometry while the reader owns the scroll area.
     await page.addInitScript(() => {
       Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async (value: string) => {
         (window as Window & { __copiedText?: string }).__copiedText = value;
@@ -218,52 +217,52 @@ test.describe("compact mobile button visuals and separate touch targets", () => 
     await expect(dialog.locator('[data-detail-section="transaction"]')).toBeVisible();
     await expect(dialog.getByRole("tablist")).toHaveCount(0);
     const technical = dialog.locator('[data-detail-section="transaction"] [data-ledger-summary] [data-technical-information]');
-    const view = technical.getByRole("button", { name: "技术信息", exact: true });
+    const view = technical.locator('button[aria-haspopup="dialog"]');
     await view.scrollIntoViewIfNeeded();
     await view.focus();
+    const parentBefore = await dialog.evaluate(element => ({ height: element.getBoundingClientRect().height, top: element.getBoundingClientRect().top, scrollTop: element.querySelector('[data-overlay-detail]')!.scrollTop }));
     await page.keyboard.press("Enter");
     await expect(view).toHaveAttribute("aria-expanded", "true");
-    await expect(technical.locator('pre[aria-label="技术信息"]')).toBeVisible();
-    await expect(page.getByRole("dialog")).toHaveCount(1);
-    const body = dialog.locator("[data-overlay-detail]");
+    const reader = page.getByRole("dialog", { name: "技术信息", exact: true });
+    await expect(reader.locator('pre[aria-label="技术信息"]')).toBeVisible();
+    const body = reader.locator(":scope > [data-admin-dialog-body]");
     await expect(body).toHaveCSS("overflow-y", "auto");
-    await technical.evaluate(element => {
-      const scroll = element.closest<HTMLElement>("[data-overlay-detail]")!;
-      scroll.scrollTop += element.getBoundingClientRect().top - scroll.getBoundingClientRect().top;
-    });
-    const sectionStart = await technical.evaluate(element => ({
-      top: element.getBoundingClientRect().top,
-      bodyTop: element.closest("[data-overlay-detail]")!.getBoundingClientRect().top,
+    await body.evaluate(element => element.scrollTop = 0);
+    const sectionStart = await body.evaluate(element => ({
+      scrollTop: element.scrollTop,
+      bodyTop: element.getBoundingClientRect().top,
     }));
-    expect(Math.abs(sectionStart.top - sectionStart.bodyTop)).toBeLessThanOrEqual(1);
-    const copy = technical.getByRole("button", { name: "复制内部流水编号（PerPay）", exact: true });
-    await expect(view).toBeFocused();
+    expect(sectionStart.scrollTop).toBe(0);
+    const copy = reader.getByRole("button", { name: "复制内部流水编号（PerPay）", exact: true });
+    await expect(reader.getByRole("heading", { name: "技术信息", exact: true })).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(reader.getByRole("button", { name: "关闭技术信息", exact: true })).toBeFocused();
     await page.keyboard.press("Tab");
     await expect(copy).toBeFocused();
     await expect(copy).toHaveAccessibleName("复制内部流水编号（PerPay）");
     await expect(copy).toHaveAttribute("title", "复制内部流水编号（PerPay）");
     await copy.hover();
     await page.clock.runFor(200);
-    // The inline copy action uses its native title; no custom tooltip covers
+    // The copy action uses its native title; no custom tooltip covers
     // its touch extension. The complete surface is still probed below.
     await expect(page.locator('[data-slot="tooltip-content"]:visible')).toHaveCount(0);
     const copyGeometry = await expectTouchSlot(copy);
     expect(copyGeometry.visual.height).toBeCloseTo(32, 1);
     const bodyBox = (await body.boundingBox())!;
     expect(copyGeometry.y).toBeGreaterThanOrEqual(bodyBox.y);
-    expect(await dialog.evaluate(element => element.scrollTop), "the overlay shell remains stationary while its body scrolls").toBe(0);
+    expect(await reader.evaluate(element => element.scrollTop), "the reader shell remains stationary while its body scrolls").toBe(0);
     const copyTap = await tapOutsideVisible(page, copy, "top");
     await expect(copy).toBeFocused();
-    await expect(technical.getByRole("status").filter({ hasText: "已复制" })).toHaveText("已复制");
+    await expect(reader.getByRole("status").filter({ hasText: "已复制" })).toHaveText("已复制");
     expect(await page.evaluate(() => (window as Window & { __copiedText?: string }).__copiedText)).toBe(manifest.details.ledgerAssociated!.split("/").at(-1));
-    await record(page, info, { evidence: "real ledger overlay with inline technical information, synthetic domain data and clipboard", buttonScale: { copyGeometry, copyTap, sectionStart, nativeTitle: true } });
-    await view.scrollIntoViewIfNeeded();
-    await view.focus();
-    await page.keyboard.press("Enter");
+    await record(page, info, { evidence: "real ledger overlay with independent technical dialog, synthetic domain data and clipboard", buttonScale: { copyGeometry, copyTap, sectionStart, nativeTitle: true } });
+    await page.keyboard.press("Escape");
+    await expect(reader).toHaveCount(0);
     await expect(view).toHaveAttribute("aria-expanded", "false");
     await expect(technical.locator("pre")).toHaveCount(0);
     await expect(view).toBeFocused();
     await expect(page.getByRole("dialog")).toHaveCount(1);
+    expect(await dialog.evaluate(element => ({ height: element.getBoundingClientRect().height, top: element.getBoundingClientRect().top, scrollTop: element.querySelector('[data-overlay-detail]')!.scrollTop }))).toEqual(parentBefore);
     await expect(page).toHaveURL(sourceUrl);
   });
 

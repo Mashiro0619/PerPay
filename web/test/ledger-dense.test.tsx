@@ -4,6 +4,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { describe, expect, it, vi } from "vitest";
 import { queryClient, type AdminLedgerDetail, type AdminLedgerMatch, type AdminLedgerSource, type PaymentMatchDetail } from "../src/api/client";
+import { OverlayContext } from "../src/lib/overlay-context";
 import LedgerDetail from "../src/pages/LedgerDetail";
 import { json, ledger, ledgerId } from "./fixtures";
 import { candidate, paymentMatch } from "./detail-fixtures";
@@ -28,7 +29,7 @@ function fullMatch(match: AdminLedgerMatch, detail: AdminLedgerDetail): PaymentM
     creation_operation: { ...paymentMatch.creation_operation, actor_id: "admin", reason: "已核对收款凭据", created_at: match.created_at },
     resolution_operation: match.status === "REVERSED" ? { ...paymentMatch.creation_operation, actor_id: "reviewer", reason: "原订单归属错误", created_at: match.resolved_at! } : null };
 }
-function mount(detail = detailFixture(), failedMatch: boolean | (() => boolean) = false) {
+function mount(detail = detailFixture(), failedMatch: boolean | (() => boolean) = false, overlay = false) {
   const fetchMock = vi.fn(async (request: Request) => {
     expect(request.method).toBe("GET");
     const path = new URL(request.url).pathname;
@@ -40,7 +41,9 @@ function mount(detail = detailFixture(), failedMatch: boolean | (() => boolean) 
   });
   vi.stubGlobal("fetch", fetchMock);
   const router = createMemoryRouter([{ path: "/reconciliation/transactions/:ledgerEntryId", element: <LedgerDetail /> }], { initialEntries: ["/reconciliation/transactions/" + ledgerId + "?selected_site=remembered-site"] });
-  render(<QueryClientProvider client={queryClient}><RouterProvider router={router} /></QueryClientProvider>);
+  render(<QueryClientProvider client={queryClient}><OverlayContext.Provider value={overlay ? {
+    target: router.state.location, resourceScope: { clientId: null, base: "" }, size: "xl", requestClose: vi.fn(),
+  } : null}><RouterProvider router={router} /></OverlayContext.Provider></QueryClientProvider>);
   return fetchMock;
 }
 
@@ -52,6 +55,8 @@ describe("unified transaction detail", () => {
     await screen.findByRole("heading", { name: "支付宝交易" });
     const summary = document.querySelector<HTMLElement>("[data-ledger-summary]")!;
     expect(screen.getByRole("heading", { name: "流水与对账详情" })).toBeVisible();
+    const credentials = within(summary).getByRole("region", { name: "支付宝交易编号" });
+    expect(within(credentials).getByRole("heading", { name: "支付宝交易编号", level: 3 })).toHaveClass("sr-only");
     expect(within(summary).getAllByRole("term").map(item => item.textContent)).toEqual(["交易金额", "收款账号", "收支方向", "交易时间", "对方", "支付宝备注", "支付宝流水号", "支付宝订单号", "支付宝商户单号"]);
     for (const [name, value] of [["支付宝流水号", externalEventId], ["支付宝订单号", providerOrder], ["支付宝商户单号", merchantOrder]]) {
       expect(screen.getAllByText(value!, { exact: true })).toHaveLength(1);
@@ -59,18 +64,54 @@ describe("unified transaction detail", () => {
       expect(writeText).toHaveBeenLastCalledWith(value);
     }
     expect(screen.getAllByText(memo, { normalizer: value => value })).toHaveLength(1);
-    for (const id of [ledgerId, secondSourceId]) {
+    for (const [index, id] of [ledgerId, secondSourceId].entries()) {
       const card = document.querySelector<HTMLElement>('[data-ledger-source="' + id + '"]')!;
       expect(card).toHaveAttribute("id", "source-" + id);
+      expect(within(card).getByRole("heading", { name: "查账记录 " + (index + 1), level: 3 })).not.toHaveClass("sr-only");
       expect(within(card).getByRole("button", { name: "人工关联收款" })).toBeVisible();
       expect(within(card).queryByRole("link", { name: "查看记录与处理" })).not.toBeInTheDocument();
       await user.click(within(card).getByRole("button", { name: "复制内部流水编号（PerPay）" }));
       expect(writeText).toHaveBeenLastCalledWith(id);
     }
-    expect(document.querySelector("#ledger-matches-heading")).toBeVisible();
+    expect(screen.getByRole("heading", { name: "对应订单", level: 2 })).toHaveAttribute("id", "ledger-matches-heading");
+    expect(screen.getByRole("region", { name: "对应订单" })).toBeVisible();
     expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
     expect(document.querySelector("#ledger-sources-heading")).toBeVisible();
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+  });
+
+  it.each([true, false])("keeps a single source identifiable and actionable when content_consistent is %s", async consistent => {
+    const singleSource = { ...source(ledgerId), provider_order_no: "20261103", merchant_order_no: null };
+    const fetchMock = mount({ ...detailFixture(), provider_order_no: singleSource.provider_order_no, merchant_order_no: null,
+      source_record_count: 1, content_consistent: consistent, sources: [singleSource] }, false, true);
+    const user = userEvent.setup();
+    const writeText = vi.spyOn(navigator.clipboard, "writeText");
+    await screen.findByRole("heading", { name: "查账记录（1）", level: 2 });
+    const card = document.querySelector<HTMLElement>("[data-ledger-source]")!;
+    expect(card).toHaveAttribute("id", "source-" + ledgerId);
+    expect(card).toHaveAttribute("tabindex", "-1");
+    expect(within(card).getByRole("heading", { name: "查账记录 1", level: 3 })).toHaveClass("sr-only");
+    expect(within(card).getAllByText("PerPay 记录状态")).toHaveLength(1);
+    expect(within(card).getByText("PerPay 记录状态").nextElementSibling).toHaveTextContent("未分配");
+    expect(within(card).getByRole("button", { name: "人工关联收款" })).toBeVisible();
+    expect(within(card).getByRole("button", { name: "技术信息" })).toBeVisible();
+    await user.click(within(card).getByRole("button", { name: "复制内部流水编号（PerPay）" }));
+    expect(writeText).toHaveBeenLastCalledWith(ledgerId);
+
+    const summary = document.querySelector<HTMLElement>("[data-ledger-summary]")!;
+    const credentials = within(summary).getByRole("region", { name: "支付宝交易编号" });
+    await user.click(within(credentials).getByRole("button", { name: "复制支付宝订单号" }));
+    expect(writeText).toHaveBeenLastCalledWith("20261103");
+    expect(within(credentials).getByText("支付宝商户单号").nextElementSibling).toHaveTextContent(/^—$/);
+    expect(within(credentials).queryByRole("button", { name: "复制支付宝商户单号" })).not.toBeInTheDocument();
+    if (!consistent) {
+      const sourceCredentials = within(card).getByRole("region", { name: "这份记录的编号" });
+      expect(within(sourceCredentials).getByRole("heading", { name: "这份记录的编号", level: 4 })).toHaveClass("sr-only");
+      expect(within(sourceCredentials).getByText("支付宝商户单号").nextElementSibling).toHaveTextContent(/^—$/);
+      await user.click(within(sourceCredentials).getByRole("button", { name: "复制来源支付宝订单号" }));
+      expect(writeText).toHaveBeenLastCalledWith("20261103");
+    }
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
   });
 
   it("copies technical evidence and restores focus without writing", async () => {
@@ -145,9 +186,13 @@ describe("unified transaction detail", () => {
   });
 
   it("explains expenses without offering receipt association", async () => {
-    const fetchMock = mount({ ...detailFixture(), direction: "DEBIT", sources: [{ ...source(ledgerId), direction: "DEBIT" }] });
+    const fetchMock = mount({ ...detailFixture(), direction: "DEBIT", source_record_count: 1, sources: [{ ...source(ledgerId), direction: "DEBIT" }] }, false, true);
     expect(await screen.findByText("支出流水不关联收款订单。")).toBeVisible();
     expect(screen.queryByRole("button", { name: "人工关联收款" })).not.toBeInTheDocument();
+    const card = document.querySelector<HTMLElement>("[data-ledger-source]")!;
+    expect(within(card).getByRole("heading", { name: "查账记录 1", level: 3 })).toHaveClass("sr-only");
+    expect(within(card).getByRole("button", { name: "复制内部流水编号（PerPay）" })).toBeVisible();
+    expect(within(card).getByRole("button", { name: "技术信息" })).toBeVisible();
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 

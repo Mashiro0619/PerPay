@@ -3,10 +3,37 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { describe, expect, it, vi } from "vitest";
 import { RecordTools } from "../src/components/detail/RecordTools";
+import { TechnicalDetails } from "../src/components/detail/DetailPrimitives";
 import { mountOnboarding } from "./onboarding-fixture";
 import { recordAction } from "./menu-helper";
 
 describe("context-preserving secondary dialogs", () => {
+  it("opens a technical reader without inserting its data into the original record", async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const { container } = render(<MemoryRouter><TechnicalDetails data={{ record: "test-order", lines: ["first", "last"] }} identifiers={[["记录编号", "test-order"]]}><p>仅这条记录的补充信息</p></TechnicalDetails></MemoryRouter>);
+    const owner = container.querySelector('[data-technical-information]')!;
+    const trigger = within(owner as HTMLElement).getByRole("button", { name: "技术信息" });
+    expect(trigger).toHaveAttribute("aria-haspopup", "dialog");
+    await user.click(trigger);
+    const dialog = await screen.findByRole("dialog", { name: "技术信息" });
+    expect(dialog).toHaveAttribute("data-technical-dialog");
+    expect(within(dialog).getByLabelText("技术信息")).toHaveTextContent('"record": "test-order"');
+    expect(within(dialog).getByText("仅这条记录的补充信息")).toBeVisible();
+    expect(owner.querySelector("pre")).toBeNull();
+    expect(dialog.querySelector('[data-admin-dialog-scroll]')).toBeNull();
+    expect(dialog.querySelector(':scope > [data-admin-dialog-body]')).not.toBeNull();
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+    await user.click(within(dialog).getByRole("button", { name: "复制记录编号" }));
+    expect(await navigator.clipboard.readText()).toBe("test-order");
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(trigger).toHaveFocus());
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("opens technical records in a read-only dialog and returns focus to the record menu", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);

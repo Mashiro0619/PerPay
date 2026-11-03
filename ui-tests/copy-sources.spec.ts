@@ -102,20 +102,18 @@ test("ledger credentials keep genuine Alipay, website and PerPay identities dist
       await expect(page.locator("[data-ledger-source]")).toHaveCount(entry.sources.length);
       for (const source of entry.sources) {
         const card = page.locator('[data-ledger-source="' + source.ledger_entry_id + '"]');
-        const header = card.locator(':scope > [data-slot="item-content"] > [data-slot="item-header"], :scope > [data-slot="card-header"]');
         const facts = card.locator(':scope > [data-slot="item-content"] > [data-detail-fields], :scope > [data-slot="card-content"] > [data-detail-credentials]');
-        await expect(header.getByText("PerPay 记录状态", { exact: true })).toBeVisible();
+        await expect(card.getByText("PerPay 记录状态", { exact: true })).toBeVisible();
         await copyField(page, facts, "内部流水编号（PerPay）", source.ledger_entry_id);
         if (!entry.content_consistent) {
           await optionalCopyField(page, facts, "支付宝订单号", source.provider_order_no, "复制来源支付宝订单号");
           await optionalCopyField(page, facts, "支付宝商户单号", source.merchant_order_no, "复制来源支付宝商户单号");
         } else {
-          await expect(facts.locator("dt")).toHaveText(["内部流水编号（PerPay）", "保存时间"]);
+          await expect(facts.locator("dt")).toHaveText([...(entry.sources.length === 1 ? ["PerPay 记录状态"] : []), "内部流水编号（PerPay）", "保存时间"]);
         }
         await expect(card.getByRole("link", { name: "查看记录与处理", exact: true })).toHaveCount(0);
         const eligible = source.direction === "CREDIT" && ["UNALLOCATED", "CANDIDATE", "CONFLICT"].includes(source.state);
-        const actions = header.locator('[data-slot="item-actions"], [data-slot="card-action"]');
-        await expect(actions.getByRole("button", { name: "人工关联收款", exact: true })).toHaveCount(eligible ? 1 : 0);
+        await expect(card.getByRole("button", { name: "人工关联收款", exact: true })).toHaveCount(eligible ? 1 : 0);
       }
       await revealDetailSection(page, "payments");
       await expect(page.locator("[data-ledger-match]")).toHaveCount(entry.matches.length);
@@ -136,9 +134,10 @@ test("ledger credentials keep genuine Alipay, website and PerPay identities dist
         const technical = card.locator("[data-technical-information]");
         const trigger = technical.getByRole("button", { name: "技术信息", exact: true });
         await trigger.click();
-        await technical.getByRole("button", { name: "复制流水编号", exact: true }).click();
+        const reader = page.getByRole("dialog", { name: "技术信息", exact: true });
+        await reader.getByRole("button", { name: "复制流水编号", exact: true }).click();
         await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(match.ledger_entry_id);
-        await trigger.click();
+        await reader.getByRole("button", { name: "关闭", exact: true }).click();
         await expect(trigger).toHaveAttribute("aria-expanded", "false");
         await expect(trigger).toBeFocused();
       }
