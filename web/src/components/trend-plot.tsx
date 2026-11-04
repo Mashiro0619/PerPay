@@ -60,6 +60,7 @@ function SingleTrendPlot({
   const plotRef = useRef<HTMLDivElement>(null);
   useChartSeriesMotion(plotRef, `${metric}:${chartType}`);
   const [fontSize, setFontSize] = useState(12);
+  const [compact, setCompact] = useState(false);
   const [fixedTooltip, setFixedTooltip] = useState(true);
   const [axis, setAxis] = useState({ yWidth: 60, xHeight: 30, dateInset: 24 });
   useLayoutEffect(() => {
@@ -69,6 +70,7 @@ function SingleTrendPlot({
           getComputedStyle(document.documentElement).fontSize,
         ) || 16;
       setFontSize(rem * 0.75);
+      setCompact(window.matchMedia("(max-width: 767px)").matches);
       // Reserve a full tooltip (max 20rem) on either side, including its offset.
       // This also accounts for enlarged text, where pixel-only breakpoints fail.
       setFixedTooltip((plotRef.current?.clientWidth ?? 0) < rem * 40 + 20);
@@ -172,7 +174,7 @@ function SingleTrendPlot({
   });
 
   return (
-    <div ref={plotRef} className="min-w-0">
+    <div ref={plotRef} className="trend-plot-frame min-w-0">
       <ChartContainer
         config={chartConfig}
         data-chart-type={chartType}
@@ -190,7 +192,9 @@ function SingleTrendPlot({
           data={data}
           margin={{
             top: fontSize,
-            right: axis.dateInset,
+            right: compact
+              ? Math.max(fontSize / 2, axis.dateInset - 8)
+              : axis.dateInset,
             bottom: fontSize / 2,
             left: 0,
           }}
@@ -208,6 +212,7 @@ function SingleTrendPlot({
             axisLine={false}
             tickMargin={8}
             minTickGap={fontSize * 3}
+            interval={compact ? "preserveStartEnd" : "preserveEnd"}
             padding={{ left: 8, right: 8 }}
             height={axis.xHeight}
             fontSize={fontSize}
@@ -216,8 +221,8 @@ function SingleTrendPlot({
           <YAxis
             tickLine={false}
             axisLine={false}
-            tickMargin={8}
-            width={axis.yWidth}
+            tickMargin={compact ? 4 : 8}
+            width={compact ? axis.yWidth - 8 : axis.yWidth}
             fontSize={fontSize}
             tickCount={maximum > 0 && maximum < 4 ? maximum + 1 : 5}
             allowDecimals={false}

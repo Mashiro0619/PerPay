@@ -1142,6 +1142,14 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 .trend-dates { min-width: 0; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .trend-dates time { white-space: nowrap; }
 .trend-content { display: flex; min-width: 0; flex-direction: column; gap: 1.25rem; }
+@media (max-width: 767px) {
+  .trend-content > :is(.trend-plot-frame, .trend-plot),
+  .trend-content [data-combined-scroll] {
+    margin-inline: calc(0.5rem - var(--card-spacing));
+    width: auto;
+    max-width: none;
+  }
+}
 .trend-header [data-slot="toggle-group"] { min-width: 0; max-width: 100%; align-items: stretch; }
 .trend-header [data-slot="toggle-group-item"] { min-width: 0; height: auto; min-height: 2rem; flex: 0 1 auto; flex-wrap: wrap; white-space: normal; }
 .trend-metrics { flex-wrap: wrap; }
