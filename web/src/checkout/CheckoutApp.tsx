@@ -42,6 +42,7 @@ import {
 import { createCheckoutController } from "./controller";
 import { useQrDownload } from "./use-qr-download";
 import { AlipayLogo } from "./AlipayLogo";
+import "./checkout-layout.css";
 export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
   const [controller] = useState(() => createCheckoutController(initial));
   const state = useSyncExternalStore(
@@ -97,6 +98,8 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
     order?.payment.received_amount_cents ??
     order?.requested_amount_cents ??
     0;
+  const formattedAmount = checkoutMoney(cents);
+  const amountIntegerDigits = Math.floor(cents / 100).toString().length;
   const amountLabel = order?.payment_instructions
     ? "应付金额"
     : order && order.payment.status !== "UNPAID"
@@ -160,7 +163,7 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
       data-checkout-actions
     >
       {returnUrl && (
-        <a href={returnUrl} className={buttonVariants({ className: "w-full" })}>
+        <a href={returnUrl} className={buttonVariants({ className: "checkout-query-action w-full" })}>
           <CheckCircle2 data-icon="inline-start" />
           {state.visual === "CONFIRMED" ? "返回商家" : "返回商家处理"}
         </a>
@@ -169,7 +172,7 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
         (state.initialized ? (
           <Button
             variant="outline"
-            className="w-full"
+            className="checkout-query-action w-full"
             disabled={blocked}
             onClick={() => void controller.refresh(true)}
           >
@@ -185,7 +188,7 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
             href={reloadPath}
             className={buttonVariants({
               variant: "outline",
-              className: "w-full",
+              className: "checkout-query-action w-full",
             })}
             data-checkout-reload
           >
@@ -323,8 +326,9 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                   <strong
                     className="min-w-0 text-2xl font-semibold tracking-tight whitespace-nowrap tabular-nums lg:text-3xl"
                     data-payable-amount
+                    data-checkout-money-digits={amountIntegerDigits}
                   >
-                    {checkoutMoney(cents)}
+                    {formattedAmount}
                   </strong>
                   {canPay && (
                     <CopyValue
@@ -377,22 +381,27 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                               <Maximize data-icon="inline-start" />
                               放大二维码
                             </DialogTrigger>
-                            <DialogContent className="flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden sm:max-w-md">
-                              <DialogHeader className="shrink-0 pr-12">
-                                <DialogTitle>支付宝付款二维码</DialogTitle>
-                                <DialogDescription>
-                                  请按此金额付款，勿重复支付。
-                                </DialogDescription>
-                              </DialogHeader>
-                              <div className="flex min-h-0 flex-col gap-4 overflow-y-auto" data-qr-dialog-body>
-                                <p className="text-center text-2xl font-semibold tabular-nums">
-                                  {checkoutMoney(cents)}
+                            <DialogContent className="checkout-qr-dialog sm:max-w-md">
+                              <div className="checkout-qr-information">
+                                <DialogHeader>
+                                  <DialogTitle>支付宝付款二维码</DialogTitle>
+                                  <DialogDescription>
+                                    核对金额，勿重复付款。
+                                  </DialogDescription>
+                                </DialogHeader>
+                                <p
+                                  className="checkout-qr-amount text-center text-2xl font-semibold whitespace-nowrap tabular-nums"
+                                  data-checkout-money-digits={amountIntegerDigits}
+                                >
+                                  {formattedAmount}
                                 </p>
+                              </div>
+                              <div className="checkout-qr-stage" data-qr-dialog-body>
                                 <img
                                   src={qrSource}
                                   width={640}
                                   height={640}
-                                  className="w-full shrink-0 rounded-lg bg-white"
+                                  className="rounded-lg bg-white"
                                   alt="放大的支付宝付款二维码"
                                   data-qr-dialog-image
                                   onError={() => {

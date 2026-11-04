@@ -1,0 +1,89 @@
+/* Static data selectors keep the first server render compatible with the
+   checkout's style-src-attr 'none' policy. The width budget includes currency,
+   grouping separators and both decimal places at the tabular font size. */
+[data-checkout-money-digits] { --checkout-money-width: 12.9; }
+[data-checkout-money-digits="1"] { --checkout-money-width: 3.05; }
+[data-checkout-money-digits="2"] { --checkout-money-width: 3.7; }
+[data-checkout-money-digits="3"] { --checkout-money-width: 4.35; }
+[data-checkout-money-digits="4"] { --checkout-money-width: 5.35; }
+[data-checkout-money-digits="5"] { --checkout-money-width: 6; }
+[data-checkout-money-digits="6"] { --checkout-money-width: 6.65; }
+[data-checkout-money-digits="7"] { --checkout-money-width: 7.65; }
+[data-checkout-money-digits="8"] { --checkout-money-width: 8.3; }
+[data-checkout-money-digits="9"] { --checkout-money-width: 8.95; }
+[data-checkout-money-digits="10"] { --checkout-money-width: 9.95; }
+[data-checkout-money-digits="11"] { --checkout-money-width: 10.6; }
+[data-checkout-money-digits="12"] { --checkout-money-width: 11.25; }
+[data-checkout-money-digits="13"] { --checkout-money-width: 12.25; }
+
+[data-checkout-amount],
+.checkout-qr-information { container-type: inline-size; }
+
+[data-payable-amount][data-checkout-money-digits],
+.checkout-qr-amount[data-checkout-money-digits] {
+  font-size: min(var(--checkout-money-size, 1.5rem), calc((100cqi - 0.25rem) / var(--checkout-money-width)));
+}
+
+@media (min-width: 1024px) {
+  [data-payable-amount][data-checkout-money-digits] { --checkout-money-size: 1.875rem; }
+}
+
+.checkout-query-action {
+  height: auto;
+  min-height: 2rem;
+  max-width: 100%;
+  padding-block: 0.3125rem;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.checkout-qr-dialog[data-overlay-viewport="dialog"] {
+  display: flex;
+  flex-direction: column;
+  height: min(40rem, calc(var(--overlay-viewport-height, 100dvh) - 2rem), calc(var(--overlay-viewport-width, 100vw) + 8rem));
+  overflow: hidden;
+}
+
+.checkout-qr-information {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.checkout-qr-information [data-slot="dialog-title"] {
+  width: calc(100% - max(48px, 2.25rem));
+}
+
+.checkout-qr-stage {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: 0;
+}
+
+.checkout-qr-stage [data-qr-dialog-image] {
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+/* The close control gets its own space above the code on a short landscape
+   screen; it must never cover the QR's quiet zone. */
+@media (min-width: 480px) and (max-height: 450px) {
+  .checkout-qr-dialog[data-overlay-viewport="dialog"] {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+    align-items: center;
+  }
+
+  .checkout-qr-information [data-slot="dialog-title"] { width: 100%; }
+  .checkout-qr-amount { text-align: left; }
+  .checkout-qr-stage { height: 100%; padding-top: max(40px, 2.25rem); }
+}
