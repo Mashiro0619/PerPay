@@ -514,13 +514,15 @@ function SiteEditor({
             }
           }}
         >
-          <TabsList className="flex h-auto flex-wrap" aria-label="网站设置分组" activateOnFocus={false}>
-            {sections.map((item) => (
-              <TabsTrigger value={item.value} key={item.value}>
-                {item.label}
-              </TabsTrigger>
-            ))}
-          </TabsList>
+          <ScrollingTabs>
+            <TabsList className="min-w-max" aria-label="网站设置分组" activateOnFocus={false}>
+              {sections.map((item) => (
+                <TabsTrigger value={item.value} key={item.value}>
+                  {item.label}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </ScrollingTabs>
         </Tabs>
       )}
       <ErrorNotice error={save.error || action.error} />

@@ -145,7 +145,7 @@ export function ManualCandidatePicker({
       <h3 className="text-sm font-medium">选择{noun}</h3>
       <div role="search" aria-label={"搜索可关联" + noun}>
         <FieldGroup className="flex-row flex-wrap items-start gap-2">
-          <Field className="min-w-40 flex-1" data-invalid={!!error}>
+          <Field className="min-w-0 flex-1 basis-40" data-invalid={!!error}>
             <InputGroup>
               <InputGroupAddon>
                 <Search />
@@ -188,19 +188,20 @@ export function ManualCandidatePicker({
       {contextId && (
         <ToggleGroup
           aria-label="可能匹配的记录范围"
+          className="w-full max-w-full flex-wrap"
           value={[view]}
           variant="outline"
-          spacing={0}
+          spacing={2}
           onValueChange={(values) => {
             if (disabled || !values[0]) return;
             setView(values[0] as "recommended" | "all");
             setTrail([null]);
           }}
         >
-          <ToggleGroupItem value="recommended" disabled={disabled}>
+          <ToggleGroupItem className="h-auto min-h-8 min-w-0 max-w-full whitespace-normal" value="recommended" disabled={disabled}>
             可能匹配的{candidateNoun}
           </ToggleGroupItem>
-          <ToggleGroupItem value="all" disabled={disabled}>
+          <ToggleGroupItem className="h-auto min-h-8 min-w-0 max-w-full whitespace-normal" value="all" disabled={disabled}>
             全部可关联
           </ToggleGroupItem>
         </ToggleGroup>

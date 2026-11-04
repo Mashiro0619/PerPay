@@ -13,6 +13,7 @@ import { SiteConfigurationConflicts } from "@/components/site-configuration-conf
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { FieldSet } from "@/components/ui/field";
+import { ScrollingTabs } from "@/components/scrolling-tabs";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   mergeSitePolicy,
@@ -177,11 +178,13 @@ function DefaultsEditor({ initial }: { initial: DefaultsSnapshot }) {
       <PageHeading title="网站默认模板" />
       <p className="text-sm text-muted-foreground">仅用于新网站，已有网站不变。</p>
       <Tabs value={section} onValueChange={value => { if (value) setSection(value); }}>
-        <TabsList aria-label="模板分组">
-          <TabsTrigger value="orders">订单设置</TabsTrigger>
-          <TabsTrigger value="display">收银台展示</TabsTrigger>
-          <TabsTrigger value="integration">通知策略</TabsTrigger>
-        </TabsList>
+        <ScrollingTabs>
+          <TabsList className="min-w-max" aria-label="模板分组" activateOnFocus={false}>
+            <TabsTrigger value="orders">订单设置</TabsTrigger>
+            <TabsTrigger value="display">收银台展示</TabsTrigger>
+            <TabsTrigger value="integration">通知策略</TabsTrigger>
+          </TabsList>
+        </ScrollingTabs>
       </Tabs>
       <ErrorNotice error={save.error} />
       <ErrorNotice error={reload.error} />

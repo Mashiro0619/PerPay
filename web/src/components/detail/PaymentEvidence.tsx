@@ -240,8 +240,8 @@ export function MatchCard({
   ]} /> : null;
   if (transactionContext) return (
     <Card aria-label="收款关联记录" data-match-summary>
-      <CardHeader>
-        <CardTitle role="heading" aria-level={3}>{match.status === "REVERSED" ? "已撤销的关联" : "当前关联订单"}</CardTitle>
+      <CardHeader className="flex flex-wrap items-start justify-between gap-3">
+        <CardTitle className="min-w-0 flex-1 basis-48" role="heading" aria-level={3}>{match.status === "REVERSED" ? "已撤销的关联" : "当前关联订单"}</CardTitle>
         <CardAction className="flex max-w-full flex-wrap items-center gap-2">
           <StatusBadge value={match.status} />
           <ReverseMatchAction match={match} inline technical={!overlay} includeOrderIdentifiers movesOnSuccess />
@@ -262,9 +262,9 @@ export function MatchCard({
     return (
       <>
         <Card aria-label="收款关联记录" data-match-summary>
-          <CardHeader>
-            <CardTitle role="heading" aria-level={2}>关联摘要与订单</CardTitle>
-            <CardAction className="flex flex-col items-end gap-2 @sm/card-header:flex-row @sm/card-header:items-center">
+          <CardHeader className="flex flex-wrap items-start justify-between gap-3">
+            <CardTitle className="min-w-0 flex-1 basis-48" role="heading" aria-level={2}>关联摘要与订单</CardTitle>
+            <CardAction className="flex max-w-full flex-wrap items-center gap-2">
               <StatusBadge value={match.status} />
               <ReverseMatchAction match={match} inline technical={!overlay} includeOrderIdentifiers />
             </CardAction>
