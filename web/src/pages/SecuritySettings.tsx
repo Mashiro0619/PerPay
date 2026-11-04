@@ -3,7 +3,7 @@ import { AdministratorSessions } from "@/components/administrator-sessions";
 import { DialogBody } from "@/components/admin-dialog";
 import { PageHeading } from "@/components/page-heading";
 import { SettingsSummary } from "@/components/settings-summary";
-import { OverlayActions } from "@/components/overlay-actions";
+import { OverlayFormActions } from "@/components/overlay-actions";
 import { useOverlayCloseGuard, useOverlayContext } from "@/lib/overlay-context";
 import { useSystemName } from "@/branding";
 import {
@@ -51,7 +51,6 @@ import {
   CardTitle,
   CardDescription,
   CardContent,
-  CardFooter,
 } from "@/components/ui/card";
 import {
   Item,
@@ -612,9 +611,9 @@ function PasswordForm() {
     <form id={formId} onSubmit={submit} className="min-w-0">
       <Card>
         <CardHeader>
-          <CardTitle role="heading" aria-level={2}>
+          {!overlay && <CardTitle role="heading" aria-level={2}>
             修改密码
-          </CardTitle>
+          </CardTitle>}
           <CardDescription>修改后所有设备都需重新登录。</CardDescription>
         </CardHeader>
         <CardContent>
@@ -683,8 +682,7 @@ function PasswordForm() {
             </FieldGroup>
           </FieldSet>
         </CardContent>
-        <CardFooter className="justify-end">
-          <OverlayActions>
+        <OverlayFormActions className="justify-end">
           {overlay && <Button type="button" variant="outline" disabled={change.isPending} onClick={() => overlay.requestClose()}>取消</Button>}
           <Button
             form={formId}
@@ -698,8 +696,7 @@ function PasswordForm() {
             )}
             修改并重新登录
           </Button>
-          </OverlayActions>
-        </CardFooter>
+        </OverlayFormActions>
       </Card>
     </form>
   );

@@ -1,5 +1,5 @@
 import { useId, useRef, useState } from "react";
-import { OverlayActions } from "@/components/overlay-actions";
+import { OverlayFormActions } from "@/components/overlay-actions";
 import { useOverlayCloseGuard, useOverlayContext } from "@/lib/overlay-context";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -24,7 +24,6 @@ import { FieldGroup, FieldSet } from "@/components/ui/field";
 import {
   Card,
   CardContent,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -107,9 +106,9 @@ function CreateSiteForm({ policy, accounts, onCreated }: { policy: SiteConfigura
         }}
       >
         <Card>
-          <CardHeader>
+          {!overlay && <CardHeader>
             <CardTitle>创建业务网站</CardTitle>
-          </CardHeader>
+          </CardHeader>}
           <CardContent>
             <FieldGroup>
               <ErrorNotice error={create.error} />
@@ -141,8 +140,7 @@ function CreateSiteForm({ policy, accounts, onCreated }: { policy: SiteConfigura
               )}
             </FieldGroup>
           </CardContent>
-          <CardFooter className="gap-2">
-            <OverlayActions>
+          <OverlayFormActions className="gap-2">
             <Button
               type="submit"
               form={formId}
@@ -157,8 +155,7 @@ function CreateSiteForm({ policy, accounts, onCreated }: { policy: SiteConfigura
             {overlay ? <Button type="button" variant="outline" onClick={() => overlay.requestClose()} disabled={create.isPending}>取消</Button> : <Link to="/sites" className={buttonVariants({ variant: "ghost" })}>
               取消
             </Link>}
-            </OverlayActions>
-          </CardFooter>
+          </OverlayFormActions>
         </Card>
       </form>
       <OperationNavigationDialog

@@ -488,6 +488,14 @@ function SiteEditor({
   ]
     .filter(Boolean)
     .join(" ");
+  const formActions = (
+    <OverlayActions>
+      {overlay && <Button type="button" variant="outline" disabled={busy} onClick={() => overlay.requestClose()}>关闭</Button>}
+      <Button form={formId} type="submit" disabled={busy || requiresReview || !!timeoutError}>
+        {save.isPending ? "正在保存…" : "保存业务网站"}
+      </Button>
+    </OverlayActions>
+  );
   return (
     <div className="admin-settings-layout flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -673,14 +681,7 @@ function SiteEditor({
                 />
               </FieldGroup>
             </CardContent>
-            <CardFooter>
-              <OverlayActions>
-              {overlay && <Button type="button" variant="outline" disabled={busy} onClick={() => overlay.requestClose()}>关闭</Button>}
-              <Button form={formId} type="submit" disabled={busy || requiresReview || !!timeoutError}>
-                {save.isPending ? "正在保存…" : "保存业务网站"}
-              </Button>
-              </OverlayActions>
-            </CardFooter>
+            {overlay ? formActions : <CardFooter>{formActions}</CardFooter>}
           </Card>
         </FieldSet>
       </form>

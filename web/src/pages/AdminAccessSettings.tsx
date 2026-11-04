@@ -3,7 +3,7 @@ import { onlineManager, useMutation, useQuery } from "@tanstack/react-query";
 import { api, result, ApiError, queryClient, type RuntimeSettings } from "@/api/client";
 import { PageHeading } from "@/components/page-heading";
 import { useSuccessToast } from "@/components/Feedback";
-import { OverlayActions } from "@/components/overlay-actions";
+import { OverlayFormActions } from "@/components/overlay-actions";
 import { useOverlayCloseGuard, useOverlayContext } from "@/lib/overlay-context";
 import { useDirtyDraft } from "@/drafts";
 import {
@@ -12,7 +12,6 @@ import {
   CardTitle,
   CardDescription,
   CardContent,
-  CardFooter,
 } from "@/components/ui/card";
 import {
   FieldGroup,
@@ -98,7 +97,7 @@ export function AdminAccessSettings({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>管理员 IP 白名单</CardTitle>
+        {!overlay && <CardTitle>管理员 IP 白名单</CardTitle>}
         <CardDescription>
           仅限制管理员访问，仍需密码登录。
         </CardDescription>
@@ -188,8 +187,7 @@ export function AdminAccessSettings({
           <ErrorNotice error={save.error} />
         </FieldGroup>
       </CardContent>
-      <CardFooter>
-        <OverlayActions>
+      <OverlayFormActions>
         {overlay && <Button type="button" variant="outline" disabled={save.isPending} onClick={() => overlay.requestClose()}>关闭</Button>}
         <Button
           disabled={!dirty || save.isPending}
@@ -197,8 +195,7 @@ export function AdminAccessSettings({
         >
           保存白名单
         </Button>
-        </OverlayActions>
-      </CardFooter>
+      </OverlayFormActions>
       <Dialog
         open={confirm}
         onOpenChange={(value) => {
