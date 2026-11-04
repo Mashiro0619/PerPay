@@ -40,16 +40,17 @@ export function SectionCards({
     },
   ];
   return (
-    <div className="grid grid-cols-2 gap-4 sm:grid-cols-4" data-overview-kpis>
+    <div className="grid grid-cols-1 gap-4" data-overview-kpis>
       {cards.map((card) => (
         <Card key={card.title} aria-busy={pending}>
           <CardHeader>
             <CardDescription title={card.description}>{card.title}</CardDescription>
             <CardTitle
+              data-value-length={pending ? undefined : card.value.length}
               tabIndex={pending || card.href || card.value === "—" ? undefined : 0}
               role={card.href ? undefined : "group"}
               aria-label={pending || card.href ? undefined : `${card.title}：${card.value}`}
-              className="min-w-0 text-xl font-semibold whitespace-normal tabular-nums wrap-anywhere focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+              className="overview-metric-value min-w-0 overflow-x-auto text-xl font-semibold whitespace-nowrap tabular-nums focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
             >
               {pending ? (
                 <Skeleton className="h-lh w-3/4" />
