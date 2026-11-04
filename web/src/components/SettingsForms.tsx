@@ -734,7 +734,7 @@ export function SettingsEditor({
             aria-labelledby={formId + "-chart-label"}
             aria-describedby={formId + "-chart-hint" + (fieldErrors.dashboard_chart_type ? " " + formId + "-chart-error" : "")}
             aria-invalid={!!fieldErrors.dashboard_chart_type}
-            className="w-full max-w-full flex-wrap items-stretch"
+            className="w-full max-w-full flex-wrap items-stretch max-md:w-fit"
             onValueChange={values => {
               const value = values[0];
               if (value !== "AREA" && value !== "BAR" && value !== "LINE") return;
@@ -751,7 +751,7 @@ export function SettingsEditor({
             {([["AREA", "面积图"], ["BAR", "柱状图"], ["LINE", "折线图"]] as const).map(([value, label]) =>
               <ToggleGroupItem key={value} value={value} type="button" disabled={save.isPending}
                 aria-invalid={!!fieldErrors.dashboard_chart_type}
-                className="h-auto min-h-8 min-w-0 flex-[1_1_6rem] whitespace-normal py-2 max-sm:min-h-11">{label}</ToggleGroupItem>)}
+                className="h-auto min-h-8 min-w-0 flex-[1_1_6rem] whitespace-normal py-2 max-md:flex-[0_1_auto] max-md:py-1">{label}</ToggleGroupItem>)}
           </ToggleGroup>
           <FieldDescription id={formId + "-chart-hint"}>用于未设置个人图形偏好的浏览器。</FieldDescription>
           {fieldErrors.dashboard_chart_type && <FieldError id={formId + "-chart-error"}>{fieldErrors.dashboard_chart_type}</FieldError>}

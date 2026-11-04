@@ -1251,7 +1251,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   transition-timing-function: var(--console-ease);
 }
 
-@media (pointer: coarse) {
+@media (pointer: coarse) and (min-width: 768px) {
   .trend-header :is([data-slot="toggle-group-item"], [data-slot="tabs-trigger"]) { min-width: 40px; min-height: 40px; }
   .trend-period [data-slot="select-trigger"] { min-height: max(2rem, 40px); }
 }
@@ -1268,6 +1268,20 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 }
 @container card (max-width: 15rem) {
   .trend-summary { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 767px) {
+  .trend-controls { justify-content: flex-start; }
+  .trend-tabs { flex: 0 1 auto; flex-wrap: wrap; }
+  .trend-tabs [data-slot="tabs-trigger"] { min-width: 40px; min-height: 2rem; flex: 0 1 auto; padding-inline: 3px; }
+  .trend-tabs [data-slot="tabs-trigger"]:first-child { flex-shrink: 1; white-space: normal; }
+  .trend-metrics [data-slot="toggle-group-item"] { padding-inline: 0.1875rem; }
+}
+@media (max-width: 767px) and (pointer: coarse) {
+  .trend-period [data-slot="select-trigger"] { min-height: max(2rem, 40px); }
+  .trend-types [data-slot="toggle-group-item"] { margin-inline: 4px; }
+  .trend-type-tooltip { display: none; }
+  .trend-type-tooltip,
+  [role="presentation"]:has(> .trend-type-tooltip) { pointer-events: none; }
 }
 .daily-report {
   display: flex;
@@ -1535,6 +1549,10 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
     .order-summary-amounts { flex-direction: row; flex-wrap: wrap; align-items: baseline; gap: 0.375rem 1rem; }
     .order-summary-amounts > div { flex-direction: row; flex-wrap: wrap; align-items: baseline; gap: 0.125rem 0.375rem; }
   }
+}
+@media (max-width: 767px) {
+  [data-list-mobile-leading] > [data-slot="toggle-group"] { width: fit-content; max-width: 100%; flex-wrap: wrap; }
+  [data-list-mobile-leading] [data-slot="toggle-group-item"] { flex: 0 1 auto; }
 }
 @media (max-width: 1023px) and (max-height: 700px) {
   [data-checkout-page] > header { padding-block: 0.5rem; }

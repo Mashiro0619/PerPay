@@ -184,8 +184,8 @@ test.describe("compact mobile button visuals and separate touch targets", () => 
       // size and the center/edge midpoints on the actual control surface.
       const target = await expectTouchTarget(choice, { hitTest: false });
       expect([1, 3, 4, 5, 7].every(index => target.points[index]!.hit), "the button center and four edge midpoints belong to that control").toBe(true);
-      expect(target.x).toBeCloseTo(target.visual.x, 1);
-      expect(target.width).toBeCloseTo(target.visual.width, 1);
+      expect(target.x).toBeGreaterThanOrEqual(target.slot.x - .5);
+      expect(target.x + target.width).toBeLessThanOrEqual(target.slot.x + target.slot.width + .5);
       for (const x of [target.visual.x + 2, target.visual.x + target.visual.width - 2]) {
         expect(await choice.evaluate((element, point) => {
           const hit = document.elementFromPoint(point.x, point.y);
@@ -265,6 +265,89 @@ test.describe("compact mobile button visuals and separate touch targets", () => 
     expect(await dialog.evaluate(element => ({ height: element.getBoundingClientRect().height, top: element.getBoundingClientRect().top, scrollTop: element.querySelector('[data-overlay-detail]')!.scrollTop }))).toEqual(parentBefore);
     await expect(page).toHaveURL(sourceUrl);
   });
+
+  for (const width of [320, 390, 430]) {
+    test(`${width}px: short chart, reminder and settings choices keep compact visuals without stretching`, async ({ page, manifest }, info) => {
+      await page.setViewportSize({ width, height: 900 });
+      await login(page, manifest);
+      const card = page.locator(".trend-card");
+      const tabs = card.getByRole("tablist", { name: "收款趋势视图", exact: true });
+      await expect(tabs).toBeVisible();
+      const tabsBox = (await tabs.boundingBox())!;
+      expect(tabsBox.height).toBeCloseTo(40, 1);
+      expect(tabsBox.width).toBeLessThan(180);
+      for (const name of ["图表", "每日数据"]) {
+        const target = tabs.getByRole("tab", { name, exact: true });
+        expect((await centered(target, page)).visual.height).toBeCloseTo(32, 1);
+      }
+      await tabs.getByRole("tab", { name: "每日数据", exact: true }).tap();
+      await expect(card.getByRole("region", { name: "每日数据", exact: true })).toBeVisible();
+      await tabs.getByRole("tab", { name: "图表", exact: true }).tap();
+      const types = card.getByRole("group", { name: "图表类型", exact: true });
+      const typeGeometry = [];
+      for (const [name, value] of [["面积图", "AREA"], ["柱状图", "BAR"], ["折线图", "LINE"]] as const) {
+        const target = types.getByRole("button", { name, exact: true });
+        const geometry = await centered(target, page);
+        expect(geometry.visual.width).toBeCloseTo(32, 1);
+        expect(geometry.visual.height).toBeCloseTo(32, 1);
+        typeGeometry.push(geometry);
+        await tapOutsideVisible(page, target, "top");
+        await expect(card.locator('[data-slot="chart"]')).toHaveAttribute("data-chart-type", value);
+      }
+      await expectTouchGap(types.getByRole("button", { name: "面积图", exact: true }), types.getByRole("button", { name: "柱状图", exact: true }), "horizontal");
+      await record(page, info, { compactChoices: "trend", width, tabsBox, typeGeometry });
+      if (width === 320) {
+        await page.evaluate(() => document.documentElement.style.fontSize = "200%");
+        await page.clock.runFor(100);
+        expect((await tabs.boundingBox())!.height).toBeLessThanOrEqual(80);
+        for (const name of ["图表", "每日数据"]) {
+          const label = await tabs.getByRole("tab", { name, exact: true }).evaluate(element => {
+            const bounds = element.getBoundingClientRect();
+            const range = document.createRange();
+            range.selectNodeContents(element);
+            const lines = [...range.getClientRects()].filter(line => line.width && line.height);
+            return {
+              lineCount: new Set(lines.map(line => Math.round(line.top))).size,
+              contained: lines.every(line => line.left >= bounds.left - 1 && line.right <= bounds.right + 1 && line.top >= bounds.top - 1 && line.bottom <= bounds.bottom + 1),
+            };
+          });
+          expect(label.lineCount, `${name} remains a complete label at doubled text`).toBe(1);
+          expect(label.contained).toBe(true);
+        }
+        await record(page, info, { compactChoices: "trend-doubled-text", width });
+      }
+
+      await page.goto(manifest.origin + "/admin/work-items");
+      const range = page.locator("[data-list-mobile-leading]").getByRole("group", { name: "显示范围", exact: true });
+      await expect(range).toBeVisible();
+      const rangeBox = (await range.boundingBox())!;
+      expect(rangeBox.width).toBeLessThan(200);
+      for (const name of ["待处理", "已忽略"]) {
+        const target = range.getByRole("button", { name, exact: true });
+        expect((await centered(target, page)).visual.height).toBeCloseTo(32, 1);
+        await target.tap();
+        await expect(target).toHaveAttribute("aria-pressed", "true");
+      }
+      await record(page, info, { compactChoices: "work-items", width, rangeBox });
+
+      await page.goto(manifest.origin + "/admin/settings/display");
+      await page.getByRole("link", { name: "编辑界面显示", exact: true }).click();
+      const editor = page.locator("[data-overlay-content]");
+      const defaults = editor.getByRole("group", { name: "收款趋势默认图形", exact: true });
+      const defaultGeometry = [];
+      for (const name of ["面积图", "柱状图", "折线图"]) {
+        const target = defaults.getByRole("button", { name, exact: true });
+        const geometry = await centered(target, page);
+        expect(geometry.visual.height).toBeCloseTo(32, 1);
+        expect(geometry.visual.width).toBeLessThan(120);
+        defaultGeometry.push(geometry);
+        await target.tap();
+        await expect(target).toHaveAttribute("aria-pressed", "true");
+      }
+      expect(Math.max(...defaultGeometry.map(geometry => geometry.visual.y)) - Math.min(...defaultGeometry.map(geometry => geometry.visual.y))).toBeLessThanOrEqual(1);
+      await record(page, info, { compactChoices: "display-default", width, defaultGeometry });
+    });
+  }
 
   test("200% text retains complete scrollable touch targets without fixed visual-size assertions", async ({ page, manifest }, info) => {
     await page.setViewportSize({ width: 320, height: 560 });

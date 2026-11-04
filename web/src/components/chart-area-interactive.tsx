@@ -236,7 +236,7 @@ export function ChartAreaInteractive({
                         <SelectionMotionIndicator active={effectiveType === value} />
                         <Icon aria-hidden="true" />
                       </ToggleGroupItem>
-                      <TooltipContent role="tooltip">{label}</TooltipContent>
+                      <TooltipContent role="tooltip" className="trend-type-tooltip">{label}</TooltipContent>
                     </Tooltip>
                   ))}
                 </ToggleGroup>
