@@ -125,12 +125,12 @@ describe("ordinary administrator views", () => {
         return undefined;
       },
     });
-    await userEvent.setup().click(await screen.findByRole("tab", { name: /采集记录/ }));
+    const sources = await screen.findByRole("region", { name: /^采集记录/ });
     expect(
-      await screen.findByRole("heading", { name: "可能匹配的订单" }),
+      await within(sources).findByRole("heading", { name: "可能匹配的订单" }),
     ).toBeVisible();
     expect(new URLSearchParams(view.router.state.location.search).get("overlay")).toContain("/reconciliation/transactions/" + ledgerId);
-    expect(screen.getByText("PerPay 记录状态")).toBeVisible();
+    expect(within(sources).getByText("PerPay 记录状态")).toBeVisible();
     expect(screen.getByText("未分配", { exact: true })).toBeVisible();
     expect(screen.queryByText(/规则版本/)).not.toBeInTheDocument();
   });

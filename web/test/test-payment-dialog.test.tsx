@@ -145,7 +145,7 @@ describe("test-payment dialog lifecycle", () => {
     );
   });
 
-  it("keeps technical information inline with the payment result in the same business overlay", async () => {
+  it("opens technical information in its dialog and returns to the same payment result", async () => {
     const view = mount();
     const user = userEvent.setup();
     const { dialog } = await open(user);
@@ -155,9 +155,13 @@ describe("test-payment dialog lifecycle", () => {
     await screen.findByRole("heading", { name: "测试订单已创建" });
     const toggle = within(dialog).getByRole("button", { name: "技术信息" });
     await user.click(toggle);
-    expect(within(dialog).getByLabelText("技术信息")).toHaveTextContent(orderId);
-    expect(screen.getAllByRole("dialog")).toHaveLength(1);
-    await user.click(toggle);
+    const technical = await screen.findByRole("dialog", { name: "技术信息" });
+    expect(technical).not.toBe(dialog);
+    expect(dialog.isConnected).toBe(true);
+    const data = JSON.parse(within(technical).getByRole("group", { name: "技术信息" }).textContent!);
+    expect(data).toMatchObject({ order_id: orderId, payable_amount_cents: createdOrder.payable_amount_cents });
+    await user.click(within(technical).getByRole("button", { name: "关闭技术信息" }));
+    await waitFor(() => expect(technical).not.toBeInTheDocument());
     expect(toggle).toHaveFocus();
     expect(within(dialog).getByRole("heading", { name: "测试订单已创建" })).toBeVisible();
     expect(view.writes()).toHaveLength(1);

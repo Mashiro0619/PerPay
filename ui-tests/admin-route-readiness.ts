@@ -61,7 +61,7 @@ export async function waitForAdminRoute(page: Page, route: string) {
   const pathname = new URL(target ?? route, "http://admin.test").pathname;
   if (pathname.includes("/onboarding/")) await expect(foreground.locator("[data-onboarding-step-heading]")).toBeVisible();
   if (/^\/sites\/[^/]+\/summary$/.test(pathname) || /^\/settings\/security\/sessions\//.test(pathname)) {
-    await expect(foreground.locator("[data-settings-summary]")).toBeVisible();
+    await expect(foreground.locator("[data-detail-fields]").first()).toBeVisible();
   }
   if (pathname === "/audit") {
     const search = new URL(route, "http://admin.test").searchParams;
