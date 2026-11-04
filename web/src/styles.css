@@ -1567,6 +1567,12 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 [data-overlay-content] > :not([data-slot="dialog-close"]) { min-width: 0; }
 [data-overlay-content] [data-overlay-primary] > [data-slot="dialog-header"] { flex: none; padding-inline-end: 0; }
 [data-overlay-content] [data-overlay-primary] > [data-slot="dialog-header"] [data-page-heading] { min-width: 0; }
+[data-overlay-heading]:focus { outline: none; }
+[data-overlay-heading]:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
 [data-overlay-content] [data-overlay-primary] > [data-slot="dialog-header"] h1 {
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
   overflow: hidden; overflow-wrap: anywhere; line-height: 1.3;

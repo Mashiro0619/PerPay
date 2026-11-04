@@ -240,7 +240,7 @@ export function OverlayHost({ routes }: { routes?: ReactNode }) {
             <div data-overlay-primary hidden={!!activeStep} inert={!!activeStep} className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden">
               <DialogHeader>
                 <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-1 sm:gap-2">
-                  <DialogTitle className="min-w-0" render={<div ref={title} tabIndex={-1} />}><PageHeadingSlot title={definition?.title ?? "无法打开详情"} /></DialogTitle>
+                  <DialogTitle className="min-w-0" render={<div ref={title} tabIndex={-1} data-overlay-heading />}><PageHeadingSlot title={definition?.title ?? "无法打开详情"} /></DialogTitle>
                   <PageHeaderActionsSlot className="max-w-full flex-wrap justify-end" />
                   <DialogClose className="col-start-3" render={<Button variant="ghost" size="icon" />}>
                     <XIcon />
