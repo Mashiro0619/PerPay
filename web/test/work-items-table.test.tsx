@@ -169,7 +169,7 @@ describe("work item business context", () => {
     expect(screen.getByLabelText("当前地址")).toHaveTextContent("/work-items");
   });
 
-  it.each([1440, 390, 320])("distinguishes compact reminders by order and amount, with an independent desktop site field at %spx", (width) => {
+  it.each([1440, 390, 320])("distinguishes compact reminders by order, amount and website at %spx", (width) => {
     mobileMedia(width);
     const fetch = vi.fn();
     vi.stubGlobal("fetch", fetch);
@@ -198,8 +198,7 @@ describe("work item business context", () => {
       expect(productLink).toBeVisible();
       expect(productLink.closest('[aria-hidden="true"]')).toBeNull();
       expect(row.queryByText(merchantNumber)).not.toBeInTheDocument();
-      if (width >= 640) expect(row.getByRole("link", { name: "订阅网站 · site_a" })).toBeVisible();
-      else expect(row.queryByRole("link", { name: "订阅网站 · site_a" })).not.toBeInTheDocument();
+      expect(row.getByRole("link", { name: "订阅网站 · site_a" })).toBeVisible();
       expect(row.getByRole("group", { name: "应付金额 " + amount })).toBeVisible();
       expect(row.queryByText("请求超时")).not.toBeInTheDocument();
     }
@@ -210,6 +209,10 @@ describe("work item business context", () => {
     } else {
       expect(screen.getByRole("list", { name: "待处理提醒列表" })).toBeVisible();
       expect(screen.queryByRole("button", { name: "展开信息" })).not.toBeInTheDocument();
+      for (const row of rows()) {
+        expect(row.querySelectorAll(".business-summary-field")).toHaveLength(3);
+        expect(within(row).getByText("提醒时间", { selector: "dt" }).nextElementSibling).toHaveTextContent("2026/10/30 11:00");
+      }
     }
     expect(fetch).not.toHaveBeenCalled();
   });
@@ -244,7 +247,7 @@ describe("work item business context", () => {
     if (item.type === "LEDGER_CONFLICT") expect(screen.queryByTitle(ledgerId)).not.toBeInTheDocument();
   });
 
-  it.each([1440, 320])("preserves reminder and order navigation with desktop site links at %spx", async (width) => {
+  it.each([1440, 320])("preserves reminder, order and website navigation at %spx", async (width) => {
     mobileMedia(width);
     const item = notification();
     mount([item]);
@@ -258,13 +261,12 @@ describe("work item business context", () => {
     expect(screen.getByLabelText("当前地址")).toHaveTextContent("/notifications/" + item.resource_id);
     await user.click(within(row).getByRole("link", { name: "查看订单：专业版订阅" }));
     expect(screen.getByLabelText("当前地址")).toHaveTextContent("/orders/" + orderId);
-    if (width >= 640) {
-      await user.click(within(row).getByRole("link", { name: "订阅网站 · site_a" }));
-      expect(screen.getByLabelText("当前地址")).toHaveTextContent("/sites/site_a/summary");
-    } else expect(within(row).queryByRole("link", { name: "订阅网站 · site_a" })).not.toBeInTheDocument();
+    await user.click(within(row).getByRole("link", { name: "订阅网站 · site_a" }));
+    expect(screen.getByLabelText("当前地址")).toHaveTextContent("/sites/site_a/summary");
   });
 
-  it.each([false, true])("shows the site globally and keeps scoped order and reminder destinations (scoped: %s)", async (scoped) => {
+  it.each([[false, 1440], [true, 1440], [false, 390], [true, 390]] as const)("shows the site globally and keeps scoped destinations (scoped: %s, width: %s)", async (scoped, width) => {
+    mobileMedia(width);
     const fetch = vi.fn(async () => json({ data: { client_id: "site_a", configuration: { name: "订阅网站" } } }));
     vi.stubGlobal("fetch", fetch);
     const prefix = scoped ? "/sites/site_a" : "";

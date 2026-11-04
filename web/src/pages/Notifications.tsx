@@ -334,6 +334,7 @@ function DeliveryPage({
                   renderSummary={(delivery, context) => (
                     <ListSummary
                       identity={columns[0]!.cell(delivery, context)}
+                      source={!clientId && <SiteIdentity clientId={delivery.order_summary?.api_client_id} name={delivery.order_summary?.site_name} />}
                       details={columns.filter((column) =>
                         context.isColumnVisible(column.id) && !context.isSummaryPrimary(column.id),
                       ).map((column) => (
@@ -345,7 +346,7 @@ function DeliveryPage({
                       {columns.filter((column) =>
                         column.id !== "identity" && context.isSummaryPrimary(column.id),
                       ).map((column) => (
-                        <ListSummaryField key={column.id} label={column.label}>
+                        <ListSummaryField key={column.id} label={column.label} visibleLabel={column.id === "attempt_count" || column.id === "next_attempt_at"}>
                           {column.cell(delivery, context)}
                         </ListSummaryField>
                       ))}

@@ -256,6 +256,7 @@ export function WorkItemsTable({
       renderSummary={(item, context) => (
         <ListSummary
           identity={columns[0]!.cell(item, context)}
+          source={control && !clientId && <SiteIdentity clientId={item.order_summary?.api_client_id} name={item.order_summary?.site_name} />}
           aside={columns.find((column) => column.id === "actions")!.cell(item, context)}
           details={columns.filter((column) =>
             context.isColumnVisible(column.id) && !context.isSummaryPrimary(column.id),

@@ -196,6 +196,7 @@ export function DataTable({
         renderSummary={(order, context) => (
           <ListSummary
             identity={columns[0]!.cell(order, context)}
+            source={control && !clientId && <SiteIdentity clientId={order.api_client_id} name={order.site_name} />}
             aside={(context.isSummaryPrimary("payable_amount_cents") || context.isSummaryPrimary("received_amount_cents")) && (
               <dl className="order-summary-amounts flex flex-col items-end gap-3">
                 {context.isSummaryPrimary("payable_amount_cents") && <div className="flex flex-col items-end gap-1">

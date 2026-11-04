@@ -90,11 +90,14 @@ export function ListDateTime({
 export function ListSummary({
   identity,
   aside,
+  source,
   children,
   details,
 }: {
   identity: ReactNode;
   aside?: ReactNode;
+  /** Cross-site context stays visible without displacing the three key fields. */
+  source?: ReactNode;
   children?: ReactNode;
   /** Selected secondary fields; unmounted after this record finishes collapsing. */
   details?: ReactNode;
@@ -108,6 +111,7 @@ export function ListSummary({
         <div className="list-summary-identity">{identity}</div>
         {aside && <ItemActions className="list-summary-aside">{aside}</ItemActions>}
       </ItemHeader>
+      {compact && source && <div className="list-summary-source flex min-w-0 items-baseline gap-1.5"><span className="shrink-0">网站</span>{source}</div>}
       {shown.length > 0 && <dl className="business-summary-fields">{shown}</dl>}
       <ListSummaryDetails>{details}</ListSummaryDetails>
     </ItemContent>
@@ -160,12 +164,14 @@ export function ListSummaryDetails({ children }: { children?: ReactNode }) {
 export function ListSummaryField({
   label,
   children,
+  visibleLabel = false,
 }: {
   label: string;
   children: ReactNode;
+  visibleLabel?: boolean;
 }) {
   return (
-    <div className="business-summary-field">
+    <div className="business-summary-field" data-visible-label={visibleLabel || undefined}>
       <dt>{label}</dt>
       <dd>{children}</dd>
     </div>
