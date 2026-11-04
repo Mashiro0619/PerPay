@@ -53,6 +53,7 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
     [qrFailed, setQrFailed] = useState(false),
     [qrRetry, setQrRetry] = useState(0);
   const qrImage = useRef<HTMLImageElement>(null),
+    qrRetryButton = useRef<HTMLButtonElement>(null),
     heading = useRef<HTMLHeadingElement>(null),
     wasExpanded = useRef(false);
   useEffect(() => controller.start(), [controller]);
@@ -79,9 +80,11 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
       setExpanded(false);
       setQrFailed(false);
       if (wasExpanded.current) heading.current?.focus();
+    } else if (qrFailed && wasExpanded.current) {
+      qrRetryButton.current?.focus();
     }
     wasExpanded.current = expanded;
-  }, [canPay, expanded]);
+  }, [canPay, expanded, qrFailed]);
   useEffect(() => {
     document.title =
       (order?.merchant_order_no ?? copy.heading) +
@@ -333,36 +336,17 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                 </div>
                 {canPay && (
                   <>
-                    <div className="flex justify-center">
-                      <img
-                        ref={qrImage}
-                        src={qrSource}
-                        width={256}
-                        height={256}
-                        className="h-auto w-60 max-w-full rounded-lg bg-white lg:w-72 xl:w-80"
-                        alt="用于支付此订单的支付宝付款二维码"
-                        data-qr-image
-                        onLoad={() => setQrFailed(false)}
-                        onError={() => {
-                          setQrFailed(true);
-                          setExpanded(false);
-                        }}
-                      />
-                    </div>
-                  </>
-                )}
-                {canPay && (
-                  <>
                     {qrFailed ? (
-                      <Alert variant="destructive">
+                      <Alert variant="destructive" data-checkout-qr-failed>
                         <AlertCircle />
                         <AlertTitle>二维码加载失败</AlertTitle>
                         <AlertDescription>
                           <Button
+                            ref={qrRetryButton}
                             variant="outline"
                             onClick={() => {
                               setQrFailed(false);
-                              setQrRetry(Date.now());
+                              setQrRetry(retry => retry + 1);
                             }}
                           >
                             重新加载二维码
@@ -370,50 +354,72 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                         </AlertDescription>
                       </Alert>
                     ) : (
-                      <div className="flex flex-wrap justify-center gap-2">
-                        <Dialog open={expanded} onOpenChange={setExpanded}>
-                          <DialogTrigger render={<Button variant="outline" />}>
-                            <Maximize data-icon="inline-start" />
-                            放大二维码
-                          </DialogTrigger>
-                          <DialogContent className="flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden sm:max-w-md">
-                            <DialogHeader className="shrink-0 pr-12">
-                              <DialogTitle>支付宝付款二维码</DialogTitle>
-                              <DialogDescription>
-                                请按此金额付款，勿重复支付。
-                              </DialogDescription>
-                            </DialogHeader>
-                            <div className="flex min-h-0 flex-col gap-4 overflow-y-auto" data-qr-dialog-body>
-                              <p className="text-center text-2xl font-semibold tabular-nums">
-                                {checkoutMoney(cents)}
-                              </p>
-                              <img
-                                src={qrSource}
-                                width={640}
-                                height={640}
-                                className="w-full shrink-0 rounded-lg bg-white"
-                                alt="放大的支付宝付款二维码"
-                                data-qr-dialog-image
+                      <>
+                        <div className="flex justify-center">
+                          <img
+                            ref={qrImage}
+                            src={qrSource}
+                            width={256}
+                            height={256}
+                            className="h-auto w-60 max-w-full rounded-lg bg-white lg:w-72 xl:w-80"
+                            alt="用于支付此订单的支付宝付款二维码"
+                            data-qr-image
+                            onLoad={() => setQrFailed(false)}
+                            onError={() => {
+                              setQrFailed(true);
+                              setExpanded(false);
+                            }}
+                          />
+                        </div>
+                        <div className="flex flex-wrap justify-center gap-2">
+                          <Dialog open={expanded} onOpenChange={setExpanded}>
+                            <DialogTrigger render={<Button variant="outline" />}>
+                              <Maximize data-icon="inline-start" />
+                              放大二维码
+                            </DialogTrigger>
+                            <DialogContent className="flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden sm:max-w-md">
+                              <DialogHeader className="shrink-0 pr-12">
+                                <DialogTitle>支付宝付款二维码</DialogTitle>
+                                <DialogDescription>
+                                  请按此金额付款，勿重复支付。
+                                </DialogDescription>
+                              </DialogHeader>
+                              <div className="flex min-h-0 flex-col gap-4 overflow-y-auto" data-qr-dialog-body>
+                                <p className="text-center text-2xl font-semibold tabular-nums">
+                                  {checkoutMoney(cents)}
+                                </p>
+                                <img
+                                  src={qrSource}
+                                  width={640}
+                                  height={640}
+                                  className="w-full shrink-0 rounded-lg bg-white"
+                                  alt="放大的支付宝付款二维码"
+                                  data-qr-dialog-image
+                                  onError={() => {
+                                    setQrFailed(true);
+                                    setExpanded(false);
+                                  }}
+                                />
+                              </div>
+                            </DialogContent>
+                          </Dialog>
+                          <Button
+                            variant="outline"
+                            disabled={download.busy || state.unavailable}
+                            onClick={download.save}
+                          >
+                            {download.busy ? (
+                              <Spinner
+                                aria-hidden="true"
+                                data-icon="inline-start"
                               />
-                            </div>
-                          </DialogContent>
-                        </Dialog>
-                        <Button
-                          variant="outline"
-                          disabled={download.busy || state.unavailable}
-                          onClick={download.save}
-                        >
-                          {download.busy ? (
-                            <Spinner
-                              aria-hidden="true"
-                              data-icon="inline-start"
-                            />
-                          ) : (
-                            <Download data-icon="inline-start" />
-                          )}
-                          保存二维码
-                        </Button>
-                      </div>
+                            ) : (
+                              <Download data-icon="inline-start" />
+                            )}
+                            保存二维码
+                          </Button>
+                        </div>
+                      </>
                     )}
                     {download.message && (
                       <p

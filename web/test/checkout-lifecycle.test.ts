@@ -856,7 +856,7 @@ describe("checkout shadcn view and PNG lifecycle", () => {
       expect(view.click).not.toHaveBeenCalled();
     },
   );
-  it("keeps a failed QR visible across polling until the user retries its image", async () => {
+  it("keeps the QR failure visible across polling and mounts a new image on retry", async () => {
     const view = prepareDownload();
     fireEvent.error(view.image);
     expect(screen.getByText("二维码加载失败")).toBeVisible();
@@ -864,8 +864,14 @@ describe("checkout shadcn view and PNG lifecycle", () => {
       await vi.advanceTimersByTimeAsync(1500);
     });
     expect(screen.getByText("二维码加载失败")).toBeVisible();
+    expect(view.image).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "重新加载二维码" }));
-    expect(view.image.getAttribute("src")).toContain("retry=");
+    const retriedImage = screen.getByAltText("用于支付此订单的支付宝付款二维码");
+    expect(retriedImage).not.toBe(view.image);
+    expect(retriedImage.getAttribute("src")).toContain("retry=");
+    fireEvent.load(retriedImage);
+    expect(screen.queryByText("二维码加载失败")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "保存二维码" })).toBeEnabled();
   });
   it("lets the user retry a PNG conversion without hiding the QR", () => {
     const view = prepareDownload();
