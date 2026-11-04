@@ -7,7 +7,7 @@ export function measureDetailTextContrast(element: Element, scope: "detail" | "t
     ? element.closest('[data-overlay-record="true"] [data-overlay-primary] > [data-slot="dialog-header"]') : null);
   const tabScroller = element.closest("[data-settings-tabs-scroll], .audit-view-scroll");
   const eligible = scope === "tabs" ? tabScroller && element.matches('button[role="tab"][data-slot="tabs-trigger"]') && element.getAttribute("aria-disabled") !== "true" && !element.hasAttribute("disabled")
-    : detail && element.matches('p, h1, h2, h3, h4, h5, h6, dt, dd, span, a, div[data-slot$="-description"]');
+    : detail && element.matches('p, h1, h2, h3, h4, h5, h6, dt, dd, span, a, div[data-slot$="-description"], div[data-slot="item-title"]');
   if (!eligible ||
     [...element.querySelectorAll("*")].some(node => !["SPAN", "TIME", "A", "STRONG", "EM", "B", "I", "CODE", "BR", "SMALL"].includes(node.tagName))) return null;
   const context = document.createElement("canvas").getContext("2d")!;

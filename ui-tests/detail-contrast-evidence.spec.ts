@@ -49,6 +49,47 @@ test("detail contrast evidence measures each text run and rejects low contrast, 
   expect((await resolveDetailTextContrast(page, incomplete))[0]?.resolved).toBe(false);
 });
 
+test("detail ItemTitle evidence verifies each glyph and rejects clipped, obscured and low-contrast text", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.setContent(`<style>
+    body { margin: 0; font: 14px/1.5 Arial, sans-serif; }
+    [data-overlay-detail] { padding: 24px; background: white; color: #444; }
+    [data-slot=item-header] { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    [data-slot=item-title] { display: flex; width: fit-content; align-items: center; gap: 8px; overflow: hidden; line-height: 1.375; font-weight: 500; }
+  </style><div data-overlay-detail><div data-slot="item-header">
+    <div id="target" data-slot="item-title">第 <!-- -->1<!-- --> 次</div>
+    <div data-slot="item-title">通知已确认</div>
+  </div></div>`);
+  const target = page.locator("#target");
+  const readable = (await resolveDetailTextContrast(page, incomplete))[0];
+  expect(readable?.resolved).toBe(true);
+  const runs = readable!.measurement.initial.runs;
+  expect(runs).toHaveLength(3);
+  expect(runs.flatMap(run => run.characters).map(character => character.text)).toEqual(["第", "1", "次"]);
+  expect(runs.every(run => run.contrast !== null && run.contrast >= 4.5 && run.characters.every(character =>
+    character.contained && character.hits.length === 5 && character.hits.every(hit => hit.passed) && !character.overlappingPaint.length))).toBe(true);
+
+  await target.evaluate(node => { (node as HTMLElement).style.height = "9px"; });
+  expect((await resolveDetailTextContrast(page, incomplete))[0]?.resolved).toBe(false);
+  expect(await target.evaluate(node => node.scrollTop)).toBe(0);
+  await target.evaluate(node => { (node as HTMLElement).style.removeProperty("height"); (node as HTMLElement).style.color = "#bbb"; });
+  expect((await resolveDetailTextContrast(page, incomplete))[0]?.resolved).toBe(false);
+  await target.evaluate(node => { (node as HTMLElement).style.removeProperty("color"); });
+
+  await target.evaluate(node => {
+    const box = node.getBoundingClientRect(), cover = document.createElement("div");
+    cover.id = "item-title-cover";
+    Object.assign(cover.style, { position: "fixed", left: box.left + "px", top: box.top + "px", width: "14px", height: "22px", background: "white", pointerEvents: "none" });
+    node.closest("[data-overlay-detail]")!.append(cover);
+  });
+  const obscured = (await resolveDetailTextContrast(page, incomplete))[0];
+  expect(obscured?.resolved).toBe(false);
+  expect(obscured?.measurement.initial.runs.some(run => run.characters.some(character => character.overlappingPaint.length))).toBe(true);
+  await page.locator("#item-title-cover").evaluate(node => node.remove());
+  await page.locator("[data-overlay-detail]").evaluate(node => node.removeAttribute("data-overlay-detail"));
+  expect(await target.evaluate(measureDetailTextContrast)).toBeNull();
+});
+
 test("scrolling tab evidence reveals complete text without changing selection, focus or vertical position", async ({ page }) => {
   await page.setContent(`<style>
     body { margin: 0; background: white; color: #444; font: 14px/1.5 Arial, sans-serif; }
