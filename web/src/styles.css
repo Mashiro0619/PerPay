@@ -745,6 +745,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   -webkit-tap-highlight-color: transparent;
 }
 .site-overview-card-surface {
+  container-name: site-overview-card;
   container-type: inline-size;
   min-width: 0;
   width: 100%;
@@ -760,6 +761,14 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   white-space: normal;
   word-break: normal;
   overflow-wrap: anywhere;
+}
+@container site-overview-card (max-width: 16rem) {
+  .site-overview-card-header { grid-template-columns: minmax(0, 1fr); }
+  .site-overview-card-header > [data-slot="card-action"] {
+    grid-column: 1;
+    grid-row: auto;
+    justify-self: start;
+  }
 }
 .site-overview-card-amount {
   display: block;

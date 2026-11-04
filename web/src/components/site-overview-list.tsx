@@ -42,7 +42,7 @@ function SiteOverviewCard({ site, label, range, maximum }: {
       aria-describedby={summaryId}
     >
       <Card size="sm" className="site-overview-card-surface">
-        <CardHeader className="min-w-0">
+        <CardHeader className="site-overview-card-header min-w-0">
           <CardTitle
             className="site-overview-card-title"
             role="heading"
