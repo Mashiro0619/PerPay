@@ -2,6 +2,7 @@ import * as React from "react"
 import { Dialog as SheetPrimitive } from "@base-ui/react/dialog"
 import { cn } from "cn"
 import { useOverlayViewport } from "@/hooks/use-overlay-viewport"
+import { useToastFooterRef } from "@/lib/toast-layout"
 
 import { Button } from "@/components/ui/button"
 import { XIcon } from "lucide-react"
@@ -95,9 +96,11 @@ function SheetHeader({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
-function SheetFooter({ className, ...props }: React.ComponentProps<"div">) {
+function SheetFooter({ className, ref, ...props }: React.ComponentProps<"div">) {
+  const footerRef = useToastFooterRef(ref)
   return (
     <div
+      ref={footerRef}
       data-slot="sheet-footer"
       className={cn("mt-auto flex flex-col gap-2 p-4", className)}
       {...props}

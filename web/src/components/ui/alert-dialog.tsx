@@ -4,6 +4,7 @@ import * as React from "react"
 import { AlertDialog as AlertDialogPrimitive } from "@base-ui/react/alert-dialog"
 import { cn } from "cn"
 import { useOverlayViewport } from "@/hooks/use-overlay-viewport"
+import { useToastFooterRef } from "@/lib/toast-layout"
 
 import { Button } from "@/components/ui/button"
 
@@ -86,10 +87,13 @@ function AlertDialogHeader({
 
 function AlertDialogFooter({
   className,
+  ref,
   ...props
 }: React.ComponentProps<"div">) {
+  const footerRef = useToastFooterRef(ref)
   return (
     <div
+      ref={footerRef}
       data-slot="alert-dialog-footer"
       className={cn(
         "-mx-4 -mb-4 flex flex-col-reverse gap-2 rounded-b-xl border-t bg-muted/50 p-4 group-data-[size=sm]/alert-dialog-content:grid group-data-[size=sm]/alert-dialog-content:grid-cols-2 sm:flex-row sm:justify-end",

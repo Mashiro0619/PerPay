@@ -2,6 +2,7 @@ import * as React from "react"
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 import { cn } from "cn"
 import { useOverlayViewport } from "@/hooks/use-overlay-viewport"
+import { useToastFooterRef } from "@/lib/toast-layout"
 
 import { Button } from "@/components/ui/button"
 import { XIcon } from "lucide-react"
@@ -103,12 +104,15 @@ function DialogFooter({
   className,
   showCloseButton = false,
   children,
+  ref,
   ...props
 }: React.ComponentProps<"div"> & {
   showCloseButton?: boolean
 }) {
+  const footerRef = useToastFooterRef(ref)
   return (
     <div
+      ref={footerRef}
       data-slot="dialog-footer"
       className={cn(
         "-mx-4 -mb-4 flex flex-col-reverse gap-2 rounded-b-xl border-t bg-muted/50 p-4 sm:flex-row sm:justify-end",

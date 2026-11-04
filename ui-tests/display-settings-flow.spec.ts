@@ -97,12 +97,14 @@ for (const layout of [
         expect((await response).status()).toBe(200);
         await expect(dialog.getByRole("button", { name: "保存", exact: true })).toBeDisabled();
         await expect(dialog.getByRole("button", { name: "关闭", exact: true })).toBeEnabled();
-        if (layout.width < 768) {
-          // The floating save feedback temporarily covers the phone footer.
-          await page.getByRole("button", { name: "关闭提示", exact: true }).click();
-          await expect(page.locator('[data-slot="toast"]')).toHaveCount(0);
-        }
-        await dialog.getByRole("button", { name: "关闭", exact: true }).click();
+        await expect(page.locator('[data-slot="toast-title"]')).toHaveText("已保存");
+        const close = dialog.getByRole("button", { name: "关闭", exact: true });
+        const closeHit = await close.evaluate(element => {
+          const bounds = element.getBoundingClientRect();
+          return element.contains(document.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2));
+        });
+        expect(closeHit, "save feedback leaves the footer immediately clickable").toBe(true);
+        await close.click({ timeout: 1000 });
         await expect(dialog).toHaveCount(0);
         await expect(defaultRow.locator("dd")).toHaveText("柱状图");
         expect((await read()).display.dashboard_chart_type).toBe("BAR");

@@ -13,6 +13,7 @@ import { ErrorNotice, Loading } from "@/components/request-state";
 import { RequestNoticeProvider } from "@/lib/request-notices";
 import { RequestNoticeBanner } from "@/components/request-notice-banner";
 import { Button } from "@/components/ui/button";
+import { useToastFooterDock } from "@/lib/toast-layout";
 
 type RootPosition = { trigger: HTMLElement | null; triggerId: string | null; y: number; canReturn: boolean };
 type InternalNavigation = OverlayNavigation & {
@@ -197,6 +198,7 @@ export function OverlayHost({ routes }: { routes?: ReactNode }) {
     });
   }, []);
   const activeStep = steps.at(-1) ?? null;
+  useToastFooterDock(actionsTarget, overlay?.hasOverlay ?? false);
   const restoreStepFocus = useCallback(() => {
     if (!overlayActive.current || !pendingStepFocus.current) { pendingStepFocus.current = null; return; }
     let target = pendingStepFocus.current();
