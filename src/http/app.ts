@@ -21,7 +21,7 @@ import { MATCH_SORT_FIELDS, CONFLICT_SORT_FIELDS, EXCEPTION_SORT_FIELDS, WORK_IT
 import { ListQueryError, readListQuery, isDefaultQuery, ORDER_SORT_FIELDS, DELIVERY_SORT_FIELDS, type ListQuery, type OrderSort, type DeliverySort } from "../shared/list-query.ts";
 import { encodeListCursor, decodeListCursor } from "./list-cursor.ts";
 import { readAdminLedgerPage, readAdminLedgerDetail } from "../ledger/admin-query.ts";
-import { adminLedgerEntryEnvironment, resolveAdminLedgerEnvironment, readAdminLedgerPageQuery, encodeAdminLedgerCursor } from "./admin-ledger-query.ts";
+import { adminLedgerEntryAccount, adminLedgerEntryEnvironment, resolveAdminLedgerEnvironment, readAdminLedgerPageQuery, encodeAdminLedgerCursor } from "./admin-ledger-query.ts";
 import { randomBytes, randomUUID } from "node:crypto";
 
 import type { HttpBindings } from "@hono/node-server";
@@ -1496,7 +1496,10 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
       if (!ledgerEntry) {
         throw new HttpApiError(404, "ledger_entry_not_found", "流水不存在");
       }
-      return context.json({ data: serializeReconciliationLedger(ledgerEntry) });
+      return context.json({ data: {
+        ...serializeReconciliationLedger(ledgerEntry),
+        ...adminLedgerEntryAccount(dependencies.database, ledgerEntry.ledgerEntryId),
+      } });
     },
   );
 

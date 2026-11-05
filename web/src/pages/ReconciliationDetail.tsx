@@ -12,7 +12,8 @@ import { ArrowLeft, FileQuestion } from "lucide-react";
 import { Navigate, useLocation, useParams } from "react-router";
 import { LedgerDetailRedirect } from "./ReconciliationRedirect";
 import { Link, useDetailBack } from "@/navigation";
-import { queryClient, result } from "@/api/client";
+import { result } from "@/api/client";
+import { refreshReconciliationDetails } from "@/lib/record-refresh";
 import { dateTime, money } from "@/lib/format";
 import { label } from "@/lib/labels";
 import { QueryView } from "@/components/request-state";
@@ -106,7 +107,7 @@ function EvidenceHeading({
     {density === "comfortable" || overlay ? (
       <DetailNavigation back={back}>
         <PageHeaderActions><RefreshButton disabled={fetching > 0} onClick={() => {
-          void queryClient.invalidateQueries({ predicate: query => query.queryKey.includes(resourceId) });
+          void refreshReconciliationDetails();
         }} busy={fetching > 0} /></PageHeaderActions>
       </DetailNavigation>
     ) : (
@@ -120,7 +121,7 @@ function EvidenceHeading({
         {back.label}
       </Link>
       <PageHeaderActions><RefreshButton disabled={fetching > 0} onClick={() => {
-          void queryClient.invalidateQueries({ predicate: query => query.queryKey.includes(resourceId) });
+          void refreshReconciliationDetails();
         }} busy={fetching > 0} /></PageHeaderActions>
     </div>)}
     </>

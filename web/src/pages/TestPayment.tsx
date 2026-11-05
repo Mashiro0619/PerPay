@@ -1,5 +1,5 @@
 import { SitePicker } from "@/components/site-picker";
-import { useId, useRef, type FormEvent } from "react";
+import { useId, useLayoutEffect, useRef, type FormEvent } from "react";
 import { ArrowLeft, AlertCircle } from "lucide-react";
 import { Link } from "@/navigation";
 import { useCurrentTestPayment } from "@/lib/test-payment-request";
@@ -52,7 +52,6 @@ type TestPaymentDialogProps = {
 };
 
 export default function TestPayment() {
-  const { generation } = useCurrentTestPayment();
   return (
     <div className="flex w-full min-w-0 flex-col gap-4">
       <Link
@@ -66,21 +65,20 @@ export default function TestPayment() {
         <ArrowLeft data-icon="inline-start" />
         收款概览
       </Link>
-      <TestPaymentForm key={generation} />
+      <TestPaymentForm />
     </div>
   );
 }
 
 export function TestPaymentDialog(props: TestPaymentDialogProps) {
-  const { generation } = useCurrentTestPayment();
-  return <TestPaymentForm key={generation} dialog={props} />;
+  return <TestPaymentForm dialog={props} />;
 }
 
 /** The same request and form are presented by the workspace's single overlay. */
 export function TestPaymentOverlay() {
   const request = useCurrentTestPayment();
   useOverlayCloseGuard(() => request.isSubmitting());
-  return <TestPaymentForm key={request.generation} overlay />;
+  return <TestPaymentForm overlay />;
 }
 
 function TestPaymentForm({ dialog, overlay = false }: { dialog?: TestPaymentDialogProps; overlay?: boolean }) {
@@ -89,6 +87,7 @@ function TestPaymentForm({ dialog, overlay = false }: { dialog?: TestPaymentDial
   const { amount, validation, recovery, create, status, canCreate, startNew } =
     request;
   const amountField = useRef<HTMLInputElement>(null);
+  const focusNewAmount = useRef(false);
   const dialogTitle = useRef<HTMLHeadingElement>(null);
   const formId = useId();
   const errorId = useId();
@@ -99,6 +98,16 @@ function TestPaymentForm({ dialog, overlay = false }: { dialog?: TestPaymentDial
   }
 
   const order = create.data?.data;
+  function startNewPayment() {
+    focusNewAmount.current = true;
+    startNew();
+  }
+  useLayoutEffect(() => {
+    if (focusNewAmount.current && !order && amountField.current) {
+      focusNewAmount.current = false;
+      amountField.current.focus();
+    }
+  }, [order, status.data, recovery]);
   const form = (
     <form id={formId} onSubmit={submit}>
       <FieldGroup>
@@ -225,7 +234,7 @@ function TestPaymentForm({ dialog, overlay = false }: { dialog?: TestPaymentDial
   );
 
   if (overlay) return order ? <TestPaymentResult workspaceClientId={request.fixedClientId}
-    created={order} onNew={startNew} onClose={presentation?.requestClose} /> : <>
+    created={order} onNew={startNewPayment} onClose={presentation?.requestClose} /> : <>
     <div className="min-w-0" data-test-payment-fields>{content}</div>
     <OverlayActions>
       <Button variant="outline" disabled={create.isPending} onClick={presentation?.requestClose}>{recovery ? "暂时关闭" : "取消"}</Button>
@@ -256,7 +265,7 @@ function TestPaymentForm({ dialog, overlay = false }: { dialog?: TestPaymentDial
           {order ? (
             <TestPaymentResult workspaceClientId={request.fixedClientId}
               created={order}
-              onNew={startNew}
+              onNew={startNewPayment}
               onClose={() => dialog.onOpenChange(false)}
             />
           ) : (
@@ -284,7 +293,7 @@ function TestPaymentForm({ dialog, overlay = false }: { dialog?: TestPaymentDial
   return (
     <Card>
       {order ? (
-        <TestPaymentResult workspaceClientId={request.fixedClientId} created={order} onNew={startNew} />
+        <TestPaymentResult workspaceClientId={request.fixedClientId} created={order} onNew={startNewPayment} />
       ) : (
         <>
           <CardHeader>

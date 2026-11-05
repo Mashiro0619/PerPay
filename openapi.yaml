@@ -10287,6 +10287,12 @@ components:
         - updated_at
       properties:
         ledger_entry_id: { $ref: '#/components/schemas/ResourceId' }
+        alipay_account_id:
+          type: [string, 'null']
+          description: Receiving account bound to this raw ledger entry's provider generation. Included in direct entry detail responses; null when historical ownership is unavailable.
+        alipay_account_name:
+          type: [string, 'null']
+          description: Current or retained deleted-account name for the entry's receiving account; not a historical name snapshot. Included in direct entry detail responses.
         external_event_id: { type: string, minLength: 1, maxLength: 256 }
         semantic_fingerprint: { $ref: '#/components/schemas/Sha256Fingerprint' }
         occurred_at:

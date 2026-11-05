@@ -72,6 +72,33 @@ const chooseLedger = () =>
   screen.findByRole("button", { name: /^选择收入流水：/ });
 const chooseOrder = () => screen.findByRole("button", { name: /^选择订单：/ });
 describe("manual settlement selection instead of ID entry", () => {
+  it("does not search while the IME confirms text and searches once on the next ordinary Enter", async () => {
+    const view = mount({ initialOrderId: orderId, lockContext: true });
+    await chooseLedger();
+    const input = screen.getByRole("searchbox", { name: "搜索收入流水" });
+    input.focus();
+    const before = view.requests.length;
+    fireEvent.compositionStart(input);
+    fireEvent.change(input, { target: { value: "中文交易对方" } });
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Enter", code: "Enter", keyCode: 13, isComposing: true });
+    });
+    expect(view.requests).toHaveLength(before);
+    fireEvent.compositionEnd(input, { data: "中文交易对方" });
+    // Some IMEs finish composition before keydown and identify the consumed
+    // Enter with keyCode 229 instead of isComposing.
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Enter", code: "Enter", keyCode: 229, isComposing: false });
+    });
+    expect(view.requests).toHaveLength(before);
+    expect(input).toHaveValue("中文交易对方");
+    expect(input).toHaveFocus();
+    fireEvent.keyDown(input, { key: "Enter", code: "Enter", keyCode: 13, isComposing: false });
+    await waitFor(() => expect(view.requests).toHaveLength(before + 1));
+    expect(new URL(view.requests.at(-1)!.url).searchParams.get("q")).toBe("中文交易对方");
+    expect(view.requests.every(request => request.method === "GET")).toBe(true);
+  });
+
   it.each(["网站 B", "网站 A"])("keeps website identity visible through confirmation when the other website is %s", async (otherName) => {
     const selected = { ...order, site_name: "网站 A", api_client_id: "site-a", merchant_order_no: "shared-number" };
     const choices: ManualSettlementOrderCandidate[] = [

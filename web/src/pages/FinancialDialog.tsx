@@ -17,7 +17,8 @@ import { OperationRecoveryNotice } from "@/components/operation-recovery-notice"
 import { OperationNavigationDialog } from "@/components/operation-navigation-dialog";
 import { useOperationNavigation } from "@/drafts";
 import { ErrorNotice } from "@/components/request-state";
-import { OrderFacts } from "@/components/detail/DetailPrimitives";
+import { DetailFields, OrderFacts } from "@/components/detail/DetailPrimitives";
+import { AlipayAccountIdentity } from "@/components/alipay-account-identity";
 import { LedgerFacts } from "@/components/detail/PaymentEvidence";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -164,6 +165,13 @@ export function FinancialDialog({
     ["UNALLOCATED", "CANDIDATE", "CONFLICT"].includes(
       preview.data.ledger.state,
     );
+  const showAccountIds = Boolean(
+    preview.data?.order.alipay_account_id &&
+    preview.data.ledger.alipay_account_id &&
+    preview.data.order.alipay_account_id !== preview.data.ledger.alipay_account_id &&
+    (preview.data.order.alipay_account_name || "支付宝账号") ===
+      (preview.data.ledger.alipay_account_name || "支付宝账号"),
+  );
   function close() {
     if (save.isBusy()) return;
     previewController.current?.abort();
@@ -302,6 +310,16 @@ export function FinancialDialog({
             <ErrorNotice error={preview.error} />
             {preview.data && (
               <>
+                <DetailFields items={[
+                  ["订单收款账号", <div className="flex min-w-0 flex-col gap-1">
+                    <AlipayAccountIdentity id={preview.data.order.alipay_account_id} name={preview.data.order.alipay_account_name} />
+                    {showAccountIds && <span className="text-xs text-muted-foreground">账号 ID：{preview.data.order.alipay_account_id}</span>}
+                  </div>],
+                  ["流水收款账号", <div className="flex min-w-0 flex-col gap-1">
+                    <AlipayAccountIdentity id={preview.data.ledger.alipay_account_id} name={preview.data.ledger.alipay_account_name} />
+                    {showAccountIds && <span className="text-xs text-muted-foreground">账号 ID：{preview.data.ledger.alipay_account_id}</span>}
+                  </div>],
+                ]} />
                 <OrderFacts order={preview.data.order} linked={false} />
                 <LedgerFacts entry={preview.data.ledger} />
                 {!directionValid && (

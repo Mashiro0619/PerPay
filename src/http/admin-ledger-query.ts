@@ -68,6 +68,28 @@ export function adminLedgerEntryEnvironment(database: ReadDatabase, ledgerEntryI
     WHERE entry.ledger_entry_id = ?`).get(ledgerEntryId)?.provider_endpoint));
 }
 
+/** Resolve this raw entry's historical account generation, including retained tombstones. */
+export function adminLedgerEntryAccount(database: ReadDatabase, ledgerEntryId: string): {
+  readonly alipay_account_id: string | null;
+  readonly alipay_account_name: string | null;
+} {
+  return database.read(db => {
+    const unknownAccount = { alipay_account_id: null, alipay_account_name: null };
+    if (!db.prepare("SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'alipay_accounts'").get()) {
+      return unknownAccount;
+    }
+    const row = db.prepare(`
+      SELECT generation.account_id AS alipay_account_id, account.name AS alipay_account_name
+        FROM ledger_entries AS entry
+        LEFT JOIN alipay_account_generations AS generation ON generation.provider_account_key = entry.provider_account_key
+        LEFT JOIN alipay_accounts AS account ON account.account_id = generation.account_id
+       WHERE entry.ledger_entry_id = ?`).get(ledgerEntryId) as {
+         alipay_account_id: string | null; alipay_account_name: string | null;
+       } | undefined;
+    return row ?? unknownAccount;
+  });
+}
+
 export function readAdminLedgerPageQuery(values: URLSearchParams, environment: ProviderEnvironment | null): AdminLedgerPageQuery {
   for (const key of values.keys()) {
     if (!QUERY_KEYS.has(key) || values.getAll(key).length !== 1) {

@@ -3,7 +3,8 @@ import { AlipayAccountIdentity } from "@/components/alipay-account-identity";
 import { useId, type ReactNode } from "react";
 import { CircleAlert } from "lucide-react";
 import { useParams } from "react-router";
-import { api, queryClient, result, type AdminLedgerDetail, type AdminLedgerMatch, type AdminLedgerSource } from "@/api/client";
+import { api, result, type AdminLedgerDetail, type AdminLedgerMatch, type AdminLedgerSource } from "@/api/client";
+import { isReconciliationDetailQuery, refreshReconciliationDetails } from "@/lib/record-refresh";
 import { Link, useDetailBack } from "@/navigation";
 import { label } from "@/lib/labels";
 import { cn } from "@/lib/utils";
@@ -49,14 +50,12 @@ export default function LedgerDetail() {
   const back = useDetailBack("/reconciliation", "返回对账");
   const system = useOptionalSystemStatus();
   const query = useQuery({ queryKey: ["administrator-ledger-detail", ledgerEntryId], queryFn: ({ signal }) => result(api.getAdministratorLedgerEntry({ signal, path: { ledgerEntryId } })) });
-  const relatedIds = new Set([ledgerEntryId, ...query.data?.data.sources.map(source => source.ledger_entry_id) ?? [], ...query.data?.data.matches.map(match => match.payment_match_id) ?? [], ...query.data?.data.conflicts.map(conflict => conflict.conflict_id) ?? []]);
-  const fetching = useIsFetching({ predicate: item => item.queryKey.some(value => typeof value === "string" && relatedIds.has(value)) });
+  const fetching = useIsFetching({ predicate: isReconciliationDetailQuery });
   return <DetailPage>
     <PageHeading title="流水与对账详情" />
     <DetailNavigation back={back} global>
       <PageHeaderActions><RefreshButton busy={fetching > 0} onClick={() => {
-        void query.refetch();
-        void queryClient.invalidateQueries({ predicate: item => item.queryKey[0] !== "administrator-ledger-detail" && item.queryKey.some(value => typeof value === "string" && relatedIds.has(value)) });
+        void refreshReconciliationDetails();
       }} /></PageHeaderActions>
     </DetailNavigation>
     <QueryView query={query}>{({ data }) => <>

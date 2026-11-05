@@ -1315,6 +1315,8 @@ export type ReconciliationLedgerEntryEnvelope = {
 };
 export type ReconciliationLedgerEntry = {
     ledger_entry_id: ResourceId;
+    alipay_account_id?: string | null;
+    alipay_account_name?: string | null;
     external_event_id: string;
     semantic_fingerprint: Sha256Fingerprint;
     occurred_at: string;

@@ -173,6 +173,7 @@ describe("minimal test payment page", () => {
     expect(first.amount_cents).toBe(123);
     await user.click(screen.getByRole("button", { name: "再创建一笔" }));
     expect(await screen.findByLabelText("测试金额（元）")).toHaveValue("0.01");
+    expect(screen.getByLabelText("测试金额（元）")).toHaveFocus();
     expect(view.writes()).toHaveLength(2);
     fireEvent.change(screen.getByLabelText("测试金额（元）"), {
       target: { value: "1.23" },

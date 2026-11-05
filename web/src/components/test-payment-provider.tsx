@@ -4,6 +4,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type ComponentProps,
@@ -33,7 +34,15 @@ export function TestPaymentProvider({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const [started, setStarted] = useState(false);
   const standalone = useMatch("/test-payment") !== null;
-  const request = useTestPaymentRequest((overlay ? overlay.target?.pathname === "/test-payment" : open) || standalone);
+  const overlayOpen = overlay?.target?.pathname === "/test-payment";
+  const request = useTestPaymentRequest((overlay ? overlayOpen : open) || standalone);
+  const bindSite = useRef(request.bindSite);
+  useLayoutEffect(() => { bindSite.current = request.bindSite; });
+  useLayoutEffect(() => {
+    // URLs can open the form without its button. Bind only on entry/scope change:
+    // completing a recovery from another site must retain that original result.
+    if (overlayOpen) bindSite.current(clientId);
+  }, [overlayOpen, clientId]);
   const trigger = useRef<HTMLButtonElement | null>(null);
   useEffect(() => {
     setOpen(false);
