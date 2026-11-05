@@ -1,5 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { ActivitySpoolWriter } from "../audit/spool.ts";
+import { safeErrorCode } from "../audit/activity.ts";
+import { artifactAuditTarget, lockAuditTarget, type MaintenanceAuditTarget } from "../audit/maintenance-target.ts";
 import { verifyAlipayAccountSecrets } from "../alipay-accounts/integrity.ts";
 import {
   closeSync,
@@ -91,6 +93,8 @@ export interface RestoreMigrationBackupResult {
   readonly backupName: string;
   readonly restoredSchemaVersion: number;
   readonly quarantinedDatabaseName: string;
+  readonly sha256: string;
+  readonly instanceId: string | null;
 }
 
 export interface RestoreOperationalBackupOptions {
@@ -820,7 +824,7 @@ export function restoreMigrationBackup(
   if (preflightSchemaVersion !== parsedName.fromVersion) {
     throw new Error("migration backup schema does not match its filename");
   }
-  assertBackupMasterKey(source, options.masterKey, false);
+  const sourceInstanceId = assertBackupMasterKey(source, options.masterKey, false);
 
   const lock = acquireDatabaseMaintenanceLock(
     target,
@@ -915,6 +919,8 @@ export function restoreMigrationBackup(
       backupName: parsedName.name,
       restoredSchemaVersion: backupSchemaVersion,
       quarantinedDatabaseName: basename(quarantine),
+      sha256: preflightSourceHash,
+      instanceId: sourceInstanceId,
     });
   } catch (error) {
     if (error instanceof MaintenanceLeaseClaimedError) {
@@ -2039,7 +2045,7 @@ function assertBackupMasterKey(
   path: string,
   masterKey: Uint8Array,
   required: boolean,
-): void {
+): string | null {
   if (masterKey === undefined) {
     throw new Error("deployment master key is required to restore a backup");
   }
@@ -2055,7 +2061,7 @@ function assertBackupMasterKey(
   });
   try {
     if (!tableExists(database, "runtime_master_key_guard")) {
-      if (!required) return;
+      if (!required) return null;
       throw new Error("selected backup does not contain a runtime master key guard");
     }
     const instance = database.prepare(
@@ -2078,7 +2084,7 @@ function assertBackupMasterKey(
         const encryptedSecret = tableExists(database, "runtime_secrets")
           ? database.prepare("SELECT 1 AS present FROM runtime_secrets LIMIT 1").get()
           : undefined;
-        if (encryptedSecret === undefined) return;
+        if (encryptedSecret === undefined) return null;
       }
       throw new Error("selected backup is missing its runtime master key guard");
     }
@@ -2091,6 +2097,7 @@ function assertBackupMasterKey(
     const cipher = new RuntimeSecretCipher(masterKey, instance.value);
     cipher.verifyGuard(encrypted);
     verifyAlipayAccountSecrets(database, cipher);
+    return instance.value;
   } finally {
     database.close();
   }
@@ -2310,26 +2317,42 @@ function removeSqliteArtifacts(path: string): void {
   rmSync(`${path}-journal`, { force: true });
 }
 
-async function runCommand(arguments_: readonly string[]): Promise<void> {
+export async function runMaintenanceCommand(arguments_: readonly string[], environment: NodeJS.ProcessEnv = process.env): Promise<void> {
   const command = arguments_[0] ?? "unknown";
   const actions: Record<string, string> = { "clear-stale-publication-lock": "maintenance.publication_lock.clear",
     "clear-stale-maintenance-lock": "maintenance.lock.clear", "delete-pre-restore-quarantine": "maintenance.quarantine.delete",
     "prune-pre-restore-quarantines": "maintenance.quarantine.prune", "restore-migration-backup": "maintenance.restore",
     "list-migration-backups": "maintenance.backups.list", "list-pre-restore-quarantines": "maintenance.quarantine.list",
     "inspect-maintenance-lock": "maintenance.lock.inspect", "inspect-publication-lock": "maintenance.publication_lock.inspect" };
-  const activity = new ActivitySpoolWriter({ backupDirectory: process.env.PERPAY_BACKUP_DIR ?? "/backups", kind: "maintenance" });
+  const activity = new ActivitySpoolWriter({ backupDirectory: environment.PERPAY_BACKUP_DIR ?? "/backups", kind: "maintenance" });
+  const action = actions[command] ?? "maintenance.command.invalid";
+  const startedAt = Date.now(), operationId = randomUUID();
+  let targets: readonly MaintenanceAuditTarget[] = [];
+  const details = { command: action, operation_id: operationId,
+    force_unreadable_lock: arguments_.includes("--force-unreadable-lock"), force_abandon_lease: arguments_.includes("--force-abandon-maintenance-lease"),
+    finalize_interrupted_restore: arguments_.includes("--finalize-interrupted-fresh-restore") };
   try {
-    await activity.run(actions[command] ?? "maintenance.command.invalid", { command: actions[command] ?? "unknown",
-      force_unreadable_lock: arguments_.includes("--force-unreadable-lock"), force_abandon_lease: arguments_.includes("--force-abandon-maintenance-lease"),
-      finalize_interrupted_restore: arguments_.includes("--finalize-interrupted-fresh-restore") },
-    () => executeCommand(arguments_), { permanent: true });
+    await executeCommand(arguments_, environment, value => { targets = value; });
+    // One event per target avoids truncating large prune results to the spool's
+    // bounded array/detail size. operation_id ties the records to one command.
+    for (const target of targets.length ? targets : [undefined]) activity.record({ action, outcome: "SUCCESS",
+      durationMs: Math.max(0, Date.now() - startedAt), subjectType: target?.subjectType, subjectId: target?.subjectId,
+      details: { ...details, ...target?.details } }, { permanent: true, instanceId: target?.instanceId ?? null });
+  } catch (error) {
+    activity.record({ action, outcome: "FAILURE", durationMs: Math.max(0, Date.now() - startedAt),
+      details: { ...details, error_code: safeErrorCode(error) } }, { permanent: true });
+    throw error;
   } finally { activity.close(); }
 }
 
-async function executeCommand(arguments_: readonly string[]): Promise<void> {
+async function executeCommand(arguments_: readonly string[], environment: NodeJS.ProcessEnv, setTargets: (targets: readonly MaintenanceAuditTarget[]) => void): Promise<void> {
   hardenProcessFileCreation();
-  const dataDirectory = process.env.PERPAY_DATA_DIR ?? "/data";
-  const backupDirectory = process.env.PERPAY_BACKUP_DIR ?? "/backups";
+  const dataDirectory = environment.PERPAY_DATA_DIR ?? "/data";
+  const backupDirectory = environment.PERPAY_BACKUP_DIR ?? "/backups";
+  const output = <T>(result: T, project: (value: T) => readonly MaintenanceAuditTarget[]) => {
+    setTargets(project(result));
+    process.stdout.write(`${JSON.stringify(result)}\n`);
+  };
   if (arguments_.length === 1 && arguments_[0] === "inspect-maintenance-lock") {
     process.stdout.write(`${JSON.stringify(inspectMaintenanceLock(dataDirectory))}\n`);
     return;
@@ -2344,11 +2367,11 @@ async function executeCommand(arguments_: readonly string[]): Promise<void> {
     arguments_[1] === "--force-unreadable-lock" &&
     arguments_[2] === "--confirm-no-maintenance-process"
   ) {
-    process.stdout.write(`${JSON.stringify(clearStalePublicationLock({
+    output(clearStalePublicationLock({
       backupDirectory,
       confirmNoMaintenanceProcess: true,
       forceUnreadableLock: true,
-    }))}\n`);
+    }), result => [lockAuditTarget("publication", result)]);
     return;
   }
   if (
@@ -2357,11 +2380,11 @@ async function executeCommand(arguments_: readonly string[]): Promise<void> {
     arguments_[1] !== undefined &&
     arguments_[2] === "--confirm-no-maintenance-process"
   ) {
-    process.stdout.write(`${JSON.stringify(clearStalePublicationLock({
+    output(clearStalePublicationLock({
       backupDirectory,
       lockToken: arguments_[1],
       confirmNoMaintenanceProcess: true,
-    }))}\n`);
+    }), result => [lockAuditTarget("publication", result)]);
     return;
   }
   if (
@@ -2370,12 +2393,12 @@ async function executeCommand(arguments_: readonly string[]): Promise<void> {
     arguments_[1] === "--force-unreadable-lock" &&
     arguments_[2] === "--confirm-no-maintenance-process"
   ) {
-    process.stdout.write(`${JSON.stringify(clearStaleMaintenanceLock({
+    output(clearStaleMaintenanceLock({
       dataDirectory,
       backupDirectory,
       confirmNoMaintenanceProcess: true,
       forceUnreadableLock: true,
-    }))}\n`);
+    }), result => [lockAuditTarget("database", result)]);
     return;
   }
   if (
@@ -2385,13 +2408,13 @@ async function executeCommand(arguments_: readonly string[]): Promise<void> {
     arguments_[2] === "--confirm-no-maintenance-process" &&
     arguments_[3] === "--force-abandon-maintenance-lease"
   ) {
-    process.stdout.write(`${JSON.stringify(clearStaleMaintenanceLock({
+    output(clearStaleMaintenanceLock({
       dataDirectory,
       backupDirectory,
       lockToken: arguments_[1],
       confirmNoMaintenanceProcess: true,
       forceAbandonMaintenanceLease: true,
-    }))}\n`);
+    }), result => [lockAuditTarget("database", result)]);
     return;
   }
   if (
@@ -2401,13 +2424,13 @@ async function executeCommand(arguments_: readonly string[]): Promise<void> {
     arguments_[2] === "--confirm-no-maintenance-process" &&
     arguments_[3] === "--finalize-interrupted-fresh-restore"
   ) {
-    process.stdout.write(`${JSON.stringify(clearStaleMaintenanceLock({
+    output(clearStaleMaintenanceLock({
       dataDirectory,
       backupDirectory,
       lockToken: arguments_[1],
       confirmNoMaintenanceProcess: true,
       finalizeInterruptedFreshRestore: true,
-    }))}\n`);
+    }), result => [lockAuditTarget("database", result)]);
     return;
   }
   if (
@@ -2416,13 +2439,13 @@ async function executeCommand(arguments_: readonly string[]): Promise<void> {
     arguments_[1] !== undefined &&
     arguments_[2] === "--confirm-no-maintenance-process"
   ) {
-    process.stdout.write(`${JSON.stringify(clearStaleMaintenanceLock({
+    output(clearStaleMaintenanceLock({
       dataDirectory,
       backupDirectory,
       lockToken: arguments_[1],
       confirmNoMaintenanceProcess: true,
       forceAbandonMaintenanceLease: false,
-    }))}\n`);
+    }), result => [lockAuditTarget("database", result)]);
     return;
   }
   if (arguments_.length === 1 && arguments_[0] === "list-migration-backups") {
@@ -2442,12 +2465,12 @@ async function executeCommand(arguments_: readonly string[]): Promise<void> {
     arguments_[2] !== undefined &&
     arguments_[3] === "--confirm-delete-pre-restore-quarantine"
   ) {
-    process.stdout.write(`${JSON.stringify(deletePreRestoreQuarantine({
+    output(deletePreRestoreQuarantine({
       dataDirectory,
       quarantineName: arguments_[1],
       expectedSha256: arguments_[2],
       confirmDeletePreRestoreQuarantine: true,
-    }))}\n`);
+    }), result => [artifactAuditTarget("restore_quarantine", result.deleted)]);
     return;
   }
   if (
@@ -2458,11 +2481,17 @@ async function executeCommand(arguments_: readonly string[]): Promise<void> {
     arguments_[2] === "--confirm-prune-pre-restore-quarantines"
   ) {
     const keepCount = Number(arguments_[1]);
-    process.stdout.write(`${JSON.stringify(prunePreRestoreQuarantines({
+    output(prunePreRestoreQuarantines({
       dataDirectory,
       keepCount,
       confirmPrunePreRestoreQuarantines: true,
-    }))}\n`);
+    }), result => {
+      const details = { deleted_count: result.deleted.length, retained_count: result.kept.length };
+      return result.deleted.length ? result.deleted.map(artifact => {
+        const target = artifactAuditTarget("restore_quarantine", artifact);
+        return { ...target, details: { ...target.details, ...details } };
+      }) : [{ subjectType: "restore_quarantine_collection", subjectId: "pre-restore-quarantines", details }];
+    });
     return;
   }
   if (
@@ -2471,12 +2500,17 @@ async function executeCommand(arguments_: readonly string[]): Promise<void> {
     arguments_[1] !== undefined &&
     arguments_[2] === RESTORE_CONFIRMATION_ARGUMENT
   ) {
-    process.stdout.write(`${JSON.stringify(restoreMigrationBackup({
+    output(restoreMigrationBackup({
       dataDirectory,
       backupName: arguments_[1],
       confirmReplaceCurrentDatabase: true,
-      masterKey: resolveRestoreMasterKey(process.env),
-    }))}\n`);
+      masterKey: resolveRestoreMasterKey(environment),
+    }), result => {
+      const target = artifactAuditTarget("backup", { name: result.backupName, sha256: result.sha256,
+        schemaVersion: result.restoredSchemaVersion, instanceId: result.instanceId });
+      return [{ ...target, instanceId: result.instanceId, details: { ...target.details,
+        quarantined_database_name: result.quarantinedDatabaseName, restore_completed: true } }];
+    });
     return;
   }
   throw new Error(
@@ -2527,7 +2561,7 @@ function resolveRestoreMasterKey(environment: NodeJS.ProcessEnv): Buffer {
 
 const entryPoint = process.argv[1];
 if (entryPoint !== undefined && import.meta.url === pathToFileURL(resolve(entryPoint)).href) {
-  runCommand(process.argv.slice(2)).catch((error: unknown) => {
+  runMaintenanceCommand(process.argv.slice(2)).catch((error: unknown) => {
     const message = error instanceof Error ? error.message : "maintenance command failed";
     process.stderr.write(`${JSON.stringify({ error: "maintenance_failed", message })}\n`);
     process.exitCode = 1;

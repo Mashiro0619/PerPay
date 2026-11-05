@@ -2,8 +2,9 @@
 import assert from "node:assert/strict";
 import fs, { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmdirSync, rmSync, writeFileSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
+import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { describe, it } from "node:test";
 import { AppDatabase } from "../src/database/database.ts";
 import { ActivityRecorder, ACTIVITY_RETENTION_MILLISECONDS } from "../src/audit/activity.ts";
@@ -31,6 +32,75 @@ function publishedFiles(backupDirectory: string): string[] {
 }
 
 describe("independent backup and maintenance activity spool", () => {
+  it("bounds source inspection, shares automatic cooldown across short writers, and resumes through the last source", async t => {
+    const f = await fixture();
+    try {
+      f.writer.record({ action: "backup.seed" }); f.writer.close();
+      const root = activitySpoolPath(f.backupDirectory), originalId = readdirSync(root)[0]!;
+      const template = JSON.parse(readFileSync(join(root, originalId, "source.json"), "utf8"));
+      const sources = Array.from({ length: 130 }, (_, index) => `${index.toString(16).padStart(8, "0")}-0000-4000-8000-000000000000`);
+      for (const sourceId of sources) {
+        mkdirSync(join(root, sourceId));
+        writeFileSync(join(root, sourceId, "source.json"), JSON.stringify({ ...template, sourceId }), { mode: 0o600 });
+      }
+      const visited: string[] = [], read = fs.readFileSync;
+      const fault = t.mock.method(fs, "readFileSync", (...args: Parameters<typeof fs.readFileSync>) => {
+        if (basename(String(args[0])) === "source.json") visited.push(basename(dirname(String(args[0]))));
+        return read(...args);
+      });
+      syncBuiltinESMExports();
+      try {
+        f.writer.prune();
+        assert.equal(visited.length, 128);
+        const short = new ActivitySpoolWriter({ backupDirectory: f.backupDirectory, kind: "maintenance", clock: () => f.state.now });
+        short.record({ action: "backup.health" }); short.close();
+        assert.equal(visited.length, 128, "a new command must honor persisted cooldown");
+        short.prune();
+        for (const sourceId of sources) assert.ok(visited.includes(sourceId), "later sources must not starve");
+        const progressPath = join(root, "..", "cleanup-v1.json");
+        writeFileSync(progressPath, JSON.stringify({ version: 1, nextRunAt: f.state.now + 100 * 3_600_000, sourceId: null, fileAfter: null }), { mode: 0o600 });
+        const before = visited.length;
+        const recovered = new ActivitySpoolWriter({ backupDirectory: f.backupDirectory, kind: "maintenance", clock: () => f.state.now });
+        recovered.record({ action: "backup.health" }); recovered.close();
+        assert.ok(visited.length > before, "a stale future deadline must not indefinitely stop cleanup");
+      } finally { fault.mock.restore(); syncBuiltinESMExports(); }
+    } finally { await f.close(); }
+  });
+
+  it("counts unexpired files against the batch budget and resumes inside a large source", async t => {
+    const f = await fixture();
+    try {
+      f.writer.record({ action: "backup.seed" }); f.writer.close();
+      const root = activitySpoolPath(f.backupDirectory), sourceId = readdirSync(root)[0]!, directory = join(root, sourceId);
+      const template = JSON.parse(readFileSync(publishedFiles(f.backupDirectory)[0]!, "utf8"));
+      let expiredFile = "";
+      for (let sequence = 2; sequence <= 601; sequence++) {
+        const eventId = randomUUID(), occurredAt = sequence === 601 ? f.state.now - ACTIVITY_RETENTION_MILLISECONDS - 1 : f.state.now;
+        const file = join(directory, `event-${String(sequence).padStart(12, "0")}-${eventId}.json`);
+        writeFileSync(file, JSON.stringify({ ...template, eventId, sequence,
+          activity: { ...template.activity, eventId, occurredAt, firstOccurredAt: occurredAt, lastOccurredAt: occurredAt } }), { mode: 0o600 });
+        if (sequence === 601) expiredFile = file;
+      }
+      let reads = 0;
+      const read = fs.readFileSync;
+      const fault = t.mock.method(fs, "readFileSync", (...args: Parameters<typeof fs.readFileSync>) => {
+        if (basename(String(args[0])).startsWith("event-")) reads++;
+        return read(...args);
+      });
+      syncBuiltinESMExports();
+      try {
+        f.writer.prune();
+        assert.equal(reads, 500);
+        assert.equal(existsSync(expiredFile), true);
+        const next = new ActivitySpoolWriter({ backupDirectory: f.backupDirectory, kind: "backup", clock: () => f.state.now });
+        next.prune(); next.close();
+        assert.equal(reads, 601, "the next writer must resume instead of rereading the first batch");
+        assert.equal(existsSync(expiredFile), false);
+        assert.equal(publishedFiles(f.backupDirectory).length, 600);
+      } finally { fault.mock.restore(); syncBuiltinESMExports(); }
+    } finally { await f.close(); }
+  });
+
   it("cleans an inactive unclosed producer without rewriting its state and accepts its later wakeup", async t => {
     t.mock.method(console, "error", () => {});
     const f = await fixture();
@@ -149,6 +219,43 @@ describe("independent backup and maintenance activity spool", () => {
     assert.equal(writer.record({ action: "backup.command.invalid" }), false);
     assert.doesNotThrow(() => writer.close());
   });
+
+  for (const importedBeforeCleanup of [false, true]) {
+    it(`expires an orphaned producer without losing its ${importedBeforeCleanup ? "imported receipt" : "missing-event boundary"}`, async t => {
+      t.mock.method(console, "error", () => {});
+      const f = await fixture();
+      try {
+        f.writer.record({ action: "backup.restore" }, { permanent: true });
+        const root = activitySpoolPath(f.backupDirectory), sourceId = readdirSync(root)[0]!, directory = join(root, sourceId);
+        rmSync(join(directory, "source.json")); // Durable event publication preceded metadata publication.
+        const expiredTemporary = join(directory, `.activity-${randomUUID()}.tmp`);
+        writeFileSync(expiredTemporary, "interrupted source metadata", { mode: 0o600 });
+        fs.utimesSync(expiredTemporary, f.state.now / 1_000, f.state.now / 1_000);
+        if (importedBeforeCleanup) await f.importer.poll();
+        f.state.now += ACTIVITY_RETENTION_MILLISECONDS + 1;
+        const recentTemporary = join(directory, `.activity-${randomUUID()}.tmp`);
+        writeFileSync(recentTemporary, "still publishing", { mode: 0o600 });
+        fs.utimesSync(recentTemporary, f.state.now / 1_000, f.state.now / 1_000);
+        const unrelated = join(directory, "operator-note.txt");
+        writeFileSync(unrelated, "preserve unrelated files");
+        const cleaner = new ActivitySpoolWriter({ backupDirectory: f.backupDirectory, kind: "backup", clock: () => f.state.now });
+        cleaner.prune(); cleaner.prune();
+        assert.equal(publishedFiles(f.backupDirectory).length, 0);
+        assert.equal(existsSync(expiredTemporary), false);
+        assert.equal(existsSync(recentTemporary), true);
+        assert.equal(existsSync(unrelated), true);
+        assert.equal(existsSync(join(directory, "source.json")), false, "cleanup must not invent or overwrite producer metadata");
+        await f.importer.poll(); await f.importer.poll();
+        assert.equal(f.recorder.status().spoolGapCount, importedBeforeCleanup ? 0 : 1);
+        assert.equal(Number(f.database.read(db => db.prepare("SELECT COUNT(*) AS n FROM audit_events WHERE action = 'backup.restore'").get()!.n)), importedBeforeCleanup ? 1 : 0);
+        f.writer.record({ action: "backup.after_wakeup" });
+        await f.importer.poll();
+        assert.equal(Number(f.database.read(db => db.prepare("SELECT COUNT(*) AS n FROM activity_events WHERE action = 'backup.after_wakeup'").get()!.n)), 1);
+        assert.equal(f.recorder.status().spoolGapCount, importedBeforeCleanup ? 0 : 1);
+        cleaner.close();
+      } finally { await f.close(); }
+    });
+  }
 
   it("imports atomic event files read-only and deduplicates across importer restarts", async () => {
     const f = await fixture();
@@ -270,6 +377,59 @@ describe("independent backup and maintenance activity spool", () => {
       assert.equal(Number(f.database.read(db => (db.prepare("SELECT COUNT(*) AS n FROM activity_events WHERE action LIKE 'backup.%'").get() as { n: number }).n)), 2);
       await f.importer.poll();
       assert.equal(f.recorder.status().spoolGapCount, 1);
+    } finally { await f.close(); }
+  });
+
+  it("recovers a committed gap before recorder flush and does not recount it when the following import retries", async t => {
+    t.mock.method(console, "error", () => {});
+    const f = await fixture();
+    try {
+      f.recorder.flush(); // Persist healthy state before the interrupted collection.
+      f.writer.record({ action: "backup.first" });
+      f.writer.record({ action: "backup.second" });
+      f.writer.record({ action: "backup.third" }); f.writer.close();
+      rmSync(publishedFiles(f.backupDirectory).sort()[1]!);
+      f.database.write(db => db.exec("CREATE TEMP TRIGGER reject_third BEFORE INSERT ON activity_events WHEN NEW.action = 'backup.third' BEGIN SELECT RAISE(ABORT, 'injected import failure'); END"));
+      await f.importer.poll();
+      const source = () => f.database.read(db => db.prepare("SELECT last_sequence, gap_count FROM activity_import_sources").get()!);
+      const gaps = () => Number(f.database.read(db => db.prepare("SELECT COUNT(*) AS n FROM activity_events WHERE action = 'activity.capture_gap'").get()!.n));
+      assert.equal(Number(source().last_sequence), 2);
+      assert.equal(Number(source().gap_count), 1);
+      assert.equal(gaps(), 1, "gap evidence must be durable without recorder.flush()");
+
+      const restartedRecorder = new ActivityRecorder({ database: f.database, clock: () => f.state.now });
+      const restartedImporter = new ActivitySpoolImporter({ database: f.database, recorder: restartedRecorder,
+        backupDirectory: f.backupDirectory, clock: () => f.state.now });
+      try {
+        assert.equal(restartedRecorder.status().spoolGapCount, 1);
+        assert.equal(restartedRecorder.status().state, "degraded");
+        f.database.write(db => db.exec("DROP TRIGGER reject_third"));
+        await restartedImporter.poll(); await restartedImporter.poll();
+        assert.equal(Number(source().last_sequence), 3);
+        assert.equal(Number(source().gap_count), 1);
+        assert.equal(gaps(), 1);
+        assert.equal(restartedRecorder.status().spoolGapCount, 1);
+      } finally { await restartedImporter.stop(); restartedRecorder.stop(); }
+    } finally { await f.close(); }
+  });
+
+  it("rolls back a missing sequence cursor and count when its gap evidence cannot be saved", async t => {
+    t.mock.method(console, "error", () => {});
+    const f = await fixture();
+    try {
+      f.writer.record({ action: "backup.first" }); f.writer.record({ action: "backup.second" }); f.writer.close();
+      rmSync(publishedFiles(f.backupDirectory).sort()[0]!);
+      f.database.write(db => db.exec("CREATE TEMP TRIGGER reject_gap BEFORE INSERT ON activity_events WHEN NEW.action = 'activity.capture_gap' BEGIN SELECT RAISE(ABORT, 'injected gap failure'); END"));
+      await f.importer.poll();
+      const source = () => f.database.read(db => db.prepare("SELECT last_sequence, gap_count FROM activity_import_sources").get()!);
+      assert.equal(Number(source().last_sequence), 0);
+      assert.equal(Number(source().gap_count), 0);
+      assert.equal(f.recorder.status().spoolGapCount, 0);
+      f.database.write(db => db.exec("DROP TRIGGER reject_gap"));
+      await f.importer.poll();
+      assert.equal(Number(source().last_sequence), 2);
+      assert.equal(Number(source().gap_count), 1);
+      assert.equal(Number(f.database.read(db => db.prepare("SELECT COUNT(*) AS n FROM activity_events WHERE action = 'activity.capture_gap'").get()!.n)), 1);
     } finally { await f.close(); }
   });
 

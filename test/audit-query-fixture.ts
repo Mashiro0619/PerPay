@@ -6,8 +6,8 @@ import { ACTIVITY_SCHEMA_SQL } from "../src/audit/activity-schema.ts";
 import { createActivityEvent, persistActivityEvent, type ActivityEventInput } from "../src/audit/activity.ts";
 
 export const AUDIT_TEST_NOW = Date.UTC(2026, 10, 1, 12);
-export function auditQueryFixture(legacy?: AuditInput) {
-  const connection = new DatabaseSync(":memory:", { readBigInts: true });
+export function auditQueryFixture(legacy?: AuditInput, path = ":memory:") {
+  const connection = new DatabaseSync(path, { readBigInts: true });
   connection.exec(migrations[0]!.sql);
   connection.exec(migrations[1]!.sql);
   const legacyEvent = legacy ? appendAuditEvent(connection, legacy) : null;

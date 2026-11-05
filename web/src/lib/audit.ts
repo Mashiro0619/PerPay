@@ -49,6 +49,11 @@ const fieldLabels: Readonly<Record<string, string>> = {
   provider_scan_interval_milliseconds: "常规查账间隔（毫秒）", provider_active_scan_interval_milliseconds: "活跃查账间隔（毫秒）",
   provider_minimum_scan_interval_milliseconds: "最小查账间隔（毫秒）", provider_safety_lag_milliseconds: "查账延迟（毫秒）", provider_maximum_success_age_milliseconds: "查账有效时限（毫秒）",
   interval_seconds: "备份间隔（秒）", keep_count: "保留备份数量", backup_enabled: "自动备份开关", backup_interval_milliseconds: "备份间隔（毫秒）", backup_keep_count: "保留备份数量",
+  backup_name: "备份名称", backup_sha256: "备份摘要（SHA-256）", backup_size_bytes: "备份大小（字节）",
+  quarantine_name: "隔离文件名称", quarantine_sha256: "隔离文件摘要（SHA-256）", quarantine_size_bytes: "隔离文件大小（字节）",
+  quarantined_database_name: "恢复前隔离文件", restore_completed: "恢复已完成", instance_id: "实例编号", schema_version: "数据库结构版本",
+  lock_kind: "锁类别", lock_fingerprint: "锁指纹", lock_created_at: "锁创建时间", lock_readable: "锁记录可读取",
+  force_abandon_lease: "强制放弃维护租约", finalize_interrupted_restore: "完成中断的恢复",
   checkout_key_rotation_days: "收银台链接密钥轮换周期（天）", checkout_terminal_observation_seconds: "结束后可查询时长（秒）",
 };
 export function auditFieldLabel(field: string): string {
@@ -59,6 +64,7 @@ const subjectLabels: Readonly<Record<string, string>> = {
   admin: "管理员", administrator: "管理员", administrator_session: "登录会话", admin_session: "登录会话", api_client: "调用凭据",
   order: "订单", payment_order: "订单", ledger_entry: "支付宝流水", payment_match: "收款关联", financial_exception: "账务异常",
   webhook_delivery: "付款通知", notification: "付款通知", audit_export: "审计导出",
+  backup: "备份文件", restore_quarantine: "恢复前隔离文件", restore_quarantine_collection: "恢复前隔离文件集合", maintenance_lock: "维护锁",
 };
 export function auditSubjectLabel(type: string | null): string { return type ? subjectLabels[type] ?? type : "未记录"; }
 

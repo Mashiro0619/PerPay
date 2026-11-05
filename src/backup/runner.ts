@@ -12,6 +12,7 @@ import {
 import { basename, dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { ActivitySpoolWriter } from "../audit/spool.ts";
+import { artifactAuditTarget, lockAuditTarget, type MaintenanceAuditTarget } from "../audit/maintenance-target.ts";
 
 import {
   loadBackupConfig,
@@ -231,16 +232,19 @@ export async function runBackupCommand(
     kind: command === "schedule" ? "backup" : "maintenance" });
   const action = backupCommandAction(command);
   const startedAt = Date.now();
+  let target: MaintenanceAuditTarget | undefined;
   try {
-    const code = await executeBackupCommand(arguments_, environment, operations, activity);
+    const code = await executeBackupCommand(arguments_, environment, operations, activity, value => { target = value; });
     activity.record({ action, outcome: code === 0 ? "SUCCESS" : "FAILURE", durationMs: Math.max(0, Date.now() - startedAt),
-      details: { command: action, exit_code: code, rebuild_state: arguments_.includes(REBUILD_STATE_ARGUMENT),
+      subjectType: target?.subjectType, subjectId: target?.subjectId,
+      details: { ...target?.details, command: action, exit_code: code, rebuild_state: arguments_.includes(REBUILD_STATE_ARGUMENT),
         quarantine_unreadable: arguments_.includes(QUARANTINE_UNREADABLE_ARGUMENT), force_unreadable_lock: arguments_.includes(FORCE_UNREADABLE_LOCK_ARGUMENT) } },
-    { permanent: ["restore", "delete-backup-file", "clear-lock", "clear-stale-publication-lock"].includes(command) });
+    { instanceId: target?.instanceId ?? null, permanent: ["restore", "delete-backup-file", "clear-lock", "clear-stale-publication-lock"].includes(command) });
     return code;
   } catch (error) {
     activity.record({ action, outcome: "FAILURE", durationMs: Math.max(0, Date.now() - startedAt),
-      details: { command: action, stage: error instanceof BackupCycleError ? error.stage : "unknown" } },
+      subjectType: target?.subjectType, subjectId: target?.subjectId,
+      details: { ...target?.details, command: action, stage: error instanceof BackupCycleError ? error.stage : "unknown" } },
     { permanent: ["restore", "delete-backup-file", "clear-lock", "clear-stale-publication-lock"].includes(command) });
     throw error;
   } finally { activity.close(); }
@@ -248,6 +252,7 @@ export async function runBackupCommand(
 
 async function executeBackupCommand(
   arguments_: readonly string[], environment: NodeJS.ProcessEnv, operations: BackupOperations, activity: ActivitySpoolWriter,
+  setTarget: (target: MaintenanceAuditTarget) => void,
 ): Promise<number> {
   hardenProcessFileCreation();
   const command = arguments_[0] ?? "schedule";
@@ -278,6 +283,7 @@ async function executeBackupCommand(
       forceUnreadableLock: true,
       now: Date.now(),
     });
+    setTarget(lockAuditTarget("publication", result));
     process.stdout.write(`${JSON.stringify(result)}\n`);
     return 0;
   }
@@ -293,6 +299,7 @@ async function executeBackupCommand(
       confirmNoMaintenanceProcess: true,
       now: Date.now(),
     });
+    setTarget(lockAuditTarget("publication", result));
     process.stdout.write(`${JSON.stringify(result)}\n`);
     return 0;
   }
@@ -356,6 +363,9 @@ async function executeBackupCommand(
         state.backupName ?? undefined,
       );
     });
+    // A deleted artifact can belong to a different instance. Keep that target
+    // identity in details, without binding its spool event to the deleted DB.
+    setTarget(artifactAuditTarget("backup", deleted));
     process.stdout.write(`${JSON.stringify({
       deleted: serializeBackupArtifact(deleted),
     })}\n`);
@@ -372,6 +382,7 @@ async function executeBackupCommand(
       forceUnreadableLock: true,
       now: Date.now(),
     });
+    setTarget(lockAuditTarget("backup", result));
     process.stdout.write(`${JSON.stringify(result)}\n`);
     return 0;
   }
@@ -386,6 +397,7 @@ async function executeBackupCommand(
       confirmNoBackupProcess: true,
       now: Date.now(),
     });
+    setTarget(lockAuditTarget("backup", result));
     process.stdout.write(`${JSON.stringify(result)}\n`);
     return 0;
   }
@@ -429,6 +441,8 @@ async function executeBackupCommand(
       ) {
         throw new Error("backup belongs to another application instance");
       }
+      const selectedTarget = artifactAuditTarget("backup", selected);
+      setTarget(selectedTarget);
       let state = restoredBackupState(config, selected, startedAt, true);
       // Protect the selected recovery point before replacing the database. If
       // the process dies after publication, restart retention cannot delete it.
@@ -442,6 +456,9 @@ async function executeBackupCommand(
           startedAt,
           quarantineUnreadableCurrent,
         );
+        setTarget({ ...selectedTarget, instanceId: selected.instanceId, details: { ...selectedTarget.details,
+          schema_version: restored.restoredSchemaVersion, quarantined_database_name: restored.quarantinedDatabaseName,
+          restore_completed: true } });
         const succeededAt = Math.max(Date.now(), startedAt);
         state = Object.freeze({
           ...state,

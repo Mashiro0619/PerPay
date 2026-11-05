@@ -140,6 +140,10 @@ export class ActivityRecorder {
         this.#spoolLastImportAt = previous.spoolLastImportAt ?? null;
         this.#lastErrorCode = previous.lastErrorCode ?? null;
       }
+      // Source cursors and detected gaps are committed before the recorder's
+      // periodic flush. Recover that durable evidence after an interrupted flush.
+      const gaps = this.#database.read(db => db.prepare("SELECT COALESCE(SUM(gap_count), 0) AS count FROM activity_import_sources").get());
+      this.#spoolGapCount = Math.max(this.#spoolGapCount, nonnegative(Number(gaps?.count ?? 0)));
     } catch { this.#lastErrorCode = "activity_state_unavailable"; }
   }
 

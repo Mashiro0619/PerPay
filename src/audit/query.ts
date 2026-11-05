@@ -162,10 +162,9 @@ function activityProjection(includeEvidence: boolean): string {
 }
 type AuditRow = Record<string, unknown>;
 function selectRows(db: DatabaseSync, filters: AuditFilters, boundary: AuditSnapshot, position: Position | null, limit: number, evidence: boolean, now: number): AuditRow[] {
-  const conditions = ["((source = 'core' AND sequence <= ?) OR (source = 'activity' AND sequence <= ?))", "(source = 'core' OR occurred_at >= ?)"];
-  // A caller-controlled cursor must never extend the activity retention window.
-  const parameters: SQLInputValue[] = [boundary.core_sequence, boundary.activity_sequence, Math.max(0, Math.max(now, boundary.captured_at) - ACTIVITY_RETENTION_DAYS * DAY)];
-  for (const key of ["source", "category", "action", "outcome", "actor_type", "source_address"] as const) {
+  const conditions: string[] = [];
+  const parameters: SQLInputValue[] = [];
+  for (const key of ["category", "action", "outcome", "actor_type", "source_address"] as const) {
     if (filters[key] !== undefined) { conditions.push(key + " = ?"); parameters.push(filters[key]!); }
   }
   if (filters.site_id === AUDIT_UNASSOCIATED_SITE) conditions.push("site_id IS NULL");
@@ -177,13 +176,34 @@ function selectRows(db: DatabaseSync, filters: AuditFilters, boundary: AuditSnap
     conditions.push("(" + ["event_id", "action", "actor_id", "subject_id", "request_id", "activity_id", "site_id", "site_name", "source_address", "route"].map(column => `${column} LIKE ? ESCAPE '\\'`).join(" OR ") + ")");
     for (let index = 0; index < 10; index++) parameters.push(search);
   }
-  if (position) {
-    conditions.push("(occurred_at < ? OR (occurred_at = ? AND (source < ? OR (source = ? AND sequence < ?))))");
-    parameters.push(position.occurredAt, position.occurredAt, position.source, position.source, position.sequence);
-  }
-  return db.prepare(`WITH audit_records AS (${coreProjection(evidence)} UNION ALL ${activityProjection(evidence)})
-    SELECT * FROM audit_records WHERE ${conditions.join(" AND ")}
-    ORDER BY occurred_at DESC, source DESC, sequence DESC LIMIT ?`).all(...parameters, limit) as AuditRow[];
+  const sources = filters.source ? [filters.source] : AUDIT_SOURCES;
+  const bindings: SQLInputValue[] = [];
+  const selections = sources.map(source => {
+    const local = [...conditions, "sequence <= ?"];
+    const values: SQLInputValue[] = [...parameters, boundary[source === "core" ? "core_sequence" : "activity_sequence"]];
+    // A caller-controlled cursor must never extend the activity retention window.
+    if (source === "activity") {
+      local.push("occurred_at >= ?");
+      values.push(Math.max(0, Math.max(now, boundary.captured_at) - ACTIVITY_RETENTION_DAYS * DAY));
+    }
+    if (position) {
+      if (source === position.source) {
+        local.push("(occurred_at, sequence) < (?, ?)");
+        values.push(position.occurredAt, position.sequence);
+      } else {
+        local.push(source < position.source ? "occurred_at <= ?" : "occurred_at < ?");
+        values.push(position.occurredAt);
+      }
+    }
+    bindings.push(...values, limit);
+    return `${source}_rows AS (SELECT * FROM (${source === "core" ? coreProjection(evidence) : activityProjection(evidence)})
+      WHERE ${local.join(" AND ")} ORDER BY occurred_at DESC, sequence DESC LIMIT ?)`;
+  });
+  // Each source uses its own time index and contributes at most one page. The
+  // outer ordering only merges these bounded candidates, in one SQLite snapshot.
+  return db.prepare(`WITH ${selections.join(", ")}
+    ${sources.map(source => `SELECT * FROM ${source}_rows`).join(" UNION ALL ")}
+    ORDER BY occurred_at DESC, source DESC, sequence DESC LIMIT ?`).all(...bindings, limit) as AuditRow[];
 }
 function item(row: AuditRow): AuditEventItem {
   return {
@@ -221,6 +241,8 @@ const SAFE_DETAIL_KEYS = new Set([
   "processed_entries", "processed_orders", "auto_settled", "failures", "continuation_pending", "processed", "acknowledged", "failed", "pending", "dead_letters",
   "attempt_number", "delivery_outcome",
   "backup_name", "backup_size_bytes", "backup_sha256", "instance_id", "schema_version", "duration_ms", "count", "retained_count", "deleted_count", "deleted_backups", "recovered_temporary_files",
+  "quarantine_name", "quarantine_sha256", "quarantine_size_bytes", "quarantined_database_name", "restore_completed",
+  "lock_kind", "lock_fingerprint", "lock_created_at", "lock_readable", "force_abandon_lease", "finalize_interrupted_restore",
   "command", "exit_code", "rebuild_state", "quarantine_unreadable", "force_unreadable_lock",
   "source_id", "source_sequence", "gap_count", "missing_events", "after_sequence", "through_sequence", "pruned_through_at", "signal",
 ]);
@@ -325,20 +347,124 @@ export function projectAuditCaptureState(value: RawAuditCaptureState | null | un
     last_flush_at: value.lastFlushAt === null ? null : iso(value.lastFlushAt), last_error_code: value.lastErrorCode,
     spool_last_import_at: value.spoolLastImportAt === null ? null : iso(value.spoolLastImportAt), spool_failures: safeInteger(value.spoolFailures), spool_gap_count: safeInteger(value.spoolGapCount) };
 }
+interface MetadataFact {
+  readonly sequence: number; readonly eventId: string; readonly occurredAt: number;
+  readonly action: string; readonly category: AuditCategory;
+  readonly siteId: string | null; readonly siteName: string | null;
+}
+interface MetadataSource {
+  readonly sequence: number; readonly headEventId: string | null;
+  readonly actions: Map<string, MetadataFact>; readonly sites: Map<string, MetadataFact>;
+}
+interface MetadataCatalog {
+  readonly dataVersion: number; readonly schemaVersion: number; readonly cutoff: number;
+  readonly core: MetadataSource; readonly activity: MetadataSource;
+}
+// The connection owns its catalog: closing/replacing it cannot retain an old
+// instance's historical choices or keep a global collection of databases alive.
+const metadataCatalogs = new WeakMap<DatabaseSync, MetadataCatalog>();
+function metadataFact(row: AuditRow): MetadataFact {
+  return { sequence: safeInteger(row.sequence), eventId: String(row.event_id), occurredAt: safeInteger(row.occurred_at),
+    action: String(row.action), category: row.category as AuditCategory, siteId: textOrNull(row.site_id), siteName: textOrNull(row.site_name) };
+}
+function laterFact(left: MetadataFact, right: MetadataFact): boolean {
+  return left.occurredAt > right.occurredAt || (left.occurredAt === right.occurredAt && left.sequence > right.sequence);
+}
+function rememberFact(map: Map<string, MetadataFact>, key: string, fact: MetadataFact): void {
+  const previous = map.get(key);
+  if (!previous || laterFact(fact, previous)) map.set(key, fact);
+}
+function metadataProjection(source: AuditSource): string {
+  return source === "core"
+    ? `SELECT e.sequence, e.event_id, e.occurred_at, e.action, ${CORE_CATEGORY} AS category,
+        COALESCE(c.site_id, CASE WHEN e.subject_type = 'website' AND e.subject_id != 'defaults' THEN e.subject_id END) AS site_id, c.site_name
+        FROM audit_events e LEFT JOIN audit_event_context c USING(event_id)`
+    : `SELECT sequence, event_id, occurred_at, action, ${ACTIVITY_CATEGORY} AS category, site_id, site_name FROM activity_events`;
+}
+function activityWitnessesPresent(db: DatabaseSync, state: MetadataSource): boolean {
+  // Normal minute-counter updates do not change metadata. Verify just the
+  // representative events so local retention/deletions cannot leave ghost
+  // choices, without counting or rescanning the retained activity table.
+  const facts = new Map([...state.actions.values(), ...state.sites.values()].map(fact => [fact.sequence, fact]));
+  const sequences = [...facts.keys()];
+  for (let offset = 0; offset < sequences.length; offset += 500) {
+    const chunk = sequences.slice(offset, offset + 500);
+    const rows = db.prepare(`${metadataProjection("activity")} WHERE sequence IN (${chunk.map(() => "?").join(",")})`).all(...chunk);
+    if (rows.length !== chunk.length) return false;
+    for (const row of rows) if (JSON.stringify(metadataFact(row)) !== JSON.stringify(facts.get(safeInteger(row.sequence)))) return false;
+  }
+  return true;
+}
+function readMetadataSource(db: DatabaseSync, source: AuditSource, cutoff: number, previous?: MetadataSource): MetadataSource {
+  const table = source === "core" ? "audit_events" : "activity_events";
+  const head = db.prepare(`SELECT sequence, event_id FROM ${table} ORDER BY sequence DESC LIMIT 1`).get();
+  const sequence = head ? safeInteger(head.sequence) : 0, headEventId = head ? String(head.event_id) : null;
+  let saved = previous;
+  if (saved && (sequence < saved.sequence || (sequence === saved.sequence && headEventId !== saved.headEventId))) saved = undefined;
+  if (saved && sequence > saved.sequence && saved.sequence > 0 &&
+    db.prepare(`SELECT event_id FROM ${table} WHERE sequence = ?`).get(saved.sequence)?.event_id !== saved.headEventId) saved = undefined;
+  if (saved && source === "activity") {
+    saved = { ...saved,
+      actions: new Map([...saved.actions].filter(([, fact]) => fact.occurredAt >= cutoff)),
+      sites: new Map([...saved.sites].filter(([, fact]) => fact.occurredAt >= cutoff)) };
+    if (!activityWitnessesPresent(db, saved)) saved = undefined;
+  }
+  const actions = new Map(saved?.actions), sites = new Map(saved?.sites);
+  if (!saved || sequence > saved.sequence) {
+    const minimum = saved?.sequence ?? 0;
+    const where = "sequence > ? AND sequence <= ?" + (source === "activity" ? " AND occurred_at >= ?" : "");
+    const values = source === "activity" ? [minimum, sequence, cutoff] : [minimum, sequence];
+    const projection = metadataProjection(source);
+    // A cold connection builds the historical catalog once. All subsequent
+    // appends are read by sequence, including delayed events with old timestamps.
+    // SQLite's single MAX selects a representative row at that latest time.
+    for (const row of db.prepare(`SELECT *, MAX(occurred_at) AS occurred_at FROM (${projection}) WHERE ${where} GROUP BY action, category`).all(...values)) {
+      const fact = metadataFact(row);
+      rememberFact(actions, JSON.stringify([fact.category, fact.action]), fact);
+    }
+    // On a cold activity catalog, enumerate the small site-key index and seek
+    // each site's latest retained event. Sorting every activity row by site
+    // would otherwise dominate the first metadata request on busy instances.
+    const siteRows = source === "activity" && !saved
+      ? db.prepare(`${projection} WHERE sequence IN (
+          SELECT (SELECT sequence FROM activity_events recent WHERE recent.site_id = keys.site_id
+            AND occurred_at >= ? AND sequence <= ? ORDER BY occurred_at DESC, sequence DESC LIMIT 1)
+          FROM (SELECT DISTINCT site_id FROM activity_events WHERE site_id IS NOT NULL) keys
+        )`).all(cutoff, sequence)
+      : db.prepare(`SELECT * FROM (
+          SELECT *, ROW_NUMBER() OVER (PARTITION BY site_id ORDER BY occurred_at DESC, sequence DESC) AS site_rank
+          FROM (${projection}) WHERE ${where} AND site_id IS NOT NULL
+        ) WHERE site_rank = 1`).all(...values);
+    for (const row of siteRows) {
+      const fact = metadataFact(row);
+      rememberFact(sites, fact.siteId!, fact);
+    }
+  }
+  return { sequence, headEventId, actions, sites };
+}
 export function queryAuditMetadata(database: ReadDatabase, capture?: AuditCaptureState, now = Date.now()): AuditMetadata {
   return database.read(db => {
     requireAuditTables(db);
     const cutoff = Math.max(0, now - ACTIVITY_RETENTION_DAYS * DAY);
-    const actions = db.prepare(`SELECT DISTINCT action, ${CORE_CATEGORY} AS category FROM audit_events
-      UNION SELECT DISTINCT action, ${ACTIVITY_CATEGORY} AS category FROM activity_events WHERE occurred_at >= ? ORDER BY category, action`).all(cutoff)
-      .map(row => ({ action: String(row.action), category: row.category as AuditCategory }));
-    const history = db.prepare(`SELECT site_id, site_name, MAX(occurred_at) AS occurred_at FROM (
-      SELECT COALESCE(c.site_id, CASE WHEN e.subject_type = 'website' AND e.subject_id != 'defaults' THEN e.subject_id END) AS site_id, c.site_name, e.occurred_at
-        FROM audit_events e LEFT JOIN audit_event_context c USING(event_id)
-      UNION ALL SELECT site_id, site_name, occurred_at FROM activity_events WHERE occurred_at >= ?
-    ) WHERE site_id IS NOT NULL GROUP BY site_id, site_name ORDER BY occurred_at DESC, site_id`).all(cutoff);
-    const sites = new Map<string, { site_id: string; site_name: string | null; deleted: boolean }>();
-    for (const row of history) if (!sites.has(String(row.site_id))) sites.set(String(row.site_id), { site_id: String(row.site_id), site_name: textOrNull(row.site_name), deleted: true });
+    const dataVersion = Number(db.prepare("PRAGMA data_version").get()!.data_version);
+    const schemaVersion = Number(db.prepare("PRAGMA schema_version").get()!.schema_version);
+    // Never publish uncommitted facts. An external writer/schema replacement or
+    // backwards clock movement invalidates the catalog before its next use.
+    const cached = db.isTransaction ? undefined : metadataCatalogs.get(db);
+    const previous = cached?.dataVersion === dataVersion && cached.schemaVersion === schemaVersion && cached.cutoff <= cutoff ? cached : undefined;
+    const core = readMetadataSource(db, "core", cutoff, previous?.core);
+    const activity = readMetadataSource(db, "activity", cutoff, previous?.activity);
+    if (!db.isTransaction) metadataCatalogs.set(db, { dataVersion, schemaVersion, cutoff, core, activity });
+    const actionFacts = new Map([...core.actions, ...activity.actions]);
+    const compare = (left: string, right: string) => left < right ? -1 : left > right ? 1 : 0;
+    const actions = [...actionFacts.values()].map(fact => ({ action: fact.action, category: fact.category }))
+      .sort((left, right) => compare(left.category, right.category) || compare(left.action, right.action));
+    const siteFacts = new Map(core.sites);
+    for (const [id, fact] of activity.sites) {
+      const coreFact = siteFacts.get(id);
+      if (!coreFact || fact.occurredAt > coreFact.occurredAt) siteFacts.set(id, fact);
+    }
+    const sites = new Map([...siteFacts].map(([id, fact]) => [id, { site_id: id, site_name: fact.siteName, deleted: true }]));
     if (hasTable(db, "sites")) for (const row of db.prepare("SELECT client_id, json_extract(configuration, '$.name') AS name, deleted_at FROM sites").all()) {
       sites.set(String(row.client_id), { site_id: String(row.client_id), site_name: textOrNull(row.name), deleted: row.deleted_at !== null });
     }

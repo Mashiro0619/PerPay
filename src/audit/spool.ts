@@ -14,8 +14,13 @@ import { ACTIVITY_MAX_EVENT_BYTES, ACTIVITY_RETENTION_MILLISECONDS, ActivityReco
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const EVENT_FILE = /^event-(\d{12})-([0-9a-f-]{36})\.json$/;
 const RETENTION_FILE = /^retention-(\d{12})-([0-9a-f-]{36})\.json$/;
+const TEMPORARY_FILE = /^\.activity-([0-9a-f-]{36})\.tmp$/;
 const MAX_FILE_BYTES = ACTIVITY_MAX_EVENT_BYTES + 4_096;
 const HOUR = 3_600_000;
+const CLEANUP_SOURCE_BUDGET = 128;
+const CLEANUP_FILE_BUDGET = 500;
+const CLEANUP_CONTINUATION_DELAY = 60_000;
+const CLEANUP_STATE_FILE = "cleanup-v1.json";
 const PERMANENT_ACTIONS = new Set([
   "backup.restore", "backup.delete", "backup.lock.clear", "maintenance.lock.clear", "maintenance.publication_lock.clear",
   "maintenance.quarantine.delete", "maintenance.quarantine.prune", "maintenance.restore",
@@ -42,6 +47,14 @@ interface SpoolRetention {
   readonly prunedThroughSequence: number;
   readonly prunedThroughAt: number;
   readonly publishedAt: number;
+  readonly sourceKind?: "backup" | "maintenance";
+}
+
+interface CleanupProgress {
+  readonly version: 1;
+  readonly nextRunAt: number;
+  readonly sourceId: string | null;
+  readonly fileAfter: string | null;
 }
 
 export interface ActivitySpoolEvent {
@@ -67,7 +80,7 @@ export class ActivitySpoolWriter {
   readonly #clock: () => number;
   readonly #source: SpoolSource;
   readonly #enabled: boolean;
-  #lastPrunedAt = -Infinity;
+  #nextPruneAt = 0;
   #lastWarningAt = -Infinity;
 
   constructor(options: ActivitySpoolWriterOptions) {
@@ -103,7 +116,7 @@ export class ActivitySpoolWriter {
       this.#source.publishedSequence = sequence;
       this.#source.lastErrorCode = null;
       this.#saveState();
-      if (this.#now() - this.#lastPrunedAt >= HOUR) this.prune();
+      this.#pruneAutomatically();
       return true;
     } catch {
       this.#source.failedEvents += 1;
@@ -138,52 +151,112 @@ export class ActivitySpoolWriter {
     if (this.#source.attemptedSequence > 0) this.#saveState();
   }
 
-  /** Every source file expires after the handoff window; imported core facts remain permanent. */
+  /** Run one bounded batch, continuing the shared cursor even during the automatic cooldown. */
   prune(): void {
     if (!this.#enabled) return;
-    this.#lastPrunedAt = this.#now();
-    const cutoff = this.#lastPrunedAt - ACTIVITY_RETENTION_MILLISECONDS;
-    let budget = 500;
+    this.#pruneBatch(this.#cleanupProgress());
+  }
+
+  #pruneAutomatically(): void {
+    const now = this.#now();
+    if (this.#nextPruneAt > now && this.#nextPruneAt <= now + HOUR) return;
+    const progress = this.#cleanupProgress();
+    if (progress.nextRunAt > now && progress.nextRunAt <= now + HOUR) {
+      this.#nextPruneAt = progress.nextRunAt;
+      return;
+    }
+    this.#pruneBatch(progress);
+  }
+
+  #cleanupProgress(): CleanupProgress {
     try {
-      for (const name of readdirSync(this.#root)) {
-        if (budget <= 0) break;
-        if (!UUID.test(name)) continue;
-        const directory = join(this.#root, name);
-        if (!ordinaryDirectorySync(directory)) continue;
-        let source: SpoolSource;
-        try { source = parseSource(readSmallJsonSync(join(directory, "source.json")), name); } catch { continue; }
-        // A crashed producer has no closedAt. Its immutable old files can still
-        // expire, without claiming that the producer has stopped permanently.
-        if (name !== this.#source.sourceId && source.closedAt === null && source.lastAttemptAt >= cutoff) continue;
-        if (name === this.#source.sourceId) source = this.#source;
-        const files = readdirSync(directory);
-        const expired: Array<{ file: string; event: ActivitySpoolEvent }> = [];
-        for (const file of files) {
-          if (expired.length >= budget) break;
-          if (!EVENT_FILE.test(file)) continue;
-          let event: ActivitySpoolEvent;
-          try { event = parseEvent(readSmallJsonSync(join(directory, file)), name, file); } catch { continue; }
-          if (event.activity.occurredAt >= cutoff) continue;
-          expired.push({ file, event });
-        }
-        if (expired.length === 0) continue;
-        const previousFile = highestRetentionFile(files);
-        if (previousFile) source = mergeRetention(source, parseRetention(readSmallJsonSync(join(directory, previousFile)), name, previousFile));
-        const watermark: SpoolRetention = { version: 1, sourceId: name,
-          prunedThroughSequence: Math.max(source.prunedThroughSequence, ...expired.map(item => item.event.sequence)),
-          prunedThroughAt: Math.max(source.prunedThroughAt ?? 0, ...expired.map(item => item.event.activity.occurredAt)),
-          publishedAt: this.#lastPrunedAt };
-        // Immutable markers are independent of source.json: a waking producer
-        // or another cleaner cannot overwrite or move an established boundary back.
-        atomicJson(directory, `retention-${String(watermark.prunedThroughSequence).padStart(12, "0")}-${randomUUID()}.json`, watermark);
-        for (const item of expired) rmSync(join(directory, item.file), { force: true });
-        budget -= expired.length;
+      const value = readSmallJsonSync(join(this.#root, "..", CLEANUP_STATE_FILE));
+      if (isRecord(value) && value.version === 1 && integer(value.nextRunAt) &&
+        (value.sourceId === null || typeof value.sourceId === "string" && UUID.test(value.sourceId)) &&
+        (value.fileAfter === null || typeof value.fileAfter === "string" && value.fileAfter.length <= 1_024) &&
+        (value.sourceId !== null || value.fileAfter === null)) return value as unknown as CleanupProgress;
+    } catch { /* Missing or interrupted progress can safely restart a bounded scan. */ }
+    return { version: 1, nextRunAt: 0, sourceId: null, fileAfter: null };
+  }
+
+  #pruneBatch(progress: CleanupProgress): void {
+    const now = this.#now();
+    let filesRemaining = CLEANUP_FILE_BUDGET, sourcesRemaining = CLEANUP_SOURCE_BUDGET;
+    try {
+      // Flat legacy directories still require a name listing. Expensive metadata,
+      // file reads and deletes are bounded, including entries that cannot expire.
+      const sources = readdirSync(this.#root).filter(name => UUID.test(name)).sort();
+      let index = progress.sourceId === null ? 0 : sources.findIndex(name =>
+        progress.fileAfter !== null ? name >= progress.sourceId! : name > progress.sourceId!);
+      if (index < 0) index = 0;
+      let sourceId = progress.sourceId, fileAfter = progress.fileAfter;
+      for (; index < sources.length && sourcesRemaining > 0 && filesRemaining > 0; index++) {
+        const name = sources[index]!;
+        const after = name === progress.sourceId ? progress.fileAfter : null;
+        sourcesRemaining--;
+        const scanned = this.#pruneSource(name, after, filesRemaining, now);
+        filesRemaining -= scanned.inspected;
+        sourceId = name; fileAfter = scanned.fileAfter;
+        if (fileAfter !== null) break;
       }
-    } catch {
+      const complete = index >= sources.length;
+      const next: CleanupProgress = { version: 1, nextRunAt: now + (complete ? HOUR : CLEANUP_CONTINUATION_DELAY),
+        sourceId: complete ? null : sourceId, fileAfter: complete ? null : fileAfter };
+      // Atomic replacement allows concurrent short commands to repeat a batch,
+      // but neither a crashed command nor a lock can prevent later cleanup.
+      atomicJson(resolve(this.#root, ".."), CLEANUP_STATE_FILE, next);
+      this.#nextPruneAt = next.nextRunAt;
+    } catch (error) {
+      if (errorCode(error) === "ENOENT") return;
       this.#source.lastErrorCode = "activity_spool_retention_failed";
       this.#saveState();
       this.#warn();
     }
+  }
+
+  #pruneSource(name: string, after: string | null, budget: number, now: number): { inspected: number; fileAfter: string | null } {
+    const directory = join(this.#root, name), cutoff = now - ACTIVITY_RETENTION_MILLISECONDS;
+    if (!ordinaryDirectorySync(directory)) return { inspected: 0, fileAfter: null };
+    let source: SpoolSource | null = null;
+    try { source = parseSource(readSmallJsonSync(join(directory, "source.json")), name); }
+    catch (error) { if (errorCode(error) !== "ENOENT") return { inspected: 0, fileAfter: null }; }
+    // Do not interfere with another active producer. Orphaned immutable events
+    // can expire without claiming that the producer has stopped permanently.
+    if (source && name !== this.#source.sourceId && source.closedAt === null && source.lastAttemptAt >= cutoff) return { inspected: 0, fileAfter: null };
+    if (name === this.#source.sourceId) source = this.#source;
+    const files = readdirSync(directory).sort();
+    const expired: Array<{ file: string; event: ActivitySpoolEvent }> = [];
+    let inspected = 0, fileAfter: string | null = null;
+    const candidates = after === null ? files : files.filter(file => file > after);
+    for (const file of candidates) {
+      if (inspected >= budget) break;
+      inspected++; fileAfter = file;
+      const temporary = TEMPORARY_FILE.exec(file);
+      if (temporary && UUID.test(temporary[1]!)) {
+        const path = join(directory, file), stat = lstatSync(path);
+        if (stat.isFile() && !stat.isSymbolicLink() && stat.mtimeMs < cutoff) rmSync(path, { force: true });
+        continue;
+      }
+      if (!EVENT_FILE.test(file)) continue;
+      let event: ActivitySpoolEvent;
+      try { event = parseEvent(readSmallJsonSync(join(directory, file)), name, file); } catch { continue; }
+      if (event.activity.occurredAt >= cutoff) continue;
+      expired.push({ file, event });
+    }
+    if (expired.length > 0) {
+      const previousFile = highestRetentionFile(files);
+      const previous = previousFile ? parseRetention(readSmallJsonSync(join(directory, previousFile)), name, previousFile) : undefined;
+      const watermark: SpoolRetention = { version: 1, sourceId: name,
+        prunedThroughSequence: Math.max(source?.prunedThroughSequence ?? 0, previous?.prunedThroughSequence ?? 0, ...expired.map(item => item.event.sequence)),
+        prunedThroughAt: Math.max(source?.prunedThroughAt ?? 0, previous?.prunedThroughAt ?? 0, ...expired.map(item => item.event.activity.occurredAt)),
+        publishedAt: now,
+        sourceKind: source?.kind ?? previous?.sourceKind ?? (expired[0]!.event.activity.sourceType === "BACKGROUND" ? "backup" : "maintenance") };
+      // Immutable markers are independent of source.json: a waking producer
+      // or another cleaner cannot overwrite or move an established boundary back.
+      atomicJson(directory, `retention-${String(watermark.prunedThroughSequence).padStart(12, "0")}-${randomUUID()}.json`, watermark);
+      for (const item of expired) rmSync(join(directory, item.file), { force: true });
+    }
+    return { inspected, fileAfter: inspected < candidates.length ? fileAfter : null };
   }
 
   #now(): number { try { const now = this.#clock(); return integer(now) ? now : Date.now(); } catch { return Date.now(); } }
@@ -282,31 +355,43 @@ export class ActivitySpoolImporter {
     const directory = join(this.#root, sourceId);
     const stat = await lstat(directory);
     if (!stat.isDirectory() || stat.isSymbolicLink()) { this.#failedSources.add(sourceId); this.#recorder.noteSpoolFailure("activity_spool_invalid"); return 1; }
+    // Read metadata before listing files: a producer may publish and close
+    // between these reads, and a newer high-water mark must not skip an unseen file.
+    let sourceValue: unknown, sourceError: unknown;
+    try { sourceValue = await readSmallJson(join(directory, "source.json")); }
+    catch (error) { sourceError = error; }
+    const directoryFiles = await readdir(directory);
+    const retentionFile = highestRetentionFile(directoryFiles);
+    let retention: SpoolRetention | undefined;
+    if (retentionFile) {
+      try { retention = parseRetention(await readSmallJson(join(directory, retentionFile)), sourceId, retentionFile); }
+      catch { this.#failedSources.add(sourceId); this.#recorder.noteSpoolFailure("activity_spool_invalid"); return 1; }
+    }
     let source: SpoolSource;
-    try { source = parseSource(await readSmallJson(join(directory, "source.json")), sourceId); this.#failedSources.delete(sourceId); }
+    try {
+      if (sourceError) throw sourceError;
+      source = parseSource(sourceValue, sourceId); this.#failedSources.delete(sourceId);
+    }
     catch (error) {
       this.#failedSources.add(sourceId);
       this.#recorder.noteSpoolFailure(errorCode(error) === "ENOENT" ? "activity_spool_metadata_missing" : "activity_spool_invalid");
       // A crash can occur after the durable event rename but before source metadata publication.
       // Recover the intact events while keeping capture visibly degraded: an unpublished tail is unknown.
       if (errorCode(error) !== "ENOENT") return 1;
-      const published = (await readdir(directory)).filter(file => EVENT_FILE.test(file)).sort();
-      if (published.length === 0) return 1;
-      let first: ActivitySpoolEvent;
-      try { first = parseEvent(await readSmallJson(join(directory, published[0]!)), sourceId, published[0]!); }
-      catch { return 1; }
-      const lastSequence = Number(EVENT_FILE.exec(published.at(-1)!)![1]);
-      source = { version: 1, sourceId, kind: first.activity.sourceType === "BACKGROUND" ? "backup" : "maintenance",
-        createdAt: first.activity.occurredAt, lastAttemptAt: first.activity.occurredAt,
+      const published = directoryFiles.filter(file => EVENT_FILE.test(file)).sort();
+      if (published.length === 0 && !retention) return 1;
+      let first: ActivitySpoolEvent | undefined;
+      if (published[0]) {
+        try { first = parseEvent(await readSmallJson(join(directory, published[0])), sourceId, published[0]); }
+        catch { return 1; }
+      }
+      const lastSequence = published.length > 0 ? Number(EVENT_FILE.exec(published.at(-1)!)![1]) : retention!.prunedThroughSequence;
+      source = { version: 1, sourceId, kind: first ? first.activity.sourceType === "BACKGROUND" ? "backup" : "maintenance" : retention?.sourceKind ?? "maintenance",
+        createdAt: first?.activity.occurredAt ?? retention!.prunedThroughAt, lastAttemptAt: first?.activity.occurredAt ?? retention!.prunedThroughAt,
         attemptedSequence: lastSequence, publishedSequence: lastSequence, failedEvents: 0, lastErrorCode: "source_metadata_missing",
         prunedThroughSequence: 0, prunedThroughAt: null, closedAt: null };
     }
-    const directoryFiles = await readdir(directory);
-    const retentionFile = highestRetentionFile(directoryFiles);
-    if (retentionFile) {
-      try { source = mergeRetention(source, parseRetention(await readSmallJson(join(directory, retentionFile)), sourceId, retentionFile)); }
-      catch { this.#failedSources.add(sourceId); this.#recorder.noteSpoolFailure("activity_spool_invalid"); return 1; }
-    }
+    if (retention) source = mergeRetention(source, retention);
     const saved = this.#database.read(db => db.prepare("SELECT last_sequence, gap_count, details_json FROM activity_import_sources WHERE source_id = ?").get(sourceId)) as
       { last_sequence: number | bigint; gap_count: number | bigint; details_json: string } | undefined;
     let cursor: ImportSourceRow | undefined = saved ? { last_sequence: Number(saved.last_sequence), gap_count: Number(saved.gap_count), details_json: saved.details_json } : undefined;
@@ -338,7 +423,10 @@ export class ActivitySpoolImporter {
       const sequence = Number(EVENT_FILE.exec(file)![1]);
       if (sequence > cursor.last_sequence + 1) {
         const missing = sequence - Math.max(cursor.last_sequence + 1, source.prunedThroughSequence + 1);
-        if (missing > 0) this.#gap(sourceId, cursor.last_sequence, missing, "source_sequence_missing", source);
+        if (missing > 0) {
+          this.#gap(sourceId, sequence - 1, missing, "source_sequence_missing", source);
+          cursor.last_sequence = sequence - 1;
+        }
       }
       let event: ActivitySpoolEvent;
       try { event = parseEvent(await readSmallJson(join(directory, file)), sourceId, file); }
@@ -396,14 +484,17 @@ export class ActivitySpoolImporter {
   }
 
   #gap(sourceId: string, lastSequence: number, count: number, code: string, source: SpoolSource): void {
+    const now = this.#now();
     this.#database.write(db => {
-      updateSource(db, sourceId, lastSequence, this.#now(), source, code);
+      persistActivityEvent(db, createActivityEvent({ activityId: randomUUID(), action: "activity.capture_gap", outcome: "FAILURE",
+        sourceType: "INTERNAL", actorType: "SYSTEM", actorId: "activity-importer", subjectType: "activity_source", subjectId: sourceId,
+        sourceAddress: null, userAgent: null, siteId: null, siteName: null, requestId: null, coreEventIds: [],
+        details: { error_code: code, missing_events: count },
+      }, now));
+      updateSource(db, sourceId, lastSequence, now, source, code);
       db.prepare("UPDATE activity_import_sources SET gap_count = gap_count + ? WHERE source_id = ?").run(count, sourceId);
     });
     this.#recorder.noteSpoolGap(count);
-    this.#recorder.record({ action: "activity.capture_gap", outcome: "FAILURE", sourceType: "INTERNAL", actorType: "SYSTEM", actorId: "activity-importer",
-      subjectType: "activity_source", subjectId: sourceId, sourceAddress: null, userAgent: null, requestId: null,
-      details: { error_code: code, missing_events: count } });
   }
 
   #retentionGap(sourceId: string, fromSequence: number, count: number, source: SpoolSource): void {
@@ -453,7 +544,8 @@ function parseRetention(value: unknown, sourceId: string, filename: string): Spo
   const match = RETENTION_FILE.exec(filename);
   if (!isRecord(value) || !match || !UUID.test(match[2]!) || value.version !== 1 || value.sourceId !== sourceId ||
     !integer(value.prunedThroughSequence) || value.prunedThroughSequence < 1 || value.prunedThroughSequence !== Number(match[1]) ||
-    !integer(value.prunedThroughAt) || !integer(value.publishedAt)) throw new TypeError("invalid retention watermark");
+    !integer(value.prunedThroughAt) || !integer(value.publishedAt) ||
+    !(value.sourceKind === undefined || value.sourceKind === "backup" || value.sourceKind === "maintenance")) throw new TypeError("invalid retention watermark");
   return value as unknown as SpoolRetention;
 }
 
