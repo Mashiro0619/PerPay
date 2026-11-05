@@ -86,7 +86,7 @@ test.describe("narrow settings and overview controls remain usable", () => {
     await expect(appId).toHaveValue("202610300001");
     await page.getByRole("tab", { name: "基本信息", exact: true }).tap();
     await expect(name).toHaveValue("主收款账号");
-    const primaryGeometry = await completeButtonLabel(page.getByRole("button", { name: "保存并检查", exact: true }), page);
+    const primaryGeometry = await completeButtonLabel(page.getByRole("button", { name: "创建账号并继续", exact: true }), page);
     const more = page.getByRole("button", { name: "更多账号操作", exact: true });
     const moreGeometry = await expectTouchTarget(more);
     await more.tap();

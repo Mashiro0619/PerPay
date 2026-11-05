@@ -30,6 +30,7 @@ import { ErrorNotice, QueryView } from "@/components/request-state";
 import { useSuccessToast } from "@/components/Feedback";
 import { SitePolicyFields, SiteTextField } from "@/components/SitePolicyFields";
 import { SiteCollectionFields } from "@/components/site-collection-fields";
+import { accountState, alipayAccountsQuery, type AlipayAccount, type SiteCollection } from "@/lib/alipay-accounts";
 import { siteTimeoutError, siteTimeoutSeconds } from "@/lib/site-timeout";
 import { SiteConfigurationConflicts } from "@/components/site-configuration-conflicts";
 import { mergeSiteConfiguration, resolveSiteConflicts, type SiteConflictChoices } from "@/lib/site-configuration";
@@ -39,6 +40,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
+import { Item, ItemContent, ItemDescription, ItemGroup, ItemTitle } from "@/components/ui/item";
 import {
   Card,
   CardContent,
@@ -80,7 +82,7 @@ function siteSummaryRows(site: Site, section: string): SettingsSummaryRow[] {
   const value = site.configuration, policy = value.policy;
   if (section === "collection") return [
     ["分配方式", value.collection ? { FIXED: "指定账号", RANDOM: "随机分配", WEIGHTED: "按权重分配" }[value.collection.mode] : "未配置"],
-    ["收款账号", value.collection?.accounts.length ? count(value.collection.accounts.length) + " 个" : "未分配"],
+    ["收款账号", <SiteCollectionSummary collection={value.collection} />],
   ];
   if (section === "orders") return [
     ["收银台有效期", policy.orders.order_ttl_seconds + " 秒"],
@@ -107,6 +109,42 @@ function siteSummaryRows(site: Site, section: string): SettingsSummaryRow[] {
     ["客户端 ID", <CopyValue value={site.client_id} label="复制客户端 ID" />],
     ["创建时间", dateTime(site.created_at)],
   ];
+}
+
+function collectionAvailability(account: AlipayAccount): string {
+  if (account.environment !== "PRODUCTION" || !account.enabled || !account.configured) return accountState(account);
+  if (!account.health) return "已配置，收款状态待确认";
+  return account.health.collection_ready ? "当前可收款" : "当前不可收款";
+}
+
+function SiteCollectionSummary({ collection }: { collection: SiteCollection | undefined }) {
+  const configured = collection?.accounts ?? [];
+  const accounts = useQuery({ ...alipayAccountsQuery, enabled: configured.length > 0 });
+  if (!configured.length) return <>未分配</>;
+  const catalog = new Map(accounts.data?.data.map(account => [account.id, account]) ?? []);
+  const current = accounts.isSuccess && !accounts.isFetching && !accounts.isPaused;
+  return <div className="flex min-w-0 flex-col gap-2" data-site-collection-summary>
+    <ErrorNotice error={accounts.error} retry={() => { void accounts.refetch(); }} retainedData={!!accounts.data} />
+    {accounts.isError && <p className="text-muted-foreground">以下保留已保存的账号分配；当前账号资料与可用状态未确认。</p>}
+    {accounts.isPaused ? <p role="status" className="text-muted-foreground">等待网络恢复，账号可用状态未确认。</p>
+      : accounts.isFetching && <p role="status" className="text-muted-foreground">正在读取账号资料…</p>}
+    <ItemGroup aria-label="已分配收款账号">
+      {configured.map(selected => {
+        const account = catalog.get(selected.account_id);
+        const status = !current ? "可用状态待确认" : account ? collectionAvailability(account) : "账号不存在或已删除，请核对历史配置";
+        return <Item key={selected.account_id} size="xs" role="listitem" className="min-w-0 px-0">
+          <ItemContent className="min-w-0 gap-1">
+            <ItemTitle className="line-clamp-none wrap-anywhere">{account?.name ?? selected.account_id}</ItemTitle>
+            {account && <ItemDescription className="line-clamp-none wrap-anywhere">账号 ID：{selected.account_id}</ItemDescription>}
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <span className="text-muted-foreground">{status}</span>
+              {collection?.mode === "WEIGHTED" && <span className="tabular-nums">权重 {count(selected.weight ?? 1)}</span>}
+            </div>
+          </ItemContent>
+        </Item>;
+      })}
+    </ItemGroup>
+  </div>;
 }
 
 export function SiteSettingsPage() {

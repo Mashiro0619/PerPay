@@ -259,6 +259,49 @@ describe("支付宝账号设置", () => {
 });
 
 describe("网站收款账号分配", () => {
+  it("distinguishes same-name fixed choices and keeps the selected application visible", async () => {
+    function Choices() {
+      const [value, onChange] = useState<SiteCollection>({ mode: "FIXED", accounts: [] });
+      return <><CollectionChoices accounts={[first, { ...second, name: first.name }]} value={value} onChange={onChange} /><output>{JSON.stringify(value)}</output></>;
+    }
+    mount(<Choices />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("combobox", { name: "支付宝账号" }));
+    expect(screen.getAllByRole("option").map(option => option.textContent)).toEqual([
+      "主收款账号 · App ID app-one", "主收款账号 · App ID app-two",
+    ]);
+    await user.click(screen.getByRole("option", { name: "主收款账号 · App ID app-two" }));
+    expect(screen.getByRole("combobox", { name: "支付宝账号" })).toHaveTextContent("主收款账号 · App ID app-two");
+    expect(screen.getByRole("status")).toHaveTextContent(JSON.stringify({ mode: "FIXED", accounts: [{ account_id: second.id, weight: 1 }] }));
+  });
+
+  for (const mode of ["RANDOM", "WEIGHTED"] as const) {
+    it(`shows distinct visible application identities for same-name ${mode} choices`, async () => {
+      function Choices() {
+        const [value, onChange] = useState<SiteCollection>({ mode, accounts: [{ account_id: first.id, weight: 1 }] });
+        return <><CollectionChoices accounts={[first, { ...second, name: first.name }]} value={value} onChange={onChange} /><output>{JSON.stringify(value)}</output></>;
+      }
+      mount(<Choices />);
+      expect(screen.getByText("主收款账号 · App ID app-one")).toBeVisible();
+      expect(screen.getByText("主收款账号 · App ID app-two")).toBeVisible();
+      await userEvent.setup().click(screen.getByRole("checkbox", { name: "主收款账号 · App ID app-two" }));
+      expect(screen.getByRole("status")).toHaveTextContent(JSON.stringify({ mode, accounts: [{ account_id: first.id, weight: 1 }, { account_id: second.id, weight: 1 }] }));
+      if (mode === "WEIGHTED") expect(screen.getByRole("spinbutton", { name: "主收款账号 · App ID app-two权重" })).toBeVisible();
+    });
+  }
+
+  it("uses enough stable ID for duplicate drafts while leaving unique names concise", () => {
+    const drafts = [
+      { ...first, id: "alipay_12345678-aaaa-4000-8000-111111111111", app_id: null, configured: false },
+      { ...second, id: "alipay_12345678-bbbb-4000-8000-222222222222", name: first.name, app_id: null, configured: false },
+    ];
+    mount(<CollectionChoices accounts={[...drafts, second]} value={{ mode: "RANDOM", accounts: drafts.map(account => ({ account_id: account.id, weight: 1 })) }} onChange={() => {}} />);
+    expect(screen.getByText("主收款账号 · 12345678-aaa（配置未完成）")).toBeVisible();
+    expect(screen.getByText("主收款账号 · 12345678-bbb（配置未完成）")).toBeVisible();
+    expect(screen.getByRole("checkbox", { name: "备用账号" })).toBeVisible();
+    expect(screen.queryByText(/app-two/)).not.toBeInTheDocument();
+  });
+
   it("preselects only one eligible account", () => {
     expect(defaultSiteCollection([first])).toEqual({
       mode: "FIXED",

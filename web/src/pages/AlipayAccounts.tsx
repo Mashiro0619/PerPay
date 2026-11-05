@@ -212,17 +212,19 @@ export function AlipayAccountEditor({
   const overlay = useOverlayContext();
   const tabbed = !!overlay && !onBack;
   const formId = useId();
-  const [panel, setPanel] = useState(initial?.pending_application_key ? "application" : "basic");
   const navigate = useNavigate();
   const location = useLocation();
   const navigationFeedback = location.state as {
     savedAccountId?: string;
     savedAccountRevision?: number;
     checkFailure?: string;
+    accountPanel?: string;
   } | null;
   const hasSavedFeedback = initial !== null &&
     navigationFeedback?.savedAccountId === initial.id &&
     navigationFeedback?.savedAccountRevision === initial.revision;
+  const [panel, setPanel] = useState(() => hasSavedFeedback && accountSections.some(([value]) => value === navigationFeedback?.accountPanel)
+    ? navigationFeedback!.accountPanel! : initial?.pending_application_key ? "application" : "basic");
   const [saved, setSaved] = useState(initial);
   const historical = saved?.environment === "SANDBOX";
   const [draft, setDraft] = useState(() => accountConfiguration(initial));
@@ -256,6 +258,8 @@ export function AlipayAccountEditor({
   const dirty =
     JSON.stringify(draft) !== JSON.stringify(accountConfiguration(saved)) ||
     privateKey !== "";
+  const creating = tabbed && saved === null;
+  const readyToCheck = !tabbed || !!(draft.app_id.trim() && draft.platform_public_key.trim() && (privateKey.trim() || saved?.application_public_key));
   const showFormActions = (!tabbed || panel !== "usage" || dirty) && !(tabbed && !historical && panel === "application" && saved?.pending_application_key && !dirty);
   const clear = useDirtyDraft(dirty);
   const clearActivationDraft = useDirtyDraft(activationKey !== "");
@@ -327,7 +331,8 @@ export function AlipayAccountEditor({
         completedNavigation.current = true;
         void navigate("/settings/accounts/" + account.id, {
           replace: true,
-          state: { savedAccountId: account.id, savedAccountRevision: account.revision, checkFailure },
+          state: { savedAccountId: account.id, savedAccountRevision: account.revision, checkFailure,
+            ...(tabbed ? { accountPanel: panel === "basic" ? "application" : panel } : {}) },
         });
       }
     },
@@ -483,7 +488,7 @@ export function AlipayAccountEditor({
         ) : null}
       </div>
       {tabbed && <ScrollingTabs><TabsList aria-label="支付宝账号配置分组" variant="line" activateOnFocus={false} className="min-w-max">
-        {accountSections.map(([value, label]) => <TabsTrigger key={value} value={value}>{label}</TabsTrigger>)}
+        {accountSections.filter(([value]) => value !== "usage" || saved !== null).map(([value, label]) => <TabsTrigger key={value} value={value}>{label}</TabsTrigger>)}
       </TabsList></ScrollingTabs>}
       <ErrorNotice error={error} />
       {historical && (
@@ -544,7 +549,7 @@ export function AlipayAccountEditor({
           event.preventDefault();
           if (!busy && !decoding && !historical) {
             check.reset();
-            save.mutate(true);
+            save.mutate(!creating && readyToCheck);
           }
         }}
       >
@@ -627,7 +632,7 @@ export function AlipayAccountEditor({
                     <Field>
                       <FieldLabel>应用公钥</FieldLabel>
                       <FieldDescription>
-                        {privateKey.trim() ? "保存导入的应用私钥后，这里会显示对应的应用公钥。" : saved ? "点击“生成应用密钥”由系统生成密钥对，再将应用公钥上传到支付宝。" : "先填写账号名称并保存草稿，再点击“生成应用密钥”。"}
+                        {privateKey.trim() ? "保存导入的应用私钥后，这里会显示对应的应用公钥。" : saved ? "点击“生成应用密钥”由系统生成密钥对，再将应用公钥上传到支付宝。" : tabbed ? "先填写账号名称，点击“创建账号并继续”，再生成应用密钥。" : "先填写账号名称并保存草稿，再点击“生成应用密钥”。"}
                       </FieldDescription>
                     </Field>
                   )}
@@ -738,7 +743,7 @@ export function AlipayAccountEditor({
               {overlay && !tabbed && <Button type="button" variant="outline" disabled={busy || decoding} onClick={() => overlay.requestClose()}>关闭</Button>}
               <Button form={formId} type="submit" className={tabbed ? "h-auto min-h-8 min-w-0 whitespace-normal py-1.5 max-sm:flex-1" : undefined} disabled={busy || decoding || historical}>
                 {save.isPending && <Spinner data-icon="inline-start" />}
-                <span className="min-w-0">{save.isPending ? "正在保存…" : "保存并检查"}</span>
+                <span className="min-w-0">{save.isPending ? "正在保存…" : creating ? "创建账号并继续" : readyToCheck ? "保存并检查" : "保存配置"}</span>
               </Button>
               {tabbed ? <DropdownMenu onOpenChange={open => { if (open) invalidDraftField.current = null; }}>
                 <DropdownMenuTrigger render={<Button type="button" variant="outline" size="icon" aria-label="更多账号操作" disabled={busy || historical} />}>

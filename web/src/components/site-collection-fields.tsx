@@ -35,6 +35,21 @@ const modes = [
   ["WEIGHTED", "按权重"],
 ] as const;
 
+function accountChoiceLabel(account: AlipayAccount, accounts: readonly AlipayAccount[]): string {
+  const duplicates = accounts.filter(item => item.name === account.name);
+  if (duplicates.length < 2) return account.name;
+  if (account.app_id && duplicates.every(item => item.id === account.id || item.app_id !== account.app_id)) {
+    return `${account.name} · App ID ${account.app_id}`;
+  }
+  // Drafts and historical accounts may lack a distinct application identity.
+  // Follow website choices: reveal only enough stable ID to distinguish them.
+  const compact = (id: string, length: number) => id.replace(/^alipay_/, "").slice(0, length);
+  let length = 8;
+  const collides = () => duplicates.some(item => item.id !== account.id && compact(item.id, length) === compact(account.id, length));
+  while (length < account.id.length && collides()) length += 4;
+  return account.name + " · " + (collides() ? account.id : compact(account.id, length));
+}
+
 export function SiteCollectionFields({
   value,
   onChange,
@@ -89,6 +104,7 @@ export function CollectionChoices({
   const choices = accounts.filter(
     (account) => selected.has(account.id) || available.includes(account),
   );
+  const labels = new Map(choices.map(account => [account.id, accountChoiceLabel(account, choices)]));
   const total = value.accounts.reduce(
     (sum, account) => sum + (account.weight ?? 1),
     0,
@@ -149,16 +165,16 @@ export function CollectionChoices({
             }
             items={choices.map((account) => ({
               value: account.id,
-              label: account.name,
+              label: labels.get(account.id)!,
             }))}
             disabled={disabled}
           >
             <SelectTrigger
               id={id + "-account"}
-              className="w-full"
+              className="w-full min-w-0 whitespace-normal data-[size=default]:h-auto data-[size=default]:min-h-8 *:data-[slot=select-value]:line-clamp-none *:data-[slot=select-value]:block"
               aria-invalid={!!error}
             >
-              <SelectValue placeholder="请选择收款账号" />
+              <SelectValue className="min-w-0 whitespace-normal wrap-anywhere" placeholder="请选择收款账号" />
             </SelectTrigger>
             <SelectContent>
               <SelectGroup>
@@ -166,14 +182,17 @@ export function CollectionChoices({
                   <SelectItem
                     key={account.id}
                     value={account.id}
+                    className="*:min-w-0 *:shrink"
                     disabled={!account.enabled || !account.configured}
                   >
-                    {account.name}
-                    {!account.configured
-                      ? "（配置未完成）"
-                      : !account.enabled
-                        ? "（已暂停）"
-                        : ""}
+                    <span className="min-w-0 whitespace-normal wrap-anywhere">
+                      {labels.get(account.id)}
+                      {!account.configured
+                        ? "（配置未完成）"
+                        : !account.enabled
+                          ? "（已暂停）"
+                          : ""}
+                    </span>
                   </SelectItem>
                 ))}
               </SelectGroup>
@@ -223,9 +242,9 @@ export function CollectionChoices({
                     />
                     <FieldLabel
                       htmlFor={checkboxId}
-                      className="min-w-0 break-words"
+                      className="min-w-0 wrap-anywhere"
                     >
-                      {account.name}
+                      {labels.get(account.id)}
                       {!account.enabled
                         ? "（已暂停）"
                         : !account.configured
@@ -239,7 +258,7 @@ export function CollectionChoices({
                         htmlFor={checkboxId + "-weight"}
                         className="sr-only"
                       >
-                        {account.name}权重
+                        {labels.get(account.id)}权重
                       </FieldLabel>
                       <Input
                         id={checkboxId + "-weight"}
@@ -268,7 +287,7 @@ export function CollectionChoices({
                       />
                       <span
                         className="w-14 text-right text-sm text-muted-foreground tabular-nums"
-                        aria-label={account.name + "分配比例"}
+                        aria-label={labels.get(account.id) + "分配比例"}
                       >
                         {percent.toFixed(1)}%
                       </span>

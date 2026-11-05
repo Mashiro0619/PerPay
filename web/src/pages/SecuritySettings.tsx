@@ -113,7 +113,12 @@ export function SecuritySettings({
   return (
     <>
       <div className="flex min-w-0 flex-col gap-4" data-security-summary>
-        <SettingsSummary title="管理员 IP 白名单" rows={[["状态", settings.admin_access.enabled ? "已启用" : "未启用"], ["允许的 IP / 网段", settings.admin_access.cidrs.length + " 条规则"]]} editTo="/settings/security/access" />
+        <SettingsSummary title="管理员 IP 白名单" rows={[
+          ["状态", settings.admin_access.enabled ? "已启用" : "未启用"],
+          ["允许的 IP / 网段", settings.admin_access.cidrs.length
+            ? <ul aria-label="已保存的白名单规则" className="flex min-w-0 flex-col gap-1">{settings.admin_access.cidrs.map(cidr => <li key={cidr} className="wrap-anywhere font-mono">{cidr}</li>)}</ul>
+            : "未配置规则"],
+        ]} editTo="/settings/security/access" />
         <SettingsSummary title="登录密码" description="修改后所有设备都需重新登录。" rows={[["登录方式", "管理员密码"]]} editTo="/settings/security/password" editLabel="修改" />
         <Card key="secrets">
           <CardHeader>

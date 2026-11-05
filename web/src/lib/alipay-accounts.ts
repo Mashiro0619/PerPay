@@ -28,7 +28,9 @@ export async function accountSaved(account: AlipayAccount) {
     exact: true,
   });
   queryClient.setQueryData(alipayAccountKey(account.id), { data: account });
-  await Promise.all([
+  // The write is confirmed and its snapshot is cached. Background reads must
+  // not keep the editor's mutation/navigation lock pending if one stalls.
+  void Promise.all([
     queryClient.invalidateQueries({ queryKey: alipayAccountsKey, exact: true }),
     queryClient.invalidateQueries({ queryKey: ["settings"] }),
     queryClient.invalidateQueries({ queryKey: ["status"] }),

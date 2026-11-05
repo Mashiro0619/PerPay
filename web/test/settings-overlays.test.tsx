@@ -410,6 +410,29 @@ describe("settings summaries and owned editing overlays", () => {
       body: { revision: 1, change_id: pending.change_id, platform_public_key: "returned-platform-public-key" } }]);
   });
 
+  it("keeps every new-account tab populated and retains the draft while switching configuration groups", async () => {
+    const view = mountOnboarding({ stage: 4, path: "/settings/accounts/new" });
+    const user = userEvent.setup();
+    const dialog = await screen.findByRole("dialog", { name: "支付宝账号" });
+    const name = await within(dialog).findByRole("textbox", { name: "账号名称" });
+    expect(within(dialog).getAllByRole("tab").map(tab => tab.textContent)).toEqual([
+      "基本信息", "应用信息", "收款码",
+    ]);
+    expect(within(dialog).queryByRole("tab", { name: "使用情况" })).not.toBeInTheDocument();
+    await user.type(name, "待添加账号");
+    for (const [tab, field] of [["基本信息", "账号名称"], ["应用信息", "应用 ID（App ID）"], ["收款码", "支付宝收款码内容"]]) {
+      await user.click(within(dialog).getByRole("tab", { name: tab }));
+      const control = within(dialog).getByRole("textbox", { name: field });
+      expect(control).toBeVisible();
+      const save = footer(dialog).getByRole("button", { name: "创建账号并继续" }) as HTMLButtonElement;
+      expect(save).toBeVisible();
+      expect(save.form).toBe(control.closest("form"));
+    }
+    await user.click(within(dialog).getByRole("tab", { name: "基本信息" }));
+    expect(name).toHaveValue("待添加账号");
+    expect(view.writes()).toHaveLength(0);
+  });
+
   it("returns secondary-action validation focus to an invalid field in another account tab without writing", async () => {
     const view = mountOnboarding({ stage: 4, path: "/settings/accounts/new" });
     const user = userEvent.setup();
@@ -423,7 +446,7 @@ describe("settings summaries and owned editing overlays", () => {
     expect(view.writes()).toHaveLength(0);
   });
 
-  it.each(["保存草稿", "保存并检查"])("replaces the new-account overlay only after %s succeeds", async label => {
+  it.each(["保存草稿", "创建账号并继续"])("replaces the new-account overlay only after %s succeeds", async label => {
     const account = sampleAccount();
     let release!: (response: Response) => void;
     const pending = new Promise<Response>(resolve => { release = resolve; });
@@ -437,26 +460,32 @@ describe("settings summaries and owned editing overlays", () => {
     const user = userEvent.setup();
     const name = await screen.findByLabelText("账号名称");
     expect(screen.queryByText("账号已保存", { exact: true })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "使用情况" })).not.toBeInTheDocument();
     await user.type(name, account.name);
     if (label === "保存草稿") {
       await user.click(screen.getByRole("button", { name: "更多账号操作" }));
       await user.click(await screen.findByRole("menuitem", { name: label }));
     } else await user.click(screen.getByRole("button", { name: label }));
     await waitFor(() => expect(view.writes()).toHaveLength(1));
+    expect(screen.queryByRole("tab", { name: "使用情况" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "更多账号操作" })).toBeDisabled();
     await user.keyboard("{Escape}");
     expect(new URLSearchParams(view.router.state.location.search).get("overlay")).toBe("/settings/accounts/new");
     await act(async () => { release(json({ data: account }, 201)); });
     await waitFor(() => expect(new URLSearchParams(view.router.state.location.search).get("overlay")).toBe("/settings/accounts/" + account.id));
-    expect(view.writes()).toHaveLength(label === "保存并检查" ? 2 : 1);
+    expect(view.writes()).toHaveLength(1);
     expect(screen.getByLabelText("账号名称")).toHaveValue(account.name);
+    await user.click(screen.getByRole("tab", { name: "使用情况" }));
+    const usage = screen.getByRole("tabpanel", { name: "使用情况" });
+    expect(within(usage).getByText("账号状态", { selector: "dt" })).toBeVisible();
+    expect(within(usage).getByText("尚未分配给网站。", { exact: true })).toBeVisible();
     expect(view.router.state.location.state).toMatchObject({ perpayOverlay: { detailState: {
       savedAccountId: account.id, savedAccountRevision: account.revision,
     } } });
     expect(screen.getByText("账号已保存", { exact: true })).toBeVisible();
   });
 
-  it("retains a failed creation check for its version and drops the feedback after generating a key and reopening", async () => {
+  it("creates an incomplete account without checking and continues directly to application setup", async () => {
     let account: AlipayAccount = { ...sampleAccount(), revision: 0, configured: false, app_id: null, code_payload: null,
       platform_public_key: null, application_public_key: null, application_key_fingerprint: null };
     const view = mountOnboarding({ stage: 4, path: "/settings/accounts/new", handle: request => {
@@ -474,10 +503,13 @@ describe("settings summaries and owned editing overlays", () => {
     const name = await screen.findByLabelText("账号名称");
     const originalForm = name.closest("form")!;
     await user.type(name, account.name);
-    await user.click(screen.getByRole("button", { name: "保存并检查" }));
+    await user.click(screen.getByRole("button", { name: "创建账号并继续" }));
     await waitFor(() => expect(new URLSearchParams(view.router.state.location.search).get("overlay")).toBe("/settings/accounts/" + account.id));
     await waitFor(() => expect(originalForm).not.toBeInTheDocument());
-    await waitFor(() => expect(screen.getByText("创建时的连接检查暂不可用")).toBeVisible());
+    expect(screen.queryByText("创建时的连接检查暂不可用")).not.toBeInTheDocument();
+    expect(view.writes()).toHaveLength(1);
+    expect(screen.getByRole("tab", { name: "应用信息" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("button", { name: "保存配置" })).toBeVisible();
     const creationLocation = view.router.state.location;
     await user.click(screen.getByRole("tab", { name: "应用信息" }));
     await user.click(screen.getByRole("button", { name: "生成应用密钥" }));
@@ -491,7 +523,7 @@ describe("settings summaries and owned editing overlays", () => {
     expect(screen.queryByText("创建时的连接检查暂不可用")).not.toBeInTheDocument();
     expect(screen.queryByText("账号已保存", { exact: true })).not.toBeInTheDocument();
     expect(view.writes().map(request => new URL(request.url).pathname)).toEqual([
-      "/api/admin/v1/alipay-accounts", "/api/admin/v1/alipay-accounts/" + account.id + "/check",
+      "/api/admin/v1/alipay-accounts",
       "/api/admin/v1/alipay-accounts/" + account.id + "/application-key",
     ]);
   });
