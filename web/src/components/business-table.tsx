@@ -88,6 +88,8 @@ export type BusinessColumn<T> = ResponsiveColumn & {
   layout?: BusinessColumnLayout;
   /** Summary placement, independent of the user's selected field preferences. */
   summaryPriority?: "primary" | "details";
+  /** Keep the metric's meaning visible when the table header is absent. */
+  summaryLabel?: boolean;
 };
 type BusinessTableProps<T> = {
   id: string;
@@ -128,7 +130,8 @@ function DefaultBusinessSummary<T>({
   const identity = visible.find(
     (column) => columnLayout(column, columns.indexOf(column)) === "identity",
   );
-  const fields = visible.filter((column) => column !== identity);
+  const actions = visible.filter(column => columnLayout(column, columns.indexOf(column)) === "actions");
+  const fields = visible.filter((column) => column !== identity && !actions.includes(column));
   const renderFields = (primary: boolean) => fields
     .filter((column) => context.isSummaryPrimary(column.id) === primary)
     .map((column) => (
@@ -137,6 +140,7 @@ function DefaultBusinessSummary<T>({
         className="business-summary-field"
         data-column-layout={columnLayout(column, columns.indexOf(column))}
         data-column-id={column.id}
+        data-visible-label={column.summaryLabel || undefined}
       >
         <dt>{column.label}</dt>
         <dd>{column.cell(item, context)}</dd>
@@ -154,6 +158,7 @@ function DefaultBusinessSummary<T>({
         </div>
       )}
       details={renderFields(false)}
+      actions={actions.length > 0 ? actions.map(column => <div key={column.id} data-column-id={column.id} data-column-layout="actions">{column.cell(item, context)}</div>) : undefined}
     >
       {renderFields(true)}
     </ListSummary>

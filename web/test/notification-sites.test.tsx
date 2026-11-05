@@ -24,10 +24,25 @@ describe("notification website identity", () => {
       const row = link.closest<HTMLElement>("[data-business-row]")!;
       expect(within(row).getByText("同名商品")).toBeVisible();
       if (width < 640) {
-        expect(row.querySelectorAll(".business-summary-field")).toHaveLength(3);
+        expect(within(row).getByText("通知类型", { selector: "dt" }).nextElementSibling).toHaveTextContent("收款已确认");
         expect(within(row).getByText("尝试次数", { selector: "dt" }).nextElementSibling).toHaveTextContent("3");
         expect(within(row).getByText("下次尝试", { selector: "dt" }).nextElementSibling).toHaveTextContent("2026/11/04 12:00");
       }
+    }
+  });
+  it.each([1440, 390])("distinguishes confirmation and dispute events for the same order at %ipx", async width => {
+    mobileMedia(width);
+    vi.stubGlobal("fetch", vi.fn(async () => json({ data: ["PAYMENT_CONFIRMED", "PAYMENT_DISPUTED"].map((event_type, index) => ({
+      ...delivery.delivery, delivery_id: "event_" + index, status: "ACKNOWLEDGED", event: { ...delivery.event, event_type },
+      order_summary: { ...identities[0], product_name: "同一订单", merchant_order_no: "same-order", payable_amount_cents: 1000 },
+    })), page: { next_cursor: null } })));
+    render(<QueryClientProvider client={queryClient}><MemoryRouter><Notifications /></MemoryRouter></QueryClientProvider>);
+    const confirmed = await screen.findByText("收款已确认");
+    const disputed = await screen.findByText("收款有争议");
+    for (const event of [confirmed, disputed]) {
+      const row = event.closest<HTMLElement>("[data-business-row]")!;
+      expect(within(row).getByText("同一订单")).toBeVisible();
+      expect(within(row).getByText("通知已确认")).toBeVisible();
     }
   });
   it.each([false, true])("shows website identity in standalone or embedded delivery evidence: embedded=%s", async embedded => {

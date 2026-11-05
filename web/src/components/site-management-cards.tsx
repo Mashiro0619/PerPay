@@ -29,8 +29,8 @@ export function SiteManagementCards() {
       return <Link data-row-link to={"/sites/" + encodeURIComponent(site.client_id) + "/summary?range=" + range} title={label} aria-label={label}>{label}</Link>;
     } },
     { id: "status", label: "状态", layout: "status", summaryDefault: true, cell: site => <Badge variant={site.accepting_orders ? "success" : "warning"}>{site.accepting_orders ? "接单中" : "暂停接单"}</Badge> },
-    { id: "received", label: "近 " + range + " 天实收", layout: "amount", summaryDefault: true, cell: site => money(site.confirmed_amount_cents) },
-    { id: "work", label: "待处理", layout: "number", summaryDefault: true, cell: site => site.work_items ? <Badge variant="warning">{count(site.work_items)}</Badge> : "0" },
+    { id: "received", label: "近 " + range + " 天实收", layout: "amount", summaryDefault: true, summaryLabel: true, cell: site => money(site.confirmed_amount_cents) },
+    { id: "work", label: "待处理", layout: "number", summaryDefault: true, summaryLabel: true, cell: site => site.work_items ? <Badge variant="warning">{count(site.work_items)}</Badge> : "0" },
     { id: "actions", label: "操作", layout: "actions", hideable: false, cell: site => <div className="flex items-center justify-end gap-1">
       <Link to={"/sites/" + encodeURIComponent(site.client_id) + "/settings/basic"} className={buttonVariants({ variant: "ghost", size: "icon-sm" })} aria-label={"网站设置：" + site.name} title="网站设置"><Settings2 /></Link>
       <Link to={"/sites/" + encodeURIComponent(site.client_id) + "?range=" + range} className={buttonVariants({ variant: "outline", size: "sm" })}>进入后台<ArrowRight data-icon="inline-end" /></Link>

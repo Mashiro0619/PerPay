@@ -109,11 +109,11 @@ function OrderMeta({ order, showSite, showTimes = false }: { order: AdminOrderSu
 
 function RecentOrderSummary({ order, showSite }: { order: AdminOrderSummary; showSite: boolean }) {
   return <ItemContent className="overview-order-summary">
-    <div className="flex min-w-0 items-center justify-between gap-3">
-      <ItemTitle className="list-identity-title min-w-0 flex-1"><OrderProductLink order={order} /></ItemTitle>
-      <div role="group" className="flex shrink-0 flex-wrap justify-end gap-1" aria-label="收款与通知状态">
-        <div role="group" aria-label="收款状态"><PaymentResult order={order} /></div>
-        <div role="group" aria-label="通知状态"><NotificationResult order={order} /></div>
+    <div className="flex min-w-0 flex-col gap-1">
+      <ItemTitle className="list-identity-title min-w-0 w-full"><OrderProductLink order={order} /></ItemTitle>
+      <div role="group" className="flex min-w-0 max-w-full flex-wrap items-start gap-1 [&_[data-slot=badge]]:max-w-full [&_[data-slot=badge]]:whitespace-normal [&_[data-slot=badge]]:break-words" aria-label="收款与通知状态">
+        <div role="group" className="min-w-0 max-w-full" aria-label="收款状态"><PaymentResult order={order} /></div>
+        <div role="group" className="min-w-0 max-w-full" aria-label="通知状态"><NotificationResult order={order} /></div>
       </div>
     </div>
     <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-1">

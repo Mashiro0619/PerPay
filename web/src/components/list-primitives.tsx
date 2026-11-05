@@ -93,18 +93,19 @@ export function ListSummary({
   source,
   children,
   details,
+  actions,
 }: {
   identity: ReactNode;
   aside?: ReactNode;
-  /** Cross-site context stays visible without displacing the three key fields. */
+  /** Cross-site context stays visible alongside the record's primary fields. */
   source?: ReactNode;
   children?: ReactNode;
   /** Selected secondary fields; unmounted after this record finishes collapsing. */
   details?: ReactNode;
+  actions?: ReactNode;
 }) {
   const compact = useContext(CompactRowContext);
   const fields = Children.toArray(children);
-  const shown = compact ? fields.slice(0, 3) : fields;
   return (
     <ItemContent className="min-w-0 w-full">
       <ItemHeader className="list-summary-heading">
@@ -112,8 +113,9 @@ export function ListSummary({
         {aside && <ItemActions className="list-summary-aside">{aside}</ItemActions>}
       </ItemHeader>
       {compact && source && <div className="list-summary-source flex min-w-0 items-baseline gap-1.5"><span className="shrink-0">网站</span>{source}</div>}
-      {shown.length > 0 && <dl className="business-summary-fields">{shown}</dl>}
+      {fields.length > 0 && <dl className="business-summary-fields">{fields}</dl>}
       <ListSummaryDetails>{details}</ListSummaryDetails>
+      {actions && <ItemActions className="w-full flex-wrap justify-end" data-summary-actions>{actions}</ItemActions>}
     </ItemContent>
   );
 }

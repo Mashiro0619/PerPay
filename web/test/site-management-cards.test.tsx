@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 import { queryClient, type ListSiteOverviewResponse } from "../src/api/client";
 import Sites from "../src/pages/Sites";
 import { apiError, json } from "./fixtures";
+import { mobileMedia } from "./mobile-media";
 
 type Range = 7 | 30 | 90;
 type OverviewSite = ListSiteOverviewResponse["data"][number];
@@ -101,6 +102,17 @@ function mount(handler: RequestHandler, path = "/sites", onCommit?: () => void) 
 }
 
 describe("website management compact table", () => {
+  it("keeps website actions reachable after all three mobile metrics", async () => {
+    mobileMedia(390);
+    const view = mount(() => page([site("site_mobile", "手机网站")]));
+    const row = await findCard("site_mobile");
+    expect(amount(row)).toHaveTextContent("¥129.01");
+    expect(workload(row)).toHaveTextContent("5");
+    expect(within(row).getByRole("link", { name: "网站设置：手机网站" })).toBeVisible();
+    await userEvent.setup().click(within(row).getByRole("link", { name: "进入后台" }));
+    expect(view.router.state.location.pathname).toBe("/sites/site_mobile");
+    expect(await screen.findByRole("heading", { name: "网站后台页面" })).toBeVisible();
+  });
   it("keeps creation and template entries while loading without inventing receipts or a clickable website", async () => {
     const pending = deferredResponse();
     mount(() => pending.promise);

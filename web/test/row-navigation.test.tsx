@@ -182,7 +182,7 @@ const listCases = [
       event: { event_type: "PAYMENT_CONFIRMED", order_id: orderId },
       created_at: timestamp,
     },
-    columns: 6,
+    columns: 7,
   },
   {
     name: "grouped Alipay transactions",
@@ -259,6 +259,10 @@ describe("detail navigation from actual list pages", () => {
       const cells = within(row).getAllByRole("cell");
       expect(cells).toHaveLength(columns);
       expect(within(table).getAllByRole("columnheader")).toHaveLength(columns);
+      if (path === "/notifications") {
+        expect(within(table).getByRole("columnheader", { name: "通知类型" })).toBeVisible();
+        expect(row.querySelector('[data-column-id="event_type"]')).toHaveTextContent("收款已确认");
+      }
       expect(
         within(table).queryByRole("columnheader", { name: "操作" }),
       ).not.toBeInTheDocument();

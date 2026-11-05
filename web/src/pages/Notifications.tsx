@@ -249,8 +249,10 @@ function DeliveryPage({
   ];
   if (!clientId) columns.splice(1, 0, { id: "site", label: "网站", layout: "text", summaryDefault: false,
     cell: delivery => <SiteIdentity clientId={delivery.order_summary?.api_client_id} name={delivery.order_summary?.site_name} /> });
+  columns.splice(1, 0,
+    { id: "event_type", label: "通知类型", layout: "text", hideable: false, summaryDefault: true, cell: delivery => label(delivery.event.event_type) },
+  );
   columns.push(
-    { id: "event_type", label: "通知类型", layout: "text", defaultVisible: false, cell: delivery => label(delivery.event.event_type) },
     { id: "payable_amount_cents", label: "应付金额", layout: "amount", defaultVisible: false, cell: delivery => delivery.order_summary ? money(delivery.order_summary.payable_amount_cents) : "未记录" },
   );
   return (
@@ -346,7 +348,7 @@ function DeliveryPage({
                       {columns.filter((column) =>
                         column.id !== "identity" && context.isSummaryPrimary(column.id),
                       ).map((column) => (
-                        <ListSummaryField key={column.id} label={column.label} visibleLabel={column.id === "attempt_count" || column.id === "next_attempt_at"}>
+                        <ListSummaryField key={column.id} label={column.label} visibleLabel={column.id === "event_type" || column.id === "attempt_count" || column.id === "next_attempt_at"}>
                           {column.cell(delivery, context)}
                         </ListSummaryField>
                       ))}

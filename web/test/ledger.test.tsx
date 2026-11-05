@@ -7,7 +7,7 @@ import { queryClient, type AdminLedgerDetail, type AdminLedgerMatch, type AdminL
 import { Link } from "../src/navigation";
 import Ledger from "../src/pages/Ledger";
 import LedgerDetail from "../src/pages/LedgerDetail";
-import { json, ledger, ledgerId, orderId } from "./fixtures";
+import { alipayAccount, json, ledger, ledgerId, orderId } from "./fixtures";
 import { mobileMedia } from "./mobile-media";
 import { paymentMatch } from "./detail-fixtures";
 import { dateTime } from "../src/lib/format";
@@ -87,7 +87,7 @@ describe("administrator ledger pages", () => {
       return this.hasAttribute("data-business-table") ? DOMRect.fromRect({ width, height: 200 }) : original.call(this);
     });
     const externalEventId = "202610222000100000123456";
-    fetchMock.mockImplementation(async () => json({ data: [{ ...entry, external_event_id: externalEventId }], environment: "PRODUCTION", page: { next_cursor: null } }));
+    fetchMock.mockImplementation(async () => json({ data: [{ ...entry, external_event_id: externalEventId, alipay_account_id: alipayAccount.id, alipay_account_name: alipayAccount.name }], environment: "PRODUCTION", page: { next_cursor: null } }));
     mount();
     const table = await screen.findByRole("table", { name: "支付宝流水" });
     expect(table).toHaveClass("ledger-table");
@@ -107,11 +107,19 @@ describe("administrator ledger pages", () => {
     expect(within(summary).getByRole("link", { name: externalEventId })).toHaveTextContent(externalEventId);
     expect(within(summary).getByText("交易时间")).toBeVisible();
     expect(within(summary).getByText("收支")).toBeVisible();
-    expect(within(summary).queryByRole("link", { name: "查看订单：real-order" })).not.toBeInTheDocument();
-    expect(within(summary).queryByText("PerPay 处理状态")).not.toBeInTheDocument();
+    const relatedOrder = within(summary).getByRole("link", { name: "查看订单：real-order" });
+    expect(relatedOrder).toHaveTextContent(match.product_name);
+    expect(relatedOrder).toHaveAttribute("href", "/orders/" + orderId);
+    expect(relatedOrder.closest(".business-summary-field")).toHaveAttribute("data-visible-label", "true");
+    const account = within(summary).getByRole("link", { name: alipayAccount.name });
+    expect(account).toHaveAttribute("href", "/settings/accounts/" + alipayAccount.id);
+    expect(account.closest(".business-summary-field")).toHaveAttribute("data-visible-label", "true");
+    expect(within(summary).getByText("PerPay 处理状态")).toBeInTheDocument();
     expect(within(summary).queryByText("本地流水备注")).not.toBeInTheDocument();
     expect(within(summary).queryByRole("button", { name: "展开信息" })).not.toBeInTheDocument();
-    expect(summary.querySelectorAll(".business-summary-field")).toHaveLength(3);
+    expect(Array.from(summary.querySelectorAll(".business-summary-field > dt"), field => field.textContent)).toEqual([
+      "交易时间", "收支", "关联状态", "当前关联订单", "收款账号", "PerPay 处理状态",
+    ]);
     expect(JSON.parse(localStorage.getItem("perpay.table-columns.v2.administrator-ledger")!)).toEqual({ memo: true });
     expect(screen.getByLabelText("位置")).toHaveTextContent(/^\/reconciliation$/);
     expect(fetchMock).toHaveBeenCalledTimes(1);

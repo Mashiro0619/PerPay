@@ -1329,7 +1329,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 @media (max-width: 767px) and (pointer: coarse) {
   .trend-period [data-slot="select-trigger"] { min-height: max(2rem, 40px); }
   .trend-types [data-slot="toggle-group-item"] { margin-inline: 4px; }
-  .trend-type-tooltip { display: none; }
+  body:not(:has(.trend-types [data-slot="toggle-group-item"]:focus-visible)) .trend-type-tooltip { display: none; }
   .trend-type-tooltip,
   [role="presentation"]:has(> .trend-type-tooltip) { pointer-events: none; }
 }
@@ -1825,6 +1825,6 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 [data-overview-layout] .overview-order-summary { gap: 0.375rem; }
 [data-overview-layout] .overview-order-summary .overview-order-meta { display: flex; flex-wrap: nowrap; gap: 0.5rem; overflow: hidden; }
 [data-overview-layout] .overview-order-summary .overview-order-reference > span:first-child { display: none; }
-[data-overview-layout] .overview-order-summary .list-identity-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-[data-overview-layout] .overview-order-summary .list-identity-title a { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+[data-overview-layout] .overview-order-summary .list-identity-title { width: 100%; white-space: normal; overflow-wrap: anywhere; }
+[data-overview-layout] .overview-order-summary .list-identity-title a { display: block; white-space: normal; overflow-wrap: anywhere; }
 [data-system-health-summary] { padding-block: 0.25rem 0.5rem; }
