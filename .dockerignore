@@ -6,6 +6,7 @@
 .playwright-cli/
 .playwright-mcp/
 .ui-audit/
+.scratch/
 /%SystemDrive%/
 node_modules/
 **/node_modules/

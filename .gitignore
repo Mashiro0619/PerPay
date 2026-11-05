@@ -38,3 +38,6 @@ backups/
 
 # Local visual-audit evidence and private browser state
 .ui-audit/
+
+# Local validation scratch files and source snapshots
+/.scratch/
