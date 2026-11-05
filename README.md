@@ -43,7 +43,7 @@
 | --- | --- |
 | ![全部网站汇总](docs/screenshots/dashboard-light.png) | ![网站后台](docs/screenshots/workspace-site.png) |
 
-截图均为本地只读合成数据。创建业务网站时填写名称并选择收款账号，其他设置按需配置。[两级后台操作与预览验收](docs/development/admin-workspaces.md)。
+截图均为本地只读合成数据。创建业务网站时填写名称并选择收款账号，其他设置按需配置，见[多网站管理](docs/multi-site.md)。
 
 ## 部署前准备
 

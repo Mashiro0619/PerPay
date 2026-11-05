@@ -1,140 +1,81 @@
+<!-- SPDX-License-Identifier: MIT -->
+
 # 前端开发
 
-后台和公开收银台使用 **React · Vite · shadcn/ui · Base UI · Nova · Neutral**。生产部署不需要单独的前端服务，见[部署说明](../README.md)；接口与业务规则见[接入说明](../USAGE.md)。
+后台和公开收银台使用 React、Vite、shadcn/ui、Base UI，组件采用 Nova / Neutral。生产环境由 Hono 提供前端资源，不需要独立前端服务。部署见[项目说明](../README.md)，业务契约见[接入说明](../USAGE.md)，本地预览和验收见[验证指南](../docs/development/ui-verification.md)。
 
-后台入口为 `/admin/`。访问 `/admin` 时服务端返回 308 并保留查询参数；根路径 `/` 直接跳转到 `/admin/`。后台深层路径仍返回对应的单页应用入口。
+后台入口为 `/admin/`，路由基址使用 Vite 的 `BASE_URL`。服务端将 `/admin` 规范化为 `/admin/` 并保留查询参数；根路径跳转到后台，深层路径返回对应的单页应用入口。
 
 ## 目录
 
 以下路径相对仓库根目录：
 
-| 路径 | 内容 |
+| 路径 | 职责 |
 | --- | --- |
-| `components.json` | shadcn CLI 配置 |
-| `web/src/components/ui/` | 官方基础组件 |
+| `components.json`、`web/src/components/ui/` | shadcn 配置与基础组件源码 |
 | `web/src/components/`、`web/src/pages/` | 后台业务组合与页面 |
-| `web/src/api/generated/` | OpenAPI 生成的客户端；由生成脚本维护 |
-| `web/src/branding.ts`、`src/shared/branding.ts` | 公开系统名称及 HTML 转义 |
-| `web/src/checkout/` | 收银台视图、SSR / hydration、轮询和下载 |
-| `src/shared/checkout-view.ts` | SSR 与客户端共用的公开投影 |
-| `src/http/web/` | Hono HTML 输出与构建资源加载 |
-| `web/src/styles.css`、`web/public/theme.js` | 主题、CSP / 触控适配及首屏外观 |
-| `web/test/`、`test/` | 前端与服务端回归测试 |
+| `web/src/lib/`、`web/src/hooks/` | 导航、查询、草稿与交互工具 |
+| `web/src/api/generated/` | 从 OpenAPI 生成的客户端，不手工编辑 |
+| `web/src/checkout/`、`src/shared/checkout-view.ts` | 收银台 SSR、hydration、轮询及共用公开投影 |
+| `src/http/web/`、`src/shared/branding.ts` | HTML 输出、资源加载与公开名称转义 |
+| `web/src/styles.css`、`web/public/theme.js` | 公共样式、主题及首屏外观 |
+| `web/test/`、`test/`、`ui-tests/` | 组件、服务端及浏览器回归 |
 
 ## 开发与构建
 
-开发时先构建一次前端，再另行启动**隔离开发后端**。可通过 `PERPAY_DATA_DIR`、`PERPAY_BACKUP_DIR`、`PERPAY_MASTER_KEY` 和 `PERPAY_PUBLIC_URL` 指定独立实例，再运行 `npm run dev`。必须连接隔离开发实例；输入真实支付宝或通知配置会触发真实后台任务。
+使用 [package.json](../package.json) 的 `engines.node` 指定范围：Node.js 24.15.0 及以上的 24.x。在仓库根目录安装依赖并构建，再启动隔离后端和 Vite：
 
 ```sh
+npm ci
 npm run build
 npm run dev:admin
 ```
 
-后台开发入口：[http://127.0.0.1:6191/admin/](http://127.0.0.1:6191/admin/)，默认代理到 `http://localhost:6190`。更换后端使用 `PERPAY_DEV_API_URL`，并核对 `PERPAY_PUBLIC_URL` / Origin 配置。
+后台开发入口为 `http://127.0.0.1:6191/admin/`，默认代理到 `http://localhost:6190`。可用 `PERPAY_DEV_API_URL` 指向[临时预览后端](../docs/development/ui-verification.md#本地预览)。自行运行 `npm run dev` 时，先设置独立的 `PERPAY_DATA_DIR`、`PERPAY_BACKUP_DIR`、`PERPAY_MASTER_KEY` 和 `PERPAY_PUBLIC_URL`，核对 Origin；真实支付宝或通知配置会启动真实后台任务。
 
-- 路由使用 Vite 的 `BASE_URL`（含尾斜杠）；旧 `/admin` 入口会规范化为 `/admin/`，保留查询、锚点及历史状态。
-- Vite 每次从后端 `/admin/` HTML 读取初始化标记及公开名称。后端不可用或标记未知时提供重试，不将未知状态当作首次部署；生产 HTML 由 Hono 直接注入。
-- 收银台始终由 Hono 提供 SSR。修改后执行 `npm run build:checkout` 并重启隔离后端；Vite 代理不代替构建。
+Vite 从后端 HTML 读取初始化标记及公开名称，后端不可用或标记未知时提供重试，不推断为首次部署。收银台始终由 Hono 提供 SSR；修改后执行 `npm run build:checkout` 并重启后端，Vite 代理不代替构建。
 
 | 命令 | 用途 |
 | --- | --- |
-| `npm run build` | 全部前端资源、私有收银台 SSR 和服务端 |
+| `npm run build` | 构建后台、收银台、私有 SSR 与服务端 |
 | `npm run build:admin` / `npm run build:checkout` | 单独构建后台 / 收银台 |
 | `npm run api:types` | 修改 OpenAPI 后重新生成客户端 |
-| `npm run test:admin` / `npm run test:node` | 单独运行前端 / 服务端测试；服务端测试前需构建前端 |
-| `npm test` | 先构建前端，再运行全部测试 |
+| `npm run test:admin` / `npm run test:node` | 前端 / 服务端回归；服务端测试前需构建前端 |
+| `npm test` | 先构建前端，再运行 Node 与 React 测试 |
 | `npm run check` | 版本、接口、类型、测试与服务端构建检查 |
 | `npm run demo:package` | 打包[业务调用端 Demo](../examples/node-client/README.md) |
 
-公开资源在 `web-dist/admin/` 和 `web-dist/checkout/`；`web-dist/checkout-ssr/renderer.cjs` 是私有产物，打包了 SSR 所需的前端依赖。只按清单提供公开资源，必须将 SSR、源码、source map 和清单文件留在私有构建目录。服务端编译结果在 `dist/`；必须将文档、发布材料和业务数据的唯一副本保存在构建目录之外。
+公开资源仅来自 `web-dist/admin/` 和 `web-dist/checkout/` 的资源清单。`web-dist/checkout-ssr/renderer.cjs`、源码、source map 与清单本身不得作为公开资源；服务端产物在 `dist/`。业务数据、文档和发布材料的唯一副本必须放在构建目录外。
 
 ## 浏览器支持
 
-后台和公开收银台以以下版本作为浏览器支持基线，建议使用仍获得安全更新的版本：
-
 | 浏览器 | 最低版本 |
 | --- | --- |
-| Chrome | 111 |
-| Edge（Chromium） | 111 |
+| Chrome / Chromium Edge | 111 |
 | Safari / iOS Safari | 16.4 |
 | Firefox | 128 |
 
-此基线结合了 [Tailwind CSS 4 的浏览器要求](https://tailwindcss.com/docs/compatibility#browser-support)和 [Vite 8 的浏览器兼容说明](https://v8.vite.dev/guide/build#browser-compatibility)。Tailwind 的核心 CSS 功能要求 Chrome 111、Safari 16.4 和 Firefox 128；仅降低 JavaScript 构建目标不能兼容缺少这些 CSS 功能的浏览器。
+基线依据 [Tailwind CSS 4 的浏览器要求](https://tailwindcss.com/docs/compatibility#browser-support)及 [Vite 8 的兼容说明](https://v8.vite.dev/guide/build#browser-compatibility)。[后台](vite.config.ts)与[收银台](vite.checkout.config.ts)配置使用 `build.target: "es2022"`，仅转换 JavaScript 语法，不补齐运行时 API 或 CSS 能力。新增 API 应符合基线或提供局部回退。
 
-[后台配置](vite.config.ts)与[收银台配置](vite.checkout.config.ts)均使用 `build.target: "es2022"`，控制 JavaScript 语法转换。[Vite 默认不补齐运行时 API](https://v8.vite.dev/guide/build#browser-compatibility)；新增 API 时应核对上述浏览器基线，或提供局部回退。每日统计和投递记录通过复制数组后 `sort()` 排序，保留原数据且不依赖 `Array.prototype.toSorted`。
+IE、EdgeHTML 及更旧内核不在支持范围。基线不等于逐版本实测；当前 Playwright 使用 Chromium，不能代替 Safari、Firefox、内置浏览器或实体设备验收。
 
-IE、旧 EdgeHTML 及低于上述基线的 WebView 不在支持范围。手机与内置浏览器按实际内核判断，微信等应用内浏览器的资源加载、剪贴板和下载还需单独验收。
+## 组件维护
 
-上述版本是工程支持基线，不是逐版本实测清单。当前 [Playwright 配置](../playwright.config.ts)运行 Chromium；jsdom 单测和缺少 `toSorted` 的回归只验证对应 JavaScript 行为，不能代替 Safari、Firefox 或实体设备验收。实际验证范围以各次测试记录为准。
+常规安装和构建直接使用仓库组件，不依赖 shadcn CLI。`web/src/vendor/shadcn-tailwind.css` 是 `shadcn@4.21.4/dist/tailwind.css` 的原样副本，SHA-256 为 `4c371f7a1ff5d219ae2f7ff28bd256b4346fd546fe46fbae22092e57db2f0fae`；许可见 [NOTICE](../NOTICE)。
 
-## 组件与布局
+CLI 仅在维护组件时按需使用，先核对版本、依赖安全和变更 diff，保留 Base UI 语义及已有适配。更新 vendored 样式时同步来源版本、哈希、NOTICE 和 `web/test/motion.test.tsx` 的校验；不要恢复 CLI 包的 CSS 导入或无意加入整套 CLI 构建依赖。修改后执行构建、相关回归及依赖审计。
 
-构建仅使用仓库中的组件源码和样式，不依赖 `shadcn` CLI。`web/src/vendor/shadcn-tailwind.css` 是 npm 包 `shadcn@4.21.4` 中 `dist/tailwind.css` 的原样副本（上游原文件 SHA-256：`4c371f7a1ff5d219ae2f7ff28bd256b4346fd546fe46fbae22092e57db2f0fae`），许可见 [NOTICE](../NOTICE)。这避免仅为引入 CSS 而安装整套 CLI 及其依赖；CI 仍审计全部锁定依赖，不豁免开发依赖。
+## 后台交互约束
 
-CLI 仅在组件维护时按需调用，不参与常规安装、测试或构建。调用前应核对所用版本及其依赖的安全状态，只对可信项目与组件源使用。更新组件后，检查 CLI 是否重新添加了 `shadcn` 依赖或恢复了包内 CSS 导入；需要更新样式时，从明确版本的官方 npm 包同步原文件，并更新上述版本、哈希、NOTICE 和 `web/test/motion.test.tsx` 中的来源校验，再执行构建、测试和全量依赖审计。
+- **网站范围**：网站业务使用 `/sites/:clientId` 对应的 API，服务器核对资源归属。`selected_site` 仅记忆全局页面中的导航选择，不是 API 筛选、写入身份或权限；网站工作区也不新增管理员角色。跨站切换不能串用旧响应、缓存或未确认操作。
+- **详情地址**：父页保留筛选、排序和游标，`overlay` 保存经过编码、不含 `/admin` 的已注册内部路径，如 `/admin/orders?payment=UNPAID&overlay=%2Forders%2Fexample-order`。新增类型登记 `overlayRouteDefinitions`、合法父页和资源范围，统一使用 `OverlayHost`；详情目标不改写父页范围。直达、刷新和旧链接必须有安全父页，不能依赖未知浏览器历史。
+- **历史与焦点**：关闭详情恢复来源和可用的触发焦点；重新加载后不能承诺恢复已销毁的 DOM、滚动位置或游标链。关联对象、内部步骤与技术信息弹窗沿用统一历史和焦点管理。技术信息为独立只读弹窗，保留父详情的 DOM、滚动和地址，Escape 只关闭最上层。
+- **草稿与并发**：同一对象切换分组保留一份草稿；关闭、换对象、离开与后退使用同一导航保护。刷新失败保留草稿，首次读取成功才建立编辑基线；版本冲突须核对全部修改后显式保存。创建、删除和保存以服务器成功结果为准，完成后的后台读取不继续占用写操作锁。
+- **未知结果**：财务与配置写入保留原请求、版本和幂等编号，显式重试原操作；HTTP 成功但正文损坏不算已确认。关闭或超时不等于取消已发送命令，恢复网络只恢复读取。会话失效清除受保护缓存、草稿与操作状态，并丢弃旧会话晚到响应。
+- **数据展示**：列表搜索、排序和游标由服务端执行；详情返回保留列表条件。移动摘要保留必要身份、字段标签、状态和操作，不按固定数量截断，也不继承桌面隐藏列。错误或未知值不当作零，旧周期数据不冒充新区间；收款确认与通知送达分别表达。退款标记不代表执行或核实退款。
+- **可访问操作**：使用基础组件的按钮、链接、Tabs 和表单语义，图标操作有可访问名称。`OverlayActions` 中的提交按钮关联原表单；字段错误可定位、可聚焦。长值自然换行，放大文字和短视口下正文可滚动、标题和操作可达，不能留下两套同时可操作的表单。
+- **视觉与动效**：复用公共容器、语义颜色和基础变体，切换宽度、主题或布局不重挂载草稿。每个属性只由一种动画机制控制，保留 Base UI 焦点与卸载行为，响应系统减少动态效果偏好；不为动效放宽 CSP，也不把后台 Motion 引入公开收银台或 SSR。
 
-建议通过官方 CLI 添加或更新组件；必须先检查 diff 并保留现有适配：
+密钥只在显式查看时读取，不进入查询缓存；关闭、隐藏或会话失效后清除明文，不能恢复晚到密钥。管理员初始化只接受明确的 `initialized=false`。所有写入继续执行服务器会话、CSRF、IP 白名单和业务校验，不能用界面状态代替。
 
-```sh
-npx shadcn@latest add <component>
-```
-
-- 基础控件沿用默认变体和语义颜色；业务层负责布局与状态，不另建一套按钮、菜单或主题。许可见 [NOTICE](../NOTICE)。
-- 设置页的配置向导／刷新、向导的图文教程／刷新、运行页的刷新统一放在顶栏外观入口左侧；按钮仍由所属页面持有状态，刷新保留草稿确认，离开页面清除对应操作。窄屏使用带可访问名称的图标入口。向导的单一刷新入口同步读取配置和实例状态，再重新检查收款就绪；完成页不重复放置刷新或常规设置出口。
-- 设置分类使用 Tabs，窄屏横向滚动；“支付宝环境”使用 Select，不再使用原生下拉框。显示设置采用内部限宽单列表单，外层卡片跟随公共容器，桌面标签与控件按行对齐，手机上下排列。普通保存须有修改，离开草稿只确认一次；错误关联到字段并聚焦。
-- 列表采用服务端搜索、排序和游标；响应式列按容器宽度与用户偏好决定，必须由服务端执行全量查询。返回详情来源时保留筛选和分页。
-- 桌面列表通过表头选择排序字段并切换升降序，工具栏不重复提供排序选择器。手机和摘要布局保留“筛选与排序”面板；收款关联的“记录”表头按关联事件顺序排序。
-- 表格单元格统一垂直居中；金额、状态、次数、时间等结构字段的表头与内容在各自列内水平居中，订单身份及文字列左对齐。列声明的对齐方式优先于默认值，状态组和换行徽标随整列居中。摘要行与关联订单、可能匹配的记录的右侧金额／状态／操作跟随左侧内容垂直居中；时间线图标仍对齐事件首行。检查结果见[列表对齐](../docs/development/list-alignment.md)。
-- 后台内容由公共容器统一控制：默认“收缩”（最大 1280px 居中），顶栏外观左侧可切换“全屏”（铺满侧栏右侧）。两者统一保留手机 16px、桌面 24px 水平边距；不控制侧栏、不调用浏览器全屏。手机隐藏切换入口，内容自然铺满。选择以 `perpay:content-width` 的 `compact / full` 保存到本浏览器并跨标签页同步；存储不可用时仍可切换。页面卡片不再自行限宽，短表单只限制内部字段区域；登录、收银台和弹窗不受影响。切换必须保留页面挂载、草稿与请求状态。
-- 系统设置的安全页使用四张独立卡片：管理员 IP 白名单、密钥、修改密码、登录会话。复用订单详情的动态卡片布局，按设置容器宽度在 48rem / 80rem 切为两列 / 三列，并按内容高度补位；缩放、输入错误或 textarea 高度变化会重新排列，保留表单草稿与焦点。安全页沿用公共收缩 / 全屏宽度，其他设置页仍限制在 56rem。
-- `Dashboard` 的趋势只显示当前指标的区间累计；图表和每日数据通过标签切换，共用统计周期。
-- `overview-records` 容器达到 68rem 时，待处理和最近订单按 32:68 分栏；较窄时上下排列。默认展示 4 条提醒和 5 笔订单，不随趋势周期筛选。
-- `OverviewWorkItems` 按服务端人工关注顺序展示。首行保留问题与真实状态，商品名称进入订单详情；底部显示业务网站、提醒时间，以及实际存在的重试或投递计划。问题标题与整行空白进入处理详情。商户订单号保留明确标签；无摘要时保留带标签的订单或流水引用。
-- 待处理总数来自当前完整范围汇总，未知时显示未知。全局显示业务网站，本站省略重复身份；处理操作均进入详情。
-- `RecentOrders` 保留身份、金额、收款、通知汇总、创建与 PerPay 确认时间。商品下使用“网站订单号”及完整编号，网站与时间按可用宽度自然换行，不加装饰竖线；金额右对齐，独立时间列的标签与完整日期分别对齐。默认显示一次金额；实收存在且不同于应付时展开两者并强调实收，缺失实收不当作零。列表达到 64rem 时收款与通知分列，40–64rem 将两类状态放在同一列并保留独立含义；48rem 以下时间流入订单信息，小于 40rem 使用完整摘要。仅最近订单缩小行内留白，长内容正常撑高，不固定高度或裁切编号。
-- 两列表在前台每 60 秒刷新，返回首页重新读取；失败时保留数据和错误提示。通知按每个事件的最新投递代汇总，仅所有事件均收到确认回执时显示成功。
-- `DailyAnalytics` 使用单表头的每日明细，按日期倒序，每页 10 天。近 7 天全部展示，近 30 / 90 天分别为 3 / 9 页；分页只切分已读取的数据，不发起额外查询。切回图表、切换内容宽度及同周期刷新保留页码；切换网站、周期或跨北京时间日期时回到第一页。容器不足 40rem 时显示单日摘要行，隐藏装饰横条。
-- 区间累计取服务端汇总。日均金额与峰值日只统计已结束的日期；金额横条使用等宽的 64px 轨道，按完整区间（含今日）的最高日金额比较，汇总和横条比例均不随页码变化。
-- 图表使用真实聚合数据；切换周期时必须将旧数据与新区间区分。保留键盘访问、统计口径和加载 / 失败状态。
-- 首页各网站概览使用精简金额卡片，名称、区间实收与 4px 对比横条组成主体，仅提示暂停接单和非零当前待处理。横条以全部未删除网站的本期最高实收为满格，包含暂停网站，不因分页改变比较范围；统一周期随首页切换。概览接口返回顶层 `period` 与 `max_confirmed_amount_cents`，跨上海日期追加时重新读取第一页，不返回每日走势数组。
-- 首页在成功确认仅一个网站且没有下一页时隐藏网站概览，读取失败仍保留错误与重试。业务网站管理入口为 `/admin/sites`，页面使用包含实收、收款确认笔数、当前待付款、当前待处理和接单／通知状态的经营卡片；默认近 30 天，可切换 7／30／90 天，每页 30 个网站。首页与管理页共用批量概览查询和金额横条，不逐站读取统计；卡片保留后台及设置入口。
-- 管理卡片、单网站显示规则和侧栏入口的检查结果见[网站经营卡片验收](../docs/development/site-management-cards.md)。
-- 金额卡片的自动检查、浏览器布局和交互结果见[验收记录](../docs/development/site-overview-amount-cards.md)。
-- 首页待处理与最近订单的接口口径、响应式布局和完整验证见[概览双列表验收](../docs/development/overview-records.md)。
-- 收银台桌面双栏、手机同一份 DOM 单栏。二维码保留完整留白；放大、下载与主图一致。矮屏自然滚动，不以固定定位裁切内容。
-- 图标必须从 `web/src/assets/favicon.svg` 构建为同源、带指纹的外部 SVG。
-
-详情页保留正文返回入口，刷新统一通过 `PageHeaderActions` 放入顶栏。`RefreshButton` 只负责加载、禁用及 Tooltip，各页保留原刷新范围和草稿确认。后台复制显式启用 Tooltip，更多操作沿用菜单状态；公开收银台复制不变。
-
-### 后台弹窗规格
-
-后台通过 `admin-dialog` 复用基础弹窗：确认最大 512px、表单 576px、技术详情 768px，窗口边缘至少 16px。正文独立滚动，标题与操作区保留；手机按钮纵排（主操作在上），桌面右对齐横排。纯确认默认聚焦取消，危险操作使用 destructive；结果未知时强调“留在此页”。密钥轮换的确认与结果展示共用原操作状态和密钥有效期，不因外观切换重新请求。登录和公开收银台继续使用原基础组件。
-
-### 反馈与内容规格
-
-成功提示由 `useFeedback` 单独管理 4 秒时限，同样文案再次成功重新计时，`SuccessMessage` 只渲染。操作完成的业务锁与提示寿命分离，错误、密钥提醒和未知结果不受成功计时器影响。`admin-empty` 区分页面/列表、筛选无结果、局部无明细；筛选重置和上一页操作保留。`DetailFields` 普通与紧凑两档按自身容器宽度分栏，空值为“—”，零值保留，长值自然换行；交易对照、密钥和 JSON 继续使用专用展示。
-
-## 数据与安全边界
-
-- 系统名称是公开信息：由服务端安全注入登录页和收银台，后台保存后同步更新。显示设置不改变付款版本、订单或通知；隐藏商品名称也不是保密功能。数据库兼容范围以 [src/version.ts](../src/version.ts) 和[维护文档](../docs/maintenance.md#固定版本与回滚)为准。
-- 管理员初始化只依据明确的 `initialized=false`；配置向导不等于再次创建管理员。密钥仅显式查看时读取，不进入查询缓存；关闭、标签页隐藏或 60 秒超时后清除页面明文。
-- 收银台不加载管理 API 或秘密。付款控制器未启动时不展示二维码和静止倒计时；保留无脚本刷新入口。轮询须处理 Retry-After、离线 / 隐藏暂停、BFCache、取消与旧响应；到期关闭付款入口并取消下载。
-- 财务写入使用 CSRF、版本与幂等编号。结果未知时保留原请求和固定证据，必须明确重试上一次操作；HTTP 2xx 正文损坏不算成功。超时或离开页面不等于撤销服务端命令，也不自动重发。
-- 固定证据操作与草稿共用一个路由 blocker；状态冲突不能继续提交旧命令。会话失效清除本会话状态，必须丢弃旧会话的晚到响应。
-- 退款标记只是管理员声明，不执行或验证退款，不改变资金、付款状态或通知。标记版本与操作编号需保持，未知结果必须核查；必须区分历史幂等回执与最新状态。
-- 忽略提醒不消除异常，也不停止重试。连续恢复由列表按条持有请求；保留当前分类、游标和最后一次操作的焦点，读取失败必须显示错误状态。
-- 明暗主题仅保存 `perpay:theme` 的 light / dark / system；切换外观必须保留表单挂载和现有业务状态。
-
-## 验证与性能
-
-除 `npm run check` 外，布局修改要在生产 CSP 下验证桌面 / 手机、明暗、长文本、键盘焦点与滚动可达性；收银台额外检查禁用脚本及 hydration。所有写操作使用隔离合成库，不以真实订单作测试。
-
-每日金额横条的像素回归：先执行 `npm run build:admin`，再运行 `node scripts/check-daily-amount-layout.mjs` 并在浏览器打开输出的 HTML。页面显示 `passed` 时通过，覆盖单表头、每页 10 天、64px 底轨等宽、金额比例、零值及大额数值裁切；生成文件位于已忽略的 `.playwright-mcp/`，无需提交。
-
-以下脚本在临时数据库构造查询投影，不连接支付宝或发送通知；只衡量列表查询，不作为财务写入正确性的证据。参数范围为 100–20000，默认 10000：
-
-```sh
-node --experimental-strip-types scripts/benchmark-admin-queries.ts 10000
-node --experimental-strip-types scripts/benchmark-admin-queries.ts 10000 work-items
-node --experimental-strip-types scripts/benchmark-manual-candidates.ts 10000
-```
+公开收银台只消费公开投影。付款控制器未启动或订单到期时关闭付款入口；轮询处理 Retry-After、离线／隐藏暂停、BFCache、取消和旧响应，保留无脚本刷新入口。后台布局、共享样式与构建调整均需覆盖收银台回归。
