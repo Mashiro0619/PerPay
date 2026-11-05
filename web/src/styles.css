@@ -1407,7 +1407,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   [data-overlay-content][data-overlay-viewport="dialog"] {
     width: calc(var(--overlay-viewport-width, 100vw) - 3rem);
     max-width: 40rem;
-    max-height: calc(var(--overlay-viewport-height, 100dvh) - 2 * var(--overlay-chrome-inset));
+    max-height: min(900px, calc(var(--overlay-viewport-height, 100dvh) * 0.85));
   }
   [data-overlay-content][data-overlay-viewport="dialog"][data-overlay-size="lg"] { max-width: 56rem; }
   [data-overlay-content][data-overlay-viewport="dialog"][data-overlay-size="xl"] { max-width: 72rem; }
