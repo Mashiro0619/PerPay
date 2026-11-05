@@ -1,4 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
+import { normalizeKeyword } from "../shared/list-query.ts";
+import { siteClientIdSchema } from "../sites/model.ts";
 import { adminFingerprint, adminOperationIdSchema } from "./admin-operation-store.ts";
 import { refundMarkRequestSchema } from "./admin-refund-mark-store.ts";
 
@@ -39,8 +41,14 @@ export function countAdminOperationViolations(connection: DatabaseSync): number 
     if (op.action === "work_items.ignore_all") {
       if (result.type !== "ALL" && !Object.hasOwn(resourceTables, String(result.type))) violations += 1;
       if (event || members.some((member) => result.type !== "ALL" && member.kind !== result.type) || details.membership_fingerprint !== adminFingerprint(members)) violations += 1;
-      expected = { operation_id: op.operation_id, type: result.type, ignored_count: members.length };
-      request = { type: result.type };
+      const hasSite = Object.hasOwn(result, "api_client_id"), hasKeyword = Object.hasOwn(result, "q");
+      if (hasSite && !siteClientIdSchema.safeParse(result.api_client_id).success) violations += 1;
+      if (hasKeyword && !isCanonicalKeyword(result.q)) violations += 1;
+      // Preserve the writer's optional fields and insertion order; legacy records
+      // omitted both filters, and empty normalized keywords are never persisted.
+      const filters = { ...(hasSite ? { api_client_id: result.api_client_id } : {}), ...(hasKeyword ? { q: result.q } : {}) };
+      expected = { operation_id: op.operation_id, type: result.type, ignored_count: members.length, ...filters };
+      request = { type: result.type, ...filters };
     } else if (op.action === "work_items.restore") {
       if (!Object.hasOwn(resourceTables, String(result.type)) || !adminOperationIdSchema.safeParse(result.resource_id).success || typeof result.restored !== "boolean" || event) violations += 1;
       if (result.restored === true ? members.length !== 1 || members[0]?.kind !== result.type || members[0]?.item_id !== result.resource_id : members.length !== 0) violations += 1;
@@ -69,6 +77,10 @@ export function countAdminOperationViolations(connection: DatabaseSync): number 
     FROM admin_refund_mark_events AS event LEFT JOIN admin_refund_marks AS current ON current.order_id = event.order_id
     GROUP BY event.order_id HAVING current.version IS NULL OR current.version != MAX(event.version) OR COUNT(*) != MAX(event.version))`);
   return violations;
+}
+function isCanonicalKeyword(value: unknown): value is string {
+  if (typeof value !== "string" || value.length === 0) return false;
+  try { return normalizeKeyword(value) === value; } catch { return false; }
 }
 function resourceExists(connection: DatabaseSync, kind: string, id: string): boolean {
   const table = Object.hasOwn(resourceTables, kind) ? resourceTables[kind] : undefined;
