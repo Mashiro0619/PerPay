@@ -664,7 +664,7 @@ a:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .list-identity-meta .reconciliation-related-record { padding-block: 0.0625rem; }
 .ledger-table td[data-column-id="order"] .business-cell-stack { gap: 0.125rem; }
 /* Wrapping lets the auto-layout column shrink before the title is clamped. */
-[data-business-table][data-embedded="false"] .ledger-table td[data-column-id="order"] > .ledger-order-line {
+[data-business-table][data-embedded="false"] .ledger-table td > .ledger-order-line {
   display: -webkit-box;
   min-width: 0;
   max-width: 100%;
@@ -1770,7 +1770,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 [data-business-table][data-embedded="false"] .business-table td[data-column-layout="amount"],
 [data-business-table][data-embedded="false"] .business-table td[data-column-layout="actions"] { overflow: visible; }
 [data-business-table][data-embedded="false"] .business-table td:is([data-column-layout="status"], [data-column-layout="actions"]) { overflow: visible; text-overflow: clip; white-space: normal; }
-[data-business-table][data-embedded="false"] .business-table td:is([data-column-layout="identity"], [data-column-layout="text"], [data-column-layout="datetime"], [data-column-layout="number"]) > :is(span, a, time, div):not([data-slot="badge"], .business-cell-stack, .business-cell-badges) { display: block; min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+[data-business-table][data-embedded="false"] .business-table td:is([data-column-layout="identity"], [data-column-layout="text"], [data-column-layout="datetime"], [data-column-layout="number"]) > :is(span, a, time, div):not([data-slot="badge"], .business-cell-stack, .business-cell-badges, .ledger-order-line) { display: block; min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 [data-business-table][data-embedded="false"] .business-table .list-identity-title { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 [data-business-table][data-embedded="false"] .business-table .list-identity-title > :is(a, span) { display: block; min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 [data-business-table][data-embedded="false"] .business-table :is(.list-identity-title > a, a.list-site-identity) { min-height: 24px; padding-block: 3px; }
