@@ -390,7 +390,7 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                                   </DialogDescription>
                                 </DialogHeader>
                                 <p
-                                  className="checkout-qr-amount text-center text-2xl font-semibold whitespace-nowrap tabular-nums"
+                                  className="checkout-qr-amount text-center text-2xl font-semibold tracking-tight whitespace-nowrap tabular-nums"
                                   data-checkout-money-digits={amountIntegerDigits}
                                 >
                                   {formattedAmount}
