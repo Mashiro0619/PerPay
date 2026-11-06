@@ -5,7 +5,7 @@
  * PERPAY_MASTER_KEY, and ordinary /data, /backups, /run/perpay-secrets volumes.
  * /validation-state/isolation.json must match kind, run_id, data_dir and backup_dir.
  *
- * seed                                  Actual RC1/schema 38 services only.
+ * seed [--storage-history]              Actual RC1/schema 38 services and optional large history.
  * verify --schema=38|40 --checkpoint=base|upgraded [--label=lowercase-label]
  * advance                               Candidate/schema 40; separate checkpoint.
  * http-verify --checkpoint=base|upgraded  Running main, loopback :6190 only.
@@ -18,7 +18,7 @@
  * on the isolated state volume; stdout and snapshots contain no secret material.
  */
 import { createHash, generateKeyPairSync, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
-import { existsSync, lstatSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -45,6 +45,65 @@ function sameSecret(left, right) {
 }
 function quote(value) { return '"' + value.replaceAll('"', '""') + '"'; }
 function providerTime(value) { return new Date(value + 8 * 3_600_000).toISOString().slice(0, 19).replace("T", " "); }
+
+export function growObservationHistory({ modules: m, database, providerAccountKey, count = 90_000 }) {
+  requireCondition(Number.isSafeInteger(count) && count >= 1 && count <= 100_000, "invalid_observation_history_count");
+  const ledger = new m.LedgerStore(database), now = Date.now();
+  database.write(db => db.exec("CREATE INDEX validation_observation_seed_order ON ingest_run_page_observations(raw_page_id, observation_sequence DESC)"));
+  try {
+    for (let offset = 0; offset < count; offset += 100) {
+      const attempts = Math.min(100, count - offset);
+      const end = now;
+      const run = ledger.startIngestRun({ providerAccountKey, start: providerTime(end - 60_000), end: providerTime(end), pageSize: 1, now });
+      const segment = ledger.getNextPendingSegment(run.ingestRunId);
+      ledger.recordSegmentPage({ ingestRunId: run.ingestRunId, ingestSegmentId: segment.ingestSegmentId,
+        page: { pageNo: 1, pageSize: 1, totalSize: 2, hasMore: true, details: [{
+          raw: { synthetic_probe: true }, accountLogId: "storage-probe", occurredAt: providerTime(end),
+          amount: "1.00", direction: "CREDIT", alipayOrderNo: null, merchantOrderNo: null, transMemo: null, otherAccount: null,
+        }] },
+        evidence: { httpStatus: 200, headers: {}, body: "[]", traceId: "storage-history", signatureVerified: true }, now: now + 1 });
+      // Keep every production constraint and trigger active. Short per-run batches
+      // share one request history that the complete integrity scan must sort.
+      if (attempts > 1) database.write(db => {
+        const original = db.prepare("SELECT observation_sequence FROM ingest_run_page_observations WHERE ingest_run_id = ?").get(run.ingestRunId);
+        db.prepare(`WITH RECURSIVE attempts(value) AS (
+          SELECT 1 UNION ALL SELECT value + 1 FROM attempts WHERE value < ?
+        ) INSERT INTO ingest_run_page_observations (
+          ingest_run_id, ingest_segment_id, raw_page_id, observation_attempt, observation_kind,
+          http_status, headers_json, trace_id, signature_verified, observed_at,
+          disposition, observation_sequence, transition_enforced
+        ) SELECT original.ingest_run_id, original.ingest_segment_id, original.raw_page_id,
+          original.observation_attempt + attempts.value, original.observation_kind,
+          original.http_status, original.headers_json, original.trace_id, original.signature_verified,
+          original.observed_at, original.disposition, original.observation_sequence + attempts.value, original.transition_enforced
+          FROM ingest_run_page_observations original CROSS JOIN attempts
+          WHERE original.observation_sequence = ? ORDER BY attempts.value`).run(attempts - 1, original.observation_sequence);
+        db.prepare("UPDATE ingest_runs SET pages_received = pages_received + ? WHERE ingest_run_id = ?").run(attempts - 1, run.ingestRunId);
+      });
+      let pending;
+      while ((pending = ledger.getNextPendingSegment(run.ingestRunId))) {
+        ledger.recordSegmentPage({ ingestRunId: run.ingestRunId, ingestSegmentId: pending.ingestSegmentId,
+          page: { pageNo: 1, pageSize: 1, totalSize: 0, hasMore: false, details: [] },
+          evidence: { httpStatus: 200, headers: {}, body: "[]", traceId: "storage-history", signatureVerified: true }, now: now + 2 });
+      }
+    }
+  } finally {
+    database.write(db => db.exec("DROP INDEX validation_observation_seed_order"));
+  }
+  requireCondition(database.read(db => !db.prepare("SELECT 1 FROM sqlite_schema WHERE name = 'validation_observation_seed_order'").get()), "seeding_index_retained");
+  requireCondition(database.integrityCheck().ok, "historical_observations_integrity_failed");
+  return database.read(captureObservationHistory);
+}
+
+function captureObservationHistory(db, maximum = Number.MAX_SAFE_INTEGER) {
+  const hash = createHash("sha256");
+  let count = 0;
+  for (const row of db.prepare("SELECT * FROM ingest_run_page_observations WHERE observation_sequence <= ? ORDER BY observation_sequence").iterate(maximum)) {
+    hash.update(JSON.stringify(canonical(row)) + "\n");
+    count++;
+  }
+  return { count, sha256: hash.digest("hex") };
+}
 
 /** Recovery scenarios may import these helpers; importing this file performs no I/O. */
 export async function loadImageModules(distDirectory = "/app/dist", extension = ".js") {
@@ -161,7 +220,7 @@ export function captureSnapshot(database, fixture, imageVersion) {
       orders: Object.fromEntries(Object.entries(fixture.orders).map(([kind, order]) => [kind, { orderId: order.orderId, checkoutTokenFingerprint: digest(order.checkoutToken) }])),
       credentialFingerprints: { api: digest(fixture.apiSecret), notification: digest(fixture.webhookSecret), application: fixture.applicationKeyFingerprint },
       ledgerEntryId: fixture.ledgerEntryId, paymentMatchId: fixture.paymentMatchId, deliveryId: fixture.deliveryId, eventId: fixture.eventId,
-      tables, audit, externalSimulation: ["Alipay application verification", "Alipay statement page and signature-verification result"],
+       tables, audit, observationHistory: captureObservationHistory(db), externalSimulation: ["Alipay application verification", "Alipay statement page and signature-verification result"],
     };
   });
 }
@@ -173,6 +232,9 @@ export async function verifyBusinessData({ modules: m, database, config, fixture
   requireCondition(database.instanceId() === baseline.instanceId && fixture.instanceId === baseline.instanceId, "instance_identity_changed");
   requireCondition(database.integrityCheck().ok, "database_integrity_failed");
   const preservedRows = database.read(db => {
+    if (baseline.observationHistory !== undefined) {
+      requireCondition(digest(captureObservationHistory(db, baseline.observationHistory.count)) === digest(baseline.observationHistory), "historical_observations_changed");
+    }
     requireCondition(Number(db.prepare("SELECT MAX(version) AS value FROM schema_migrations").get().value) === expectedSchema, "unexpected_verified_schema");
     let checked = 0;
     for (const [table, saved] of Object.entries(baseline.tables)) {
@@ -317,7 +379,7 @@ export async function runUpgradeFixture(arguments_ = process.argv.slice(2), envi
   const config = m.loadConfig(environment);
   requireCondition(config.databasePath === "/data/perpay.sqlite3", "unexpected_database_path");
   if (mode === "seed") {
-    requireCondition(flags.length === 0 && m.APP_VERSION === "1.0.0-rc.1" && m.DATABASE_COMPATIBILITY.maximum === 38, "seed_requires_actual_rc1_image");
+    requireCondition((flags.length === 0 || flags.length === 1 && flags[0] === "--storage-history") && m.APP_VERSION === "1.0.0-rc.1" && m.DATABASE_COMPATIBILITY.maximum === 38, "seed_requires_actual_rc1_image");
     requireCondition(!existsSync(config.databasePath) && !existsSync(privatePath) && !existsSync(snapshotPath), "refusing_existing_fixture_data");
   } else {
     requireCondition(existsSync(config.databasePath), "verification_requires_existing_database");
@@ -325,10 +387,13 @@ export async function runUpgradeFixture(arguments_ = process.argv.slice(2), envi
   const fixture = mode === "seed" ? null : readState(privatePath), baseline = mode === "seed" ? null : readState(snapshotPath);
   if (fixture) requireCondition(fixture.runId === isolation.runId && baseline.runId === isolation.runId, "snapshot_run_id_mismatch");
   if (mode === "http-verify") return verifyHttpIdentity({ modules: m, config, fixture });
+  const openedAt = performance.now();
   const database = await m.AppDatabase.open(config.databasePath, { masterKey: config.masterKey });
+  const openMilliseconds = Math.round(performance.now() - openedAt);
   try {
     if (mode === "seed") {
       const seeded = await seedBusinessData({ modules: m, database, config });
+      if (flags.includes("--storage-history")) growObservationHistory({ modules: m, database, providerAccountKey: seeded.providerAccountKey });
       const snapshot = captureSnapshot(database, seeded.fixture, m.APP_VERSION);
       requireCondition(snapshot.schemaVersion === 38, "seed_schema_is_not_38");
       writeFileSync(privatePath, JSON.stringify({ runId: isolation.runId, ...seeded.fixture }) + "\n", { mode: 0o600, flag: "wx" });
@@ -336,7 +401,8 @@ export async function runUpgradeFixture(arguments_ = process.argv.slice(2), envi
       return { ok: true, mode, runId: isolation.runId, imageVersion: m.APP_VERSION, schemaVersion: snapshot.schemaVersion,
         instanceId: snapshot.instanceId, accountId: snapshot.accountId, siteId: snapshot.siteId,
         orders: snapshot.orders, historicalAuditEvents: snapshot.audit.length, historicalAuditHead: snapshot.audit.at(-1)?.eventHash ?? null,
-        notificationStatus: "PENDING", networkUsed: false };
+        notificationStatus: "PENDING", observationHistory: snapshot.observationHistory,
+        databaseBytes: statSync(config.databasePath).size, maxRssKiB: process.resourceUsage().maxRSS, networkUsed: false };
     }
     if (mode === "advance") {
       const upgradedPrivatePath = join(isolation.stateDirectory, "private-fixture-upgraded.json"), upgradedSnapshotPath = join(isolation.stateDirectory, "snapshot-upgraded.json");
@@ -354,7 +420,8 @@ export async function runUpgradeFixture(arguments_ = process.argv.slice(2), envi
     const result = await verifyBusinessData({ modules: m, database, config, fixture, baseline, expectedSchema });
     const label = labelFlag?.slice("--label=".length) ?? expectedSchema + "-" + checkpoint;
     writeFileSync(join(isolation.stateDirectory, "verify-" + label + ".json"), JSON.stringify(result) + "\n", { mode: 0o600 });
-    return result;
+    return { ...result, openMilliseconds, databaseBytes: statSync(config.databasePath).size,
+      observationHistory: baseline.observationHistory, maxRssKiB: process.resourceUsage().maxRSS };
   } finally { database.close(); }
 }
 
@@ -362,7 +429,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
   try { process.stdout.write(JSON.stringify(await runUpgradeFixture()) + "\n"); }
   catch (error) {
     // Never print assertion values, credential-bearing rows, config input, or stack locals.
-    process.stderr.write(JSON.stringify({ ok: false, error: "isolated_upgrade_validation_failed", reason: error instanceof Error && /^[a-z0-9_:]+$/.test(error.message) ? error.message : "inspect_isolated_fixture_privately" }) + "\n");
+    const reason = error instanceof Error && /database or disk is full/.test(error.message) ? "sqlite_storage_full"
+      : error instanceof Error && /^[a-z0-9_:]+$/.test(error.message) ? error.message : "inspect_isolated_fixture_privately";
+    process.stderr.write(JSON.stringify({ ok: false, error: "isolated_upgrade_validation_failed", reason }) + "\n");
     process.exitCode = 1;
   }
 }

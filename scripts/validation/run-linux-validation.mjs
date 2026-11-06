@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
@@ -18,7 +18,7 @@ const options = Object.fromEntries(process.argv.slice(2).map(argument => {
 }));
 for (const key of Object.keys(options)) assert.ok(["rc1-image", "candidate-image", "output", "phase", "scenarios"].includes(key), "Unknown option");
 const phase = options.phase ?? "all";
-assert.ok(["all", "upgrade", "recovery"].includes(phase), "Unknown phase");
+assert.ok(["all", "upgrade", "recovery", "storage"].includes(phase), "Unknown phase");
 const selectedScenarios = options.scenarios?.split(",") ?? scenarios;
 assert.ok(selectedScenarios.length && selectedScenarios.every(value => scenarios.includes(value)), "Unknown scenario");
 assert.ok(options["candidate-image"] && (phase === "recovery" || options["rc1-image"]), "Provide prebuilt image names");
@@ -51,11 +51,12 @@ function lastJson(stdout) {
   const values = stdout.trim().split(/\r?\n/).flatMap(line => { try { return [JSON.parse(line)]; } catch { return []; } });
   assert.ok(values.length, "Command did not produce JSON evidence"); return values.at(-1);
 }
-async function image(name, expectedVersion) {
+async function image(name, expectedVersion, expectedRevision) {
   const data = JSON.parse((await docker(["image", "inspect", name])).stdout)[0];
-  assert.equal(data.Os, "linux"); assert.equal(data.Architecture, "amd64");
+  assert.equal(data.Os, "linux"); assert.equal(data.Architecture, report.engine.architecture);
   assert.equal(data.Config.Labels?.["org.opencontainers.image.version"], expectedVersion);
   assert.match(data.Config.Labels?.["org.opencontainers.image.revision"] ?? "", /^[a-f0-9]{40}$/);
+  if (expectedRevision) assert.equal(data.Config.Labels["org.opencontainers.image.revision"], expectedRevision);
   return { id: data.Id, version: expectedVersion, revision: data.Config.Labels["org.opencontainers.image.revision"], architecture: data.Architecture };
 }
 const labels = ["--label", `com.perpay.validation.owner=${owner}`, "--label", `com.perpay.validation.run=${runId}`];
@@ -93,7 +94,7 @@ async function run(imageId, volumes, suffix, command, { initialize = false, deta
   assert.notEqual((await docker(["container", "inspect", name], { allowedFailure: true })).code, 0, "Refusing existing container");
   const args = ["run", "--pull=never", "--name", name, ...labels, "--network", "none", "--read-only", "--cap-drop", "ALL",
     "--security-opt", "no-new-privileges:true", "--user", initialize ? "0:0" : "1000:1000", "--init",
-    "--tmpfs", "/tmp:rw,size=64m,mode=1777", ...mounts(volumes, role),
+    "--tmpfs", report.tmpfs[role === "fixture" ? "app" : role], ...mounts(volumes, role),
     "--env", "PERPAY_DATA_DIR=/data", "--env", "PERPAY_BACKUP_DIR=/backups",
     "--env", "PERPAY_PUBLIC_URL=http://127.0.0.1:6190", "--env", "PERPAY_SETUP_TOKEN_ENABLED=false"];
   if (role !== "backup") args.push("--env", "PERPAY_MASTER_KEY", "--env", "PERPAY_SECRETS_DIR=/run/perpay-secrets");
@@ -105,6 +106,7 @@ async function run(imageId, volumes, suffix, command, { initialize = false, deta
   const inspected = JSON.parse((await docker(["inspect", name])).stdout)[0];
   assert.equal(inspected.HostConfig.NetworkMode, "none");
   assert.equal(inspected.HostConfig.ReadonlyRootfs, true);
+  assert.equal(inspected.HostConfig.Tmpfs["/tmp"], report.tmpfs[role === "fixture" ? "app" : role].split(":")[1]);
   assert.equal(inspected.Config.User, initialize ? "0:0" : "1000:1000");
   assert.ok(inspected.HostConfig.CapDrop.includes("ALL"));
   const mounted = destination => inspected.Mounts.find(item => item.Destination === destination);
@@ -119,6 +121,7 @@ async function run(imageId, volumes, suffix, command, { initialize = false, deta
   if (role === "maintenance") assert.equal(mounted("/run/perpay-secrets").RW, false);
   report.roleIsolation ??= {};
   report.roleIsolation[initialize ? "initializer" : role] = { network: "none", readOnlyRoot: true, user: inspected.Config.User,
+    tmpfs: inspected.HostConfig.Tmpfs,
     capDrop: inspected.HostConfig.CapDrop, capAdd: inspected.HostConfig.CapAdd,
     mounts: inspected.Mounts.map(item => ({ destination: item.Destination, writable: item.RW, type: item.Type })) };
   if (!detached) writeFileSync(resolve(output, `${suffix}.log`), result.stdout + result.stderr, { mode: 0o600 });
@@ -180,7 +183,7 @@ async function upgrade() {
   await fixture(candidate, volumes, "upgrade-schema40", "verify", "--schema=40", "--checkpoint=base", "--label=upgraded");
   await fixture(candidate, volumes, "new-schema40-business", "advance");
   const current = await backup(candidate, volumes, "backup-schema40");
-  report.backups = { beforeUpgrade: before, afterUpgrade: current };
+  report.backups = { ...report.backups, beforeUpgrade: before, afterUpgrade: current };
   await application(candidate, volumes, "candidate", "upgraded");
   // Preserve the upgraded snapshot independently before testing the old-version recovery.
   const recovered = await group("restore40");
@@ -191,6 +194,16 @@ async function upgrade() {
   await restore(candidate, volumes, "restore-schema38", before);
   await fixture(rc1, volumes, "verify-restored38", "verify", "--schema=38", "--checkpoint=base", "--label=restored38");
   await application(rc1, volumes, "restored38", "base");
+}
+async function storage() {
+  const volumes = await group("storage");
+  await fixture(report.images.rc1.id, volumes, "rc1-storage-seed", "seed", "--storage-history");
+  await fixture(report.images.candidate.id, volumes, "storage-upgrade40", "verify", "--schema=40", "--checkpoint=base");
+  const saved = await backup(report.images.candidate.id, volumes, "storage-backup40");
+  await restore(report.images.candidate.id, volumes, "storage-restore40", saved);
+  await fixture(report.images.candidate.id, volumes, "storage-restored40", "verify", "--schema=40", "--checkpoint=base");
+  await application(report.images.candidate.id, volumes, "storage-candidate", "base");
+  report.backups = { ...report.backups, storage: saved };
 }
 async function recovery(scenario) {
   log("scenario_started", { scenario });
@@ -238,12 +251,24 @@ async function cleanup() {
 
 try {
   const engine = lastJson((await docker(["info", "--format", "{{json .}}"])).stdout);
-  assert.equal(engine.OSType, "linux"); report.engine = { version: engine.ServerVersion, architecture: engine.Architecture };
-  report.images.candidate = await image(options["candidate-image"], "1.0.0-rc.2");
-  if (phase !== "recovery") report.images.rc1 = await image(options["rc1-image"], "1.0.0-rc.1");
+  assert.equal(engine.OSType, "linux");
+  const architecture = { x86_64: "amd64", aarch64: "arm64", amd64: "amd64", arm64: "arm64" }[engine.Architecture];
+  assert.ok(architecture, "Unsupported native Docker architecture");
+  report.engine = { version: engine.ServerVersion, architecture };
+  const compose = JSON.parse((await docker(["compose", "--profile", "maintenance", "-f", resolve(scripts, "../../docker-compose.yml"), "config", "--format", "json"])).stdout);
+  report.tmpfs = Object.fromEntries(["app", "backup", "maintenance"].map(role => {
+    const entries = compose.services[role].tmpfs;
+    assert.equal(entries.length, 1);
+    assert.match(entries[0], /^\/tmp:size=\d+m,mode=1777$/);
+    return [role, entries[0]];
+  }));
+  const candidateVersion = JSON.parse(readFileSync(resolve(scripts, "../../package.json"), "utf8")).version;
+  report.images.candidate = await image(options["candidate-image"], candidateVersion);
+  if (phase !== "recovery") report.images.rc1 = await image(options["rc1-image"], "1.0.0-rc.1", "bb98093409d1da7e245a8d1e93f4de7511714a0d");
   log("run_started", { phase, output });
-  if (phase !== "recovery") await upgrade();
-  if (phase !== "upgrade") for (const scenario of selectedScenarios) await recovery(scenario);
+  if (phase === "storage" || phase === "all") await storage();
+  if (phase === "all" || phase === "upgrade") await upgrade();
+  if (phase === "all" || phase === "recovery") for (const scenario of selectedScenarios) await recovery(scenario);
   await cleanup(); report.cleanedUp = true; report.ok = true; report.finishedAt = new Date().toISOString();
   writeFileSync(resolve(output, "result.json"), JSON.stringify(report, null, 2) + "\n");
   log("run_passed", { result: resolve(output, "result.json") });

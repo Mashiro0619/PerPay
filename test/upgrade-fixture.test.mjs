@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
-import { assertIsolation, loadImageModules, seedBusinessData, captureSnapshot, verifyBusinessData, advanceBusinessData, verifyHttpIdentity } from "../scripts/validation/upgrade-fixture.mjs";
+import { assertIsolation, loadImageModules, seedBusinessData, growObservationHistory, captureSnapshot, verifyBusinessData, advanceBusinessData, verifyHttpIdentity } from "../scripts/validation/upgrade-fixture.mjs";
 import { createApp } from "../src/http/app.ts";
 
 describe("isolated cross-version business fixture", () => {
@@ -23,6 +23,8 @@ describe("isolated cross-version business fixture", () => {
     try {
       database = await m.AppDatabase.open(config.databasePath, { masterKey: config.masterKey });
       const seeded = await seedBusinessData({ modules: m, database, config });
+      const history = growObservationHistory({ modules: m, database, providerAccountKey: seeded.providerAccountKey, count: 201 });
+      assert.equal(history.count, 208);
       const baseline = captureSnapshot(database, seeded.fixture, m.APP_VERSION);
       const serialized = JSON.stringify(baseline);
       for (const secret of [seeded.fixture.adminPassword, seeded.fixture.apiSecret, seeded.fixture.webhookSecret,
@@ -34,6 +36,11 @@ describe("isolated cross-version business fixture", () => {
       const verified = await verifyBusinessData({ modules: m, database, config, fixture: seeded.fixture, baseline, expectedSchema: 40 });
       assert.equal(verified.originalCredentialsVerified, true);
       assert.equal(verified.originalCheckoutTokensVerified, true);
+      const legacySnapshot = { ...baseline };
+      delete legacySnapshot.observationHistory;
+      await verifyBusinessData({ modules: m, database, config, fixture: seeded.fixture, baseline: legacySnapshot, expectedSchema: 40 });
+      const changedHistory = { ...baseline, observationHistory: { ...baseline.observationHistory, sha256: "0".repeat(64) } };
+      await assert.rejects(verifyBusinessData({ modules: m, database, config, fixture: seeded.fixture, baseline: changedHistory, expectedSchema: 40 }), /historical_observations_changed/);
       const advanced = await advanceBusinessData({ modules: m, database, config, fixture: seeded.fixture });
       assert.notEqual(advanced.orders.upgraded.orderId, seeded.fixture.orders.paid.orderId);
       const upgraded = captureSnapshot(database, advanced, m.APP_VERSION);

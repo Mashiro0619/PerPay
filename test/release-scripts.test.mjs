@@ -371,6 +371,15 @@ test("container validation is manual and exercises the real deployment lifecycle
     '.[0].Config.Labels["org.opencontainers.image.revision"] == $revision',
   ]) assert.ok(build?.run.includes(required), `missing platform build verification: ${required}`);
   assert.ok(steps.some((step) => step.uses?.includes("aquasecurity/trivy-action@")));
+  assert.equal(workflow.jobs.validate.env.RC1_IMAGE,
+    "ghcr.io/mashiro0619/perpay:1.0.0-rc.1@sha256:5c2fbd8f8d8382ba4ecd49dab3e42f0cf770a33dcd808ef65af9a1fda772f59c");
+  const storage = steps.find(step => step.name === "Validate historical upgrade with the production temporary storage limits");
+  assert.ok(storage?.run.includes('docker pull --platform "linux/${ARCHITECTURE}" "$RC1_IMAGE"'));
+  assert.ok(storage?.run.includes("node scripts/validation/run-linux-validation.mjs --phase=storage"));
+  assert.ok(storage?.run.includes('--rc1-image="$RC1_IMAGE" --candidate-image="$IMAGE"'));
+  const storageEvidence = steps.find(step => step.name === "Preserve storage validation evidence");
+  assert.equal(storageEvidence?.if, "always()");
+  assert.equal(storageEvidence?.with.path, ".scratch/container-storage-validation/*/result.json");
   const smoke = steps.find(
     (step) => step.name === "Exercise Compose, backup, restore, and persistence",
   );

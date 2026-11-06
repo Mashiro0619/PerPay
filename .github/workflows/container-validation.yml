@@ -26,6 +26,7 @@ jobs:
     env:
       IMAGE: perpay-validation:${{ github.sha }}-${{ matrix.architecture }}
       ARCHITECTURE: ${{ matrix.architecture }}
+      RC1_IMAGE: ghcr.io/mashiro0619/perpay:1.0.0-rc.1@sha256:5c2fbd8f8d8382ba4ecd49dab3e42f0cf770a33dcd808ef65af9a1fda772f59c
     steps:
       - name: Check out source
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -63,6 +64,29 @@ jobs:
           exit-code: 1
           format: table
           timeout: 10m0s
+
+      - name: Use the pinned Node.js release
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.22.1
+
+      - name: Validate historical upgrade with the production temporary storage limits
+        run: |
+          set -euo pipefail
+          docker pull --platform "linux/${ARCHITECTURE}" "$RC1_IMAGE"
+          node scripts/validation/run-linux-validation.mjs --phase=storage \
+            --rc1-image="$RC1_IMAGE" --candidate-image="$IMAGE" \
+            --output=.scratch/container-storage-validation
+
+      - name: Preserve storage validation evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: storage-validation-${{ matrix.architecture }}-${{ github.run_attempt }}
+          path: .scratch/container-storage-validation/*/result.json
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Exercise Compose, backup, restore, and persistence
         run: |
