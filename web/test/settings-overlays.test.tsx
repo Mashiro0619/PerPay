@@ -162,6 +162,7 @@ describe("settings summaries and owned editing overlays", () => {
     expect(await screen.findByRole("menuitem", { name: "保存草稿" })).toHaveAttribute("aria-disabled", "true");
     expect(screen.getByRole("menuitem", { name: "重新检查" })).not.toHaveAttribute("aria-disabled", "true");
     await user.keyboard("{Escape}");
+    await waitFor(() => expect(footer(dialog).getByRole("button", { name: "更多账号操作" })).toHaveFocus());
     await user.clear(name); await user.type(name, "跨分组账号");
     await user.click(within(dialog).getByRole("tab", { name: "应用信息" }));
     const appId = within(dialog).getByLabelText("应用 ID（App ID）");
@@ -255,7 +256,10 @@ describe("settings summaries and owned editing overlays", () => {
     expect(view.writes()).toHaveLength(0);
   });
 
-  it.each(["保存草稿", "保存并检查"])("reopens a collapsed private-key import and focuses its validation error after %s in another tab", async label => {
+  it.each([
+    ["保存草稿", false], ["保存并检查", false],
+    ["保存草稿", true], ["保存并检查", true],
+  ] as const)("reopens a collapsed private-key import and focuses its validation error after %s in another tab (frame before panel commit: %s)", async (label, earlyFrame) => {
     const account = sampleAccount();
     const message = "应用私钥格式不正确，请粘贴完整的 RSA 私钥。";
     const view = mountOnboarding({ stage: 4, path: "/settings/accounts/" + account.id, handle: request => {
@@ -291,6 +295,18 @@ describe("settings summaries and owned editing overlays", () => {
     expect(within(dialog).getByRole("tab", { name: "基本信息" })).toHaveAttribute("aria-selected", "true");
     await user.click(within(dialog).getByRole("tab", { name: "使用情况" }));
     expect(within(dialog).getByRole("tab", { name: "使用情况" })).toHaveAttribute("aria-selected", "true");
+    if (earlyFrame) {
+      const nextFrame = globalThis.requestAnimationFrame;
+      const applicationPanel = privateKey.closest<HTMLElement>('[data-account-panel="application"]')!;
+      // A frame may run before React commits the panel update queued by the error effect.
+      vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation(callback => {
+        if (applicationPanel.hidden && privateKey.getAttribute("aria-invalid") === "true") {
+          callback(performance.now());
+          return 0;
+        }
+        return nextFrame(callback);
+      });
+    }
     if (label === "保存草稿") {
       await user.click(footer(dialog).getByRole("button", { name: "更多账号操作" }));
       await user.click(await screen.findByRole("menuitem", { name: label }));
@@ -302,6 +318,37 @@ describe("settings summaries and owned editing overlays", () => {
     await user.clear(privateKey);
     await user.click(optional);
     expect(optional).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("opens a private-key error without overriding the first invalid field's panel", async () => {
+    const account = sampleAccount();
+    const view = mountOnboarding({ stage: 4, path: "/settings/accounts/" + account.id, handle: request => {
+      const path = new URL(request.url).pathname;
+      if (path === "/api/admin/v1/alipay-accounts") return json({ data: [account] });
+      if (path !== "/api/admin/v1/alipay-accounts/" + account.id) return undefined;
+      return request.method === "GET" ? json({ data: account }) : json({ error: {
+        code: "settings_validation_failed", message: "请修正账号配置。", request_id: "multiple-account-fields",
+        fields: { name: "请修正账号名称。", private_key: "请修正应用私钥。" },
+      } }, 422);
+    } });
+    const user = userEvent.setup();
+    const dialog = await screen.findByRole("dialog", { name: "支付宝账号" });
+    await user.click(await within(dialog).findByRole("tab", { name: "应用信息" }));
+    const optional = within(dialog).getByRole("button", { name: "导入已有应用私钥（可选）" });
+    await user.click(optional);
+    await user.type(within(dialog).getByRole("textbox", { name: "应用私钥（可选）" }), "invalid-private-key");
+    await user.click(optional);
+    await user.click(within(dialog).getByRole("tab", { name: "基本信息" }));
+    await user.click(footer(dialog).getByRole("button", { name: "更多账号操作" }));
+    await user.click(await screen.findByRole("menuitem", { name: "保存草稿" }));
+    const name = within(dialog).getByLabelText("账号名称");
+    await waitFor(() => expect(name).toHaveAttribute("aria-invalid", "true"));
+    await waitFor(() => expect(name).toHaveFocus());
+    expect(within(dialog).getByRole("tab", { name: "基本信息" })).toHaveAttribute("aria-selected", "true");
+    expect(view.writes()).toHaveLength(1);
+    await user.click(within(dialog).getByRole("tab", { name: "应用信息" }));
+    expect(optional).toHaveAttribute("aria-expanded", "true");
+    expect(within(dialog).getByRole("textbox", { name: "应用私钥（可选）" })).toHaveAttribute("aria-invalid", "true");
   });
 
   it("keeps the private-key validation field focused when the draft menu finishes closing after the response", async () => {

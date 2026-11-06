@@ -422,19 +422,21 @@ export function AlipayAccountEditor({
   useEffect(() => {
     if (save.isPending || !errors.private_key) return;
     setPrivateKeyOpen(true);
-    if (tabbed) setPanel("application");
-  }, [errors.private_key, save.isPending, tabbed]);
+  }, [errors.private_key, save.isPending]);
   useEffect(() => {
     if (save.isPending || !save.error || focusedSaveError.current === save.error) return;
     const invalid = form.current?.querySelector<HTMLElement>(
       '[aria-invalid="true"]',
     );
     if (!invalid) return;
-    focusedSaveError.current = save.error;
     const nextPanel = invalid.closest<HTMLElement>("[data-account-panel]")?.dataset.accountPanel;
-    if (tabbed && nextPanel) setPanel(nextPanel);
+    if (tabbed && nextPanel && panel !== nextPanel) {
+      setPanel(nextPanel);
+      return;
+    }
+    focusedSaveError.current = save.error;
     requestAnimationFrame(() => { if (invalid.isConnected) invalid.focus(); });
-  }, [save.error, save.isPending, tabbed, privateKeyOpen]);
+  }, [save.error, save.isPending, tabbed, privateKeyOpen, panel]);
   useEffect(() => {
     if (key.isPending || !activationKeyError) return;
     if (tabbed) setPanel("application");
