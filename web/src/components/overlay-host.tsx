@@ -1,5 +1,5 @@
 import { Component, Suspense, createContext, lazy, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Navigate, Route, Routes, UNSAFE_NavigationContext, UNSAFE_RouteContext, createPath, useLocation, useNavigate, type Location, type NavigateOptions, type Navigator, type Path, type To } from "react-router";
+import { Navigate, Route, Routes, UNSAFE_NavigationContext, UNSAFE_RouteContext, createPath, useLocation, useNavigate, useParams, type Location, type NavigateOptions, type Navigator, type Path, type To } from "react-router";
 import { ArrowLeft, XIcon } from "lucide-react";
 import { OverlayActionsContext, OverlayCloseGuardContext, OverlayContext, OverlayNavigationContext, OverlayNestedModalContext, OverlayStepsContext, type OverlayNavigation, type OverlaySize } from "@/lib/overlay-context";
 import { OVERLAY_HISTORY_KEY, OVERLAY_PARAMETER, isRecordDetailRoute, legacyOverlayLocation, overlayBackground, overlayRoute, overlayRouteDefinitions, parseOverlayTarget, readOverlayHistory, readOverlayTarget, stateRecord, withOverlayTarget, type OverlayHistory, type OverlayRouteKind } from "@/lib/overlay-navigation";
@@ -144,6 +144,8 @@ const views = {
   "test-payment": lazy(() => import("@/pages/TestPayment").then(module => ({ default: module.TestPaymentOverlay }))),
 } satisfies Record<OverlayRouteKind, React.LazyExoticComponent<React.ComponentType>>;
 
+const ReconciliationRecovery = lazy(() => import("@/pages/ReconciliationDetail").then(module => ({ default: module.ReconciliationRecovery })));
+
 class OverlayFailure extends Component<{ children: ReactNode }, { error: Error | null }> {
   state = { error: null as Error | null };
   static getDerivedStateFromError(error: unknown) { return { error: error instanceof Error ? error : new Error("详情暂时无法显示") }; }
@@ -272,6 +274,9 @@ export function OverlayHost({ routes }: { routes?: ReactNode }) {
 
 export function LegacyOverlayRedirect() {
   const location = useLocation();
+  const { kind } = useParams();
   const redirect = legacyOverlayLocation(location);
-  return redirect ? <Navigate replace to={redirect.to} state={redirect.state} /> : <ErrorNotice error={new Error("详情地址无效，请返回列表重新选择。")} />;
+  if (redirect) return <Navigate replace to={redirect.to} state={redirect.state} />;
+  if (kind !== undefined) return <Suspense fallback={<Loading />}><ReconciliationRecovery /></Suspense>;
+  return <ErrorNotice error={new Error("详情地址无效，请返回列表重新选择。")} />;
 }

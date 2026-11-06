@@ -48,7 +48,6 @@ import { Empty, EmptyHeader, EmptyTitle, EmptyDescription, EmptyContent, EmptyMe
 export default function EvidenceDetail() {
   const { clientId } = useWorkspace();
   const { kind = "", resourceId = "" } = useParams();
-  const back = useDetailBack("/reconciliation", "返回对账");
   if (clientId && kind === "conflicts") return <p>账本冲突不属于单个网站，请回到<Link global to="/work-items">「待处理（全部网站）」</Link>查看。</p>;
   if (kind === "conflicts")
     return <ConflictDetail key={resourceId} resourceId={resourceId} />;
@@ -60,6 +59,11 @@ export default function EvidenceDetail() {
     return clientId ? <LedgerDetail key={resourceId} resourceId={resourceId} /> : <LedgerDetailRedirect />;
   if (kind === "candidates")
     return <CandidateDetail key={resourceId} resourceId={resourceId} />;
+  return <ReconciliationRecovery />;
+}
+
+export function ReconciliationRecovery() {
+  const back = useDetailBack("/reconciliation", "返回对账");
   return (
     <Empty>
       <PageHeading title="未找到这条对账记录" />
