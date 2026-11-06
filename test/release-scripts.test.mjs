@@ -327,7 +327,7 @@ test("daily CI keeps bounded Linux checks and complete independent Chromium shar
   assert.doesNotMatch(ciWorkflowText, /windows|docker build|trivy|compose up/iu);
   assert.equal(workflow.jobs.ui.name, "UI ${{ matrix.shard }}/3");
   assert.equal(workflow.jobs.ui["runs-on"], "ubuntu-24.04");
-  assert.equal(workflow.jobs.ui["timeout-minutes"], 25);
+  assert.equal(workflow.jobs.ui["timeout-minutes"], 35);
   assert.equal(workflow.jobs.ui.strategy["fail-fast"], false);
   assert.deepEqual(workflow.jobs.ui.strategy.matrix, { shard: [1, 2, 3] });
   assert.equal(workflow.jobs.ui["continue-on-error"], undefined);
