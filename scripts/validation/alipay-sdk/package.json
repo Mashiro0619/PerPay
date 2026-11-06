@@ -8,6 +8,6 @@
   },
   "dependencies": {
     "alipay-sdk": "4.14.0",
-    "urllib": "4.9.0"
+    "urllib": "4.9.1"
   }
 }
