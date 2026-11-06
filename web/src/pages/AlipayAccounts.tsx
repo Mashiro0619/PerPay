@@ -750,7 +750,9 @@ export function AlipayAccountEditor({
                   <MoreHorizontal aria-hidden="true" />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" side="top" aria-label="更多账号操作"
-                  finalFocus={() => invalidDraftField.current?.isConnected ? invalidDraftField.current : true}>
+                  finalFocus={() => invalidDraftField.current?.isConnected
+                    ? invalidDraftField.current
+                    : !form.current?.contains(document.activeElement)}>
                   <DropdownMenuGroup>
                     <DropdownMenuItem disabled={busy || decoding || historical || (!dirty && !!saved)} onClick={saveDraft}>
                       保存草稿

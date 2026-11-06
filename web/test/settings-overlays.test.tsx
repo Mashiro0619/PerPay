@@ -1,6 +1,6 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { queryClient, type AdminLoginSession, type AlipayAccount, type Site } from "../src/api/client";
 import { mergeSiteConfiguration } from "../src/lib/site-configuration";
 import { apiError, json } from "./fixtures";
@@ -302,6 +302,47 @@ describe("settings summaries and owned editing overlays", () => {
     await user.clear(privateKey);
     await user.click(optional);
     expect(optional).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("keeps the private-key validation field focused when the draft menu finishes closing after the response", async () => {
+    const account = sampleAccount();
+    const message = "应用私钥格式不正确，请粘贴完整的 RSA 私钥。";
+    const view = mountOnboarding({ stage: 4, path: "/settings/accounts/" + account.id, handle: request => {
+      const path = new URL(request.url).pathname;
+      if (path === "/api/admin/v1/alipay-accounts") return json({ data: [account] });
+      if (path !== "/api/admin/v1/alipay-accounts/" + account.id) return undefined;
+      return request.method === "GET" ? json({ data: account }) : json({ error: {
+        code: "settings_validation_failed", message, request_id: "private-key-menu-close", fields: { private_key: message },
+      } }, 422);
+    } });
+    const user = userEvent.setup();
+    const dialog = await screen.findByRole("dialog", { name: "支付宝账号" });
+    await user.click(await within(dialog).findByRole("tab", { name: "应用信息" }));
+    const optional = within(dialog).getByRole("button", { name: "导入已有应用私钥（可选）" });
+    await user.click(optional);
+    await user.type(within(dialog).getByRole("textbox", { name: "应用私钥（可选）" }), "invalid-imported-private-key");
+    await user.click(optional);
+    await user.click(within(dialog).getByRole("tab", { name: "基本信息" }));
+    await user.click(footer(dialog).getByRole("button", { name: "更多账号操作" }));
+    const menu = await screen.findByRole("menu", { name: "更多账号操作" });
+    // Keep the real menu mounted through its exit animation until validation has focused the field.
+    let finishClose!: (animation: Animation) => void;
+    const finished = new Promise<Animation>(resolve => { finishClose = resolve; });
+    const transition = { finished } as Animation;
+    const getAnimations = vi.fn(() => [transition]);
+    menu.getAnimations = getAnimations;
+    await user.click(within(menu).getByRole("menuitem", { name: "保存草稿" }));
+    await waitFor(() => expect(getAnimations).toHaveBeenCalled());
+    const privateKey = await within(dialog).findByRole("textbox", { name: "应用私钥（可选）" });
+    expect(privateKey).toHaveAttribute("aria-invalid", "true");
+    await waitFor(() => expect(privateKey).toHaveFocus());
+    expect(menu).toBeInTheDocument();
+
+    await act(async () => { finishClose(transition); });
+
+    await waitFor(() => expect(menu).not.toBeInTheDocument());
+    expect(privateKey).toHaveFocus();
+    expect(view.writes()).toHaveLength(1);
   });
 
   it("clears the earlier connection failure after a new application key is verified and activated", async () => {
