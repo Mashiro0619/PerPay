@@ -131,9 +131,12 @@ for (const layout of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]
         const stored = (await (await page.request.get(fixture.origin + endpoint + "/" + account.id)).json()).data as AlipayAccountView;
         expect(stored).toMatchObject({ id: account.id, name: accountName, app_id: appId, code_payload: collectionCode, configured: false, sites: [] });
 
+        await expect(dialog.getByRole("button", { name: "保存配置", exact: true })).toBeEnabled();
         const usageTab = editor.getByRole("tab", { name: "使用情况", exact: true });
-        await usageTab.scrollIntoViewIfNeeded();
+        // Creation replaces the keyed editor. Locator.click scrolls and resolves
+        // its target again if that transition detaches the previous tab node.
         await usageTab.click();
+        await expect(usageTab).toHaveAttribute("aria-selected", "true");
         const usage = editor.locator('[data-account-panel="usage"]');
         await expect(usage).toBeVisible();
         await expect(usage.getByText("账号状态", { exact: true })).toBeVisible();
