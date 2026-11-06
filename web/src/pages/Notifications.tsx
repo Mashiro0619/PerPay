@@ -233,7 +233,7 @@ function DeliveryPage({
       align: "center",
       layout: "datetime",
       summaryDefault: false,
-      responsive: { minWidthRem: 56, basis: "container" },
+      responsive: { minWidthRem: 68, basis: "container" },
       cell: (delivery) => <ListDateTime value={delivery.created_at} />,
     },
     {
@@ -248,6 +248,7 @@ function DeliveryPage({
     },
   ];
   if (!clientId) columns.splice(1, 0, { id: "site", label: "网站", layout: "text", summaryDefault: false,
+    responsive: { minWidthRem: 48, basis: "container" },
     cell: delivery => <SiteIdentity clientId={delivery.order_summary?.api_client_id} name={delivery.order_summary?.site_name} /> });
   columns.splice(1, 0,
     { id: "event_type", label: "通知类型", layout: "text", hideable: false, summaryDefault: true, cell: delivery => label(delivery.event.event_type) },

@@ -1751,6 +1751,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 [data-business-table][data-embedded="false"] .business-table col[data-column-layout="actions"] { width: 7rem; }
 [data-business-table="sites"][data-embedded="false"] .business-table col[data-column-id="actions"] { width: 9.5rem; }
 [data-business-table="alipay-accounts"][data-embedded="false"] .business-table col[data-column-id="name"] { width: 14rem; }
+[data-business-table="notifications"][data-embedded="false"] .business-table col[data-column-id="identity"] { width: auto; }
 [data-business-table][data-embedded="false"] .business-table :is(th, td) { padding: 0.45rem 0.5rem; vertical-align: middle; }
 [data-business-table][data-embedded="false"] .business-table th { height: 2.25rem; font-size: 0.75rem; font-weight: 500; }
 [data-business-table][data-embedded="false"] .business-table td { height: 2.375rem; font-size: 0.8125rem; line-height: 1.45; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
