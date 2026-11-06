@@ -2,10 +2,10 @@ import assert from "node:assert/strict";
 import { verify } from "node:crypto";
 import { describe, it } from "node:test";
 import {
-  createV3ResponseSignature,
   FakeV3Transport,
   type RawV3Response,
 } from "../src/infrastructure/alipay/index.ts";
+import { createV3ResponseSignature } from "./fixtures/alipay-legacy-v3.ts";
 import { parseProviderKeys, SettingsError } from "../src/settings/index.ts";
 import { verifyProviderApplicationKey } from "../src/settings/provider-key-verification.ts";
 import {

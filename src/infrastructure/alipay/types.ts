@@ -73,6 +73,16 @@ export interface AccountLogDetail {
   readonly otherAccount: string | null;
 }
 
+/** Original response bytes after the configured provider signature has verified. */
+export interface VerifiedV3Response {
+  readonly body: string;
+  readonly bodyBytes: Buffer;
+  readonly headers: V3Headers;
+  readonly status: number;
+  readonly traceId: string;
+  readonly signatureVerified: true;
+}
+
 export interface RawResponseEvidence {
   readonly status: number;
   readonly headers: V3Headers;

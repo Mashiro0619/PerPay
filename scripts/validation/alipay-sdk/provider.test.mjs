@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { AppDatabase } from '../../../src/database/database.ts';
-import { AlipayLedgerProvider } from '../../../src/infrastructure/alipay/provider.ts';
+import { AlipayLedgerProvider } from '../../../test/fixtures/alipay-legacy-provider.ts';
 import { AlipayProviderError } from '../../../src/infrastructure/alipay/errors.ts';
 import { NodeV3Transport } from '../../../src/infrastructure/alipay/node-transport.ts';
 import { LedgerIngestService } from '../../../src/ledger/service.ts';

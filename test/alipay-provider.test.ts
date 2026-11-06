@@ -3,7 +3,6 @@ import { generateKeyPairSync, sign, verify } from "node:crypto";
 import { describe, it } from "node:test";
 
 import {
-  AlipayLedgerProvider,
   AlipayProviderError,
   FakeLedgerProvider,
   FakeV3Transport,
@@ -11,11 +10,11 @@ import {
   classifyHttpResponse,
   isPublicAddress,
   normalizeV3Headers,
-  signV3Request,
-  verifyV3Response,
   type AccountLogPage,
   type RawV3Response,
 } from "../src/infrastructure/alipay/index.ts";
+import { AlipayLedgerProvider } from "./fixtures/alipay-legacy-provider.ts";
+import { signV3Request, verifyV3Response } from "./fixtures/alipay-legacy-v3.ts";
 
 const {
   privateKey: applicationPrivateKey,
