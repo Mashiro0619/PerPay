@@ -112,6 +112,19 @@ export class IdentityReadTransaction {
     this.connection = connection;
   }
 
+  isCurrentSiteApiClientId(clientId: string, apiClientId: string): boolean {
+    const mapped = this.connection.prepare(
+      "SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'site_api_client_ids'",
+    ).get();
+    if (!mapped) return clientId === apiClientId;
+    return this.connection.prepare(`
+      SELECT 1 FROM site_api_client_ids AS identity
+        JOIN sites AS site ON site.client_id = identity.client_id
+       WHERE identity.api_client_id = ? AND identity.client_id = ?
+         AND identity.retired_at IS NULL AND site.deleted_at IS NULL
+    `).get(apiClientId, clientId) !== undefined;
+  }
+
   adminIdentity(): AdminIdentity | undefined {
     const row = this.connection
       .prepare(

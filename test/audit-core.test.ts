@@ -18,6 +18,7 @@ import { OrderService } from "../src/orders/service.ts";
 import { adminAccessInputSchema } from "../src/settings/admin-access.ts";
 import { RuntimeSettingsStore } from "../src/settings/store.ts";
 import { SiteStore } from "../src/sites/store.ts";
+import { DATABASE_COMPATIBILITY } from "../src/version.ts";
 import { createPreAccountDatabase } from "./legacy-settings-fixture.ts";
 import { privatePem, platformPem } from "./application-key-fixture.ts";
 import { withHttpFixture } from "./reconciliation-http-fixture.ts";
@@ -69,10 +70,13 @@ describe("permanent audit context and transaction integrity", () => {
       assert.deepEqual(upgraded.read(db => db.prepare("SELECT * FROM audit_events ORDER BY sequence").all()), before);
       assert.equal(Number(upgraded.read(db => db.prepare("SELECT COUNT(*) AS n FROM audit_event_context").get()!.n)), 0);
       assert.equal(upgraded.read(db => inspectAuditChain(db).violations), 0);
-      const backupPath = `${path}.pre-migration-v38-to-v39.sqlite3`;
+      const backupPath = `${path}.pre-migration-v38-to-v${DATABASE_COMPATIBILITY.maximum}.sqlite3`;
       assert.equal(existsSync(backupPath), true);
       const backup = new DatabaseSync(backupPath, { readOnly: true, readBigInts: true });
-      try { assert.deepEqual(backup.prepare("SELECT * FROM audit_events ORDER BY sequence").all(), before); }
+      try {
+        assert.equal(backup.prepare("SELECT max(version) AS version FROM schema_migrations").get()!.version, 38n);
+        assert.deepEqual(backup.prepare("SELECT * FROM audit_events ORDER BY sequence").all(), before);
+      }
       finally { backup.close(); }
       const context = createAuditContext({ actorType: "ADMIN", actorId: "admin", requestId: "after-upgrade", sourceAddress: "2001:db8::1", userAgent: "Browser/1" });
       runWithAuditContext(context, () => upgraded!.write(db => appendAuditEvent(db, { occurredAt: Date.now(), actorType: "ADMIN", actorId: "admin", action: "new.event", outcome: "SUCCESS" })));

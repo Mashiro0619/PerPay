@@ -204,6 +204,18 @@ describe("website management compact table", () => {
     }
   });
 
+  it("keeps custom-ID collisions distinguishable in visible and accessible list links", async () => {
+    mount(() => page([site("shop", "同名网站"), site("site_shop", "同名网站")]));
+    for (const [clientId, label] of [["shop", "同名网站 · shop"], ["site_shop", "同名网站 · site_sho"]] as const) {
+      const item = await findCard(clientId);
+      const link = within(item).getByRole("link", { name: label });
+      expect(link).toBeVisible();
+      expect(link).toHaveTextContent(label);
+      expect(link).toHaveAttribute("title", label);
+      expect(link).toHaveAttribute("href", "/sites/" + clientId + "/summary?range=30");
+    }
+  });
+
   it("appends the next page without replacing existing rows or changing their amounts", async () => {
     const first = Array.from({ length: 30 }, (_, index) => site("site_page_" + index, "分页网站 " + index, { confirmed_amount_cents: 2500 }));
     const view = mount(url => url.searchParams.has("cursor")

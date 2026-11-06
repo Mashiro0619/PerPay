@@ -117,7 +117,7 @@ describe("reminder dismissal", () => {
     await waitFor(() => expect(button).toBeEnabled());
     await user.click(button);
     expect(await screen.findByText(hasName ? /仅限业务网站“主营业务网站”/ : /仅限当前业务网站/)).toBeVisible();
-    expect(screen.getByRole("alertdialog")).toHaveTextContent("客户端 ID（PerPay）：site_a");
+    expect(screen.getByRole("alertdialog")).toHaveTextContent("网站编号（PerPay）：site_a");
     await user.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: /确认忽略/ }));
     await waitFor(() => expect(requests.some(request => request.method === "POST")).toBe(true));
     expect(await requests.find(request => request.method === "POST")!.json()).not.toHaveProperty("api_client_id");

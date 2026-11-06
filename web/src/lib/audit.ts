@@ -37,6 +37,7 @@ export function auditCaptureLabel(capture?: AuditCaptureState): string {
 }
 
 const fieldLabels: Readonly<Record<string, string>> = {
+  api_client_id: "客户端 ID",
   name: "名称", enabled: "启用状态", deleted: "删除状态", accepting_orders: "接收新订单", notifications_enabled: "付款通知",
   notification_origin: "通知地址前缀", return_origin: "返回地址前缀", "collection.mode": "收款账号分配方式", "collection.accounts": "参与收款的账号",
   system_name: "系统名称", checkout_name: "收银台名称", checkout_help_url: "收银台帮助链接", checkout_show_product_name: "展示商品名称", dashboard_chart_type: "总览图表类型",
@@ -75,6 +76,7 @@ const actions: Readonly<Record<string, string>> = {
   "admin.sessions_revoke_all": "注销全部会话", "admin.sessions_revoke_others": "退出其他会话",
   "api_client.initialized": "初始化调用凭据", "api_client.rotated": "轮换调用凭据",
   "site.created": "创建业务网站", "site.updated": "更新业务网站", "site.deleted": "删除业务网站",
+  "site.client_id_changed": "更换客户端 ID",
   "site.secret_rotated": "轮换网站密钥", "site.secret_viewed": "查看网站密钥", "site_defaults.updated": "更新网站默认设置",
   "alipay_account.created": "添加收款账号", "alipay_account.updated": "更新收款账号", "alipay_account.deleted": "删除收款账号",
   "alipay_account.checked": "检查收款账号",

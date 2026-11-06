@@ -13,6 +13,10 @@ info:
     URL under the single HTTPS origin configured by the operator. A strictly unique,
     conflict-free amount and time inference confirms an order automatically with basis
     `INFERRED`; it is never represented as provider-confirmed payment proof.
+    Website management paths and historical `api_client_id` fields use the stable
+    `Site.client_id`. Signed business requests use the current public `Site.api_client_id`
+    in their client ID header. The authenticated website status returns that public value
+    as `client_id` and the stable management identity as `site_id`.
 servers:
   - url: /
 tags:
@@ -3820,6 +3824,7 @@ paths:
         - Admin Settings
       operationId: createSite
       summary: "Create a business site"
+      description: "Optionally choose the initial public client_id at creation. Omission generates an ID. IDs are case-sensitive. The response client_id is the stable management identity, while api_client_id is the current public ID used for request signing. Existing or deleted identities and historical aliases cannot be reused. A collision returns 409 site_client_id_conflict with error.fields.client_id. Retrying a creation operation requires the same ID selection and configuration."
       security:
         - AdminSessionCookie: []
           AdminCsrfCookie: []
@@ -3869,6 +3874,7 @@ paths:
           schema: &a10
             type: string
             pattern: ^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$
+            description: Stable management identity returned as Site.client_id, retained when the public API client ID changes.
       responses:
         "200":
           description: "Read a business site"
@@ -3978,6 +3984,70 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/SettingsRevisionRequest"
+  /api/admin/v1/sites/{clientId}/actions/change-client-id:
+    post:
+      tags:
+        - Admin Settings
+      operationId: changeSiteClientId
+      summary: "Change a website's public API client ID"
+      description: "The path uses the stable Site.client_id. On success the previous public ID stops authenticating and stays permanently reserved. Replaying the same operation requires the original revision and requested ID and returns the current Site, including any later public ID change. Existing order ownership, credentials and idempotency namespaces use the stable identity."
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/AdminOrigin"
+        - name: clientId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$
+            description: Stable management identity returned as Site.client_id.
+      x-perpay-requires-same-origin: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangeSiteClientIdRequest"
+      responses:
+        "200":
+          description: Current website state after applying or replaying the ID change.
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SiteEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "403":
+          $ref: "#/components/responses/FinancialWriteForbidden"
+        "404":
+          description: Website not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: "The revision is stale, the operation ID was reused with another request, or the requested public ID is occupied. ID collisions return site_client_id_conflict with error.fields.client_id."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "413":
+          $ref: "#/components/responses/TooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/SettingsValidationFailed"
+        "503":
+          $ref: "#/components/responses/SettingsUnavailable"
   /api/admin/v1/settings/site-defaults:
     get:
       tags:
@@ -6083,6 +6153,10 @@ paths:
                       properties:
                         client_id:
                           type: string
+                          description: Stable website identity used by management routes and historical ownership.
+                        api_client_id:
+                          type: string
+                          description: Current public ID used for signed business API requests. Always emitted by current servers; optional for older response compatibility.
                         name:
                           type: string
                         accepting_orders:
@@ -11052,6 +11126,7 @@ components:
         - site_scope_conflict
         - site_revision_conflict
         - site_operation_conflict
+        - site_client_id_conflict
         - site_has_history
         - site_paused
         - site_order_limit_exceeded
@@ -11194,12 +11269,39 @@ components:
           type: string
           format: uuid
           pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+        client_id:
+          type: string
+          minLength: 3
+          maxLength: 64
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$
+          description: "Optional initial public API client ID. Omit to generate automatically. Preserves case. The stable management identity initially uses this value and is retained after public ID changes. default, new, defaults and overview are reserved in every letter case. Invalid or reserved values return 422 settings_validation_failed with error.fields.client_id."
         configuration:
           $ref: "#/components/schemas/SiteConfiguration"
       required:
         - operation_id
         - configuration
       additionalProperties: false
+    ChangeSiteClientIdRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - operation_id
+        - revision
+        - client_id
+      properties:
+        operation_id:
+          type: string
+          format: uuid
+        revision:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+        client_id:
+          type: string
+          minLength: 3
+          maxLength: 64
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$
+          description: Requested public API client ID. Reserved names and every previously used ID remain unavailable.
     UpdateSiteRequest:
       type: object
       properties:
@@ -11273,6 +11375,11 @@ components:
         client_id:
           type: string
           pattern: ^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$
+          description: Stable website identity used by management paths, caches, credentials and historical order ownership.
+        api_client_id:
+          type: string
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$
+          description: Current public ID for signed business API requests. Always emitted by current servers; optional for older response compatibility.
         revision:
           type: integer
           minimum: 0
@@ -11414,6 +11521,10 @@ components:
                 - type: "null"
             client_id:
               type: string
+              description: Current public ID used to authenticate this website's business API requests.
+            site_id:
+              type: string
+              description: Stable website identity for binding client-side business history across public ID changes. Always emitted by current servers; optional for older response compatibility.
             accepting_orders:
               type: boolean
             notifications_enabled:

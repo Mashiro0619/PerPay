@@ -174,7 +174,7 @@ describe("readable standalone notification detail", () => {
     const user = userEvent.setup();
     await user.click(await recordAction("技术详情", "通知记录操作"));
     const dialog = await screen.findByRole("dialog", { name: "技术详情" });
-    for (const [name, value] of [["客户端 ID", delivery.target.api_client_id], ["投递编号", deliveryId], ["事件编号", delivery.event.event_id], ["内部订单编号", delivery.event.order_id], ["通知目标编号", delivery.target.target_id]]) {
+    for (const [name, value] of [["网站编号", delivery.target.api_client_id], ["投递编号", deliveryId], ["事件编号", delivery.event.event_id], ["内部订单编号", delivery.event.order_id], ["通知目标编号", delivery.target.target_id]]) {
       expect(within(dialog).getByText(value!, { exact: true })).toBeVisible();
       await user.click(within(dialog).getByRole("button", { name: "复制" + name }));
       expect(await navigator.clipboard.readText()).toBe(value);

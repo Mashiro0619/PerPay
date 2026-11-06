@@ -116,7 +116,7 @@ describe("order and notification copy follows its actual source", () => {
       expect(await navigator.clipboard.readText()).toBe(merchant);
     } else {
       expect(screen.getByText(/商户订单号（业务网站）：/)).toHaveTextContent(merchant);
-      expect(screen.getByText(/客户端 ID（PerPay）：/)).toHaveTextContent(paidOrder.api_client_id);
+      expect(screen.getByText(/网站编号（PerPay）：/)).toHaveTextContent(paidOrder.api_client_id);
     }
   });
 

@@ -177,7 +177,7 @@ async function upgrade() {
   await fixture(rc1, volumes, "rc1-baseline", "verify", "--schema=38", "--checkpoint=base", "--label=rc1-baseline");
   const before = await backup(rc1, volumes, "backup-schema38");
   // Validate unchanged rows before starting workers that may legitimately advance them.
-  await fixture(candidate, volumes, "upgrade-schema39", "verify", "--schema=39", "--checkpoint=base", "--label=upgraded");
+  await fixture(candidate, volumes, "upgrade-schema40", "verify", "--schema=40", "--checkpoint=base", "--label=upgraded");
   await fixture(candidate, volumes, "new-schema39-business", "advance");
   const current = await backup(candidate, volumes, "backup-schema39");
   report.backups = { beforeUpgrade: before, afterUpgrade: current };
@@ -186,7 +186,7 @@ async function upgrade() {
   const recovered = await group("restore39");
   recovered.backups = volumes.backups; recovered.state = volumes.state; recovered.secrets = volumes.secrets;
   await restore(candidate, recovered, "restore-schema39", current);
-  await fixture(candidate, recovered, "verify-restored39", "verify", "--schema=39", "--label=restored39", "--checkpoint=upgraded");
+  await fixture(candidate, recovered, "verify-restored40", "verify", "--schema=40", "--label=restored40", "--checkpoint=upgraded");
   await application(candidate, recovered, "restored39", "upgraded");
   await restore(candidate, volumes, "restore-schema38", before);
   await fixture(rc1, volumes, "verify-restored38", "verify", "--schema=38", "--checkpoint=base", "--label=restored38");

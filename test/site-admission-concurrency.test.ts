@@ -113,8 +113,12 @@ describe("multi-site admission under concurrent requests", () => {
         const slow = slowRequest(f.app, f.config.publicOrigin, "/api/v1/orders", "POST", f.headers(a, "POST", "/api/v1/orders", bytes), input);
         await slow.reading;
         assert.equal((await f.app.request(path, { method: "DELETE", headers: f.adminHeaders, body: JSON.stringify({ revision: site.revision }) })).status, 204);
-        slow.release(); assert.equal((await slow.response).status, 409); // captured credential is rechecked at nonce consumption
+        slow.release();
+        const response = await slow.response;
+        assert.equal(response.status, 401);
+        assert.equal((await response.json() as { error: { code: string } }).error.code, "api_authentication_failed");
         assert.equal(f.database.read(db => db.prepare("SELECT count(*) AS n FROM payment_orders").get()?.n), 0n);
+        assert.equal(f.database.read(db => db.prepare("SELECT count(*) AS n FROM api_nonces WHERE client_id = ?").get(a.clientId)?.n), 0n);
         assert.equal(f.sites.credential(a.clientId), null);
       } else {
         const slow = slowRequest(f.app, f.config.publicOrigin, path, "DELETE", f.adminHeaders, { revision: site.revision });

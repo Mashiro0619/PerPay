@@ -6,8 +6,8 @@
  * /validation-state/isolation.json must match kind, run_id, data_dir and backup_dir.
  *
  * seed                                  Actual RC1/schema 38 services only.
- * verify --schema=38|39 --checkpoint=base|upgraded [--label=lowercase-label]
- * advance                               Candidate/schema 39; separate checkpoint.
+ * verify --schema=38|40 --checkpoint=base|upgraded [--label=lowercase-label]
+ * advance                               Candidate/schema 40; separate checkpoint.
  * http-verify --checkpoint=base|upgraded  Running main, loopback :6190 only.
  * summary                               Secret-free base snapshot.
  *
@@ -214,7 +214,7 @@ export async function verifyBusinessData({ modules: m, database, config, fixture
 }
 
 export async function advanceBusinessData({ modules: m, database, config, fixture }) {
-  requireCondition(m.DATABASE_COMPATIBILITY.maximum === 39, "advance_requires_candidate_schema_39");
+  requireCondition(m.DATABASE_COMPATIBILITY.maximum === 40, "advance_requires_candidate_schema_40");
   const settingsStore = new m.RuntimeSettingsStore(database, config.masterKey); settingsStore.initialize();
   const settings = new m.RuntimeSettingsService({ store: settingsStore, verifyProviderApplicationKey: async () => { throw new Error("no_external_verification"); } });
   const sites = settingsStore.siteStore(), accounts = settingsStore.accountStore();
@@ -306,13 +306,13 @@ export async function runUpgradeFixture(arguments_ = process.argv.slice(2), envi
   const privatePath = join(isolation.stateDirectory, "private-fixture" + suffix + ".json"), snapshotPath = join(isolation.stateDirectory, "snapshot" + suffix + ".json");
   if (mode === "summary") { requireCondition(flags.length === 0, "unexpected_summary_options"); return readState(snapshotPath); }
   const m = await loadImageModules();
-  const schemaFlag = flags.find(value => /^--schema=(38|39)$/.test(value)), labelFlag = flags.find(value => /^--label=[a-z0-9-]{1,40}$/.test(value));
+  const schemaFlag = flags.find(value => /^--schema=(38|40)$/.test(value)), labelFlag = flags.find(value => /^--label=[a-z0-9-]{1,40}$/.test(value));
   const expectedSchema = schemaFlag ? Number(schemaFlag.slice("--schema=".length)) : m.DATABASE_COMPATIBILITY.maximum;
   if (mode === "verify") {
     requireCondition((flags.length === 2 || flags.length === 3 && labelFlag) && schemaFlag && checkpointFlag, "verify_requires_schema_and_checkpoint");
     requireCondition(m.DATABASE_COMPATIBILITY.maximum === expectedSchema, "verification_image_schema_mismatch");
   }
-  if (mode === "advance") requireCondition(flags.length === 0 && m.DATABASE_COMPATIBILITY.maximum === 39, "advance_requires_candidate_schema_39");
+  if (mode === "advance") requireCondition(flags.length === 0 && m.DATABASE_COMPATIBILITY.maximum === 40, "advance_requires_candidate_schema_40");
   if (mode === "http-verify") requireCondition(flags.length === 1 && checkpointFlag, "http_verify_requires_checkpoint");
   const config = m.loadConfig(environment);
   requireCondition(config.databasePath === "/data/perpay.sqlite3", "unexpected_database_path");
@@ -341,12 +341,12 @@ export async function runUpgradeFixture(arguments_ = process.argv.slice(2), envi
     if (mode === "advance") {
       const upgradedPrivatePath = join(isolation.stateDirectory, "private-fixture-upgraded.json"), upgradedSnapshotPath = join(isolation.stateDirectory, "snapshot-upgraded.json");
       requireCondition(!existsSync(upgradedPrivatePath) && !existsSync(upgradedSnapshotPath), "upgraded_checkpoint_already_exists");
-      await verifyBusinessData({ modules: m, database, config, fixture, baseline, expectedSchema: 39 });
+      await verifyBusinessData({ modules: m, database, config, fixture, baseline, expectedSchema: 40 });
       const advanced = await advanceBusinessData({ modules: m, database, config, fixture });
       const snapshot = captureSnapshot(database, advanced, m.APP_VERSION);
       writeFileSync(upgradedPrivatePath, JSON.stringify(advanced) + "\n", { mode: 0o600, flag: "wx" });
       writeFileSync(upgradedSnapshotPath, JSON.stringify({ runId: isolation.runId, ...snapshot }) + "\n", { mode: 0o600, flag: "wx" });
-      return { ok: true, mode, runId: isolation.runId, imageVersion: m.APP_VERSION, schemaVersion: 39,
+      return { ok: true, mode, runId: isolation.runId, imageVersion: m.APP_VERSION, schemaVersion: 40,
         newOrderId: advanced.orders.upgraded.orderId, newLedgerEntryId: advanced.upgradedLedgerEntryId,
         newPaymentMatchId: advanced.upgradedPaymentMatchId, historicalAuditEvents: snapshot.audit.length, historicalAuditHead: snapshot.audit.at(-1)?.eventHash ?? null,
         checkpoint: "upgraded", networkUsed: false };

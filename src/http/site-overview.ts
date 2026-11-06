@@ -28,8 +28,18 @@ export function siteOverview(database: AppDatabase, values: URLSearchParams, now
         to: new Date(end - day + 8 * 3600000).toISOString().slice(0, 10),
     };
     return database.read(db => {
-        const rows = db.prepare("SELECT client_id, configuration FROM sites WHERE deleted_at IS NULL AND (? IS NULL OR client_id > ?) AND (? = '' OR instr(lower(client_id),lower(?)) > 0 OR instr(lower(json_extract(configuration,'$.name')),lower(?)) > 0) ORDER BY client_id LIMIT ?").all(position?.value ?? null, position?.value ?? null, q, q, q, limit + 1) as Array<{
+        const hasPublicIds = db.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='site_api_client_ids'").get() !== undefined;
+        const publicId = hasPublicIds ? "identity.api_client_id" : "site.client_id";
+        const rows = db.prepare(`
+            SELECT site.client_id, ${publicId} AS api_client_id, site.configuration
+              FROM sites AS site
+              ${hasPublicIds ? "JOIN site_api_client_ids AS identity ON identity.client_id=site.client_id AND identity.is_current=1" : ""}
+             WHERE site.deleted_at IS NULL AND (? IS NULL OR site.client_id > ?)
+               AND (? = '' OR instr(lower(${publicId}),lower(?)) > 0 OR instr(lower(json_extract(site.configuration,'$.name')),lower(?)) > 0)
+             ORDER BY site.client_id LIMIT ?
+        `).all(position?.value ?? null, position?.value ?? null, q, q, q, limit + 1) as Array<{
             client_id: string;
+            api_client_id: string;
             configuration: string;
         }>;
         const selected = rows.slice(0, limit), ids = JSON.stringify(selected.map(row => row.client_id));
@@ -47,7 +57,7 @@ export function siteOverview(database: AppDatabase, values: URLSearchParams, now
         const p = byId(pending), c = byId(confirmed), w = byId(work);
         return { period, max_confirmed_amount_cents: Number(maximum?.amount ?? 0), data: selected.map(row => {
                 const config = siteConfigurationSchema.parse(JSON.parse(row.configuration));
-                return { client_id: row.client_id, name: config.name, accepting_orders: config.accepting_orders, notifications_enabled: config.notifications_enabled,
+                return { client_id: row.client_id, api_client_id: row.api_client_id, name: config.name, accepting_orders: config.accepting_orders, notifications_enabled: config.notifications_enabled,
                     confirmed_count: Number(c.get(row.client_id)?.n ?? 0), confirmed_amount_cents: Number(c.get(row.client_id)?.amount ?? 0),
                     pending_orders: Number(p.get(row.client_id)?.n ?? 0), work_items: Number(w.get(row.client_id)?.n ?? 0) };
             }), page: { next_cursor: rows.length > limit ? encodeListCursor("site-overview", [q, range], { value: selected.at(-1)!.client_id, keys: ["site"] }) : null } };

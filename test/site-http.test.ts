@@ -20,6 +20,82 @@ function apiHeaders(clientId: string, secret: string, target: string) {
   return { "x-perpay-signature-version": signed.version, "x-perpay-client-id": signed.clientId, "x-perpay-timestamp": signed.timestamp, "x-perpay-nonce": signed.nonce, "x-perpay-signature": signed.signature };
 }
 describe("business website HTTP boundaries", () => {
+  it("creates and replays a custom case-sensitive ID through the normal administrator and signed API routes", async () => {
+    const f = await fixture();
+    try {
+      const configuration = { name: "Custom HTTP", accepting_orders: true, notifications_enabled: false,
+        notification_origin: null, return_origin: null, policy: f.sites.defaults().policy };
+      const input = { operation_id: randomUUID(), client_id: "Shop.One-2_A", configuration };
+      const create = (body: object) => f.app.request("/api/admin/v1/sites", { method: "POST", headers: f.headers, body: JSON.stringify(body) });
+      const response = await create(input);
+      assert.equal(response.status, 201, await response.clone().text());
+      const created = await response.json() as { data: { client_id: string; revision: number } };
+      assert.equal(created.data.client_id, input.client_id);
+      const replay = await create(input);
+      assert.equal(replay.status, 201);
+      assert.deepEqual(await replay.json(), created);
+      const changed = await create({ ...input, client_id: "Shop.Other" });
+      assert.equal(changed.status, 409);
+      assert.equal((await changed.json() as { error: { code: string } }).error.code, "site_operation_conflict");
+      const rename = await f.app.request("/api/admin/v1/sites/" + input.client_id, { method: "PUT", headers: f.headers,
+        body: JSON.stringify({ revision: 0, configuration, client_id: "Shop.Renamed" }) });
+      assert.equal(rename.status, 422);
+
+      const key = f.sites.rotateSecret(input.client_id, "api_secret", created.data.revision, { actorId: "admin" });
+      const order = f.orders.forSite(input.client_id).create(createOrderRequestSchema.parse({
+        merchant_order_no: "custom-identity", idempotency_key: "custom-identity", amount_cents: 100, product_name: "自定义网站订单",
+      })).order;
+      const target = "/api/v1/orders/" + order.orderId;
+      const read = await f.app.request(target, { headers: apiHeaders(input.client_id, key.secret, target) });
+      assert.equal(read.status, 200);
+      assert.equal((await read.json() as { data: { order_id: string } }).data.order_id, order.orderId);
+      assert.equal((await f.app.request(target, { headers: apiHeaders(input.client_id.toLowerCase(), key.secret, target) })).status, 401);
+      assert.equal(f.database.integrityCheck().ok, true);
+    } finally { f.close(); }
+  });
+  it("returns a correctable client ID conflict for competing creates and retained tombstones", async () => {
+    const f = await fixture();
+    try {
+      const configuration = { name: "Concurrent HTTP", accepting_orders: true, notifications_enabled: false,
+        notification_origin: null, return_origin: null, policy: f.sites.defaults().policy };
+      const create = (body: object) => f.app.request("/api/admin/v1/sites", { method: "POST", headers: f.headers, body: JSON.stringify(body) });
+      const inputs = [0, 1].map(() => ({ operation_id: randomUUID(), client_id: "Concurrent.Shop", configuration }));
+      const responses = await Promise.all(inputs.map(create));
+      assert.deepEqual(responses.map(response => response.status).sort(), [201, 409]);
+      const rejectedIndex = responses.findIndex(response => response.status === 409);
+      const conflict = await responses[rejectedIndex]!.json() as { error: { code: string; fields: Record<string, string> } };
+      assert.equal(conflict.error.code, "site_client_id_conflict");
+      assert.equal(conflict.error.fields.client_id, "该客户端 ID 已被使用，请换一个。");
+      assert.equal(f.database.read(connection => connection.prepare("SELECT count(*) AS total FROM site_creation_requests WHERE client_id='Concurrent.Shop'").get()?.total), 1n);
+      const removal = await f.app.request("/api/admin/v1/sites/Concurrent.Shop", { method: "DELETE", headers: f.headers,
+        body: JSON.stringify({ revision: 0 }) });
+      assert.equal(removal.status, 204);
+      const tombstone = await create(inputs[rejectedIndex]!);
+      assert.equal(tombstone.status, 409);
+      assert.equal((await tombstone.json() as { error: { code: string } }).error.code, "site_client_id_conflict");
+      const corrected = await create({ ...inputs[rejectedIndex], client_id: "Corrected.Shop" });
+      assert.equal(corrected.status, 201);
+      assert.equal((await corrected.json() as { data: { client_id: string } }).data.client_id, "Corrected.Shop");
+      assert.equal(f.database.integrityCheck().ok, true);
+    } finally { f.close(); }
+  });
+  it("returns creation ID field errors for malformed and reserved names", async () => {
+    const f = await fixture();
+    try {
+      const configuration = { name: "Validation HTTP", accepting_orders: true, notifications_enabled: false,
+        notification_origin: null, return_origin: null, policy: f.sites.defaults().policy };
+      for (const client_id of ["", "ab", "a/b", " Site", ...["default", "new", "defaults", "overview"].flatMap(value => [value, value.toUpperCase()])]) {
+        const response = await f.app.request("/api/admin/v1/sites", { method: "POST", headers: f.headers,
+          body: JSON.stringify({ operation_id: randomUUID(), client_id, configuration }) });
+        assert.equal(response.status, 422, client_id);
+        const body = await response.json() as { error: { code: string; fields: Record<string, string> } };
+        assert.equal(body.error.code, "settings_validation_failed");
+        assert.ok(body.error.fields.client_id);
+      }
+      assert.equal(f.sites.list().length, 1, "only the fixture's original default site exists");
+      assert.equal(f.database.integrityCheck().ok, true);
+    } finally { f.close(); }
+  });
   it("returns only instance configuration without consulting the legacy website view", async t => {
     const f = await fixture();
     try {
@@ -112,8 +188,9 @@ describe("business website HTTP boundaries", () => {
       const response = await f.app.request(target, { headers: apiHeaders(a.clientId, key.secret, target) });
       assert.equal(response.status, 200);
       const body = await response.json() as { data: Record<string, unknown> };
-      assert.deepEqual(Object.keys(body.data).sort(), ["accepting_orders", "client_id", "code", "notifications_enabled", "status"]);
+      assert.deepEqual(Object.keys(body.data).sort(), ["accepting_orders", "client_id", "code", "notifications_enabled", "site_id", "status"]);
       assert.equal(body.data.client_id, a.clientId);
+      assert.equal(body.data.site_id, a.clientId);
     } finally { f.close(); }
   });
   it("rejects stale site updates, invalidates deleted credentials and blocks demo writes", async () => {

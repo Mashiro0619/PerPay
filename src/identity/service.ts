@@ -508,17 +508,23 @@ export class IdentityService {
     expectedKeyVersion: number,
     expectedSecretFingerprint: string,
     verifiedAt = this.#clock(),
+    expectedApiClientId?: string,
   ): boolean {
-    return this.#store.transaction((transaction) =>
-      transaction.consumeApiNonce(
+    return this.#store.transaction((transaction) => {
+      // The public identity can change while the request body is being read.
+      // Verify it again under the same write lock that consumes the nonce.
+      if (expectedApiClientId !== undefined && !transaction.isCurrentSiteApiClientId(clientId, expectedApiClientId)) {
+        throw new IdentityError("api_client_invalid", "API 客户端身份已变更");
+      }
+      return transaction.consumeApiNonce(
         clientId,
         nonce,
         timestampSeconds,
         expectedKeyVersion,
         expectedSecretFingerprint,
         verifiedAt,
-      ),
-    );
+      );
+    });
   }
 
   auditApi(input: ApiAuditInput): void {

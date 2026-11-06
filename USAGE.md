@@ -34,7 +34,7 @@ PerPay 不用在手机上运行监听软件，服务器需持续运行。可以�
 2. 创建业务网站并选择收款账号：指定一个、多个等概率随机或按权重分配。只有一个可用账号时自动预选；多个账号时需明确选择。网站策略采用默认模板，API／通知密钥需在网站设置中另行生成。
 3. 等待所选账号查账和自动确认收款就绪，在该网站下试收款并核对实际收款账号。通知和备份在各自设置中配置，备份仍需验证恢复。
 
-**PerPay API 密钥由 PerPay 生成并保管，只用于业务系统调用 PerPay。** 将该网站的客户端 ID 和密钥保存到业务系统后端的 PerPay 接入配置，用于签名请求；PerPay 使用同一密钥验签。客户端 ID 也由 PerPay 生成，升级保留的旧业务网站仍为 `default`。已有密钥可继续使用，重新进入向导无需轮换。
+**PerPay API 密钥由 PerPay 生成并保管，只用于业务系统调用 PerPay。** 将该网站的客户端 ID 和密钥保存到业务系统后端的 PerPay 接入配置，用于签名请求，PerPay 使用同一密钥验签。客户端 ID 可在创建时自定义，留空自动生成，之后可在网站设置中更换。更换立即生效，业务端须同步更新配置。升级保留的旧业务网站初始使用 `default`。已有密钥可继续使用，重新进入向导无需轮换。
 
 向导完成后，业务 API 仍须通过签名鉴权。未生成密钥时，管理员可在收款就绪后创建真实测试订单；此操作不会自动生成或启用 API 密钥。
 
@@ -46,7 +46,7 @@ PerPay 不用在手机上运行监听软件，服务器需持续运行。可以�
 
 1. 从当前服务启动日志的 `administrator_setup_required` 事件读取 `setup_token`（Docker 部署执行 `docker compose logs --tail=100 app`），通过 `POST /api/admin/v1/setup` 在 JSON 正文中同时提交 `setup_token` 和 `password`。令牌只在本次未初始化的进程中有效，管理员创建成功后失效，重启未初始化服务会换新令牌。初始化不会创建会话，再通过 `POST /api/admin/v1/session/login` 提交密码登录；不要把令牌写进 URL 或保存到业务网站配置。
 2. 使用 `POST /api/admin/v1/alipay-accounts` 新增账号，在 `POST /api/admin/v1/alipay-accounts/:accountId/application-key` 生成应用密钥，再用 `PUT /api/admin/v1/alipay-accounts/:accountId` 保存应用与收款码。`POST .../:accountId/check` 检查已保存内容。应用私钥按账号加密保存，网站 API 密钥仍通过各网站的密钥接口生成。
-3. 使用 `POST /api/admin/v1/sites` 创建网站，提交 UUID `operation_id` 和完整 `configuration`，初始 `notifications_enabled` 为 `false`，`configuration.collection` 指定收款账号与分配方式。可先通过 `GET /api/admin/v1/settings/site-defaults` 取得策略模板；客户端 ID 由服务端生成，不能自行指定。
+3. 使用 `POST /api/admin/v1/sites` 创建网站，提交 UUID `operation_id` 和完整 `configuration`，初始 `notifications_enabled` 为 `false`，`configuration.collection` 指定收款账号与分配方式。可先通过 `GET /api/admin/v1/settings/site-defaults` 取得策略模板。可选顶层字段 `client_id` 指定客户端 ID，省略时由服务端生成。响应中的 `client_id` 为稳定网站编号，用于管理路径，`api_client_id` 为当前业务接入 ID。已占用的 ID 返回 `409 / site_client_id_conflict`，字段错误位于 `error.fields.client_id`。重试同一次创建须携带原 `operation_id`、`client_id` 和配置。ID 格式与更换规则详见[多网站管理](docs/multi-site.md#创建与接入)。
 4. 在该网站下调用 `POST /api/admin/v1/sites/:clientId/secrets/api_secret/actions/rotate` 生成 API 密钥；需要通知时，再调用 `POST /api/admin/v1/sites/:clientId/secrets/webhook_secret/actions/rotate` 生成通知密钥。每次携带最新的网站 `revision`，后一次操作使用前一次响应中的版本。密钥只保存到对应网站后端的环境变量或密钥管理器；已有通知密钥可通过 `POST /api/admin/v1/sites/:clientId/secrets/webhook_secret/actions/view` 显式查看，无需轮换。
 5. 使用 `PUT /api/admin/v1/sites/:clientId` 提交最新 `revision` 与完整 `configuration`，设置 `notifications_enabled: true` 和精确 `notification_origin`，例如 `https://shop.example.com`（只填写来源，不填写路径）。需要返回链接时另行填写 `return_origin`；二者相互独立。全局通知写接口已退役，不再代表某个默认网站。
 6. 创建订单时，将 `notify_url` 填成已允许通知来源下的完整地址，例如 `https://shop.example.com/webhooks/perpay`。完整配置字段及并发控制见[多业务网站指南](docs/multi-site.md#管理接口与查询)。
@@ -80,7 +80,7 @@ PerPay 不用在手机上运行监听软件，服务器需持续运行。可以�
 3. `POST /api/admin/v1/alipay-accounts/:accountId/application-key/activate`：提交最新 `revision`、待启用 `change_id`，以及上传新应用公钥后从同一支付宝应用重新获取的 `platform_public_key`（必填，不允许省略或留空，也不会沿用已保存的旧公钥）。服务端使用待启用私钥做一次有超时上限的只读账单查询并验签，成功后才原子切换密钥；失败不更换当前密钥。该账号的配置版本会在成功启用时递增，内部查账来源代次和历史业务关联不变。
 4. 不再更换时，可调用 `POST /api/admin/v1/alipay-accounts/:accountId/application-key/discard`，提交最新 `revision` 与 `change_id`。这不会撤回支付宝侧的上传；若已上传新公钥，应先在支付宝恢复当前应用公钥，并在 PerPay 的支付宝设置中同步恢复后获取的支付宝公钥。
 
-待启用密钥不会因刷新或重启丢失；生成、启用和放弃都有审计记录，私钥不出现在这些响应中。存在待启用变更时不能切换支付宝应用或再生成另一把公钥。数据库迁移 28 增加密钥变更表，不改写原密钥、配置或业务数据；当前最新 schema 为 39（源码已准备 1.0.0-rc.2，部署前请确认对应 Release 和镜像已发布；v0.3.2 镜像最高支持 33）：迁移 29 将 API 客户端身份与凭证分离，30 增加自定义支付系统名称，31 增加可选商家帮助链接，32 增加默认关闭的管理员 IP 白名单，33 增加最小查账间隔与持久化调度保护，34 将网站策略和业务密钥无损迁移到独立网站模型，35 增加只读流水归组与证据查询索引，36 增加管理员会话的登录 IP 与设备信息并保留旧会话，37 将支付宝配置迁为独立账号并按账号隔离金额空间，38 增加账号删除状态并保留不可变的历史关联，39 增加核心审计上下文与接口／任务活动记录。升级与回滚请按[维护与恢复](docs/maintenance.md#固定版本与回滚)核对构建兼容范围，并保留数据库备份和主密钥。
+待启用密钥不会因刷新或重启丢失；生成、启用和放弃都有审计记录，私钥不出现在这些响应中。存在待启用变更时不能切换支付宝应用或再生成另一把公钥。数据库迁移 28 增加密钥变更表，不改写原密钥、配置或业务数据；当前最新 schema 为 40（源码已准备 1.0.0-rc.2，部署前请确认对应 Release 和镜像已发布；v0.3.2 镜像最高支持 33）：迁移 29 将 API 客户端身份与凭证分离，30 增加自定义支付系统名称，31 增加可选商家帮助链接，32 增加默认关闭的管理员 IP 白名单，33 增加最小查账间隔与持久化调度保护，34 将网站策略和业务密钥无损迁移到独立网站模型，35 增加只读流水归组与证据查询索引，36 增加管理员会话的登录 IP 与设备信息并保留旧会话，37 将支付宝配置迁为独立账号并按账号隔离金额空间，38 增加账号删除状态并保留不可变的历史关联，39 增加核心审计上下文与接口／任务活动记录，40 增加可更换的公开接入 ID 映射。升级与回滚请按[维护与恢复](docs/maintenance.md#固定版本与回滚)核对构建兼容范围，并保留数据库备份和主密钥。
 
 <a id="账本采集节奏"></a>
 
@@ -458,7 +458,7 @@ export async function receivePerPayWebhook(request) {
 - 订单列表显示 PerPay 确认时间（收款确认事件的记录时间），手机默认隐藏，可从列菜单展开。时间来自最近一次 `PAYMENT_CONFIRMED` 事件，不是支付宝交易发生时间；争议订单仍保留历史确认时间。
 - 在订单列表选择网站、收款账号和创建日期后点击“导出 CSV”，导出当前网站及收款账号范围、关键词、状态、日期与排序的**全部结果**，不是当前页。最多 10,000 条、日期跨度最多 366 天，超限须缩小范围；不导出通知。
 - 接口为 `POST /api/admin/v1/orders/export`，请求包含必填日期及可选 `api_client_id`、`q`、`payment_status`、`checkout_status`、`sort_by`、`sort_order`。订单、通知列表及其分页游标同样绑定网站筛选。使用管理员会话、同源及 CSRF 校验，不使用业务 API 签名；读取请求后复核会话。
-- 文件包含网站名称／客户端 ID、商户订单号／内部订单编号、商品、下单／应付／实收金额、币种、当前付款／收银台状态、创建／PerPay 确认时间。金额两位小数，空实收不同于零；采用 UTF-8 BOM、CSV 转义和公式注入防护。备注、通知正文、密钥及收银台能力链接不导出。
+- 文件包含网站名称／稳定网站编号、商户订单号／内部订单编号、商品、下单／应付／实收金额、币种、当前付款／收银台状态、创建／PerPay 确认时间。金额两位小数，空实收不同于零；采用 UTF-8 BOM、CSV 转义和公式注入防护。备注、通知正文、密钥及收银台能力链接不导出。
 - 导出使用单个一致的数据库读取快照，不触发订单到期处理或修改财务记录。它是订单明细，**不是到账日结或净收入报表**；收款已确认也不代表通知已送达。
 
 配置表单的请求／通知超时以秒显示，通知超时支持 0.001 秒精度，例如 5.123 秒保存为 5123 毫秒；超过 3 位小数时提示错误并阻止保存，不舍入。备份间隔可用秒、小时或天，API 仍使用原有毫秒／秒字段。查账组“采用推荐值”只改草稿，保存后才生效，加载不覆盖旧配置。备份策略保存不表示任务已启动或恢复已验证，参见[启用与验证备份](docs/maintenance.md#启用与验证备份)。

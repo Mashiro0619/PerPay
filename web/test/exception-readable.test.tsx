@@ -79,7 +79,7 @@ describe("readable financial exception detail", () => {
     const user = userEvent.setup();
     await user.click(await recordAction("技术详情", "异常记录操作"));
     const dialog = await screen.findByRole("dialog", { name: "技术详情" });
-    for (const [label, value] of [["异常编号", exceptionId], ["客户端 ID", scope ? "shop" : order.api_client_id], ["内部流水编号（PerPay）", ledgerId], ["内部订单编号", orderId], ["可能匹配记录编号", candidateId]]) {
+    for (const [label, value] of [["异常编号", exceptionId], ["网站编号", scope ? "shop" : order.api_client_id], ["内部流水编号（PerPay）", ledgerId], ["内部订单编号", orderId], ["可能匹配记录编号", candidateId]]) {
       await user.click(within(dialog).getByRole("button", { name: "复制" + label }));
       expect(await navigator.clipboard.readText()).toBe(value);
     }

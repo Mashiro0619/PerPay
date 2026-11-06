@@ -134,6 +134,20 @@ describe("minimal website workflows", () => {
     expect(requests.every((u) => !u.searchParams.has("q"))).toBe(true);
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
   });
+  it("selects the intended site when custom identifiers collide after prefix removal", async () => {
+    const change = vi.fn();
+    vi.stubGlobal("fetch", vi.fn(async () => json({
+      data: ["shop", "site_shop"].map(client_id => ({ client_id, configuration: { name: "同名网站", accepting_orders: true } })),
+      page: { next_cursor: null },
+    })));
+    render(<QueryClientProvider client={queryClient}><MemoryRouter><SitePicker value="" onChange={change} /></MemoryRouter></QueryClientProvider>);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("combobox", { name: "业务网站" }));
+    expect(await screen.findByRole("option", { name: "同名网站 · shop" })).toBeVisible();
+    await user.click(screen.getByRole("option", { name: "同名网站 · site_sho" }));
+    expect(change).toHaveBeenCalledExactlyOnceWith("site_shop");
+  });
+
   it("expands advanced policy fields and focuses the failed control", async () => {
     const view = render(
       <SitePolicyFields

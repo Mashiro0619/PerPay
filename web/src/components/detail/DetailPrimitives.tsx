@@ -278,7 +278,7 @@ export function OrderFacts({
           )}
         </ItemTitle>
         <ItemDescription className="line-clamp-none whitespace-normal wrap-anywhere">
-          所属网站：{order.site_name ?? "名称不可用"} · 客户端 ID（PerPay）：{order.api_client_id}
+          所属网站：{order.site_name ?? "名称不可用"} · 网站编号（PerPay）：{order.api_client_id}
         </ItemDescription>
         <ItemDescription className="line-clamp-none whitespace-normal wrap-anywhere">
           商户订单号（业务网站）：{order.merchant_order_no} · 创建时间：<ListDateTime value={order.created_at} inline />

@@ -31,7 +31,7 @@ describe("isolated cross-version business fixture", () => {
       assert.equal(baseline.tables.payment_orders.rows.length, 2);
       database.close();
       database = await m.AppDatabase.open(config.databasePath, { masterKey: config.masterKey });
-      const verified = await verifyBusinessData({ modules: m, database, config, fixture: seeded.fixture, baseline, expectedSchema: 39 });
+      const verified = await verifyBusinessData({ modules: m, database, config, fixture: seeded.fixture, baseline, expectedSchema: 40 });
       assert.equal(verified.originalCredentialsVerified, true);
       assert.equal(verified.originalCheckoutTokensVerified, true);
       const advanced = await advanceBusinessData({ modules: m, database, config, fixture: seeded.fixture });
@@ -39,7 +39,7 @@ describe("isolated cross-version business fixture", () => {
       const upgraded = captureSnapshot(database, advanced, m.APP_VERSION);
       assert.equal(upgraded.tables.payment_orders.rows.length, 3);
       assert.ok(upgraded.audit.length > baseline.audit.length);
-      await verifyBusinessData({ modules: m, database, config, fixture: advanced, baseline: upgraded, expectedSchema: 39 });
+      await verifyBusinessData({ modules: m, database, config, fixture: advanced, baseline: upgraded, expectedSchema: 40 });
       const settingsStore = new m.RuntimeSettingsStore(database, config.masterKey), sites = settingsStore.siteStore();
       const settings = new m.RuntimeSettingsService({ store: settingsStore });
       const identity = new m.IdentityService(database); await identity.initialize();
@@ -56,7 +56,7 @@ describe("isolated cross-version business fixture", () => {
       assert.equal(invalidCheckout.status, 404, "provider unavailability must not mask an invalid capability");
       const site = sites.get(seeded.siteId);
       sites.update(site.clientId, { revision: site.revision, configuration: { ...site.configuration, name: "Intentional changed fixture" } }, { actorId: "admin" });
-      await assert.rejects(verifyBusinessData({ modules: m, database, config, fixture: seeded.fixture, baseline, expectedSchema: 39 }), /preserved_row_changed:sites/);
+      await assert.rejects(verifyBusinessData({ modules: m, database, config, fixture: seeded.fixture, baseline, expectedSchema: 40 }), /preserved_row_changed:sites/);
     } finally {
       database?.close();
       assert.equal(dirname(resolve(directory)), resolve(tmpdir()));

@@ -10,7 +10,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import { DemoError, PerPayClient, decodeKey, orderSnapshot, perpayOrigin, signRequest, verifyWebhook } from '../perpay.mjs';
 import { DemoStore } from '../store.mjs';
-import { createDemoServer, orderPayload, readConfig } from '../server.mjs';
+import { createDemoServer, openDemoStore, orderPayload, readConfig } from '../server.mjs';
 
 const secret = Buffer.alloc(32, 0x51);
 const origin = 'http://127.0.0.1:6190';
@@ -179,6 +179,35 @@ describe('standalone PerPay caller demo', () => {
   it('rejects off-origin checkout URLs', () => {
     assert.throws(() => orderSnapshot({ checkout: { checkout_url: 'https://evil.example/checkout/pct1_' + 'a'.repeat(43) } }, origin),
       error => error instanceof DemoError && error.status === 502 && error.message.includes('PERPAY_URL') && !error.message.includes('PERPAY_PUBLIC_URL'));
+  });
+  it('binds a renamed public client ID to the existing website database', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'perpay-demo-test-'));
+    const database = join(directory, 'demo.sqlite3');
+    let store = new DemoStore(database, origin, 'default');
+    try {
+      store.prepare(payload());
+      store.close();
+      store = null;
+      const renamed = { ...config, database, clientId: 'Shop.Renamed' };
+      const client = new PerPayClient({ ...renamed, fetchImpl: async (url, options) => {
+        assert.equal(url, origin + '/api/v1/system/status');
+        assert.equal(options.headers['x-perpay-client-id'], renamed.clientId);
+        return Response.json({ data: { site_id: 'default', client_id: renamed.clientId, status: 'ready' } });
+      } });
+      store = await openDemoStore(renamed, client);
+      assert.deepEqual(store.get(no).request, payload());
+      assert.equal(store.db.prepare("SELECT value FROM meta WHERE name = 'perpay_client_id'").get().value, 'default');
+      await assert.rejects(openDemoStore(renamed, { request: async () => ({ site_id: 'another-site', client_id: renamed.clientId }) }), /数据目录已绑定/);
+    } finally {
+      store?.close();
+      if (dirname(resolve(directory)) !== resolve(tmpdir()) || !basename(directory).startsWith('perpay-demo-test-')) throw new Error('unsafe cleanup');
+      rmSync(directory, { recursive: true });
+    }
+  });
+  it('accepts older status responses and rejects a mismatched public identity before opening storage', async () => {
+    const store = await openDemoStore(config, { request: async () => ({ client_id: config.clientId }) });
+    try { assert.equal(store.list().length, 0); } finally { store.close(); }
+    await assert.rejects(openDemoStore(config, { request: async () => ({ client_id: 'another-site', site_id: 'default' }) }), /身份与接入配置不一致/);
   });
   it('requires local host, same origin and an anti-CSRF token for order creation', async t => {
     const { base, headers, store } = await serverFixture(t);

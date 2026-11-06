@@ -100,6 +100,7 @@ export const HTTP_ERROR_CODES = Object.freeze([
   "site_scope_conflict",
   "site_revision_conflict",
   "site_operation_conflict",
+  "site_client_id_conflict",
   "site_has_history",
   "site_paused",
   "site_order_limit_exceeded",

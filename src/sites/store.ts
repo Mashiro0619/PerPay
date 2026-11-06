@@ -10,6 +10,7 @@ import type { SiteSecretPurpose } from "../settings/crypto.ts";
 import type { SettingsAuditContext } from "../settings/store.ts";
 import { SiteSecretCipher } from "./crypto.ts";
 import {
+  changeSiteClientIdInputSchema, fingerprintSiteClientIdChange,
   createSiteInputSchema, generateSiteClientId, siteClientIdSchema, siteConfigurationSchema,
   sitePolicySchema, updateSiteDefaultsInputSchema, updateSiteInputSchema,
   type SiteConfiguration, type SitePolicy, type SiteSnapshot,
@@ -22,14 +23,14 @@ const SITE_POLICY_AUDIT_FIELDS = ["orders.order_ttl_seconds", "orders.amount_off
 const SITE_AUDIT_FIELDS = ["name", "accepting_orders", "notifications_enabled", "notification_origin", "return_origin", "collection.mode", "collection.accounts",
   ...SITE_POLICY_AUDIT_FIELDS.map(field => "policy." + field)];
 interface SiteRow {
-  client_id: string; revision: number | bigint; configuration: string;
+  client_id: string; api_client_id: string; revision: number | bigint; configuration: string;
   created_at: number | bigint; updated_at: number | bigint; deleted_at: number | bigint | null;
 }
 interface SecretRow {
   secret_version: number | bigint; cipher_version: number | bigint; nonce: Uint8Array;
   ciphertext: Uint8Array; authentication_tag: Uint8Array; secret_fingerprint: string;
 }
-export type SiteErrorCode = "site_not_found" | "site_revision_conflict" | "site_operation_conflict" | "site_has_history" | "site_paused" | "site_order_limit_exceeded" | "site_secret_missing" | "site_collection_required" | "site_collection_invalid";
+export type SiteErrorCode = "site_not_found" | "site_revision_conflict" | "site_operation_conflict" | "site_client_id_conflict" | "site_has_history" | "site_paused" | "site_order_limit_exceeded" | "site_secret_missing" | "site_collection_required" | "site_collection_invalid";
 export class SiteError extends Error {
   readonly code: SiteErrorCode;
   readonly retryAfterSeconds: number | undefined;
@@ -55,9 +56,15 @@ export class SiteStore {
     if (typeof search !== "string" || search.length > 128) throw new RangeError("website search is invalid");
     if (afterClientId !== null) siteClientIdSchema.parse(afterClientId);
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw new RangeError("website page limit is invalid");
-    return this.#database.read(connection => (connection.prepare(
-      "SELECT * FROM sites WHERE deleted_at IS NULL AND (? IS NULL OR client_id > ?) AND (? = '' OR instr(lower(client_id), lower(?)) > 0 OR instr(lower(json_extract(configuration, '$.name')), lower(?)) > 0) ORDER BY client_id LIMIT ?",
-    ).all(afterClientId, afterClientId, search, search, search, limit) as unknown as SiteRow[]).map(mapSite));
+    return this.#database.read(connection => {
+      const publicId = hasApiClientIds(connection) ? "public.api_client_id" : "site.client_id";
+      return (connection.prepare(siteSelect(connection) +
+        ` WHERE site.deleted_at IS NULL AND (? IS NULL OR site.client_id > ?)
+          AND (? = '' OR instr(lower(site.client_id), lower(?)) > 0 OR instr(lower(${publicId}), lower(?)) > 0
+            OR instr(lower(json_extract(site.configuration, '$.name')), lower(?)) > 0)
+          ORDER BY site.client_id LIMIT ?`,
+      ).all(afterClientId, afterClientId, search, search, search, search, limit) as unknown as SiteRow[]).map(mapSite);
+    });
   }
 
   checkOrderAdmission(clientId: string, now = Date.now()): void {
@@ -86,22 +93,70 @@ export class SiteStore {
   create(input: unknown, audit: SettingsAuditContext, now = Date.now()): SiteSnapshot {
     const parsed = createSiteInputSchema.parse(input);
     if (parsed.configuration.notifications_enabled) throw new SiteError("site_secret_missing", "请先创建网站并生成通知签名密钥，再开启通知。");
-    const serialized = JSON.stringify(parsed.configuration);
+    // Omitted IDs retain the exact fingerprint used by existing creation records.
+    const serialized = JSON.stringify(parsed.client_id === undefined
+      ? parsed.configuration
+      : { client_id: parsed.client_id, configuration: parsed.configuration });
     const fingerprint = createHash("sha256").update(serialized).digest("hex");
     return this.#database.write(connection => {
       const previous = connection.prepare("SELECT client_id, request_fingerprint FROM site_creation_requests WHERE operation_id = ?").get(parsed.operation_id) as { client_id: string; request_fingerprint: string } | undefined;
       if (previous) {
         if (previous.request_fingerprint !== fingerprint) throw new SiteError("site_operation_conflict", "创建请求已用于其他网站配置。");
-        const row = connection.prepare("SELECT * FROM sites WHERE client_id = ?").get(previous.client_id) as unknown as SiteRow | undefined;
+        const row = connection.prepare(siteSelect(connection) + " WHERE site.client_id = ?").get(previous.client_id) as unknown as SiteRow | undefined;
         if (!row) throw new Error("website creation record has no website");
         return mapSite(row);
       }
+      const clientId = parsed.client_id ?? generateSiteClientId();
+      requireUnusedClientId(connection, clientId);
       const configuration = resolveSiteCollection(connection, parsed.configuration);
-      const clientId = generateSiteClientId();
       new IdentityTransaction(connection).ensureApiClientIdentity(clientId, now);
       connection.prepare("INSERT INTO sites(client_id, revision, configuration, created_at, updated_at, deleted_at) VALUES (?, 0, ?, ?, ?, NULL)").run(clientId, JSON.stringify(configuration), now, now);
+      if (hasApiClientIds(connection)) {
+        connection.prepare("INSERT INTO site_api_client_ids(api_client_id, client_id, is_current, created_at) VALUES (?, ?, 1, ?)").run(clientId, clientId, now);
+      }
       connection.prepare("INSERT INTO site_creation_requests(operation_id, request_fingerprint, client_id, created_at) VALUES (?, ?, ?, ?)").run(parsed.operation_id, fingerprint, clientId, now);
       auditSite(connection, audit, "site.created", clientId, now, { revision: 0 }, auditChanges(null, requiredSite(connection, clientId).configuration, SITE_AUDIT_FIELDS));
+      return requiredSite(connection, clientId);
+    });
+  }
+
+  changeClientId(clientId: string, input: unknown, audit: SettingsAuditContext, now = Date.now()): SiteSnapshot {
+    siteClientIdSchema.parse(clientId);
+    const parsed = changeSiteClientIdInputSchema.parse(input);
+    const fingerprint = fingerprintSiteClientIdChange(clientId, parsed.revision, parsed.client_id);
+    return this.#database.write(connection => {
+      const previous = connection.prepare("SELECT client_id, request_fingerprint FROM site_client_id_changes WHERE operation_id = ?")
+        .get(parsed.operation_id) as { client_id: string; request_fingerprint: string } | undefined;
+      if (previous) {
+        if (previous.client_id !== clientId || previous.request_fingerprint !== fingerprint) {
+          throw new SiteError("site_operation_conflict", "操作编号已用于其他客户端 ID 修改请求。");
+        }
+        const row = connection.prepare(siteSelect(connection) + " WHERE site.client_id = ?").get(clientId) as unknown as SiteRow | undefined;
+        if (!row) throw new Error("client ID change record has no website");
+        return mapSite(row);
+      }
+      const current = requiredSite(connection, clientId);
+      checkRevision(current.revision, parsed.revision);
+      const didChange = current.apiClientId !== parsed.client_id;
+      const latest = connection.prepare("SELECT max(created_at) AS at FROM site_client_id_changes WHERE client_id=?").get(clientId)?.at;
+      const writtenAt = integer(Math.max(now, current.updatedAt + 1, latest == null ? 0 : Number(latest) + 1));
+      if (didChange) {
+        requireUnusedClientId(connection, parsed.client_id);
+        changed(connection.prepare("UPDATE site_api_client_ids SET is_current = 0, retired_at = ? WHERE client_id = ? AND is_current = 1 AND retired_at IS NULL")
+          .run(writtenAt, clientId).changes);
+        connection.prepare("INSERT INTO site_api_client_ids(api_client_id, client_id, is_current, created_at) VALUES (?, ?, 1, ?)")
+          .run(parsed.client_id, clientId, writtenAt);
+        changed(connection.prepare("UPDATE sites SET revision = revision + 1, updated_at = ? WHERE client_id = ? AND revision = ? AND deleted_at IS NULL")
+          .run(writtenAt, clientId, parsed.revision).changes);
+      }
+      connection.prepare(`INSERT INTO site_client_id_changes(operation_id, client_id, request_fingerprint,
+        previous_api_client_id, next_api_client_id, revision, changed, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+        .run(parsed.operation_id, clientId, fingerprint, current.apiClientId, parsed.client_id, parsed.revision, Number(didChange), writtenAt);
+      auditSite(connection, audit, "site.client_id_changed", clientId, writtenAt, {
+        operation_id: parsed.operation_id, request_fingerprint: fingerprint,
+        previous_api_client_id: current.apiClientId, next_api_client_id: parsed.client_id,
+        revision: current.revision + Number(didChange), changed: didChange,
+      }, auditChanges({ api_client_id: current.apiClientId }, { api_client_id: parsed.client_id }, ["api_client_id"]));
       return requiredSite(connection, clientId);
     });
   }
@@ -128,10 +183,18 @@ export class SiteStore {
     return this.#database.write(connection => {
       const current = requiredSite(connection, clientId);
       checkRevision(current.revision, revision);
+      if (hasApiClientIds(connection)) {
+        const latest = connection.prepare("SELECT max(created_at) AS at FROM site_client_id_changes WHERE client_id=?").get(clientId)?.at;
+        now = integer(Math.max(now, current.updatedAt, latest == null ? 0 : Number(latest)));
+      }
       if (connection.prepare("SELECT 1 FROM payment_orders WHERE api_client_id = ? LIMIT 1").get(clientId)) {
         throw new SiteError("site_has_history", "有历史订单的网站不能删除，请使用暂停接单。");
       }
       connection.prepare("UPDATE api_client_config SET enabled = 0, updated_at = max(updated_at, ?) WHERE client_id = ?").run(now, clientId);
+      if (hasApiClientIds(connection)) {
+        changed(connection.prepare("UPDATE site_api_client_ids SET retired_at = max(created_at, ?) WHERE client_id = ? AND is_current = 1 AND retired_at IS NULL")
+          .run(Math.max(now, current.updatedAt), clientId).changes);
+      }
       changed(connection.prepare("UPDATE sites SET deleted_at = max(updated_at, ?), updated_at = max(updated_at, ?), revision = revision + 1 WHERE client_id = ? AND revision = ? AND deleted_at IS NULL")
         .run(now, now, clientId, revision).changes);
       auditSite(connection, audit, "site.deleted", clientId, now, { revision: revision + 1 }, auditChanges({ deleted: false }, { deleted: true }, ["deleted"]));
@@ -173,15 +236,20 @@ export class SiteStore {
     });
   }
 
-  credential(clientId: string): { clientId: string; keyVersion: number; secretFingerprint: string; secret: string } | null {
-    if (!siteClientIdSchema.safeParse(clientId).success) return null;
+  credential(apiClientId: string): { clientId: string; apiClientId: string; keyVersion: number; secretFingerprint: string; secret: string } | null {
+    if (!siteClientIdSchema.safeParse(apiClientId).success) return null;
     return this.#database.read(connection => {
+      const mapping = hasApiClientIds(connection)
+        ? connection.prepare("SELECT client_id FROM site_api_client_ids WHERE api_client_id = ? AND retired_at IS NULL").get(apiClientId) as { client_id: string } | undefined
+        : { client_id: apiClientId };
+      if (!mapping) return null;
+      const clientId = mapping.client_id;
       if (!readSite(connection, clientId)) return null;
       const active = new IdentityTransaction(connection).activeApiClient(clientId);
       if (!active?.enabled) return null;
       const row = readSecret(connection, clientId, "api_secret");
       if (!row || row.secret_fingerprint !== active.secretFingerprint) throw new Error("website API credential is inconsistent");
-      return { clientId, keyVersion: active.keyVersion, secretFingerprint: active.secretFingerprint, secret: this.#decrypt(clientId, "api_secret", row) };
+      return { clientId, apiClientId, keyVersion: active.keyVersion, secretFingerprint: active.secretFingerprint, secret: this.#decrypt(clientId, "api_secret", row) };
     });
   }
 
@@ -227,7 +295,7 @@ export class SiteStore {
 }
 
 export function readSite(connection: DatabaseSync, clientId: string): SiteSnapshot | null {
-  const row = connection.prepare("SELECT * FROM sites WHERE client_id = ? AND deleted_at IS NULL").get(clientId) as unknown as SiteRow | undefined;
+  const row = connection.prepare(siteSelect(connection) + " WHERE site.client_id = ? AND site.deleted_at IS NULL").get(clientId) as unknown as SiteRow | undefined;
   return row ? mapSite(row) : null;
 }
 export function assertSiteCanCreate(connection: DatabaseSync, clientId: string, now: number): SiteConfiguration {
@@ -246,7 +314,24 @@ function requiredSite(connection: DatabaseSync, clientId: string): SiteSnapshot 
   return site;
 }
 function mapSite(row: SiteRow): SiteSnapshot {
-  return { clientId: row.client_id, revision: integer(row.revision), configuration: siteConfigurationSchema.parse(JSON.parse(row.configuration)), createdAt: integer(row.created_at), updatedAt: integer(row.updated_at), deletedAt: row.deleted_at === null ? null : integer(row.deleted_at) };
+  return { clientId: row.client_id, apiClientId: siteClientIdSchema.parse(row.api_client_id), revision: integer(row.revision), configuration: siteConfigurationSchema.parse(JSON.parse(row.configuration)), createdAt: integer(row.created_at), updatedAt: integer(row.updated_at), deletedAt: row.deleted_at === null ? null : integer(row.deleted_at) };
+}
+function hasApiClientIds(connection: DatabaseSync): boolean {
+  return !!connection.prepare("SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'site_api_client_ids'").get();
+}
+function siteSelect(connection: DatabaseSync): string {
+  if (!hasApiClientIds(connection)) return "SELECT site.*, site.client_id AS api_client_id FROM sites AS site";
+  return `SELECT site.*, public.api_client_id FROM sites AS site
+    LEFT JOIN site_api_client_ids AS public ON public.client_id = site.client_id AND public.is_current = 1`;
+}
+function requireUnusedClientId(connection: DatabaseSync, clientId: string): void {
+  const mapping = hasApiClientIds(connection);
+  const occupied = connection.prepare(`SELECT 1 FROM sites WHERE client_id = ?
+    UNION ALL SELECT 1 FROM api_client_config WHERE client_id = ?
+    UNION ALL SELECT 1 FROM api_client_idempotency_namespaces WHERE namespace_id = ?
+    ${mapping ? "UNION ALL SELECT 1 FROM site_api_client_ids WHERE api_client_id = ?" : ""} LIMIT 1`)
+    .get(clientId, clientId, clientId, ...(mapping ? [clientId] : []));
+  if (occupied) throw new SiteError("site_client_id_conflict", "该客户端 ID 已被使用，请换一个。");
 }
 function resolveSiteCollection(connection: DatabaseSync, configuration: SiteConfiguration): SiteConfiguration {
   if (!connection.prepare("SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'alipay_accounts'").get()) return configuration;

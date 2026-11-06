@@ -970,7 +970,7 @@ describe("identity HTTP contract", () => {
       const first = await app.request("/api/v1/system/status", { headers });
       assert.equal(first.status, 200);
       const parsedFirst = await first.json();
-      assert.deepEqual(parsedFirst, { data: { status: "ready", code: null, client_id: "default", accepting_orders: true, notifications_enabled: false } });
+      assert.deepEqual(parsedFirst, { data: { status: "ready", code: null, client_id: "default", site_id: "default", accepting_orders: true, notifications_enabled: false } });
       const firstBody = JSON.stringify(parsedFirst);
       assert.equal(firstBody.includes(apiSecret), false);
 

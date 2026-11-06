@@ -29,7 +29,7 @@ export function signRequest(secret, clientId, method, target, body, now = Date.n
   clientId = validateClientId(clientId);
   // Only fixed ASCII paths without queries are used here. Arbitrary paths/queries
   // require PerPay canonicalization; do not copy this shortcut into a generic SDK.
-  if (!/^\/api\/v1\/orders(?:\/[A-Za-z0-9._-]+|\/by-merchant-no\/[A-Za-z0-9._-]+)?$/.test(target)) throw new Error('Unsupported demo request target');
+  if (target !== '/api/v1/system/status' && !/^\/api\/v1\/orders(?:\/[A-Za-z0-9._-]+|\/by-merchant-no\/[A-Za-z0-9._-]+)?$/.test(target)) throw new Error('Unsupported demo request target');
   const timestamp = String(Math.floor(now / 1000));
   const digest = createHash('sha256').update(body).digest('hex');
   const material = ['PERPAY-HMAC-SHA256', 'v1', method, target, timestamp, nonce, clientId, digest].join('\n');

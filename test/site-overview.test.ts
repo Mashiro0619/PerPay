@@ -149,7 +149,7 @@ describe("website overview period and global amount scale", () => {
     });
   });
 
-  it("executes five SQL statements and shares the global maximum across ranges, searches and pages", (t) => {
+  it("uses one schema capability check and five bounded data queries across ranges, searches and pages", (t) => {
     withFixture((database, connection) => {
       const now = Date.parse("2026-01-16T12:00:00+08:00");
       const clientIds = Array.from({ length: 24 }, (_, index) => `site-${String(index).padStart(3, "0")}`);
@@ -184,8 +184,9 @@ describe("website overview period and global amount scale", () => {
         executed.length = 0;
         const result = siteOverview(database, new URLSearchParams(query), now);
         assert.equal(result.data.length, expectedSites);
-        assert.equal(prepared.length, 5);
-        assert.equal(executed.length, 5);
+        assert.equal(prepared.length, 6);
+        assert.equal(executed.length, 6);
+        assert.match(executed[0]!, /sqlite_schema/);
         assert.deepEqual(executed, prepared);
         assert.equal(Date.parse(result.period.to) - Date.parse(result.period.from), (days - 1) * DAY_MILLISECONDS);
         assert.equal(result.period.to, "2026-01-16");

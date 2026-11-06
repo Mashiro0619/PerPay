@@ -14,7 +14,7 @@ import { createApp } from '../src/http/app.ts';
 import { assessWebhookAck, webhookSignature } from '../src/notifications/model.ts';
 import { signApiRequest } from '../src/security/api-signature.ts';
 import { PerPayClient, orderSnapshot, signRequest } from '../examples/node-client/perpay.mjs';
-import { createDemoServer, orderPayload } from '../examples/node-client/server.mjs';
+import { createDemoServer, openDemoStore, orderPayload } from '../examples/node-client/server.mjs';
 import { DemoStore } from '../examples/node-client/store.mjs';
 import { createConfiguredHttpServices } from './http-fixture.ts';
 
@@ -51,6 +51,7 @@ describe('caller demo compatibility with PerPay', () => {
     for (const [method, target, bytes] of [
       ['POST', '/api/v1/orders', Buffer.from(JSON.stringify(orderPayload(input, config)))],
       ['GET', '/api/v1/orders/by-merchant-no/' + input.merchant_order_no, Buffer.alloc(0)],
+      ['GET', '/api/v1/system/status', Buffer.alloc(0)],
     ]) {
       const headers = signRequest(secret, config.clientId, method, target, bytes);
       const server = signApiRequest({ secret, method, target, body: bytes, clientId: 'default', timestamp: headers['x-perpay-timestamp'], nonce: headers['x-perpay-nonce'] });
@@ -97,6 +98,27 @@ describe('caller demo compatibility with PerPay', () => {
     const retried = await lossyClient.createOrder(store.get(input.merchant_order_no).request);
     assert.equal(retried.order_id, found.order_id);
     assert.equal(store.list().length, 1);
+  });
+
+  it('reconnects through a changed client ID and retries the original order under the stable website', async t => {
+    const { app, client, sites } = await fixture(t);
+    const payload = orderPayload(input, config);
+    const created = await client.createOrder(payload);
+    const site = sites.get('default');
+    sites.changeClientId(site.clientId, { operation_id: randomUUID(), revision: site.revision, client_id: 'Renamed.Shop' }, { actorId: 'admin' });
+    const renamed = { ...config, clientId: 'Renamed.Shop' };
+    const currentClient = new PerPayClient({ ...renamed, fetchImpl: (url, options) => app.request(url, options) });
+    const store = await openDemoStore(renamed, currentClient);
+    try {
+      assert.equal(store.db.prepare("SELECT value FROM meta WHERE name = 'perpay_client_id'").get().value, 'default');
+      store.prepare(payload);
+      const retried = await currentClient.createOrder(store.get(input.merchant_order_no).request);
+      assert.equal(retried.order_id, created.order_id);
+      store.apply(orderSnapshot(retried, origin), 'api');
+      assert.equal(store.list().length, 1);
+      assert.equal((await currentClient.getByMerchantNo(input.merchant_order_no)).order_id, created.order_id);
+      await assert.rejects(client.getOrder(created.order_id), /401/);
+    } finally { store.close(); }
   });
 
   it('accepts the backend webhook signer and returns an ACK accepted by the backend', async t => {

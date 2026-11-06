@@ -139,7 +139,7 @@ export function RefundMarkPanel({
         label="订单操作"
         technical={!overlay || !includeOrderTools}
         data={order}
-        identifiers={[["内部订单编号", order.order_id], ["客户端 ID", order.api_client_id]]}
+        identifiers={[["内部订单编号", order.order_id], ["网站编号", order.api_client_id]]}
         actions={
           mark.marked || eligible
             ? [

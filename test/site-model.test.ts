@@ -104,11 +104,19 @@ describe("complete website configuration", () => {
     assert.equal(ids.has("default"), false);
     for (const id of ["", "ab", "a:b", "abc\u0000def", "_abc", "a".repeat(65)]) assert.equal(siteClientIdSchema.safeParse(id).success, false);
   });
-  it("requires operation identity on create and rejects client-supplied site IDs", () => {
+  it("accepts an optional creation ID while preserving existing identity validation", () => {
     const input = { operation_id: "b9f43b29-8062-434b-bb62-47ba5596e069", configuration: configuration() };
     assert.equal(createSiteInputSchema.safeParse(input).success, true);
     assert.equal(createSiteInputSchema.safeParse({ configuration: configuration() }).success, false);
-    assert.equal(createSiteInputSchema.safeParse({ ...input, client_id: "chosen" }).success, false);
+    for (const client_id of ["chosen", "Shop.One-2_A", "a".repeat(64)]) {
+      assert.equal(createSiteInputSchema.parse({ ...input, client_id }).client_id, client_id);
+    }
+    for (const client_id of ["", "ab", " aBc", "aBc ", "_abc", "a:b", "中文网站", "a".repeat(65), null, 123,
+      ...["default", "new", "defaults", "overview"].flatMap(value => [value, value.toUpperCase(), value[0]!.toUpperCase() + value.slice(1)])]) {
+      assert.equal(createSiteInputSchema.safeParse({ ...input, client_id }).success, false, String(client_id));
+    }
+    assert.equal(siteClientIdSchema.parse("default"), "default");
+    assert.equal(updateSiteInputSchema.safeParse({ revision: 0, configuration: configuration(), client_id: "chosen" }).success, false);
   });
   it("requires independent revisions on site and template writes", () => {
     for (const revision of [undefined, -1, 0.5, Number.MAX_SAFE_INTEGER + 1]) {

@@ -70,6 +70,13 @@ export function orderPayload(input, config) {
   if (!product || Array.from(product).length > 200 || !product.isWellFormed() || /[\u0000-\u001f\u007f]/.test(product) || Array.from(note).length > 500 || !note.isWellFormed() || /[\u0000-\u001f\u007f]/.test(note)) throw new DemoError(400, '商品名或备注无效；商品名最多 200 字，备注最多 500 字，不含控制字符。');
   return { idempotency_key: 'demo:' + input.merchant_order_no, merchant_order_no: input.merchant_order_no, amount_cents: cents, product_name: product, ...(note ? { note } : {}), notify_url: config.notifyUrl };
 }
+export async function openDemoStore(config, client) {
+  const status = await client.request('GET', '/api/v1/system/status');
+  if (status.client_id !== config.clientId) throw new DemoError(502, 'PerPay 返回的网站身份与接入配置不一致。');
+  const siteId = validateClientId(status.site_id ?? status.client_id);
+  return new DemoStore(config.database, config.url, siteId);
+}
+
 export function createDemoServer({ config, client = new PerPayClient(config), store = new DemoStore(config.database, config.url, config.clientId) }) {
   const csrf = randomBytes(32).toString('base64url');
   const pending = new Map();
@@ -146,7 +153,9 @@ export function createDemoServer({ config, client = new PerPayClient(config), st
 if (import.meta.main) {
   try {
     const config = readConfig();
-    const { server, store } = createDemoServer({ config });
+    const client = new PerPayClient(config);
+    const store = await openDemoStore(config, client);
+    const { server } = createDemoServer({ config, client, store });
     server.on('error', error => { console.error(error.code === 'EADDRINUSE' ? '端口已被占用，请修改 DEMO_PORT。' : '示例服务无法启动。'); store.close(); process.exitCode = 1; });
     server.listen(config.port, '127.0.0.1', () => {
       console.log('PerPay 调用端 Demo：http://127.0.0.1:' + config.port);

@@ -33,6 +33,7 @@ import { SiteCollectionFields } from "@/components/site-collection-fields";
 import { accountState, alipayAccountsQuery, type AlipayAccount, type SiteCollection } from "@/lib/alipay-accounts";
 import { siteTimeoutError, siteTimeoutSeconds } from "@/lib/site-timeout";
 import { SiteConfigurationConflicts } from "@/components/site-configuration-conflicts";
+import { SiteClientIdChange } from "@/components/site-client-id-change";
 import { mergeSiteConfiguration, resolveSiteConflicts, type SiteConflictChoices } from "@/lib/site-configuration";
 import { latestEditorSnapshot, siteEditorKey, siteEditorQueryOptions } from "@/lib/site-editor-query";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -106,7 +107,7 @@ function siteSummaryRows(site: Site, section: string): SettingsSummaryRow[] {
   return [
     ["业务网站名称", value.name],
     ["新订单", value.accepting_orders ? "允许接单" : "暂停接单"],
-    ["客户端 ID", <CopyValue value={site.client_id} label="复制客户端 ID" />],
+    ["客户端 ID", <CopyValue value={site.api_client_id ?? site.client_id} label="复制客户端 ID" />],
     ["创建时间", dateTime(site.created_at)],
   ];
 }
@@ -188,7 +189,7 @@ export function SiteSummaryOverlay() {
       ["收款确认笔数", analytics.data ? count(analytics.data.data.confirmations.count) : "—"],
       ["当前待付款", analytics.data ? count(analytics.data.data.pending.orders) : "—"],
       ["待处理", work.data?.data ? count(work.data.data.total) : "—"],
-      ["客户端 ID", <CopyValue value={current.client_id} label="复制客户端 ID" />],
+      ["客户端 ID", <CopyValue value={current.api_client_id ?? current.client_id} label="复制客户端 ID" />],
     ]} /></DetailSection>
     <OverlayActions>
       <Link to={"/sites/" + encodeURIComponent(current.client_id) + "/edit?section=basic"} className={buttonVariants({ variant: "outline" })}>编辑网站</Link>
@@ -267,6 +268,8 @@ function SiteEditor({
   const sections = siteSections;
   const visible = (value: string) => section === "all" || section === value;
   const [saved, setSaved] = useState(initial);
+  const [changingClientId, setChangingClientId] = useState(false);
+  const changeClientIdTrigger = useRef<HTMLButtonElement>(null);
   const [draft, setDraft] = useState(() => structuredClone(configuration));
   const [timeoutRaw, setTimeoutRaw] = useState(() => siteTimeoutSeconds(configuration.policy.notification_delivery.timeout_milliseconds));
   const timeoutError = siteTimeoutError(timeoutRaw);
@@ -598,7 +601,10 @@ function SiteEditor({
             <FieldGroup>
               <Field>
                 <FieldLabel>客户端 ID</FieldLabel>
-                <CopyValue value={saved.client_id} label="复制客户端 ID" />
+                <CopyValue value={saved.api_client_id ?? saved.client_id} label="复制客户端 ID" />
+                <Button ref={changeClientIdTrigger} type="button" variant="outline" className="self-start"
+                  disabled={busy || dirty || requiresReview} onClick={() => setChangingClientId(true)}>更换客户端 ID</Button>
+                {dirty && <FieldDescription>请先保存或撤销当前配置修改，再更换客户端 ID。</FieldDescription>}
               </Field>
               <Field>
                 <FieldLabel>PerPay 地址</FieldLabel>
@@ -725,6 +731,19 @@ function SiteEditor({
           </Card>
         </FieldSet>
       </form>
+      {saved && changingClientId && <SiteClientIdChange site={saved} finalFocus={() => changeClientIdTrigger.current}
+        onClose={refresh => { setChangingClientId(false); if (refresh) reload.mutate(); }}
+        onChanged={async site => {
+          const latest = await cacheSite(site);
+          observeSecretRevision(latest.revision);
+          setSaved(latest);
+          setDraft(structuredClone(latest.configuration));
+          setTimeoutRaw(siteTimeoutSeconds(latest.configuration.policy.notification_delivery.timeout_milliseconds));
+          clearDraft();
+          setChangingClientId(false);
+          setFeedback("客户端 ID 操作已完成。");
+          void queryClient.invalidateQueries({ queryKey: ["sites"] });
+        }} />}
       {saved && visible("integration") && (
         <Card>
           <CardHeader>

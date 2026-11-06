@@ -5,8 +5,8 @@ import { DatabaseSync } from 'node:sqlite';
 import { DemoError, validateSnapshot, validateClientId } from './perpay.mjs';
 
 export class DemoStore {
-  constructor(filename, origin, clientId) {
-    clientId = validateClientId(clientId);
+  constructor(filename, origin, siteId) {
+    siteId = validateClientId(siteId);
     if (filename !== ':memory:') mkdirSync(dirname(filename), { recursive: true, mode: 0o700 });
     this.db = new DatabaseSync(filename);
     this.db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA busy_timeout=5000;');
@@ -18,13 +18,14 @@ export class DemoStore {
     try {
       this.transaction(() => {
         const existing = this.db.prepare('SELECT value FROM meta WHERE name = ?').get('perpay_origin');
+        // Keep the metadata key for older databases. Its value is the stable website identity.
         const website = this.db.prepare('SELECT value FROM meta WHERE name = ?').get('perpay_client_id');
         const historical = this.db.prepare('SELECT 1 FROM orders LIMIT 1').get();
-        if ((existing && existing.value !== origin) || (website && website.value !== clientId) || (!website && historical && clientId !== 'default')) {
+        if ((existing && existing.value !== origin) || (website && website.value !== siteId) || (!website && historical && siteId !== 'default')) {
           throw new Error('数据目录已绑定另一个 PerPay 实例或业务网站。请使用新的 DEMO_DATA_DIR，不要把旧业务单号发到另一个网站。');
         }
         this.db.prepare('INSERT OR IGNORE INTO meta VALUES (?, ?)').run('perpay_origin', origin);
-        this.db.prepare('INSERT OR IGNORE INTO meta VALUES (?, ?)').run('perpay_client_id', clientId);
+        this.db.prepare('INSERT OR IGNORE INTO meta VALUES (?, ?)').run('perpay_client_id', siteId);
       });
     } catch (error) { this.db.close(); throw error; }
   }

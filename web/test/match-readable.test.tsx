@@ -79,7 +79,7 @@ describe("readable payment match detail", () => {
       expect(await navigator.clipboard.readText()).toBe(matchId);
       await user.click(within(technical).getByRole("button", { name: "复制内部订单编号" }));
       expect(await navigator.clipboard.readText()).toBe(paymentMatch.order.order_id);
-      await user.click(within(technical).getByRole("button", { name: "复制客户端 ID" }));
+      await user.click(within(technical).getByRole("button", { name: "复制网站编号" }));
       expect(await navigator.clipboard.readText()).toBe(paymentMatch.order.api_client_id);
       expect(fetchMock.mock.calls.every(([request]) => request.method === "GET")).toBe(true);
       expect(fetchMock).toHaveBeenCalledTimes(scope ? 2 : 1);

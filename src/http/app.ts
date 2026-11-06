@@ -4,7 +4,7 @@ import type { AlipayAccountService } from "../alipay-accounts/service.ts";
 import { siteOverview } from "./site-overview.ts";
 import { collectionCodeInputSchema, providerApplicationInputSchema, instanceDisplayInputSchema, isProductionProvider } from "../settings/model.ts";
 import { SiteError, type SiteStore } from "../sites/store.ts";
-import { createSiteInputSchema, updateSiteInputSchema, updateSiteDefaultsInputSchema, siteClientIdSchema, type SiteSnapshot } from "../sites/model.ts";
+import { changeSiteClientIdInputSchema, createSiteInputSchema, updateSiteInputSchema, updateSiteDefaultsInputSchema, siteClientIdSchema, type SiteSnapshot } from "../sites/model.ts";
 import { collectionPolicyInputSchema } from "../settings/collection-policy.ts";
 import { readLedgerFailureDiagnostic, type LedgerDiagnostics } from "../ledger/diagnostics.ts";
 import { HealthProbeCache } from "../infrastructure/health-probe-cache.ts";
@@ -994,6 +994,11 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
       const body = await readJson(context, updateSiteInputSchema, MAX_JSON_BODY_BYTES);
       return context.json({ data: serializeSite(sites.update(clientId, body, siteWrite(context))) });
     });
+    app.post("/api/admin/v1/sites/:clientId/actions/change-client-id", adminSession, financialWrite, async context => {
+      const clientId = siteId(context);
+      const body = await readJson(context, changeSiteClientIdInputSchema, MAX_JSON_BODY_BYTES);
+      return context.json({ data: serializeSite(sites.changeClientId(clientId, body, siteWrite(context))) });
+    });
     app.delete("/api/admin/v1/sites/:clientId", adminSession, financialWrite, async context => {
       const clientId = siteId(context);
       const body = await readJson(context, z.object({ revision: z.number().int().nonnegative() }).strict(), 1024);
@@ -1876,7 +1881,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
         if (error instanceof SiteError || error instanceof HttpApiError) code = error.code;
         else throw error;
       }
-      return context.json({ data: { status: code === null ? "ready" : "not_ready", code, client_id: clientId, accepting_orders: site.configuration.accepting_orders, notifications_enabled: site.configuration.notifications_enabled } });
+      return context.json({ data: { status: code === null ? "ready" : "not_ready", code, client_id: site.apiClientId, site_id: site.clientId, accepting_orders: site.configuration.accepting_orders, notifications_enabled: site.configuration.notifications_enabled } });
     }
     return context.json({ data: await systemStatus(dependencies) });
   });
@@ -1926,7 +1931,8 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     if (error instanceof SiteError) {
       if (error.retryAfterSeconds !== undefined) context.header("retry-after", String(error.retryAfterSeconds));
       const status = error.code === "site_not_found" ? 404 : error.code === "site_paused" || error.code === "site_order_limit_exceeded" ? 503 : error.code === "site_collection_required" || error.code === "site_collection_invalid" ? 422 : 409;
-      return errorResponse(context, status, error.code, error.message);
+      return errorResponse(context, status, error.code, error.message,
+        error.code === "site_client_id_conflict" ? { client_id: error.message } : undefined);
     }
     if (error instanceof AdminOperationError) return errorResponse(context, error.status, error.code, error.message);
     if (error instanceof ForwardedAddressError) {
@@ -2159,7 +2165,8 @@ function requireApiClient(
       throw new HttpApiError(503, "system_not_configured", "收款系统尚未完成配置");
     }
     const authentication = scopedAuthentication ?? readApiAuthentication(context);
-    const client = authentication.clientId === credential.clientId ? credential : undefined;
+    const publicClientId = "apiClientId" in credential ? credential.apiClientId : credential.clientId;
+    const client = authentication.clientId === publicClientId ? credential : undefined;
     if (!client) throw new HttpApiError(401, "api_authentication_failed", "API 认证失败");
     const body = await readBodyLimited(context, maximumBodyBytes);
     context.set("apiRawBody", body);
@@ -2186,16 +2193,24 @@ function requireApiClient(
       throw new HttpApiError(401, "api_authentication_failed", "API 认证失败");
     }
 
-    if (
-      !dependencies.identity.consumeApiNonce(
+    let nonceAccepted: boolean;
+    try {
+      nonceAccepted = dependencies.identity.consumeApiNonce(
         client.clientId,
         verified.nonce,
         verified.timestamp,
         client.keyVersion,
         client.secretFingerprint,
         verifiedAt.getTime(),
-      )
-    ) {
+        dependencies.sites ? authentication.clientId : undefined,
+      );
+    } catch (error) {
+      if (error instanceof IdentityError && error.code === "api_client_invalid") {
+        throw new HttpApiError(401, "api_authentication_failed", "API 认证失败");
+      }
+      throw error;
+    }
+    if (!nonceAccepted) {
       auditApiFailure(
         dependencies.identity,
         failureAuditLimiter,
@@ -2347,7 +2362,7 @@ function parseJsonBytes<T>(bytes: Uint8Array, schema: z.ZodType<T>): T {
     if ((schema as z.ZodType) === adminAccessInputSchema) {
       throw new SettingsFieldError("cidrs", parsed.error.issues[0]?.message ?? "白名单格式错误");
     }
-    if ([createSiteInputSchema, updateSiteInputSchema, updateSiteDefaultsInputSchema, createAlipayAccountInputSchema, updateAlipayAccountInputSchema].some(candidate => (candidate as z.ZodType) === schema)) {
+    if ([createSiteInputSchema, changeSiteClientIdInputSchema, updateSiteInputSchema, updateSiteDefaultsInputSchema, createAlipayAccountInputSchema, updateAlipayAccountInputSchema].some(candidate => (candidate as z.ZodType) === schema)) {
       const issue = parsed.error.issues[0];
       if (issue?.path.length) throw new SettingsFieldError(issue.path.join("."), issue.message);
     }
@@ -4366,7 +4381,7 @@ function scopedOrders(dependencies: AppDependencies, context: Context<AppEnviron
   return dependencies.sites ? dependencies.orders.forSite(context.get("apiClientId")) : dependencies.orders;
 }
 function serializeSite(site: SiteSnapshot) {
-  return { client_id: site.clientId, revision: site.revision, configuration: site.configuration,
+  return { client_id: site.clientId, api_client_id: site.apiClientId, revision: site.revision, configuration: site.configuration,
     created_at: new Date(site.createdAt).toISOString(), updated_at: new Date(site.updatedAt).toISOString(), deleted_at: site.deletedAt === null ? null : new Date(site.deletedAt).toISOString() };
 }
 

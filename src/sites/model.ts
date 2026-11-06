@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import {
   collectionSettingsInputSchema,
@@ -83,14 +83,31 @@ export const siteConfigurationSchema = z.object({
   }
 });
 
+const creationClientIdSchema = z.string()
+  .refine(value => siteClientIdSchema.safeParse(value).success, {
+    message: "客户端 ID 须为 3–64 位英文字母、数字、点、下划线或连字符，并以字母或数字开头。",
+  })
+  .refine(value => !["default", "new", "defaults", "overview"].includes(value.toLowerCase()), {
+    message: "该客户端 ID 为系统保留名称，请使用其他名称。",
+  });
+
 export const createSiteInputSchema = z.object({
   operation_id: z.uuid(),
+  client_id: creationClientIdSchema.optional(),
   configuration: siteConfigurationSchema,
 }).strict();
 export const updateSiteInputSchema = z.object({
   revision: revisionSchema,
   configuration: siteConfigurationSchema,
 }).strict();
+export const changeSiteClientIdInputSchema = z.object({
+  operation_id: z.uuid(),
+  revision: revisionSchema,
+  client_id: creationClientIdSchema,
+}).strict();
+export function fingerprintSiteClientIdChange(clientId: string, revision: number, apiClientId: string): string {
+  return createHash("sha256").update(JSON.stringify(["perpay:site-client-id-change:v1", clientId, revision, apiClientId])).digest("hex");
+}
 export const updateSiteDefaultsInputSchema = z.object({
   revision: revisionSchema,
   policy: sitePolicySchema,
@@ -100,6 +117,7 @@ export type SitePolicy = z.infer<typeof sitePolicySchema>;
 export type SiteConfiguration = z.infer<typeof siteConfigurationSchema>;
 export interface SiteSnapshot {
   readonly clientId: string;
+  readonly apiClientId: string;
   readonly revision: number;
   readonly configuration: SiteConfiguration;
   readonly createdAt: number;

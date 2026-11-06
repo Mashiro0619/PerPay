@@ -235,7 +235,7 @@ export function MatchCard({
     ["可能匹配记录编号", match.candidate_id],
     ...((transactionContext || (density === "comfortable" && !embedded)) ? [
       ["内部订单编号", match.order.order_id],
-      ["客户端 ID", match.order.api_client_id],
+      ["网站编号", match.order.api_client_id],
     ] as const : []),
   ]} /> : null;
   if (transactionContext) return (
@@ -572,7 +572,7 @@ export function ExceptionCard({
         ["UNALLOCATED", "CANDIDATE", "CONFLICT"].includes(entry.state)));
   const identifiers = [
     ["异常编号", exception.exception_id],
-    ["客户端 ID", order?.api_client_id ?? clientId],
+    ["网站编号", order?.api_client_id ?? clientId],
     ["内部流水编号（PerPay）", entry?.ledger_entry_id ?? exception.ledger_entry_id],
     ["内部订单编号", order?.order_id ?? exception.order_id],
     ["可能匹配记录编号", candidate?.candidate_id ?? exception.candidate_id],

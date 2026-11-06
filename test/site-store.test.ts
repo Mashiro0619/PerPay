@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import crypto, { createHash, randomUUID } from "node:crypto";
+import { syncBuiltinESMExports } from "node:module";
 import { describe, it } from "node:test";
 import { createSiteFixture } from "./site-fixture.ts";
 import { SiteError } from "../src/sites/store.ts";
+import { IdentityTransaction } from "../src/database/identity-store.ts";
 
 const audit = { actorId: "admin" };
 function prepared() {
@@ -11,6 +13,69 @@ function prepared() {
   return { ...f, store, input };
 }
 describe("website transactional store", () => {
+  it("retains legacy creation fingerprints and binds custom identities to their request", () => {
+    const f = prepared();
+    try {
+      const automatic = f.input();
+      const site = f.store.create(automatic, audit);
+      const fingerprint = createHash("sha256").update(JSON.stringify(automatic.configuration)).digest("hex");
+      assert.equal(f.connection.prepare("SELECT request_fingerprint FROM site_creation_requests WHERE operation_id = ?").get(automatic.operation_id)?.request_fingerprint, fingerprint);
+      assert.equal(f.store.create(automatic, audit).clientId, site.clientId);
+      assert.throws(() => f.store.create({ ...automatic, client_id: site.clientId }, audit), { code: "site_operation_conflict" });
+
+      const custom = { ...f.input(), client_id: "Shop.One-2_A" };
+      assert.equal(f.store.create(custom, audit).clientId, custom.client_id);
+      assert.equal(f.store.create(custom, audit).clientId, custom.client_id);
+      assert.throws(() => f.store.create({ ...custom, client_id: "Shop.Two" }, audit), { code: "site_operation_conflict" });
+      assert.throws(() => f.store.create({ operation_id: custom.operation_id, configuration: custom.configuration }, audit), { code: "site_operation_conflict" });
+      const lower = f.store.create({ ...f.input(), client_id: custom.client_id.toLowerCase() }, audit);
+      assert.notEqual(lower.clientId, custom.client_id);
+      assert.equal(f.connection.prepare("SELECT count(*) AS total FROM audit_events WHERE action='site.created'").get()?.total, 3n);
+    } finally { f.close(); }
+  });
+  it("rejects occupied, deleted and historical client identities without retaining a failed request", () => {
+    const f = prepared();
+    try {
+      const request = { ...f.input(), client_id: "Shop.Original" };
+      const site = f.store.create(request, audit);
+      const rejected = { ...f.input(), client_id: site.clientId };
+      const snapshot = () => ["api_client_config", "sites", "site_creation_requests", "audit_events"].map(table => f.connection.prepare("SELECT * FROM " + table + " ORDER BY rowid").all());
+      let before = snapshot();
+      assert.throws(() => f.store.create(rejected, audit), { code: "site_client_id_conflict" });
+      assert.deepEqual(snapshot(), before);
+      f.store.delete(site.clientId, site.revision, audit);
+      before = snapshot();
+      assert.throws(() => f.store.create(rejected, audit), { code: "site_client_id_conflict" });
+      assert.deepEqual(snapshot(), before);
+      assert.notEqual(f.store.create(request, audit).deletedAt, null);
+      assert.equal(f.store.create({ ...rejected, client_id: "Shop.Corrected" }, audit).clientId, "Shop.Corrected");
+
+      new IdentityTransaction(f.connection).ensureApiClientIdentity("Legacy.Client", 1);
+      f.connection.prepare("INSERT INTO api_client_idempotency_namespaces(client_id, namespace_id, recorded_at) VALUES ('default', 'Old.Namespace', 1)").run();
+      for (const client_id of ["Legacy.Client", "Old.Namespace"]) {
+        before = snapshot();
+        assert.throws(() => f.store.create({ ...f.input(), client_id }, audit), { code: "site_client_id_conflict" });
+        assert.deepEqual(snapshot(), before);
+      }
+    } finally { f.close(); }
+  });
+  it("refuses an automatically generated ID collision instead of adopting an existing identity", t => {
+    const f = prepared();
+    const uuid = "68cd261d-cdb0-4c99-8750-76dc2f22353d";
+    try {
+      const input = f.input();
+      new IdentityTransaction(f.connection).ensureApiClientIdentity("site_" + uuid, 1);
+      t.mock.method(crypto, "randomUUID", () => uuid);
+      syncBuiltinESMExports();
+      assert.throws(() => f.store.create(input, audit), { code: "site_client_id_conflict" });
+      assert.equal(f.store.list().length, 0);
+      assert.equal(f.connection.prepare("SELECT count(*) AS total FROM site_creation_requests").get()?.total, 0n);
+    } finally {
+      t.mock.restoreAll();
+      syncBuiltinESMExports();
+      f.close();
+    }
+  });
   it("rolls back website identity and deletion when audit append fails", () => {
     const f = prepared();
     try {

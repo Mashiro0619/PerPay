@@ -17,5 +17,8 @@ export function seedFixedSite(database: AppDatabase, clientId: string, now: numb
     new IdentityTransaction(connection).ensureApiClientIdentity(clientId, now);
     connection.prepare("INSERT INTO sites(client_id, revision, configuration, created_at, updated_at, deleted_at) VALUES (?, 0, ?, ?, ?, NULL)")
       .run(clientId, JSON.stringify(configuration), now, now);
+    if (connection.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='site_api_client_ids'").get()) {
+      connection.prepare("INSERT INTO site_api_client_ids(api_client_id,client_id,is_current,created_at) VALUES (?,?,1,?)").run(clientId, clientId, now);
+    }
   });
 }

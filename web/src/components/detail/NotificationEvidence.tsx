@@ -106,7 +106,7 @@ export function DeliveryCard({
     </Button>
   );
   const technicalIdentifiers = [
-    ["客户端 ID", detail.target.api_client_id],
+    ["网站编号", detail.target.api_client_id],
     ["投递编号", delivery.delivery_id],
     ["事件编号", detail.event.event_id],
     ...(comfortable ? [

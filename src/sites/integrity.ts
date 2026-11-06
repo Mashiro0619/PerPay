@@ -1,5 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import { siteClientIdSchema, siteConfigurationSchema, sitePolicySchema } from "./model.ts";
+import { countSiteClientIdViolations } from "./client-id-integrity.ts";
 
 /** Domain validation for schema 34; older compatible backups have no site tables. */
 export function countSiteDomainViolations(connection: DatabaseSync): number {
@@ -65,5 +66,5 @@ export function countSiteDomainViolations(connection: DatabaseSync): number {
   violations += count(
     "SELECT count(*) AS total FROM webhook_attempts AS attempt JOIN webhook_signing_keys AS key ON key.key_version = attempt.key_version JOIN webhook_deliveries AS delivery ON delivery.delivery_id = attempt.delivery_id JOIN webhook_targets AS target ON target.target_id = delivery.target_id WHERE key.client_id != target.api_client_id",
   );
-  return violations;
+  return violations + countSiteClientIdViolations(connection);
 }
