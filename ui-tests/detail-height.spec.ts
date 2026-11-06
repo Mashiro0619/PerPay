@@ -173,7 +173,15 @@ for (const layout of layouts) {
       await page.mouse.click(reasonPoint.x, reasonPoint.y);
       await page.keyboard.insertText("隔离验收：核对理由输入和取消操作");
       await expect(reason).toHaveValue("隔离验收：核对理由输入和取消操作");
-      for (const name of ["取消", "返回选择", "确认关联收款"]) await reachable(manual.getByRole("button", { name, exact: true }));
+      const stepFrame = await dialog.boundingBox();
+      for (const name of ["取消", "返回选择", "确认关联收款"]) {
+        const action = manual.getByRole("button", { name, exact: true });
+        await action.scrollIntoViewIfNeeded();
+        await reachable(action);
+        expect(await dialog.evaluate(element => element.scrollTop)).toBe(0);
+        expect(await dialog.boundingBox()).toEqual(stepFrame);
+        await reachable(manual.getByRole("button", { name: "关闭对话框", exact: true }));
+      }
       const stepHeight = await dialog.evaluate(element => ({ height: element.getBoundingClientRect().height, visibleHeight: visualViewport?.height ?? innerHeight }));
       expect(stepHeight.height).toBeLessThanOrEqual(Math.min(stepHeight.visibleHeight * .85, 900) + 1);
       await screenshot(page, info, "manual-association-short-viewport");

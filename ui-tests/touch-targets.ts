@@ -7,7 +7,7 @@ export const MIN_TOUCH_TARGET_SIZE = 39.5;
 export function measureTouchTarget(element: Element) {
   const bounds = element.getBoundingClientRect();
   const style = getComputedStyle(element);
-  const before = getComputedStyle(element, "::before");
+  const before = getComputedStyle(element, element.matches('[data-slot="switch"], [data-slot="checkbox"]') ? "::after" : "::before");
   const length = (value: string, reference: number, fallback = 0) => {
     const number = Number.parseFloat(value);
     if (!Number.isFinite(number)) return fallback;
@@ -56,8 +56,10 @@ export function measureTouchTarget(element: Element) {
   // Probe the full extension on compact controls. Native rounded controls may
   // be much wider/taller: verify an actual central 40px target within them,
   // avoiding curved corners outside that target.
-  const probeWidth = generated ? right - left : Math.min(40, right - left);
-  const probeHeight = generated ? bottom - top : Math.min(40, bottom - top);
+  const expandedX = left < bounds.left - .5 || right > bounds.right + .5;
+  const expandedY = top < bounds.top - .5 || bottom > bounds.bottom + .5;
+  const probeWidth = expandedX ? right - left : Math.min(40, right - left);
+  const probeHeight = expandedY ? bottom - top : Math.min(40, bottom - top);
   const probeLeft = (left + right - probeWidth) / 2;
   const probeTop = (top + bottom - probeHeight) / 2;
   // Subpixel points less than 1 CSS px from a shared edge can be rounded

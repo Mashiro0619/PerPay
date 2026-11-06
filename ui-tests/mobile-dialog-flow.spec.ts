@@ -6,13 +6,21 @@ import { openRecord } from "./overlay-fixtures";
 async function reveal(target: Locator, page: Page) {
   await target.evaluate(element => element.scrollIntoView({ block: "center", inline: "nearest" }));
   await page.clock.runFor(100);
-  expect(await target.evaluate(element => element.closest<HTMLElement>("[data-admin-dialog]")!.scrollTop), "revealing a field keeps the close-control shell stationary").toBe(0);
+  const shells = await target.evaluate(element => {
+    const offsets: number[] = [];
+    for (let ancestor = element.parentElement; ancestor; ancestor = ancestor.parentElement) {
+      if (ancestor.matches("[data-admin-dialog]")) offsets.push(ancestor.scrollTop);
+    }
+    return offsets;
+  });
+  expect(shells.length).toBeGreaterThan(0);
+  expect(shells.every(offset => offset === 0), "revealing a field keeps every close-control shell stationary").toBe(true);
   return expectTouchTarget(target);
 }
 
 async function scrollRegion(dialog: Locator, kind: "detail" | "step" | "technical") {
   const scroll = dialog.locator(kind === "detail" ? "[data-overlay-detail]"
-    : kind === "technical" ? ':scope > [data-admin-dialog-body]' : '[data-overlay-step-layout] > form > [data-slot="field-group"]');
+    : kind === "technical" ? ':scope > [data-admin-dialog-body]' : '[data-overlay-step-scroll]');
   await expect(scroll).toHaveCount(1);
   await expect(scroll).toHaveCSS("overflow-y", "auto");
   const geometry = await scroll.evaluate(element => ({
@@ -20,10 +28,13 @@ async function scrollRegion(dialog: Locator, kind: "detail" | "step" | "technica
     width: element.clientWidth, scrollWidth: element.scrollWidth,
     top: element.getBoundingClientRect().top,
     parentPadding: getComputedStyle(element.parentElement!).padding,
+    overflow: [...element.querySelectorAll("*")].filter(child => child.getBoundingClientRect().right > element.getBoundingClientRect().right + 1)
+      .slice(0, 8).map(child => ({ tag: child.tagName, slot: child.getAttribute("data-slot"),
+        right: child.getBoundingClientRect().right, width: child.getBoundingClientRect().width })),
   }));
   expect(geometry.height, "the common scroller retains usable content space").toBeGreaterThanOrEqual(64);
   expect(geometry.scrollHeight, "enlarged content remains scrollable inside its body").toBeGreaterThan(geometry.height);
-  expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.width + 1);
+  expect(geometry.scrollWidth, JSON.stringify(geometry)).toBeLessThanOrEqual(geometry.width + 1);
   // Footer Close actions may use DialogClose too; the fixed corner control
   // must remain outside the scroller and independently reachable.
   const closeName = kind === "technical" ? "关闭技术信息" : "关闭对话框";
@@ -81,6 +92,30 @@ test.describe("enlarged admin dialogs keep fields and decisions reachable", () =
         delete document.documentElement.dataset.perpayDemo;
       }, font);
       const accountScroll = await scrollRegion(accountDialog, "detail");
+      const toggle = accountDialog.locator('[data-slot="switch"]').first();
+      const initialChecked = await toggle.getAttribute("data-checked") !== null;
+      const initialSize = await toggle.getAttribute("data-size");
+      // Exercise the shared component's two size styles on the real draft control.
+      for (const size of ["default", "sm"]) for (const checked of [false, true]) {
+        await toggle.evaluate((element, size) => element.setAttribute("data-size", size), size);
+        if ((await toggle.getAttribute("data-checked") !== null) !== checked) await toggle.click();
+        await page.clock.runFor(250);
+        const geometry = await toggle.evaluate(element => {
+          const track = element.getBoundingClientRect();
+          const thumb = element.querySelector('[data-slot="switch-thumb"]')!.getBoundingClientRect();
+          return { left: thumb.left - track.left, right: thumb.right - track.right,
+            top: thumb.top - track.top, bottom: thumb.bottom - track.bottom,
+            width: thumb.width, height: thumb.height };
+        });
+        expect(geometry.left).toBeGreaterThanOrEqual(0);
+        expect(geometry.right).toBeLessThanOrEqual(0);
+        expect(geometry.top).toBeGreaterThanOrEqual(0);
+        expect(geometry.bottom).toBeLessThanOrEqual(0);
+        expect(geometry.width).toBeCloseTo(geometry.height, 1);
+        await reveal(toggle, page);
+      }
+      await toggle.evaluate((element, size) => element.setAttribute("data-size", size ?? "default"), initialSize);
+      if ((await toggle.getAttribute("data-checked") !== null) !== initialChecked) await toggle.click();
       await accountDialog.getByRole("tab", { name: "应用信息", exact: true }).click();
       const publicText = accountDialog.locator("[data-account-application]").getByRole("textbox", { name: "应用公钥", exact: true });
       await expect(publicText).toHaveValue(syntheticPublicKey);

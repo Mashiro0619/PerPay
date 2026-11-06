@@ -156,8 +156,9 @@ test("recent orders keep compact summaries and header geometry across themes and
         listGap: parseFloat(getComputedStyle(panel.querySelector('.business-summary-list')!).gap),
         rows: [...panel.querySelectorAll('[data-business-row]')].map(row => {
           const body = row.querySelector('.overview-order-summary')!.getBoundingClientRect();
-          const product = row.querySelector('a[data-row-link]')!.closest('[data-slot="item-title"]')!.getBoundingClientRect();
-          const amount = row.querySelector('.overview-order-summary-amount')!.getBoundingClientRect();
+          const product = row.querySelector('.list-identity-title')!.getBoundingClientRect();
+          const money = row.querySelector('.list-money')!;
+          const amount = (money.closest('.overview-order-money') ?? money.parentElement)!.getBoundingClientRect();
           const site = row.querySelector('.list-site-identity');
           // Website order numbers keep their source label and complete text.
           const merchantCode = row.querySelector('.list-code')!;
@@ -208,8 +209,8 @@ test("recent orders keep compact summaries and header geometry across themes and
     expect(metadata.every(item => item.gap >= (item.sameLine ? 4 : 1)), JSON.stringify(metadata)).toBe(true);
     expect(await panel.locator(".list-site-identity").count()).toBe(scoped ? 0 : 5);
     for (const row of geometry.rows) {
-      expect(row.primaryHref?.startsWith("/admin" + (scoped ? sitePath : "") + "/orders/")).toBe(true);
-      if (!scoped) expect(row.siteHref).toMatch(/^\/admin\/sites\//);
+      expect(new URL(row.primaryHref!, manifest.origin).searchParams.get("overlay")?.startsWith((scoped ? sitePath : "") + "/orders/")).toBe(true);
+      if (!scoped) expect(new URL(row.siteHref!, manifest.origin).searchParams.get("overlay")).toMatch(/^\/sites\/[^/]+\/summary$/);
       expect(row.times.length).toBeGreaterThan(0);
       expect(row.times.every(time => time.complete && time.title?.endsWith("（北京时间）")), JSON.stringify(row.times)).toBe(true);
     }
@@ -246,7 +247,7 @@ test("recent order headers and tables switch at the same measured container boun
         await expect(panel.getByRole("columnheader", { name, exact: true })).toHaveCount(target >= 1024 ? 1 : 0);
       }
     }
-    await expect(panel.locator('[data-business-row]').first().locator("time")).toHaveCount(2);
+    await expect(panel.locator('[data-business-row]').first().locator("time")).toHaveCount(target < 640 ? 1 : target < 768 ? 0 : 2);
     if (stacked) {
       await panel.locator(".overview-order-time-entry").evaluateAll(entries => {
         for (const entry of entries) (entry as HTMLElement).style.display = "block";
@@ -258,7 +259,7 @@ test("recent order headers and tables switch at the same measured container boun
         clipped: [list, ...list.querySelectorAll('.business-table-surface, [data-slot="table-container"], table')]
           .some(element => element.scrollWidth > element.clientWidth + 1),
         rows: [...list.querySelectorAll('[data-business-row]')].map(row => {
-          const product = row.querySelector('a[data-row-link]')!.closest('[data-slot="item-title"]')!;
+          const product = row.querySelector('.list-identity-title')!;
           const productLines = Math.round(product.getBoundingClientRect().height / parseFloat(getComputedStyle(product).lineHeight));
           const reference = row.querySelector('.overview-order-reference')!;
           const meta = row.querySelector('.overview-order-meta')!;
@@ -270,20 +271,20 @@ test("recent order headers and tables switch at the same measured container boun
           codeRange.selectNodeContents(code);
           const codeRects = [...codeRange.getClientRects()].filter(rect => rect.width > 0 && rect.height > 0);
           const identity = row.querySelector('[data-column-id="identity"], .overview-order-summary')!.getBoundingClientRect();
-          const times = [...row.querySelectorAll('.overview-order-time-entry')].map(entry => {
-            const label = entry.querySelector('dt')!;
-            const value = entry.querySelector('dd')!;
-            const time = value.querySelector('time')!;
+          const times = [...row.querySelectorAll('time')].map(time => {
+            const entry = time.closest('.overview-order-time-entry');
+            const label = entry?.querySelector('dt');
+            const value = entry?.querySelector('dd') ?? time;
             const timeRange = document.createRange();
             timeRange.selectNodeContents(time);
             const timeBounds = time.getBoundingClientRect();
             const valueBounds = value.getBoundingClientRect();
-            const labelBounds = label.getBoundingClientRect();
+            const labelBounds = label?.getBoundingClientRect();
             // Inline glyph bounds vary with OS fonts; compare the dt/dd line boxes.
-            const lineOverlap = Math.min(valueBounds.bottom, labelBounds.bottom) - Math.max(valueBounds.top, labelBounds.top);
-            return { label: label.textContent, left: timeBounds.left,
-              sameLine: valueBounds.left >= labelBounds.right && lineOverlap > 0,
-              labelTop: labelBounds.top, valueTop: valueBounds.top, textTop: timeBounds.top, lineOverlap,
+            const lineOverlap = labelBounds ? Math.min(valueBounds.bottom, labelBounds.bottom) - Math.max(valueBounds.top, labelBounds.top) : valueBounds.height;
+            return { label: label?.textContent ?? "创建", left: timeBounds.left,
+              sameLine: !labelBounds || valueBounds.left >= labelBounds.right && lineOverlap > 0,
+              labelTop: labelBounds?.top ?? null, valueTop: valueBounds.top, textTop: timeBounds.top, lineOverlap,
               lines: [...timeRange.getClientRects()].filter(rect => rect.width > 0 && rect.height > 0).length,
               contained: timeBounds.left >= valueBounds.left - 1 && timeBounds.right <= valueBounds.right + 1 &&
                 timeBounds.left >= bounds.left - 1 && timeBounds.right <= bounds.right + 1,
@@ -314,8 +315,9 @@ test("recent order headers and tables switch at the same measured container boun
       expect(row.numberComplete && row.numberPainted, JSON.stringify(row)).toBe(true);
       expect(row.referenceBorder).toBe("0px");
       expect(row.metaBorder).toBe("0px");
-      expect(row.primaryHref).toMatch(/^\/admin\/orders\//);
-      expect(row.times.length).toBeGreaterThan(0);
+      expect(new URL(row.primaryHref!, manifest.origin).searchParams.get("overlay")).toMatch(/^\/orders\//);
+      if (target >= 640 && target < 768) expect(row.times).toHaveLength(0);
+      else expect(row.times.length).toBeGreaterThan(0);
       expect(row.times.every(time => time.lines === 1 && time.contained && time.complete), JSON.stringify(row.times)).toBe(true);
       if (target >= 640) expect(row.amountAlignment).toBe("right");
       if (target < 1024) expect(row.payment && row.notification, JSON.stringify(row)).toBeTruthy();

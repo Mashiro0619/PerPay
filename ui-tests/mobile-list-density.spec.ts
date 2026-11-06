@@ -120,7 +120,10 @@ test.describe("mobile consecutive record rows", () => {
       await expect(ledgerPrimary).toHaveAttribute("title", entry.external_event_id);
       await completeText(ledger.locator("time").first());
       await completeText(ledger.locator(".list-money"));
-      await expect(ledger.getByRole("link", { name: /^查看订单：/ })).toHaveCount(0);
+      const linkedOrder = ledger.getByRole("link", { name: "查看订单：" + entry.active_match!.merchant_order_no, exact: true });
+      await expect(linkedOrder).toBeVisible();
+      const linkedOrderTarget = await linkedOrder.getAttribute("href");
+      expect(new URL(linkedOrderTarget!, manifest.origin).searchParams.get("overlay")).toBe("/orders/" + entry.active_match!.order_id);
       await expect(ledger.getByRole("button", { name: "展开信息", exact: true })).toHaveCount(0);
       await record(page, info, { feature: "mobile-consecutive-ledger", width, textPercent, rows: ledgerGeometry, linkedOrder: entry.active_match!.order_id });
       if (textPercent === 100) await capture(page, info, `mobile-ledger-${width}`);

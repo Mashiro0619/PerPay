@@ -20,7 +20,10 @@ for (const { width, hiddenOrder } of [{ width: 1440, hiddenOrder: false }, { wid
       const row = page.locator('[data-business-row="' + entry!.ledger_entry_id + '"]');
       const primary = row.locator("a[data-row-link]");
       await expect(primary).toBeVisible();
-      await expect(row.getByRole("link", { name: /^查看订单：/ })).toHaveCount(0);
+      const summaryOrder = row.getByRole("link", { name: "查看订单：" + entry!.active_match!.merchant_order_no, exact: true });
+      await expect(summaryOrder).toBeVisible();
+      const summaryOrderHref = await summaryOrder.getAttribute("href");
+      expect(new URL(summaryOrderHref!, manifest.origin).searchParams.get("overlay")).toBe("/orders/" + entry!.active_match!.order_id);
       await expect(row.getByRole("button", { name: "展开信息", exact: true })).toHaveCount(0);
       const recordHref = await primary.getAttribute("href");
       await primary.focus();

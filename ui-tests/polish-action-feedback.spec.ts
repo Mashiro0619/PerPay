@@ -24,6 +24,8 @@ test("save and refresh feedback keep dimensions, stop decorative loops and recov
       await route.continue();
     });
     await page.goto(fixture.origin + "/admin/settings/display");
+    await page.getByRole("link", { name: "编辑界面显示", exact: true }).click();
+    const editor = page.getByRole("dialog", { name: "编辑界面显示", exact: true });
     const name = page.getByRole("textbox", { name: "支付系统名称", exact: true });
     await name.fill("反馈验收名称");
     const save = page.getByRole("button", { name: "保存", exact: true });
@@ -83,8 +85,8 @@ test("save and refresh feedback keep dimensions, stop decorative loops and recov
     // A fresh page holds settings to exercise the shared loading skeleton.
     holdRead = true;
     await page.reload();
-    await expect(page.locator('#main-content [data-slot="skeleton"]').first()).toBeVisible();
-    const skeletons = await page.locator('#main-content [data-slot="skeleton"]').evaluateAll(nodes => nodes.map(node => getComputedStyle(node).animationName));
+    await expect(editor.locator('[data-slot="skeleton"]').first()).toBeVisible();
+    const skeletons = await editor.locator('[data-slot="skeleton"]').evaluateAll(nodes => nodes.map(node => getComputedStyle(node).animationName));
     expect(skeletons.every(name => name === "none")).toBe(true);
     holdRead = false; releaseGate();
     await expect(name).toBeVisible();

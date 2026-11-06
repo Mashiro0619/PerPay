@@ -401,11 +401,13 @@ if (phase === "final") {
     expect(iconPaint?.iconContrast).toBeGreaterThanOrEqual(3);
     await targetOrders.evaluate(element => (element as HTMLElement).style.opacity = "0.5");
     try {
+      await expect(targetOrders).toHaveCSS("opacity", "0.5");
       const invalidPaint = await targetOrders.evaluate(measureSelectionContrast);
       expect(invalidPaint?.passed).toBe(false);
       expect(invalidPaint?.conflicts).toContain("opacity, filter, blend or transform");
     } finally {
       await targetOrders.evaluate(element => (element as HTMLElement).style.removeProperty("opacity"));
+      await expect(targetOrders).toHaveCSS("opacity", "1");
     }
     await selectedType.evaluate(element => element.append(document.createTextNode("额外未测文字")));
     try {

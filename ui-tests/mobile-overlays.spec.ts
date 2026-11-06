@@ -113,21 +113,8 @@ test.describe("mobile overlay regression with synthetic visible viewport", () =>
       await expect(comfortable).toHaveAttribute("aria-pressed", "true");
       expect(await page.evaluate(() => localStorage.getItem("perpay:list-density"))).toBe("comfortable");
 
-      const received = display.getByRole("checkbox", { name: "实收金额", exact: true });
-      await expect(received).toBeChecked();
-      const receivedLabel = display.locator('[data-slot="field-label"]').filter({ hasText: /^实收金额$/ });
-      const field = await scrollControl(receivedLabel);
-      // Tap the measured label without auto-scrolling its associated hidden input again.
-      const fieldBox = (await receivedLabel.boundingBox())!;
-      await page.touchscreen.tap(fieldBox.x + fieldBox.width / 2, fieldBox.y + fieldBox.height / 2);
-      await expect(received).not.toBeChecked();
-      await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("perpay.table-columns.v2.orders") ?? "{}").received_amount_cents)).toBe(false);
-
-      const reset = display.getByRole("button", { name: "恢复默认列", exact: true });
-      const resetGeometry = await scrollControl(reset);
-      await reset.click();
-      await expect(received).toBeChecked();
-      await expect.poll(() => page.evaluate(() => localStorage.getItem("perpay.table-columns.v2.orders"))).toBe("{}");
+      await expect(display.getByRole("checkbox")).toHaveCount(0);
+      await expect(display).toContainText("手机列表展示关键摘要，完整信息可打开详情查看。");
 
       const done = display.getByRole("button", { name: "完成", exact: true });
       const doneGeometry = await scrollControl(done);
@@ -148,7 +135,7 @@ test.describe("mobile overlay regression with synthetic visible viewport", () =>
       expect(layout.popup.scrollWidth).toBeLessThanOrEqual(layout.popup.width + 1);
       expect(layout.pageWidth).toBeLessThanOrEqual(pageWidthBefore + 1);
       await info.attach("list-display-geometry", {
-        body: Buffer.from(JSON.stringify({ evidence: "browser touch viewport with enlarged text", width, height, font, pageWidthBefore, layout, density, field, resetGeometry, doneGeometry, doneBottomSpace }, null, 2)),
+        body: Buffer.from(JSON.stringify({ evidence: "browser touch viewport with enlarged text", width, height, font, pageWidthBefore, layout, density, doneGeometry, doneBottomSpace }, null, 2)),
         contentType: "application/json",
       });
       await info.attach(`list-display-${width}-${height}-${font}`, { body: await page.screenshot(), contentType: "image/png" });
@@ -158,6 +145,7 @@ test.describe("mobile overlay regression with synthetic visible viewport", () =>
 
       await more.click();
       await page.getByRole("menuitem", { name: "列表显示", exact: true }).click();
+      await expect(display.getByRole("button", { name: "舒适", exact: true })).toHaveAttribute("aria-pressed", "true");
       await scrollControl(display.getByRole("button", { name: "舒适", exact: true }));
       await close.click();
       await expect(display).toHaveCount(0);
@@ -199,7 +187,7 @@ test.describe("mobile overlay regression with synthetic visible viewport", () =>
     await expect(actions).toHaveCount(0);
   });
 
-  test("enlarged checkout QR keeps its complete close target usable after body scrolling", async ({ page, manifest }, info) => {
+  test("enlarged checkout QR remains readable in the visible viewport and keeps its close target usable", async ({ page, manifest }, info) => {
     await page.goto(manifest.origin + manifest.checkouts.open!);
     const trigger = page.getByRole("button", { name: "放大二维码", exact: true });
     await trigger.click();
@@ -210,16 +198,41 @@ test.describe("mobile overlay regression with synthetic visible viewport", () =>
     const before = await reachable(close);
     const body = dialog.locator("[data-qr-dialog-body]");
     await body.evaluate(element => element.scrollTop = element.scrollHeight);
-    await expect.poll(() => body.evaluate(element => element.scrollTop)).toBeGreaterThan(0);
+    const qr = await body.evaluate(element => {
+      const bounds = element.getBoundingClientRect();
+      const image = element.querySelector("[data-qr-dialog-image]")!.getBoundingClientRect();
+      return { body: bounds.toJSON(), image: image.toJSON(), clientHeight: element.clientHeight, scrollHeight: element.scrollHeight, scrollTop: element.scrollTop };
+    });
+    expect(qr.image.width).toBeGreaterThan(0);
+    expect(Math.abs(qr.image.width - qr.image.height)).toBeLessThan(1);
+    expect(qr.image.left).toBeGreaterThanOrEqual(qr.body.left - 1);
+    expect(qr.image.right).toBeLessThanOrEqual(qr.body.right + 1);
+    expect(qr.image.left).toBeGreaterThanOrEqual(panned.left);
+    expect(qr.image.right).toBeLessThanOrEqual(panned.left + panned.width);
+    if (qr.scrollHeight > qr.clientHeight + 1) {
+      expect(qr.scrollTop).toBeGreaterThan(0);
+      expect(qr.scrollTop).toBeCloseTo(qr.scrollHeight - qr.clientHeight, 0);
+    } else {
+      expect(qr.image.top).toBeGreaterThanOrEqual(qr.body.top - 1);
+      expect(qr.image.bottom).toBeLessThanOrEqual(qr.body.bottom + 1);
+      expect(qr.image.top).toBeGreaterThanOrEqual(panned.top);
+      expect(qr.image.bottom).toBeLessThanOrEqual(panned.top + panned.height);
+    }
     const after = await reachable(close);
-    await record(page, info, { evidence: "browser synthetic visualViewport", area: panned, before, after });
+    const visibleTop = Math.max(qr.image.top, qr.body.top);
+    const visibleBottom = Math.min(qr.image.bottom, qr.body.bottom);
+    const overlap = qr.image.left < after.x + after.width && qr.image.right > after.x && visibleTop < after.y + after.height && visibleBottom > after.y;
+    expect(overlap).toBe(false);
+    await record(page, info, { evidence: "browser synthetic visualViewport", area: panned, before, after, qr });
     await close.click();
     await expect(trigger).toBeFocused();
   });
 
-  test("administrator confirmation keeps its explanation scrollable and both actions reachable", async ({ page, manifest }, info) => {
+  for (const font of [100, 200]) test(`administrator confirmation keeps its explanation scrollable and both actions reachable at ${font}% text`, async ({ page, manifest }, info) => {
     await login(page, manifest);
     await page.goto(manifest.origin + "/admin/settings/security");
+    await page.getByRole("link", { name: "编辑管理员 IP 白名单", exact: true }).click();
+    await page.evaluate(font => document.documentElement.style.fontSize = font + "%", font);
     const rules = page.getByRole("textbox", { name: "允许的 IP / 网段", exact: true });
     await rules.fill(Array.from({ length: 30 }, (_, index) => `192.0.2.${index + 1}`).join("\n"));
     const save = page.getByRole("button", { name: "保存白名单", exact: true });
@@ -232,28 +245,39 @@ test.describe("mobile overlay regression with synthetic visible viewport", () =>
     const closeGeometry = await reachable(close);
     const explanation = dialog.locator("[data-admin-dialog-body]");
     await expect(explanation).toHaveText(/保存立即生效/);
-    const scroll = dialog.locator("[data-admin-dialog-scroll]");
-    await expect.poll(() => scroll.evaluate(element => element.clientHeight)).toBeGreaterThanOrEqual(64);
-    await scroll.evaluate(element => element.scrollTop = element.scrollHeight);
-    await expect.poll(() => scroll.evaluate(element => element.scrollTop)).toBeGreaterThan(0);
+    const scroll = dialog.locator("[data-overlay-step-scroll]");
+    await explanation.evaluate(element => element.scrollIntoView({ block: "center" }));
+    await info.attach(`confirmation-reading-${font}`, { body: await page.screenshot(), contentType: "image/png" });
+    const reading = await scroll.evaluate(element => {
+      element.scrollTop = element.scrollHeight;
+      const style = getComputedStyle(element);
+      return { clientHeight: element.clientHeight, scrollHeight: element.scrollHeight, scrollTop: element.scrollTop,
+        contentHeight: element.clientHeight - Number.parseFloat(style.paddingTop) - Number.parseFloat(style.paddingBottom),
+        top: element.getBoundingClientRect().top };
+    });
+    expect(reading.clientHeight).toBeGreaterThanOrEqual(Math.min(64, reading.scrollHeight));
+    expect(reading.contentHeight, "padding leaves at least 64px for readable content").toBeGreaterThanOrEqual(64);
+    expect(reading.top, "the fixed close target stays outside the reading region").toBeGreaterThanOrEqual(closeGeometry.y + closeGeometry.height - 1);
+    expect(reading.scrollTop).toBeCloseTo(Math.max(0, reading.scrollHeight - reading.clientHeight), 0);
     const confirmGeometry = await scrollTo(dialog.getByRole("button", { name: "确认保存", exact: true }), page);
     const cancel = dialog.getByRole("button", { name: "取消", exact: true });
     const cancelGeometry = await scrollTo(cancel, page);
-    await record(page, info, { evidence: "browser synthetic visualViewport", area: small, closeGeometry, confirmGeometry, cancelGeometry });
+    await info.attach(`confirmation-actions-${font}`, { body: await page.screenshot(), contentType: "image/png" });
+    await record(page, info, { evidence: "browser synthetic visualViewport", area: small, reading, closeGeometry, confirmGeometry, cancelGeometry });
     await cancel.click();
     await expect(dialog).toHaveCount(0);
     await expect(save).toBeFocused();
     await expect(rules).toHaveValue(/192\.0\.2\.30/);
   });
 
-  test("dirty navigation alert keeps both decisions reachable and restores the category focus", async ({ page, manifest }, info) => {
+  test("dirty editor dismissal keeps both decisions reachable and restores the field focus", async ({ page, manifest }, info) => {
     await login(page, manifest);
     await page.goto(manifest.origin + "/admin/settings/display");
+    await page.getByRole("link", { name: "编辑界面显示", exact: true }).click();
     const name = page.getByRole("textbox", { name: "支付系统名称", exact: true });
     await name.fill("保留的手机草稿");
-    const category = page.getByRole("combobox", { name: "设置分类", exact: true });
-    await category.click();
-    await page.getByRole("option", { name: "查账设置", exact: true }).click();
+    const address = page.url();
+    await page.keyboard.press("Escape");
     const dialog = page.getByRole("alertdialog", { name: "放弃未保存的修改？", exact: true });
     await expect(dialog).toBeVisible();
     const small = { ...panned, height: 220 };
@@ -264,9 +288,9 @@ test.describe("mobile overlay regression with synthetic visible viewport", () =>
     await record(page, info, { evidence: "browser synthetic visualViewport", area: small, discardGeometry, stayGeometry });
     await stay.click();
     await expect(dialog).toHaveCount(0);
-    await expect(category).toBeFocused();
+    await expect(name).toBeFocused();
     await expect(name).toHaveValue("保留的手机草稿");
-    expect(new URL(page.url()).pathname).toBe("/admin/settings/display");
+    await expect(page).toHaveURL(address);
   });
 
   test("trend tab text stays on one line and each view remains reachable at 320 and 360px", async ({ page, manifest }, info) => {

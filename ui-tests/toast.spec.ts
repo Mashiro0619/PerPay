@@ -32,6 +32,7 @@ for (const width of [390, 1440]) test(`${width}: success notifications remain ac
   });
   await login(page, manifest);
   await page.goto(manifest.origin + "/admin/settings/display");
+  await page.getByRole("link", { name: "编辑界面显示", exact: true }).click();
   // Only this browser page permits the intercepted synthetic writes; the server stays read-only.
   await page.evaluate(() => delete document.documentElement.dataset.perpayDemo);
   const name = page.getByRole("textbox", { name: "支付系统名称", exact: true });
@@ -39,14 +40,12 @@ for (const width of [390, 1440]) test(`${width}: success notifications remain ac
   const initialRevision = settings!.revision;
   await name.fill("通知验证一");
   await page.clock.pauseAt(new Date(manifest.epoch + 60_000));
-  const firstEditor = await name.elementHandle();
   const firstSaveTick = await page.evaluate(() => performance.now());
   await save.click();
   await expect.poll(async () => {
     await page.clock.runFor(50);
-    return firstEditor!.evaluate(element => element.isConnected);
-  }).toBe(false);
-  await firstEditor!.dispose();
+    return savedRevisions.length === 1 && await save.getAttribute("aria-busy") === "false";
+  }).toBe(true);
   expect(savedRevisions).toEqual([initialRevision + 1]);
   const success = page.getByRole("dialog", { name: "已保存", exact: true });
   await expect(success).toBeVisible();
@@ -58,16 +57,14 @@ for (const width of [390, 1440]) test(`${width}: success notifications remain ac
   // auto-dismiss deadline paused while waiting for the toast to leave the DOM.
   const exitWaitTick = await page.evaluate(() => performance.now());
   expect(exitWaitTick - firstSaveTick, "editing clears the toast before its 4-second auto-dismiss").toBeLessThan(4000);
-  await expect(success, "editing the remounted form clears its previous success").toHaveCount(0);
+  await expect(success, "editing the saved form clears its previous success").toHaveCount(0);
   const exitCompleteTick = await page.evaluate(() => performance.now());
   expect(exitCompleteTick, "waiting for CSS completion must not advance the auto-dismiss clock").toBe(exitWaitTick);
-  const secondEditor = await name.elementHandle();
   await save.click();
   await expect.poll(async () => {
     await page.clock.runFor(50);
-    return secondEditor!.evaluate(element => element.isConnected);
-  }).toBe(false);
-  await secondEditor!.dispose();
+    return savedRevisions.length === 2 && await save.getAttribute("aria-busy") === "false";
+  }).toBe(true);
   expect(savedRevisions).toEqual([initialRevision + 1, initialRevision + 2]);
   // Snapshot while the first notification's deadline is still paused; retrying
   // the count could hide duplicates by waiting for the older toast to expire.
@@ -106,6 +103,12 @@ for (const width of [390, 1440]) test(`${width}: success notifications remain ac
   await expect(notification).toBeFocused();
   await page.clock.runFor(5000);
   await expect(notification).toBeVisible();
+  const keyContent = keyDialog.getByRole("textbox", { name: "密钥内容", exact: true });
+  await expect(keyContent).toHaveValue(secret);
+  await expect.poll(() => keyContent.evaluate(element => {
+    const bounds = element.getBoundingClientRect();
+    return element.contains(document.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2));
+  }), { message: "the focused notification leaves the displayed key readable" }).toBe(true);
   await record(page, info, {
     width, syntheticSettingsWrites: true, toastAlongsideKey: true,
     toastExitClock: { firstSaveTick, exitWaitTick, exitCompleteTick },

@@ -62,14 +62,17 @@ test("an uncached list read pauses offline and resumes without displaying anothe
     await expect.poll(() => page.evaluate(() => navigator.onLine)).toBe(false);
     await page.getByRole("searchbox", { name: "订单关键词搜索" }).fill("不存在的离线筛选");
     await page.getByRole("button", { name: "搜索", exact: true }).click();
-    await expect(page.locator("[data-read-paused]")).toBeVisible();
+    const paused = page.getByRole("status", { name: "服务连接提示", exact: true });
+    await expect(paused).toBeVisible();
+    await expect(paused).toContainText("等待网络恢复");
+    await expect(paused).toContainText("网络恢复后会继续读取。");
     await expect(page.locator("#main-content [data-business-row]")).toHaveCount(0);
     await expect(page.locator('#main-content [data-slot="skeleton"]')).toHaveCount(0);
     await screenshot(page, info, "orders-waiting-network");
     const response = page.waitForResponse(response => new URL(response.url()).pathname === "/api/admin/v1/orders" && response.ok(), { timeout: 10_000 });
     await page.context().setOffline(false);
     await response;
-    await expect(page.locator("[data-read-paused]")).toHaveCount(0);
+    await expect(paused).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "没有符合条件的订单" })).toBeVisible();
     await record(page, info, { feature: "offline-list-resume", browserNetworkOffline: true, oldFilterRowsSuppressed: true });
   } finally { await page.context().setOffline(false); }

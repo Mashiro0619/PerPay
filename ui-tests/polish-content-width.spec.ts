@@ -65,7 +65,7 @@ function lists(): Scenario[] {
 function details(manifest: Manifest): Scenario[] {
   return [
     { name: "order-detail", route: detailRoute(manifest, "orderLong"), kind: "detail", ready: '[data-detail-section="overview"] [data-detail-fields] dt:text-is("下单金额")', overlayRem: 56 },
-    { name: "ledger-detail", route: detailRoute(manifest, "ledgerAssociated"), kind: "detail", ready: "[data-ledger-summary]", overlayRem: 72 },
+    { name: "ledger-detail", route: detailRoute(manifest, "ledgerAssociated"), kind: "detail", ready: "[data-ledger-summary]", overlayRem: 56 },
     { name: "notification-detail", route: detailRoute(manifest, "notificationDns"), kind: "detail", ready: "[data-detail-order-summary]", overlayRem: 56 },
   ];
 }
@@ -247,6 +247,21 @@ test("representative lists retain columns and readable values in both desktop co
   test.setTimeout(300_000);
   await login(page, manifest);
   await desktopMatrix(page, manifest, info, lists());
+});
+
+test("notification columns stay readable across compact desktop widths", async ({ page, manifest }, info) => {
+  await login(page, manifest);
+  const scenario = lists().find(item => item.name === "notifications")!;
+  for (const width of [1000, 1152, 1240, 1440, 1544]) {
+    await configure(page, width, "light", "full");
+    await page.goto(manifest.origin + "/admin" + scenario.route);
+    const measured = await inspect(page, scenario, info, "full", "light");
+    const table = page.locator('[data-business-table="notifications"]');
+    await expect(table.getByRole("columnheader", { name: "网站", exact: true })).toHaveCount(measured >= 48 * 16 ? 1 : 0);
+    await expect(table.getByRole("columnheader", { name: /创建时间/ })).toHaveCount(measured >= 68 * 16 ? 1 : 0);
+    await expect(table.getByRole("columnheader", { name: /下次尝试/ })).toHaveCount(measured >= 56 * 16 ? 1 : 0);
+    expect(await table.locator('td[data-column-id="identity"]').first().evaluate(cell => cell.getBoundingClientRect().width)).toBeGreaterThanOrEqual(160);
+  }
 });
 
 test("representative details retain complete fields in both desktop content widths", async ({ page, manifest }, info) => {

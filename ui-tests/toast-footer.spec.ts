@@ -145,7 +145,13 @@ for (const layout of [
           expect(Number.isFinite(toast.maxHeight), "the notification has a finite height limit").toBe(true);
           expect(toast.maxHeight).toBeGreaterThan(0);
           expect(toast.box.height).toBeLessThanOrEqual(toast.maxHeight + 1);
-          expect(toast.box.bottom, "the notification leaves the footer unobstructed").toBeLessThanOrEqual(geometry.footer.y + 1);
+          const aboveFooter = toast.box.bottom <= geometry.footer.y + 1;
+          const belowFooter = toast.box.y >= geometry.footer.bottom - 1;
+          expect(aboveFooter || belowFooter, "the notification leaves the footer unobstructed").toBe(true);
+          if (belowFooter) {
+            expect(toast.box.bottom).toBeLessThanOrEqual(Math.min(geometry.dialog.bottom, geometry.viewport.height) + 1);
+            expect(toast.box.bottom - toast.maxHeight, "feedback can grow only inside the space below the footer").toBeGreaterThanOrEqual(geometry.footer.bottom - 1);
+          }
         }
         expect(result.centerHit, "the finish button receives the pointer while feedback remains").toBe(true);
         expect(result.finishReceivedClick).toBe(true);

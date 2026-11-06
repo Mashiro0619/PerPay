@@ -602,6 +602,8 @@ test("a clearly synthetic 21-attempt response stays expanded and pages newest-fi
   const seen: number[] = [];
   for (let number = 1; number <= 3; number++) {
     const rows = table.locator("tbody tr");
+    await expect(rows.first()).toContainText(`第 ${21 - (number - 1) * 10} 次`);
+    await expect(page.getByRole("navigation", { name: "投递尝试分页", exact: true })).toContainText(`第 ${number} / 3 页`);
     await expect(rows).toHaveCount(number === 3 ? 1 : 10);
     seen.push(...(await rows.locator("td:first-child").allTextContents()).map(value => Number(/第 (\d+) 次/.exec(value)![1])));
     if (number < 3) await page.getByRole("button", { name: "投递尝试下一页", exact: true }).click();

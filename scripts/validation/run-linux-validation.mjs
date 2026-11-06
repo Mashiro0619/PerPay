@@ -178,16 +178,16 @@ async function upgrade() {
   const before = await backup(rc1, volumes, "backup-schema38");
   // Validate unchanged rows before starting workers that may legitimately advance them.
   await fixture(candidate, volumes, "upgrade-schema40", "verify", "--schema=40", "--checkpoint=base", "--label=upgraded");
-  await fixture(candidate, volumes, "new-schema39-business", "advance");
-  const current = await backup(candidate, volumes, "backup-schema39");
+  await fixture(candidate, volumes, "new-schema40-business", "advance");
+  const current = await backup(candidate, volumes, "backup-schema40");
   report.backups = { beforeUpgrade: before, afterUpgrade: current };
   await application(candidate, volumes, "candidate", "upgraded");
   // Preserve the upgraded snapshot independently before testing the old-version recovery.
-  const recovered = await group("restore39");
+  const recovered = await group("restore40");
   recovered.backups = volumes.backups; recovered.state = volumes.state; recovered.secrets = volumes.secrets;
-  await restore(candidate, recovered, "restore-schema39", current);
+  await restore(candidate, recovered, "restore-schema40", current);
   await fixture(candidate, recovered, "verify-restored40", "verify", "--schema=40", "--label=restored40", "--checkpoint=upgraded");
-  await application(candidate, recovered, "restored39", "upgraded");
+  await application(candidate, recovered, "restored40", "upgraded");
   await restore(candidate, volumes, "restore-schema38", before);
   await fixture(rc1, volumes, "verify-restored38", "verify", "--schema=38", "--checkpoint=base", "--label=restored38");
   await application(rc1, volumes, "restored38", "base");

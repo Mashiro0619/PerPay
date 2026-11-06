@@ -8,8 +8,20 @@ async function dockGeometry(footer: Locator) {
     const rect = element.getBoundingClientRect();
     const toast = document.querySelector('[data-slot="toast"]:not([data-ending-style]):not([data-limited])');
     const viewport = document.querySelector<HTMLElement>('[data-slot="toast-viewport"]');
+    const surface = element.closest('[data-slot="dialog-content"], [data-slot="alert-dialog-content"], [data-slot="sheet-content"]')!;
+    const bounds = surface.getBoundingClientRect();
+    const visible = window.visualViewport;
+    const top = Math.max(bounds.top, visible?.offsetTop ?? 0);
+    const bottom = Math.min(bounds.bottom, (visible?.offsetTop ?? 0) + (visible?.height ?? innerHeight));
+    const toastBounds = toast?.getBoundingClientRect();
+    const maxHeight = toast ? Number.parseFloat(getComputedStyle(toast).maxHeight) : 0;
+    const separated = !!toastBounds && (toastBounds.bottom <= rect.top + 1 || toastBounds.top >= rect.bottom - 1);
+    const contained = !!toastBounds && Number.isFinite(maxHeight) && maxHeight > 0 && toastBounds.height <= maxHeight + 1
+      && toastBounds.top >= top - 1 && toastBounds.bottom <= bottom + 1
+      && (toastBounds.top < rect.bottom - 1 || toastBounds.bottom - maxHeight >= rect.bottom - 1);
     return {
       footer: box(element), toast: toast && box(toast), viewportStyle: viewport?.getAttribute("style"),
+      maxHeight, separated, contained, visibleTop: top, visibleBottom: bottom,
       gap: (parseFloat(getComputedStyle(document.documentElement).fontSize) || 16) * 0.75,
       buttons: [...element.querySelectorAll("button")].filter(button => !button.disabled).map(button => {
         const bounds = button.getBoundingClientRect();
@@ -73,7 +85,7 @@ for (const layout of [
         await expect(primary).toBeVisible();
         await expect.poll(async () => {
           const geometry = await dockGeometry(primary);
-          return !!geometry.toast && geometry.toast.bottom <= geometry.footer.top + 1 && geometry.buttons.every(button => button.centerHit && button.topHit);
+          return geometry.separated && geometry.contained && geometry.buttons.every(button => button.centerHit && button.topHit);
         }).toBe(true);
         const returned = await dockGeometry(primary);
         await input.fill("192.0.2.12");
@@ -82,21 +94,62 @@ for (const layout of [
         const footer = page.locator('[data-overlay-step] [data-slot="dialog-footer"]');
         await expect(footer).toBeVisible();
         const before = await dockGeometry(footer);
+        await page.keyboard.press("F6");
+        await expect(page.getByRole("region", { name: "提示", exact: true })).toBeFocused();
+        await page.keyboard.press("Tab");
+        await expect(toast).toBeFocused();
+        await expect(page.locator("[data-overlay-step]")).toHaveCount(1);
         await footer.getByRole("button", { name: "确认保存", exact: true }).evaluate(button => {
           const text = [...button.childNodes].find(node => node.nodeType === Node.TEXT_NODE && node.textContent?.trim());
           if (!text) throw new Error("Confirmation label is missing");
           text.textContent = "确认保存访问规则，请再次核对";
           Object.assign(button.style, { whiteSpace: "normal", maxWidth: "8rem", height: "auto", minHeight: "7rem" });
         });
-        await expect.poll(async () => {
-          const geometry = await dockGeometry(footer);
-          return geometry.footer.height > before.footer.height + 1 && !!geometry.toast
-            && geometry.toast.bottom <= geometry.footer.top + 1
-            && geometry.buttons.every(button => button.centerHit && button.topHit);
-        }).toBe(true);
+        await expect.poll(async () => (await dockGeometry(footer)).footer.height).toBeGreaterThan(before.footer.height + 1);
+        const reflowedActions = [];
+        for (const action of await footer.getByRole("button").all()) {
+          const label = (await action.textContent())?.trim();
+          await action.scrollIntoViewIfNeeded();
+          await info.attach("reflowed-action-initial", { body: JSON.stringify({ label, ...(await dockGeometry(footer)) }), contentType: "application/json" });
+          try {
+            await expect.poll(async () => {
+              const geometry = await dockGeometry(footer);
+              const target = geometry.buttons.find(button => button.text === label);
+              return { separated: geometry.separated, contained: geometry.contained,
+                centerHit: !!target?.centerHit, topHit: !!target?.topHit };
+            }).toMatchObject({ separated: true, contained: true, centerHit: true, topHit: true });
+          } finally {
+            await info.attach("reflowed-action", { body: JSON.stringify({ label, ...(await dockGeometry(footer)) }), contentType: "application/json" });
+          }
+          reflowedActions.push(await dockGeometry(footer));
+        }
         const after = await dockGeometry(footer);
-        await info.attach("live-step-feedback", { body: JSON.stringify({ layout, returned, before, after, writes, errors }), contentType: "application/json" });
+        await info.attach("live-step-feedback", { body: JSON.stringify({ layout, returned, before, after, reflowedActions, writes, errors }), contentType: "application/json" });
         await page.screenshot({ path: info.outputPath("reflowed-step.png") });
+        // A footer covering the whole scroll window leaves no vertical dock.
+        // Feedback must still offer a visible dismissal before the next action.
+        await footer.evaluate(element => {
+          const footer = element as HTMLElement;
+          footer.style.minHeight = `${innerHeight * 2}px`;
+          const scroll = footer.closest<HTMLElement>('[data-admin-dialog-scroll]')!;
+          const surface = footer.closest('[data-slot="dialog-content"]')!;
+          scroll.scrollTop += footer.getBoundingClientRect().top - surface.getBoundingClientRect().top + 16;
+        });
+        await expect.poll(() => footer.evaluate(element => {
+          const bounds = element.getBoundingClientRect();
+          const surface = element.closest('[data-slot="dialog-content"]')!.getBoundingClientRect();
+          return bounds.top <= surface.top && bounds.bottom >= surface.bottom;
+        })).toBe(true);
+        await expect.poll(() => toast.evaluate(element => {
+          const bounds = element.getBoundingClientRect();
+          const viewport = window.visualViewport;
+          const top = viewport?.offsetTop ?? 0;
+          return Number.parseFloat(getComputedStyle(element).maxHeight) > 0
+            && bounds.top >= top - 1 && bounds.bottom <= top + (viewport?.height ?? innerHeight) + 1;
+        })).toBe(true);
+        await toast.getByRole("button", { name: "关闭提示", exact: true }).click();
+        await expect(toast).toHaveCount(0);
+        await expect(page.locator("[data-overlay-step]"), "closing feedback keeps the confirmation open").toHaveCount(1);
         await footer.getByRole("button", { name: "取消", exact: true }).click({ timeout: 1000 });
         await expect(page.locator("[data-overlay-step]")).toHaveCount(0);
         expect(writes).toEqual([{ method: "PUT", path: "/api/admin/v1/settings/admin-access" }]);
