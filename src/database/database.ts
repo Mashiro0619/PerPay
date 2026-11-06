@@ -84,6 +84,7 @@ import {
   inspectDatabaseStorageHeadroom,
 } from "../infrastructure/storage/capacity.ts";
 import { StartupLeaseHeartbeat } from "./startup-lease-heartbeat.ts";
+import { configureTemporaryStorage, openIntegrityDatabase } from "./connection.ts";
 
 const SQLITE_TIMEOUT_MS = 5_000;
 const LEASE_TTL_MS = 30_000;
@@ -102,6 +103,19 @@ export interface DatabaseIntegrity {
   readonly foreignKeyViolations: number;
   readonly domainViolations: number;
   readonly schema: string;
+  readonly failure?: DatabaseIntegrityCheckError;
+}
+
+type IntegrityStage = "quick_check" | "foreign_keys" | "access_settings" | "domain" | "cryptographic" | "schema";
+
+export class DatabaseIntegrityCheckError extends Error {
+  readonly stage: IntegrityStage;
+
+  constructor(stage: IntegrityStage, cause: unknown) {
+    super(`database integrity inspection could not complete during ${stage}`, { cause });
+    this.name = "DatabaseIntegrityCheckError";
+    this.stage = stage;
+  }
 }
 
 export interface DatabaseBackup {
@@ -192,14 +206,7 @@ export class AppDatabase {
       startupLeaseHeartbeat.assertHealthy();
       initializeFreshRuntimeConfiguration(connection);
       initializeRuntimeSecrets(connection);
-      const integrity = inspectDatabaseIntegrity(connection);
-      if (!integrity.ok) {
-        throw new Error(
-          `database integrity check failed: quick_check=${integrity.quickCheck}, ` +
-          `foreign_key_violations=${integrity.foreignKeyViolations}, ` +
-          `domain_violations=${integrity.domainViolations}, schema=${integrity.schema}`,
-        );
-      }
+      assertDatabaseIntegrity(connection, "database integrity check failed");
       recordApplicationVersion(connection);
       startupLeaseHeartbeat.assertHealthy();
       await startupLeaseHeartbeat.stop(true);
@@ -439,8 +446,7 @@ function configurePragmas(connection: DatabaseSync): void {
   assertPragmaNumber(connection, "wal_autocheckpoint", 1000);
   connection.exec("PRAGMA trusted_schema = OFF;");
   assertPragmaNumber(connection, "trusted_schema", 0);
-  connection.exec("PRAGMA temp_store = MEMORY;");
-  assertPragmaNumber(connection, "temp_store", 2);
+  configureTemporaryStorage(connection);
   assertPragmaNumber(connection, "foreign_keys", 1);
 }
 
@@ -1066,38 +1072,62 @@ function initializeRuntimeSecrets(connection: DatabaseSync): void {
 }
 
 export function inspectDatabaseIntegrity(connection: DatabaseSync): DatabaseIntegrity {
+  let stage: IntegrityStage = "quick_check";
+  let quickCheck = "not_checked";
+  let foreignKeyViolations = -1;
+  let domainViolations = -1;
   try {
     const quick = connection.prepare("PRAGMA quick_check").get() as { quick_check: string } | undefined;
-    const quickCheck = quick?.quick_check ?? "missing_result";
-    const foreignKeys = connection.prepare("PRAGMA foreign_key_check").all();
+    quickCheck = quick?.quick_check ?? "missing_result";
+    stage = "foreign_keys";
+    foreignKeyViolations = connection.prepare("PRAGMA foreign_key_check").all().length;
     // Pre-migration backups must remain verifiable on their original schema.
     // On schema 32+, missing or malformed access settings are integrity failures.
+    stage = "access_settings";
     if (tableExists(connection, "schema_migrations") &&
         connection.prepare("SELECT 1 FROM schema_migrations WHERE version >= 32 LIMIT 1").get()) {
       readAdminAccess(connection);
     }
-    const domainViolations =
-      countDomainViolations(connection) + countCryptographicDomainViolations(connection);
-    const schema = validateSchema(connection) ? "ok" : "invalid";
+    stage = "domain";
+    const domainCount = countDomainViolations(connection);
+    stage = "cryptographic";
+    domainViolations = domainCount + countCryptographicDomainViolations(connection);
+    stage = "schema";
+    const schema = validateSchema(connection, { propagateExecutionErrors: true }) ? "ok" : "invalid";
     return {
       ok:
         quickCheck === "ok" &&
-        foreignKeys.length === 0 &&
+        foreignKeyViolations === 0 &&
         domainViolations === 0 &&
         schema === "ok",
       quickCheck,
-      foreignKeyViolations: foreignKeys.length,
+      foreignKeyViolations,
       domainViolations,
       schema,
     };
   } catch (error) {
     return {
       ok: false,
-      quickCheck: error instanceof Error ? error.message : "integrity_check_failed",
-      foreignKeyViolations: -1,
-      domainViolations: -1,
-      schema: "error",
+      quickCheck,
+      foreignKeyViolations,
+      domainViolations,
+      schema: "not_checked",
+      failure: new DatabaseIntegrityCheckError(stage, error),
     };
+  }
+}
+
+export function assertDatabaseIntegrity(connection: DatabaseSync, failurePrefix: string): void {
+  const integrity = inspectDatabaseIntegrity(connection);
+  if (integrity.failure) {
+    throw new Error(`${failurePrefix}: inspection_stage=${integrity.failure.stage}`, { cause: integrity.failure });
+  }
+  if (!integrity.ok) {
+    throw new Error(
+      `${failurePrefix}: quick_check=${integrity.quickCheck}, ` +
+      `foreign_key_violations=${integrity.foreignKeyViolations}, ` +
+      `domain_violations=${integrity.domainViolations}, schema=${integrity.schema}`,
+    );
   }
 }
 
@@ -2647,7 +2677,7 @@ function readViolationCount(connection: DatabaseSync, sql: string, label: string
   return violations;
 }
 
-function validateSchema(connection: DatabaseSync): boolean {
+function validateSchema(connection: DatabaseSync, options: { propagateExecutionErrors?: boolean } = {}): boolean {
   if (!tableExists(connection, "schema_migrations") || !tableExists(connection, "system_metadata") || !tableExists(connection, "app_lease")) return false;
   try {
     const migrationColumns = connection.prepare("PRAGMA table_info(schema_migrations)").all() as Array<{ name: string }>;
@@ -2659,7 +2689,10 @@ function validateSchema(connection: DatabaseSync): boolean {
       if (!migration || (row.checksum !== null && row.checksum !== migrationChecksum(migration))) return false;
     }
     return migrationSchemaCatalog(connection) === expectedMigrationSchemaCatalog(applied.length);
-  } catch { return false; }
+  } catch (error) {
+    if (options.propagateExecutionErrors && error instanceof Error && "code" in error && error.code === "ERR_SQLITE_ERROR") throw error;
+    return false;
+  }
 }
 
 interface SchemaCatalogRow {
@@ -2818,7 +2851,8 @@ function countOrderCryptographicDomainViolations(connection: DatabaseSync): numb
       const keys = readCheckoutTokenKeys(connection);
       assertCheckoutTokenKeySet(keys);
       assertCheckoutTokenKeysMatchSessions(connection, keys);
-    } catch {
+    } catch (error) {
+      if (error instanceof Error && "code" in error && error.code === "ERR_SQLITE_ERROR") throw error;
       violations += 1;
     }
     return violations;
@@ -3950,10 +3984,9 @@ export async function createVerifiedDatabaseBackup(
     });
     signal?.throwIfAborted();
     hardenExistingPrivateFile(tempPath);
-    const verification = new DatabaseSync(tempPath, { readOnly: true, enableForeignKeyConstraints: true, timeout: SQLITE_TIMEOUT_MS, readBigInts: true, defensive: true });
+    const verification = openIntegrityDatabase(tempPath, { readOnly: true, enableForeignKeyConstraints: true, timeout: SQLITE_TIMEOUT_MS, readBigInts: true, defensive: true });
     try {
-      const integrity = inspectDatabaseIntegrity(verification);
-      if (!integrity.ok) throw new Error(`backup verification failed: quick_check=${integrity.quickCheck}, foreign_key_violations=${integrity.foreignKeyViolations}, domain_violations=${integrity.domainViolations}, schema=${integrity.schema}`);
+      assertDatabaseIntegrity(verification, "backup verification failed");
     } finally { verification.close(); }
     // The lease is process identity, not application data. A copied live lease
     // would make a restored database reject its first legitimate owner, so
@@ -3982,7 +4015,7 @@ export async function createVerifiedDatabaseBackup(
       writable.close();
     }
     removeSqliteSidecars(tempPath);
-    const finalVerification = new DatabaseSync(tempPath, {
+    const finalVerification = openIntegrityDatabase(tempPath, {
       readOnly: true,
       enableForeignKeyConstraints: true,
       timeout: SQLITE_TIMEOUT_MS,
@@ -3990,8 +4023,7 @@ export async function createVerifiedDatabaseBackup(
       defensive: true,
     });
     try {
-      const integrity = inspectDatabaseIntegrity(finalVerification);
-      if (!integrity.ok) throw new Error(`final backup verification failed: quick_check=${integrity.quickCheck}, foreign_key_violations=${integrity.foreignKeyViolations}, domain_violations=${integrity.domainViolations}, schema=${integrity.schema}`);
+      assertDatabaseIntegrity(finalVerification, "final backup verification failed");
     } finally { finalVerification.close(); }
     removeSqliteSidecars(tempPath);
     signal?.throwIfAborted();

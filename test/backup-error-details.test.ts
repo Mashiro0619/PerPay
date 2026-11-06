@@ -3,12 +3,26 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { backupErrorDetails } from "../src/backup/error-details.ts";
 import { BackupCycleError } from "../src/backup/runner.ts";
+import { DatabaseIntegrityCheckError } from "../src/database/database.ts";
 
 const syntheticKey = "5a".repeat(32);
 const syntheticPem = "-----BEGIN PRIVATE KEY-----\nsynthetic-private-material\n-----END PRIVATE KEY-----";
 const syntheticResponse = '{"payer":"synthetic-private-payer","password":"synthetic-password"}';
 
 describe("safe backup failure details", () => {
+  it("retains the integrity stage and SQLite storage code without native private details", () => {
+    const cause = Object.assign(new Error(`/private/${syntheticKey}`), { code: "ERR_SQLITE_ERROR", errcode: 13 });
+    const inspection = new DatabaseIntegrityCheckError("domain", cause);
+    const error = new Error("backup failed application integrity checks: inspection_stage=domain", { cause: inspection });
+    const details = backupErrorDetails(new BackupCycleError("database_backup", error));
+    assert.match(details.message, /during domain/);
+    assert.match(details.message, /database or temporary storage space/);
+    assert.doesNotMatch(details.message, /select a verified compatible backup/);
+    assert.equal(details.error_code, "ERR_SQLITE_ERROR");
+    assert.equal(details.sqlite_error_code, 13);
+    assert.equal(JSON.stringify(details).includes(syntheticKey), false);
+  });
+
   it("unwraps a cycle error to report file permission failures without paths", () => {
     const cause = Object.assign(new Error(`EACCES: permission denied, open '/secret/${syntheticKey}'`), {
       code: "EACCES", path: `/secret/${syntheticKey}`,

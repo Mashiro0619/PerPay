@@ -13,8 +13,10 @@ import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, it } from "node:test";
+import { DatabaseSync } from "node:sqlite";
 
-import { AppDatabase, sha256FileSync } from "../src/database/database.ts";
+import { AppDatabase, assertDatabaseIntegrity, DatabaseIntegrityCheckError, inspectDatabaseIntegrity, sha256FileSync } from "../src/database/database.ts";
+import { openIntegrityDatabase } from "../src/database/connection.ts";
 import {
   createOperationalBackup,
   deleteBackupArtifact,
@@ -44,6 +46,89 @@ afterEach(() => {
 });
 
 describe("database backup artifact lifecycle", () => {
+  it("keeps independent integrity reads in memory while preserving read-only and foreign-key options", async () => {
+    const path = join(temporaryDirectory(), "perpay.sqlite3");
+    const owner = await openTestDatabase(path);
+    owner.close();
+    const database = openIntegrityDatabase(path, { readOnly: true, enableForeignKeyConstraints: true, readBigInts: true, defensive: true });
+    try {
+      assert.equal(database.prepare("PRAGMA temp_store").get()!.temp_store, 2n);
+      assert.equal(database.prepare("PRAGMA foreign_keys").get()!.foreign_keys, 1n);
+      assert.equal(inspectDatabaseIntegrity(database).ok, true);
+      assert.throws(() => database.exec("CREATE TABLE unexpected(value TEXT)"), /readonly/i);
+      database.exec("CREATE TEMP TABLE preserved(value TEXT); INSERT INTO preserved VALUES ('retained')");
+      assert.equal(inspectDatabaseIntegrity(database).ok, true);
+      assert.equal(database.prepare("SELECT value FROM preserved").get()!.value, "retained");
+    } finally { database.close(); }
+  });
+
+  for (const [stage, query] of [
+    ["quick_check", "PRAGMA quick_check"],
+    ["foreign_keys", "PRAGMA foreign_key_check"],
+    ["access_settings", "SELECT admin_access FROM runtime_configuration"],
+    ["domain", "LAG(page.response_fingerprint)"],
+    ["cryptographic", "SELECT key_version, key_material, activated_at, retired_at"],
+    ["schema", "SELECT type, name, tbl_name AS table_name, sql"],
+  ] as const) {
+    for (const errcode of [13, 11]) it(`preserves ${stage} execution failure ${errcode} and completed inspection results`, async context => {
+      const owner = await openTestDatabase(join(temporaryDirectory(), "perpay.sqlite3"));
+      const database = owner.read(connection => connection);
+      const prepare = database.prepare.bind(database);
+      const cause = Object.assign(new Error("synthetic private database path"), { code: "ERR_SQLITE_ERROR", errcode });
+      context.mock.method(database, "prepare", (sql: string) => {
+        if (sql.includes(query)) throw cause;
+        return prepare(sql);
+      });
+      try {
+        const result = inspectDatabaseIntegrity(database);
+        assert.equal(result.ok, false);
+        assert.equal(result.quickCheck, stage === "quick_check" ? "not_checked" : "ok");
+        assert.equal(result.foreignKeyViolations, stage === "quick_check" || stage === "foreign_keys" ? -1 : 0);
+        assert.equal(result.failure?.stage, stage);
+        assert.equal(result.failure?.cause, cause);
+        assert.equal(JSON.stringify(result).includes(cause.message), false);
+        assert.throws(() => assertDatabaseIntegrity(database, "backup verification failed"), error => {
+          assert.ok(error instanceof Error);
+          assert.match(error.message, new RegExp(`inspection_stage=${stage}$`));
+          assert.ok(error.cause instanceof DatabaseIntegrityCheckError);
+          assert.equal(error.cause.cause, cause);
+          return true;
+        });
+      } finally { owner.close(); }
+    });
+  }
+
+  it("still rejects real foreign-key violations as completed integrity findings", () => {
+    const database = new DatabaseSync(":memory:", { enableForeignKeyConstraints: false });
+    database.exec("CREATE TABLE parent(id INTEGER PRIMARY KEY); CREATE TABLE child(parent_id INTEGER REFERENCES parent(id)); INSERT INTO child VALUES (1)");
+    try {
+      const result = inspectDatabaseIntegrity(database);
+      assert.equal(result.ok, false);
+      assert.equal(result.quickCheck, "ok");
+      assert.equal(result.foreignKeyViolations, 1);
+      assert.equal(result.failure, undefined);
+      assert.throws(() => assertDatabaseIntegrity(database, "backup verification failed"), /foreign_key_violations=1/);
+    } finally { database.close(); }
+  });
+
+  it("still rejects persisted domain violations after completing every inspection stage", async () => {
+    const owner = await openTestDatabase(join(temporaryDirectory(), "perpay.sqlite3"));
+    const database = owner.read(connection => connection);
+    try {
+      const trigger = database.prepare("SELECT sql FROM sqlite_schema WHERE name = 'order_clock_no_delete'").get()!.sql as string;
+      database.exec("DROP TRIGGER order_clock_no_delete; DELETE FROM order_clock");
+      database.exec(trigger);
+      const result = inspectDatabaseIntegrity(database);
+      assert.equal(result.ok, false);
+      assert.equal(result.quickCheck, "ok");
+      assert.equal(result.foreignKeyViolations, 0);
+      assert.ok(result.domainViolations > 0);
+      assert.equal(result.schema, "ok");
+      assert.equal(result.failure, undefined);
+      assert.throws(() => assertDatabaseIntegrity(database, "backup verification failed"), /domain_violations=[1-9]/);
+    } finally { owner.close(); }
+  });
+
   it("classifies every recognized artifact and returns bounded deterministic metadata", async () => {
     const directory = temporaryDirectory();
     const database = await openTestDatabase(join(directory, "perpay.sqlite3"));

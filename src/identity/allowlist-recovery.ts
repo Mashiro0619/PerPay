@@ -1,9 +1,10 @@
 import { lstatSync, type BigIntStats } from "node:fs";
 import { join, resolve } from "node:path";
-import { DatabaseSync } from "node:sqlite";
+import type { DatabaseSync } from "node:sqlite";
 
 import { readAdminAccess } from "../settings/admin-access.ts";
 import { inspectDatabaseIntegrity } from "../database/database.ts";
+import { openIntegrityDatabase } from "../database/connection.ts";
 import {
   ADMIN_USERNAME,
   appendAuditEvent,
@@ -43,7 +44,7 @@ export async function disableAdministratorAllowlist(input: {
     );
   }
   // Refuse a live instance before holding the maintenance lock.
-  const probe = new DatabaseSync(databasePath, {
+  const probe = openIntegrityDatabase(databasePath, {
     readOnly: true,
     readBigInts: true,
     defensive: true,
@@ -65,7 +66,7 @@ export async function disableAdministratorAllowlist(input: {
   try {
     assertSameFile(databasePath, identity);
     hardenSqliteArtifacts(databasePath);
-    database = new DatabaseSync(databasePath, {
+    database = openIntegrityDatabase(databasePath, {
       enableForeignKeyConstraints: true,
       readBigInts: true,
       defensive: true,
@@ -96,9 +97,11 @@ export async function disableAdministratorAllowlist(input: {
       subjectId: ADMIN_USERNAME,
       details: { enabled: false },
     });
-    if (!inspectDatabaseIntegrity(database).ok)
+    const integrity = inspectDatabaseIntegrity(database);
+    if (!integrity.ok)
       throw new AdminRecoveryError(
         "恢复后的完整性检查失败，已回滚白名单修改。",
+        { cause: integrity.failure },
       );
     assertSameFile(databasePath, identity);
     database.exec("COMMIT");

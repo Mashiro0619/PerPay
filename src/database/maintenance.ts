@@ -27,8 +27,9 @@ import { RuntimeSecretCipher, type EncryptedSecret } from "../settings/crypto.ts
 
 import {
   createVerifiedDatabaseBackup,
-  inspectDatabaseIntegrity,
+  assertDatabaseIntegrity,
 } from "./database.ts";
+import { openIntegrityDatabase } from "./connection.ts";
 import {
   acquireDatabaseMaintenanceLock,
   assertDatabaseMaintenanceIdle,
@@ -1298,7 +1299,7 @@ function inspectCurrentSqliteForRestore(
 function probeSqliteDamage(path: string, now: number, emptyMain: boolean): boolean {
   let database: DatabaseSync | undefined;
   try {
-    database = new DatabaseSync(path, {
+    database = openIntegrityDatabase(path, {
       // Recovery may need to update a hot journal before the copy can be
       // diagnosed. The original database is never opened by this probe.
       readOnly: false,
@@ -2109,7 +2110,7 @@ function inspectDatabase(
   requireReleasedLease: boolean,
   label = "migration backup",
 ): number {
-  const database = new DatabaseSync(path, {
+  const database = openIntegrityDatabase(path, {
     readOnly: true,
     enableForeignKeyConstraints: true,
     timeout: SQLITE_TIMEOUT_MILLISECONDS,
@@ -2123,15 +2124,7 @@ function inspectDatabase(
     if (journal?.journal_mode.toLowerCase() !== "delete") {
       throw new Error(`${label} must use self-contained DELETE journal mode`);
     }
-    const integrity = inspectDatabaseIntegrity(database);
-    if (!integrity.ok) {
-      throw new Error(
-        `${label} failed application integrity checks: ` +
-        `quick_check=${integrity.quickCheck}, ` +
-        `foreign_key_violations=${integrity.foreignKeyViolations}, ` +
-        `domain_violations=${integrity.domainViolations}, schema=${integrity.schema}`,
-      );
-    }
+    assertDatabaseIntegrity(database, `${label} failed application integrity checks`);
     const row = database.prepare("SELECT max(version) AS version FROM schema_migrations").get() as
       | { version: bigint | number | null }
       | undefined;

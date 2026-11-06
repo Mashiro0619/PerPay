@@ -1,8 +1,9 @@
 import { lstatSync, type BigIntStats } from "node:fs";
 import { join, resolve } from "node:path";
-import { DatabaseSync } from "node:sqlite";
+import type { DatabaseSync } from "node:sqlite";
 
 import { inspectDatabaseIntegrity } from "../database/database.ts";
+import { openIntegrityDatabase } from "../database/connection.ts";
 import { ADMIN_USERNAME, IdentityReadTransaction, appendAuditEvent } from "../database/identity-store.ts";
 import { acquireDatabaseMaintenanceLock } from "../database/maintenance-lock.ts";
 import { hardenExistingPrivateDirectory, hardenProcessFileCreation, hardenSqliteArtifacts } from "../infrastructure/storage/permissions.ts";
@@ -30,7 +31,7 @@ export async function recoverAdministratorPassword(input: {
     throw new AdminRecoveryError("找不到已有数据库，或数据路径不是普通文件。请核对 PERPAY_DATA_DIR；不会创建新实例。");
   }
   // Refuse a live instance before any password work or maintenance lock is held.
-  const probe = new DatabaseSync(databasePath, { readOnly: true, readBigInts: true, defensive: true, timeout: 5_000 });
+  const probe = openIntegrityDatabase(databasePath, { readOnly: true, readBigInts: true, defensive: true, timeout: 5_000 });
   try { assertRecoverable(probe); } finally { probe.close(); }
   const passwordHash = await hashPassword(input.password);
   hardenProcessFileCreation();
@@ -40,7 +41,7 @@ export async function recoverAdministratorPassword(input: {
   try {
     assertSameFile(databasePath, identity);
     hardenSqliteArtifacts(databasePath);
-    database = new DatabaseSync(databasePath, { enableForeignKeyConstraints: true, readBigInts: true, defensive: true, timeout: 5_000 });
+    database = openIntegrityDatabase(databasePath, { enableForeignKeyConstraints: true, readBigInts: true, defensive: true, timeout: 5_000 });
     database.exec("PRAGMA synchronous = FULL; BEGIN IMMEDIATE");
     assertSameFile(databasePath, identity);
     assertRecoverable(database);
@@ -63,7 +64,8 @@ export async function recoverAdministratorPassword(input: {
       action: "admin.password_recover", outcome: "SUCCESS", subjectType: "administrator", subjectId: ADMIN_USERNAME,
       details: { session_generation: sessionGeneration, revoked_count: Number(revoked.changes) },
     });
-    if (!inspectDatabaseIntegrity(database).ok) throw new AdminRecoveryError("恢复后的完整性检查失败，已回滚密码修改。");
+    const integrity = inspectDatabaseIntegrity(database);
+    if (!integrity.ok) throw new AdminRecoveryError("恢复后的完整性检查失败，已回滚密码修改。", { cause: integrity.failure });
     assertSameFile(databasePath, identity);
     database.exec("COMMIT");
     return { sessionGeneration, revokedSessions: Number(revoked.changes) };
@@ -85,7 +87,8 @@ export function assertRecoverable(database: DatabaseSync): void {
     }
     throw new AdminRecoveryError("应用仍占用数据库。请先执行 docker compose stop app backup，并确认相关进程已停止。普通应用停止续期后，租约通常在 30 秒内到期；持续被占用时请检查其他进程和维护锁。");
   }
-  if (!inspectDatabaseIntegrity(database).ok) throw new AdminRecoveryError("数据库版本不匹配或完整性检查失败。请使用与实例一致的镜像版本，未作修改。");
+  const integrity = inspectDatabaseIntegrity(database);
+  if (!integrity.ok) throw new AdminRecoveryError("数据库版本不匹配或完整性检查失败。请使用与实例一致的镜像版本，未作修改。", { cause: integrity.failure });
   const admin = new IdentityReadTransaction(database).adminIdentity();
   if (!admin || admin.username !== ADMIN_USERNAME) throw new AdminRecoveryError("管理员尚未初始化，请从首次初始化页面设置密码。");
 }

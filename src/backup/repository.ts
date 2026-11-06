@@ -10,7 +10,6 @@ import {
   unlinkSync,
 } from "node:fs";
 import { basename, dirname, resolve } from "node:path";
-import { DatabaseSync } from "node:sqlite";
 
 import type { BackupConfig } from "./config.ts";
 import {
@@ -19,7 +18,8 @@ import {
   type RestoreOperationalBackupResult,
 } from "../database/maintenance.ts";
 import { syncDirectory } from "../database/maintenance-lock.ts";
-import { inspectDatabaseIntegrity } from "../database/database.ts";
+import { assertDatabaseIntegrity } from "../database/database.ts";
+import { openIntegrityDatabase } from "../database/connection.ts";
 import {
   ensurePrivateDirectory,
   hardenExistingPrivateDirectory,
@@ -512,7 +512,7 @@ function inspectLocalBackupWithIdentity(
   assertNoSqliteSidecars(path);
   const identity = inspectOrdinaryFile(path, "backup");
   const sha256 = sha256File(path);
-  const database = new DatabaseSync(path, {
+  const database = openIntegrityDatabase(path, {
     readOnly: true,
     enableForeignKeyConstraints: true,
     timeout: SQLITE_TIMEOUT_MILLISECONDS,
@@ -528,14 +528,7 @@ function inspectLocalBackupWithIdentity(
     if (journal?.journal_mode.toLowerCase() !== "delete") {
       throw new Error("backup must use self-contained DELETE journal mode");
     }
-    const integrity = inspectDatabaseIntegrity(database);
-    if (!integrity.ok) {
-      throw new Error(
-        `backup failed application integrity checks: quick_check=${integrity.quickCheck}, ` +
-        `foreign_key_violations=${integrity.foreignKeyViolations}, ` +
-        `domain_violations=${integrity.domainViolations}, schema=${integrity.schema}`,
-      );
-    }
+    assertDatabaseIntegrity(database, "backup failed application integrity checks");
     const schema = database.prepare("SELECT max(version) AS version FROM schema_migrations").get() as
       | { version: bigint | number | null }
       | undefined;

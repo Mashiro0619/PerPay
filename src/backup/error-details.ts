@@ -4,6 +4,7 @@ export interface BackupErrorDetails {
   readonly message: string;
   readonly error_type: string;
   readonly error_code?: string;
+  readonly sqlite_error_code?: number;
 }
 
 const UNKNOWN_MESSAGE = "Backup operation failed; inspect the reported stage and local service configuration.";
@@ -96,7 +97,8 @@ const CONFIGURATION_FIELDS = [
   "PERPAY_DATA_DIR", "PERPAY_BACKUP_DIR", "PERPAY_BACKUP_INTERVAL_SECONDS", "PERPAY_BACKUP_KEEP_COUNT",
   "PERPAY_MASTER_KEY", "PERPAY_SECRETS_DIR",
 ];
-const SAFE_ERROR_NAMES = new Set(["BackupCycleError", "StorageCapacityError", "MaintenanceLeaseClaimedError", "AbortError", "TimeoutError"]);
+const SAFE_ERROR_NAMES = new Set(["BackupCycleError", "StorageCapacityError", "MaintenanceLeaseClaimedError", "DatabaseIntegrityCheckError", "AbortError", "TimeoutError"]);
+const INTEGRITY_STAGES = new Set(["quick_check", "foreign_keys", "access_settings", "domain", "cryptographic", "schema"]);
 
 /** Emits only reviewed local messages and fixed diagnostics, never arbitrary error text or paths. */
 export function backupErrorDetails(error: unknown): BackupErrorDetails {
@@ -113,12 +115,19 @@ function collectBackupErrorDetails(error: unknown): BackupErrorDetails {
   const visited = new Set<Error>();
   const messages = new Set<string>();
   let errorCode: string | undefined;
+  let sqliteErrorCode: number | undefined;
   for (let inspected = 0; queue.length > 0 && inspected < 16; inspected++) {
     const current = queue.shift();
     if (!(current instanceof Error) || visited.has(current)) continue;
     visited.add(current);
     const code = ownData(current, "code");
     if (typeof code === "string" && NATIVE_MESSAGES.has(code)) errorCode ??= code;
+    if (code === "ERR_SQLITE_ERROR") {
+      const sqliteCode = ownData(current, "errcode");
+      if (typeof sqliteCode === "number" && Number.isSafeInteger(sqliteCode) && sqliteCode > 0 && sqliteCode <= 0x7fffffff) {
+        sqliteErrorCode ??= sqliteCode;
+      }
+    }
     const message = summarize(current);
     if (message && messages.size < 4) messages.add(message);
     const cause = ownData(current, "cause");
@@ -135,10 +144,15 @@ function collectBackupErrorDetails(error: unknown): BackupErrorDetails {
     message: (messages.size ? [...messages].join("; ") : UNKNOWN_MESSAGE).slice(0, 1024),
     error_type: safeErrorType(error),
     ...(errorCode === undefined ? {} : { error_code: errorCode }),
+    ...(sqliteErrorCode === undefined ? {} : { sqlite_error_code: sqliteErrorCode }),
   };
 }
 
 function summarize(error: Error): string | undefined {
+  const stage = ownData(error, "stage");
+  if (ownData(error, "name") === "DatabaseIntegrityCheckError" && typeof stage === "string" && INTEGRITY_STAGES.has(stage)) {
+    return `Database integrity inspection could not complete during ${stage}.`;
+  }
   const message = ownData(error, "message");
   if (typeof message === "string") {
     if (SAFE_MESSAGES.has(message)) return message;
@@ -149,6 +163,8 @@ function summarize(error: Error): string | undefined {
       return `Backup configuration is invalid; check ${fields.length ? fields.join(", ") : "the configured directories, backup policy and restore master key"}.`;
     }
     if (message.startsWith("insufficient storage headroom:")) return "Insufficient storage headroom; free space for a complete database copy and its safety reserve.";
+    // The following cause supplies the failed inspection stage and native code.
+    if (/^.+: inspection_stage=(?:quick_check|foreign_keys|access_settings|domain|cryptographic|schema)$/.test(message)) return undefined;
     if (/^(?:backup|operational backup|application database|migration backup|restore quarantine) failed application integrity checks:/.test(message)) {
       return "The database failed application integrity checks; preserve the database and select a verified compatible backup.";
     }
@@ -167,7 +183,7 @@ function summarize(error: Error): string | undefined {
       if (primary === 5 || primary === 6) return "SQLite database is busy or locked; stop conflicting writers before retrying.";
       if (primary === 11 || primary === 26) return "SQLite data is corrupt or is not a database; preserve the original files and verify the selected backup.";
       if (primary === 14) return "SQLite could not open the database; check that its files and directories exist with the required permissions.";
-      if (primary === 13) return NATIVE_MESSAGES.get("ENOSPC");
+      if (primary === 13) return "SQLite exhausted database or temporary storage space; check the database volume and temporary storage capacity.";
     }
     return NATIVE_MESSAGES.get(code);
   }
