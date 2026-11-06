@@ -68,23 +68,23 @@ describe("foreground toast footer docking", () => {
       <Surface id="foreground"><DialogFooter data-testid="foreground-footer">当前操作</DialogFooter></Surface>
       <Surface id="background" data-ending-style><SheetFooter data-testid="background-footer">关闭中操作</SheetFooter></Surface>
     </DockProvider>);
-    expect(currentDock()).toEqual({ bottom: 312, maxHeight: 426 });
+    expect(currentDock()).toEqual({ bottom: 62, maxHeight: 136 });
     const background = screen.getByTestId("background");
     await act(async () => {
       background.removeAttribute("data-ending-style");
       background.hidden = true;
     });
-    expect(currentDock().bottom).toBe(312);
+    expect(currentDock()).toEqual({ bottom: 62, maxHeight: 136 });
     await act(async () => {
       background.hidden = false;
       background.setAttribute("inert", "");
     });
-    expect(currentDock().bottom).toBe(312);
+    expect(currentDock()).toEqual({ bottom: 62, maxHeight: 136 });
     await act(async () => {
       background.removeAttribute("inert");
       background.setAttribute("data-closed", "");
     });
-    expect(currentDock().bottom).toBe(312);
+    expect(currentDock()).toEqual({ bottom: 62, maxHeight: 136 });
   });
 
   it("follows activation order for separately portaled surfaces and restores a remaining registration", async () => {
@@ -96,13 +96,13 @@ describe("foreground toast footer docking", () => {
       {second && <Surface id="second"><SheetFooter data-testid="second-footer">后打开</SheetFooter></Surface>}
     </DockProvider>;
     const rendered = render(view(true));
-    expect(currentDock().bottom).toBe(212);
+    expect(currentDock()).toEqual({ bottom: 12, maxHeight: 76 });
     await act(async () => { screen.getByTestId("second").setAttribute("hidden", ""); });
-    await waitFor(() => expect(currentDock().bottom).toBe(312));
+    await waitFor(() => expect(currentDock()).toEqual({ bottom: 12, maxHeight: 176 }));
     await act(async () => { screen.getByTestId("second").removeAttribute("hidden"); });
-    await waitFor(() => expect(currentDock().bottom).toBe(212));
+    await waitFor(() => expect(currentDock()).toEqual({ bottom: 12, maxHeight: 76 }));
     rendered.rerender(view(false));
-    expect(currentDock().bottom).toBe(312);
+    expect(currentDock()).toEqual({ bottom: 12, maxHeight: 176 });
   });
 
   it("updates for footer reflow, popup scrolling, and the visual viewport", async () => {
@@ -122,6 +122,57 @@ describe("foreground toast footer docking", () => {
     viewport.height = 350;
     act(() => { viewport.dispatchEvent(new Event("resize")); });
     await waitFor(() => expect(currentDock()).toEqual({ bottom: 362, maxHeight: 326 }));
+  });
+
+  it("uses empty space below a full-screen dialog footer and bounds feedback within it", () => {
+    rects.set("popup", { y: 0, height: 800 });
+    rects.set("footer", { y: 200, height: 80 });
+    render(<DockProvider><Surface id="popup"><DialogFooter data-testid="footer">完成</DialogFooter></Surface></DockProvider>);
+    const dock = currentDock();
+    expect(dock).toEqual({ bottom: 12, maxHeight: 496 });
+    expect(800 - dock.bottom - dock.maxHeight).toBe(280 + 12);
+  });
+
+  it("falls back above the footer when the visible viewport leaves too little space below it", async () => {
+    const viewport = Object.assign(new EventTarget(), { offsetTop: 100, height: 500 });
+    vi.stubGlobal("visualViewport", viewport);
+    rects.set("popup", { y: 0, height: 800 });
+    rects.set("footer", { y: 200, height: 80 });
+    render(<DockProvider><Surface id="popup"><DialogFooter data-testid="footer">完成</DialogFooter></Surface></DockProvider>);
+    expect(currentDock()).toEqual({ bottom: 212, maxHeight: 296 });
+    viewport.height = 250;
+    act(() => { viewport.dispatchEvent(new Event("resize")); });
+    await waitFor(() => expect(currentDock()).toEqual({ bottom: 612, maxHeight: 76 }));
+  });
+
+  it.each([48, 57.1875])("shrinks the upper gaps and bounds feedback inside %s px of visible space", space => {
+    const top = 11.1875;
+    rects.set("popup", { y: top, height: 257.625 });
+    rects.set("footer", { y: top + space, height: 257.625 - space });
+    render(<DockProvider><Surface id="popup"><DialogFooter data-testid="footer">完成</DialogFooter></Surface></DockProvider>);
+    const dock = currentDock();
+    const gap = Math.max(0, (space - 48) / 2);
+    expect(dock.maxHeight).toBe(Math.min(space, 48));
+    expect(800 - dock.bottom - dock.maxHeight).toBe(top + gap);
+    expect(800 - dock.bottom).toBe(top + space - gap);
+  });
+
+  it.each([-24, 0, 10, 40])("uses the visual viewport when only %s px remains above a covering footer", async space => {
+    const viewport = Object.assign(new EventTarget(), { offsetTop: 100, height: 500 });
+    vi.stubGlobal("visualViewport", viewport);
+    rects.set("popup", { y: 100, height: 500 });
+    rects.set("footer", { y: 100 + space, height: 500 - space });
+    render(<DockProvider><Surface id="popup"><DialogFooter data-testid="footer">完成</DialogFooter></Surface></DockProvider>);
+    expect(currentDock()).toEqual({ bottom: 212, maxHeight: 476 });
+    viewport.offsetTop = 150;
+    viewport.height = 20;
+    act(() => { viewport.dispatchEvent(new Event("resize")); });
+    await waitFor(() => expect(currentDock()).toEqual({ bottom: 630, maxHeight: 20 }));
+    viewport.offsetTop = 100;
+    viewport.height = 500;
+    rects.set("footer", { y: 520, height: 80 });
+    act(() => { viewport.dispatchEvent(new Event("resize")); });
+    await waitFor(() => expect(currentDock()).toEqual({ bottom: 292, maxHeight: 396 }));
   });
 
   it("keeps feedback in view while an independent footer scrolls into view", async () => {
@@ -146,7 +197,7 @@ describe("foreground toast footer docking", () => {
     </Surface></DockProvider></StrictMode>);
     expect(objectRef.current).toBe(screen.getByTestId("footer"));
     expect(callbackRef).toHaveBeenLastCalledWith(expect.any(HTMLDivElement));
-    expect(currentDock().bottom).toBe(212);
+    expect(currentDock()).toEqual({ bottom: 12, maxHeight: 76 });
     const cleanupCalls = cleanup.mock.calls.length;
     rendered.unmount();
     expect(objectRef.current).toBeNull();

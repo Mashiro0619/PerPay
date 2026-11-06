@@ -57,9 +57,25 @@ function createDockRegistry(update: (dock: ToastDock | null) => void) {
       // A footer outside its scroll window starts reserving space as it enters view.
       const barTop = selected.rect.bottom <= top ? bottom : Math.min(selected.rect.top, bottom);
       const gap = Math.max(8, (Number.parseFloat(getComputedStyle(document.documentElement).fontSize) || 16) * 0.75);
+      const spaceBelowFooter = bottom - Math.max(selected.rect.bottom, top) - 2 * gap;
+      if (spaceBelowFooter >= 48) {
+        update({ bottom: Math.max(gap, window.innerHeight - bottom + gap), maxHeight: spaceBelowFooter });
+        return;
+      }
+      const spaceAboveFooter = Math.max(0, barTop - top);
+      if (spaceAboveFooter < 48) {
+        const visibleHeight = Math.max(1, viewportBottom - viewportTop);
+        const viewportGap = Math.min(gap, Math.max(0, (visibleHeight - 48) / 2));
+        update({
+          bottom: Math.max(0, window.innerHeight - viewportBottom + viewportGap),
+          maxHeight: visibleHeight - 2 * viewportGap,
+        });
+        return;
+      }
+      const upperGap = Math.min(gap, Math.max(0, (spaceAboveFooter - 48) / 2));
       update({
-        bottom: Math.max(gap, window.innerHeight - barTop + gap),
-        maxHeight: Math.max(48, barTop - top - 2 * gap),
+        bottom: Math.max(upperGap, window.innerHeight - Math.max(barTop, top) + upperGap),
+        maxHeight: spaceAboveFooter - 2 * upperGap,
       });
     };
     const schedule = () => {
