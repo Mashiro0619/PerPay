@@ -554,6 +554,9 @@ describe("automatic official update checks", () => {
   ] as const)(
     "keeps an update %s failure non-blocking and never silently retries (%s seconds)",
     async (failure, retryAfter, waitText) => {
+      // Navigation must not consume part of the exact initial Retry-After value.
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-10-31T03:00:00Z"));
       const view = mount((request) =>
         isUpdate(request)
           ? failure === "network"
@@ -603,6 +606,36 @@ describe("automatic official update checks", () => {
       ).toHaveLength(1);
     },
   );
+
+  it("enables a manual retry exactly after a 301-second failure deadline without submitting it automatically", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-31T03:00:00Z"));
+    const view = mountPanel(() => json(
+      { error: { code: "update_check_unavailable", message: "更新检查失败" } },
+      503,
+      { "Retry-After": "301" },
+    ));
+    await advance(0);
+    const button = screen.getByRole("button", { name: "检查更新" });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAccessibleDescription("请至少等待 301 秒后重试。");
+    expect(view.fetchMock).toHaveBeenCalledTimes(1);
+
+    await advance(300_999);
+    expect(button).toBeDisabled();
+    expect(button).toHaveAccessibleDescription("请至少等待 1 秒后重试。");
+    act(() => fireEvent.click(button));
+    expect(view.fetchMock).toHaveBeenCalledTimes(1);
+    await advance(1);
+    expect(button).toBeEnabled();
+    expect(view.fetchMock).toHaveBeenCalledTimes(1);
+
+    act(() => fireEvent.click(button));
+    await advance(0);
+    expect(view.fetchMock).toHaveBeenCalledTimes(2);
+    expect(button).toBeDisabled();
+    expect(button).toHaveAccessibleDescription("请至少等待 301 秒后重试。");
+  });
 
   it("clears pending checks on session expiry and never restores their old result", async () => {
     let finish!: (response: Response) => void;

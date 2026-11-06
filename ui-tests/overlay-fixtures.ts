@@ -20,7 +20,7 @@ export async function openRecord(page: Page, manifest: Manifest, path: string) {
 
 export async function expectOverlayFits(page: Page) {
   await settleOverlay(page);
-  const geometry = await page.locator("[data-overlay-content]").evaluate(element => {
+  const measureGeometry = () => page.locator("[data-overlay-content]").evaluate(element => {
     const rect = element.getBoundingClientRect();
     const visible = window.visualViewport;
     const viewport = { left: visible?.offsetLeft ?? 0, top: visible?.offsetTop ?? 0,
@@ -34,16 +34,22 @@ export async function expectOverlayFits(page: Page) {
       footer: footer?.getBoundingClientRect().toJSON(),
       documentOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1 };
   });
-  expect(geometry.documentOverflow).toBe(false);
-  expect(geometry.rect.left).toBeGreaterThanOrEqual(geometry.viewport.left - 1);
-  expect(geometry.rect.top).toBeGreaterThanOrEqual(geometry.viewport.top - 1);
-  expect(geometry.rect.right).toBeLessThanOrEqual(geometry.viewport.left + geometry.viewport.width + 1);
-  expect(geometry.rect.bottom).toBeLessThanOrEqual(geometry.viewport.top + geometry.viewport.height + 1);
-  if (page.viewportSize()!.width < 768) {
-    expect(Math.abs(geometry.rect.width - geometry.viewport.width)).toBeLessThanOrEqual(1);
-    expect(Math.abs(geometry.rect.height - geometry.viewport.height)).toBeLessThanOrEqual(1);
-  }
-  expect(geometry.scrolling).toHaveLength(geometry.scrolling.length ? 1 : 0);
-  if (geometry.footer?.height) expect(geometry.footer.bottom).toBeLessThanOrEqual(geometry.rect.bottom + 1);
+  // Advancing the mocked clock does not settle native viewport rendering.
+  // Retry a complete snapshot so resize reflow keeps the same geometry limits.
+  let geometry!: Awaited<ReturnType<typeof measureGeometry>>;
+  await expect(async () => {
+    geometry = await measureGeometry();
+    expect(geometry.documentOverflow).toBe(false);
+    expect(geometry.rect.left).toBeGreaterThanOrEqual(geometry.viewport.left - 1);
+    expect(geometry.rect.top).toBeGreaterThanOrEqual(geometry.viewport.top - 1);
+    expect(geometry.rect.right).toBeLessThanOrEqual(geometry.viewport.left + geometry.viewport.width + 1);
+    expect(geometry.rect.bottom).toBeLessThanOrEqual(geometry.viewport.top + geometry.viewport.height + 1);
+    if (page.viewportSize()!.width < 768) {
+      expect(Math.abs(geometry.rect.width - geometry.viewport.width)).toBeLessThanOrEqual(1);
+      expect(Math.abs(geometry.rect.height - geometry.viewport.height)).toBeLessThanOrEqual(1);
+    }
+    expect(geometry.scrolling).toHaveLength(geometry.scrolling.length ? 1 : 0);
+    if (geometry.footer?.height) expect(geometry.footer.bottom).toBeLessThanOrEqual(geometry.rect.bottom + 1);
+  }).toPass({ timeout: 10_000 });
   return geometry;
 }

@@ -408,6 +408,25 @@ test("only the focused tab announces a release and ignore changes synchronize", 
     return update("1.1.0", epoch);
   } } });
   const other = await page.context().newPage();
+  const foreground = async (active: Page, inactive: Page) => {
+    // Headless Chromium may report every page focused. Model only those browser
+    // signals while retaining real storage events, Web Locks and HTTP requests.
+    for (const [target, focused] of [[inactive, false], [active, true]] as const) {
+      if (focused) await target.bringToFront();
+      await target.evaluate(focused => {
+        Object.defineProperties(document, {
+          visibilityState: { configurable: true, value: focused ? "visible" : "hidden" },
+          hidden: { configurable: true, value: !focused },
+        });
+        document.hasFocus = () => focused;
+        window.dispatchEvent(new Event(focused ? "focus" : "blur"));
+        document.dispatchEvent(new Event("visibilitychange"));
+      }, focused);
+    }
+    await expect.poll(async () => Promise.all([active, inactive].map(target => target.evaluate(() => ({
+      focused: document.hasFocus(), visibility: document.visibilityState, hidden: document.hidden,
+    }))))).toEqual([{ focused: true, visibility: "visible", hidden: false }, { focused: false, visibility: "hidden", hidden: true }]);
+  };
   try {
     await page.context().addInitScript(() => {
       if (localStorage.getItem("perpay:update-preferences") === null)
@@ -415,13 +434,13 @@ test("only the focused tab announces a release and ignore changes synchronize", 
     });
     await open(page, fixture);
     await other.goto(fixture.origin + "/admin/system");
-    await other.bringToFront();
+    await foreground(other, page);
     await panel(other).getByRole("switch", { name: "自动检查更新", exact: true }).click();
     await expect(dialog(other)).toBeVisible();
     await expect(dialog(page)).toHaveCount(0);
     await dialog(other).getByRole("button", { name: "忽略此版本", exact: true }).click();
     await expect(dialog(other)).not.toBeVisible();
-    await page.bringToFront();
+    await foreground(page, other);
     const restore = panel(page).getByRole("button", { name: "恢复此通道更新提醒", exact: true });
     await expect(restore).toBeVisible();
     await expect.poll(() => checks).toBeGreaterThanOrEqual(2);
@@ -439,7 +458,7 @@ test("only the focused tab announces a release and ignore changes synchronize", 
     await expect(updateIndicator(other)).toBeVisible();
     await expect(panel(other)).not.toContainText("（已忽略）");
     await expect(dialog(page)).toHaveCount(0);
-    await other.bringToFront();
+    await foreground(other, page);
     await expect(dialog(other)).toHaveCount(0);
     await panel(other).getByRole("button", { name: "检查更新", exact: true }).click();
     await acknowledge(other);
