@@ -226,6 +226,7 @@ for (const width of [1440, 390]) {
       await expect.poll(() => [...before].every(([path, count]) => failures.get(path)! > count)).toBe(true);
       await page.clock.runFor(1500);
       await expect(notice).toHaveCount(1);
+      await expect(retry).toBeEnabled();
       outage = false;
       await retry.click();
       await expect(notice).toHaveCount(0);
