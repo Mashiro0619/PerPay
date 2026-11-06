@@ -37,13 +37,15 @@
 
 技术栈：**Node.js 24 · TypeScript · Hono · SQLite · React · Vite · shadcn/ui**。
 
+当前源码对应 `1.0.0-rc.2`，发布状态与可部署镜像以实际 Release 为准。[RC2 发布说明](docs/releases/v1.0.0-rc.2.md)
+
 ## 界面预览
 
 | 一级：全部网站 | 二级：网站后台 |
 | --- | --- |
 | ![全部网站汇总](docs/screenshots/dashboard-light.png) | ![网站后台](docs/screenshots/workspace-site.png) |
 
-截图均为本地只读合成数据。创建业务网站时填写名称并选择收款账号，其他设置按需配置，见[多网站管理](docs/multi-site.md)。
+截图均为本地只读合成数据。创建业务网站时填写名称、选择收款账号，并可选填客户端 ID，之后可在接入设置中更换。详细步骤见[多网站管理](docs/multi-site.md)。
 
 ## 部署前准备
 

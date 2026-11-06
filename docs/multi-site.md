@@ -76,8 +76,9 @@ PerPay 支持多个自有业务网站与多个支付宝收款账号。本文说�
 
 | 接口 | 用途 |
 | --- | --- |
-| `GET/POST /api/admin/v1/sites` | 列表与创建；创建包含 UUID `operation_id` 和完整 `configuration` |
+| `GET/POST /api/admin/v1/sites` | 列表与创建，创建包含 UUID `operation_id`、完整 `configuration` 和可选 `client_id` |
 | `GET/PUT/DELETE /api/admin/v1/sites/:clientId` | 读取、完整更新、删除；写入携带网站 `revision` |
+| `POST .../sites/:clientId/actions/change-client-id` | 更换公开客户端 ID，携带 `operation_id`、当前 `revision` 和新的 `client_id`，路径使用稳定网站编号 |
 | `POST .../sites/:clientId/secrets/{api_secret,webhook_secret}/actions/rotate` | 生成或轮换；携带网站 `revision` |
 | `POST .../sites/:clientId/secrets/{api_secret,webhook_secret}/actions/view` | 显式查看；空 JSON `{}` |
 | `GET/PUT /api/admin/v1/settings/site-defaults` | 模板与独立模板 `revision` |
@@ -109,6 +110,7 @@ PerPay 支持多个自有业务网站与多个支付宝收款账号。本文说�
 `GET /api/admin/v1/sites/overview?range=30&limit=20&q=网站名称` 分页批量返回网站概览：
 `confirmed_count` 与 `confirmed_amount_cents` 是选定北京时间区间内的确认订单指标；
 `pending_orders` 和 `work_items` 是当前状态指标。网站游标绑定搜索和时间范围，不可跨条件复用。
+`q` 匹配网站名称或当前客户端 ID。
 全局总量取全局概览，不累加当前分页的网站行。
 
 示例（继续使用现有会话和 CSRF 保护，不使用商户 HMAC）：

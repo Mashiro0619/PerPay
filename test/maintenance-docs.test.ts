@@ -105,6 +105,15 @@ describe("maintenance documentation version contract", () => {
     assert.equal(Number(documented[2]), DATABASE_COMPATIBILITY.minimum);
     assert.equal(Number(documented[3]), DATABASE_COMPATIBILITY.maximum);
     assert.equal(latest, DATABASE_COMPATIBILITY.maximum);
+
+    const changelog = readFileSync(new URL("../CHANGELOG.md", import.meta.url), "utf8").replaceAll("\r\n", "\n");
+    const releaseSection = changelog.split(`## ${APP_VERSION}\n`)[1]?.split(/^## /m)[0];
+    assert.ok(releaseSection, "changelog must include the current release");
+    const changelogCompatibility = /本版使用 schema (\d+)，运行兼容范围为 (\d+)—(\d+)/.exec(releaseSection);
+    assert.ok(changelogCompatibility, "changelog must state the current schema and runtime compatibility");
+    assert.equal(Number(changelogCompatibility[1]), latest);
+    assert.equal(Number(changelogCompatibility[2]), DATABASE_COMPATIBILITY.minimum);
+    assert.equal(Number(changelogCompatibility[3]), DATABASE_COMPATIBILITY.maximum);
   });
 
   it("keeps the integration guide's schema reference aligned with the upgrade guide", () => {
