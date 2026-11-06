@@ -98,27 +98,30 @@ test.describe("overview metric reading access", () => {
       await route.fulfill({ json: { data: { ...body.data, daily } } });
     });
     await login(page, manifest);
-    for (const layout of [{ width: 320, height: 560, text: 200 }, { width: 640, height: 280, text: 150 }, { width: 390, height: 844, text: 100 }]) {
+    for (const font of ["system", "monospace"] as const) for (const layout of [{ width: 320, height: 560, text: 200 }, { width: 640, height: 280, text: 150 }, { width: 390, height: 844, text: 100 }]) {
       await page.setViewportSize(layout);
       await page.goto(manifest.origin + "/admin/");
       await page.evaluate(percent => document.documentElement.style.fontSize = percent + "%", layout.text);
       await page.clock.runFor(100);
       const amount = page.locator('[data-overview-kpis] [data-slot="card-title"]').first();
       await expect(amount).toHaveText("¥1,210.29");
+      if (font === "monospace") await amount.evaluate(element => { (element as HTMLElement).style.fontFamily = "monospace"; });
+      await page.evaluate(() => document.fonts.ready);
       const geometry = await amount.evaluate(element => {
         const range = document.createRange(); range.selectNodeContents(element);
         const bounds = element.getBoundingClientRect();
+        const style = getComputedStyle(element);
         return { width: element.clientWidth, scrollWidth: element.scrollWidth,
-          fontSize: parseFloat(getComputedStyle(element).fontSize),
+          fontSize: parseFloat(style.fontSize), fontFamily: style.fontFamily, fontWeight: style.fontWeight, letterSpacing: style.letterSpacing,
           lines: [...range.getClientRects()].filter(line => line.width && line.height).map(line => ({ left: line.left - bounds.left, right: line.right - bounds.left })) };
       });
+      await record(page, info, { feature: "ordinary-overview-amount-reflow", layout, font, geometry, syntheticMetricValues: true });
+      await screenshot(page, info, `ordinary-metric-${font}-${layout.width}-${layout.text}`);
       expect(geometry.lines).toHaveLength(1);
       expect(geometry.scrollWidth, "a normal amount is fully visible without additional scrolling").toBeLessThanOrEqual(geometry.width + 1);
       expect(geometry.lines[0]!.left).toBeGreaterThanOrEqual(-1);
       expect(geometry.lines[0]!.right).toBeLessThanOrEqual(geometry.width + 1);
       if (layout.text === 100) expect(geometry.fontSize, "ordinary phone values keep their established display size").toBe(24);
-      await record(page, info, { feature: "ordinary-overview-amount-reflow", layout, geometry, syntheticMetricValues: true });
-      await screenshot(page, info, `ordinary-metric-${layout.width}-${layout.text}`);
     }
   });
 });
