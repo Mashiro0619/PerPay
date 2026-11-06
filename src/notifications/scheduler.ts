@@ -118,10 +118,6 @@ export class WebhookScheduler {
           this.#state = "degraded";
           this.#lastErrorCode = "webhook_delivery_failed";
           this.#consecutiveFailures = previousConsecutiveFailures + 1;
-        } else if (counts.dead > 0) {
-          this.#state = "degraded";
-          this.#lastErrorCode = "webhook_delivery_failed";
-          this.#consecutiveFailures = Math.max(1, previousConsecutiveFailures);
         } else if (
           result.processed === 0 &&
           counts.pending > 0 &&

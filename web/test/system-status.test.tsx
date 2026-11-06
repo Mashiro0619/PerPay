@@ -192,6 +192,26 @@ describe("shared runtime presentation", () => {
     data.work_items = { total: 2, financial_exceptions: 1, ledger_conflicts: 0, notification_failures: 1 };
     expect(presentSystemStatus(data)).toMatchObject({ businessPending: true, runtimeWarning: false, notice: "有待处理提醒" });
   });
+  it("shows a recovered notification worker as normal when its historical failure is ignored", async () => {
+    const data = ready();
+    data.webhook = {
+      ...data.webhook,
+      enabled: true,
+      state: "healthy",
+      last_success_at: Date.parse("2026-11-07T00:11:17Z"),
+      last_error_code: null,
+      consecutive_failures: 0,
+      pending_deliveries: 0,
+      dead_letters: 1,
+    };
+    mountOnboarding({ stage: 4, path: "/system", status: () => data });
+    const runtime = within(await screen.findByRole("table", { name: "运行环节" }));
+    const notification = within(runtime.getByRole("rowheader", { name: "通知" }).closest("tr")!);
+    expect(notification.getByRole("cell", { name: "正常" })).toBeVisible();
+    expect(screen.getByText("运行正常")).toBeVisible();
+    expect(document.querySelector("[data-runtime-notice]")).toBeNull();
+    expect(screen.queryByText(/部分付款通知发送失败/)).not.toBeInTheDocument();
+  });
   it.each(["ledger", "reconciliation", "webhook"] as const)("does not hide an actual %s failure after all reminders are ignored", kind => {
     const data = ready();
     data.status = "degraded";

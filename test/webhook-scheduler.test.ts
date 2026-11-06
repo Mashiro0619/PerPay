@@ -69,7 +69,7 @@ describe("WebhookScheduler", () => {
     await scheduler.stop();
   });
 
-  it("degrades on delivery failures and clears the streak after a successful run", async () => {
+  it("degrades on delivery failures and recovers after success with historical dead letters", async () => {
     const results = [failedDelivery(), acknowledgedDelivery()];
     let index = 0;
     const scheduler = createScheduler({
@@ -78,6 +78,7 @@ describe("WebhookScheduler", () => {
           return results[index++] ?? noWork();
         },
       },
+      counts: { pending: 0, dead: 1 },
       maximumDeliveriesPerRun: 1,
       clock: sequenceClock(20_000, 20_001, 20_002),
     });
@@ -98,7 +99,7 @@ describe("WebhookScheduler", () => {
       lastErrorCode: "webhook_delivery_failed",
       consecutiveFailures: 1,
       pendingDeliveries: 0,
-      deadLetters: 0,
+      deadLetters: 1,
     });
 
     assert.deepEqual(await scheduler.trigger("recovered"), {
@@ -117,7 +118,7 @@ describe("WebhookScheduler", () => {
       lastErrorCode: null,
       consecutiveFailures: 0,
       pendingDeliveries: 0,
-      deadLetters: 0,
+      deadLetters: 1,
     });
     await scheduler.stop();
   });
@@ -152,24 +153,24 @@ describe("WebhookScheduler", () => {
     await scheduler.stop();
   });
 
-  it("keeps unresolved dead letters degraded without increasing the streak every poll", async () => {
-    const mutableCounts = { pending: 0, dead: 1 };
+  it("keeps historical dead letters in diagnostics while successful empty polls stay healthy", async () => {
     const scheduler = createScheduler({
       processor: { async processOne() { return noWork(); } },
-      counts: mutableCounts,
+      counts: { pending: 0, dead: 1 },
       clock: sequenceClock(26_000, 26_001, 26_002, 26_003),
     });
 
     await scheduler.trigger("dead_letter_poll");
-    assert.equal(scheduler.health().state, "degraded");
-    assert.equal(scheduler.health().lastErrorCode, "webhook_delivery_failed");
-    assert.equal(scheduler.health().consecutiveFailures, 1);
-    await scheduler.trigger("dead_letter_poll_again");
-    assert.equal(scheduler.health().consecutiveFailures, 1);
-
-    mutableCounts.dead = 0;
-    await scheduler.trigger("dead_letter_resolved");
     assert.equal(scheduler.health().state, "healthy");
+    assert.equal(scheduler.health().lastErrorCode, null);
+    assert.equal(scheduler.health().consecutiveFailures, 0);
+    assert.equal(scheduler.health().lastSuccessAt, 26_001);
+    assert.equal(scheduler.health().deadLetters, 1);
+    await scheduler.trigger("dead_letter_poll_again");
+    assert.equal(scheduler.health().state, "healthy");
+    assert.equal(scheduler.health().lastSuccessAt, 26_003);
+    assert.equal(scheduler.health().consecutiveFailures, 0);
+    assert.equal(scheduler.health().deadLetters, 1);
     await scheduler.stop();
   });
 

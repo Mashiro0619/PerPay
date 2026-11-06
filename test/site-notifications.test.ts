@@ -5,7 +5,9 @@ import { describe, it } from "node:test";
 import { LedgerStore } from "../src/ledger/store.ts";
 import { ReconciliationStore } from "../src/reconciliation/store.ts";
 import { WebhookStore } from "../src/notifications/store.ts";
+import { WebhookScheduler } from "../src/notifications/scheduler.ts";
 import { SiteWebhookProcessor } from "../src/notifications/site-processor.ts";
+import { adminWorkItemSummary, ignoreAllAdminWorkItems, restoreAdminWorkItem } from "../src/http/admin-work-items.ts";
 import { WebhookTransportError } from "../src/notifications/transport.ts";
 import { webhookSignature } from "../src/notifications/model.ts";
 import { createOrderRequestSchema } from "../src/orders/model.ts";
@@ -47,6 +49,72 @@ function networkFailure(): never {
 }
 
 describe("website notification processing", () => {
+  it("recovers after successful deliveries while keeping an ignored historical failure in the store", async () => {
+    const f = await createSitePaymentFixture();
+    const webhooks = new WebhookStore(f.database);
+    let failDelivery = true;
+    const processor = new SiteWebhookProcessor({
+      sites: f.sites, webhooks, clock: f.now,
+      transport: () => ({
+        async post(input) {
+          if (failDelivery) {
+            throw new WebhookTransportError({ code: "target_address_forbidden", message: "controlled terminal failure", retryable: false });
+          }
+          const body = Buffer.from(JSON.stringify({
+            schema: "perpay:webhook-ack:v1", ack: true,
+            event_id: input.headers["x-perpay-webhook-event-id"],
+            delivery_id: input.headers["x-perpay-webhook-delivery-id"],
+          }));
+          return {
+            status: 200, contentType: "application/json", contentEncoding: null, body,
+            responseFingerprint: createHash("sha256").update(body).digest("hex"),
+            resolvedAddressesFingerprint: "a".repeat(64), connectedAddress: "8.8.8.8",
+          };
+        },
+      }),
+    });
+    const scheduler = new WebhookScheduler({ service: processor, store: webhooks, clock: f.now });
+    try {
+      const site = configure(f, "Recovery");
+      createEvent(f, site.clientId, "https://recovery.example.com/notify");
+      assert.equal((await scheduler.trigger("test_failure")).failed, 1);
+      assert.equal(scheduler.health().state, "degraded");
+      assert.equal(adminWorkItemSummary(f.database).notification_failures, 1);
+      const failed = webhooks.listDeliveries({ status: "DEAD_LETTER", limit: 10, cursor: null }).deliveries[0]!;
+      ignoreAllAdminWorkItems(f.database, { operation_id: randomUUID(), type: "NOTIFICATION_FAILURE" }, { actorId: "admin", now: f.now() });
+      assert.equal(adminWorkItemSummary(f.database).total, 0);
+
+      failDelivery = false;
+      for (let index = 0; index < 2; index++) {
+        createEvent(f, site.clientId, "https://recovery.example.com/notify");
+        const run = await scheduler.trigger("later_success");
+        assert.equal(run.acknowledged, 1);
+        assert.equal(run.failed, 0);
+        const health = scheduler.health();
+        assert.equal(health.state, "healthy");
+        assert.equal(health.lastSuccessAt, f.now());
+        assert.equal(health.lastErrorCode, null);
+        assert.equal(health.consecutiveFailures, 0);
+        assert.equal(health.deadLetters, 1);
+      }
+      await scheduler.trigger("idle_poll");
+      assert.equal(scheduler.health().state, "healthy");
+      assert.equal(adminWorkItemSummary(f.database).total, 0);
+      assert.equal(webhooks.delivery(failed.delivery.deliveryId)!.delivery.status, "DEAD_LETTER");
+
+      restoreAdminWorkItem(f.database, {
+        operation_id: randomUUID(), type: "NOTIFICATION_FAILURE", resource_id: failed.delivery.deliveryId,
+      }, { actorId: "admin", now: f.now() });
+      assert.equal(adminWorkItemSummary(f.database).notification_failures, 1);
+      await scheduler.trigger("restored_reminder");
+      assert.equal(scheduler.health().state, "healthy");
+      assert.equal(f.database.integrityCheck().ok, true);
+    } finally {
+      await scheduler.stop();
+      f.close();
+    }
+  });
+
   it("retries an initial HTTP 401 only after backoff and acknowledges the same delivery on its second attempt", async () => {
     const f = await createSitePaymentFixture();
     try {
