@@ -415,11 +415,14 @@ if (phase === "final") {
     } finally {
       await selectedType.evaluate(element => element.lastChild!.remove());
     }
+    const originalTextFill = await targetOrders.evaluate(element => getComputedStyle(element).getPropertyValue("-webkit-text-fill-color"));
     await targetOrders.evaluate(element => (element as HTMLElement).style.setProperty("-webkit-text-fill-color", "transparent"));
     try {
+      await expect(targetOrders).toHaveCSS("-webkit-text-fill-color", "rgba(0, 0, 0, 0)");
       expect((await targetOrders.evaluate(measureSelectionContrast))?.conflicts).toContain("unverified text paint");
     } finally {
       await targetOrders.evaluate(element => (element as HTMLElement).style.removeProperty("-webkit-text-fill-color"));
+      await expect(targetOrders).toHaveCSS("-webkit-text-fill-color", originalTextFill);
     }
     const typeIcon = selectedType.locator(":scope > svg");
     await typeIcon.evaluate(element => (element as SVGElement).style.overflow = "visible");
