@@ -37,7 +37,7 @@
 
 技术栈：**Node.js 24 · TypeScript · Hono · SQLite · React · Vite · shadcn/ui**。
 
-当前源码对应 `1.0.0-rc.2`，发布状态与可部署镜像以实际 Release 为准。[RC2 发布说明](docs/releases/v1.0.0-rc.2.md)
+当前源码对应 `1.0.0-rc.3`，发布状态与可部署镜像以实际 Release 为准。[RC3 发布说明](docs/releases/v1.0.0-rc.3.md)
 
 ## 界面预览
 

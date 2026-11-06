@@ -115,6 +115,7 @@ const recordedSchemaMaximum = [
   ["1.0.0-alpha.2", 36],
   ["1.0.0-rc.1", 38],
   ["1.0.0-rc.2", 40],
+  ["1.0.0-rc.3", 40],
 ];
 
 for (const [version, schemaMaximum] of recordedSchemaMaximum) {
