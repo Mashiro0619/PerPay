@@ -3,6 +3,8 @@ import {
   AlipayProviderError,
   NodeV3Transport,
   type V3Transport,
+  type AlipayLedgerProviderOptions,
+  type LedgerProvider,
 } from "../infrastructure/alipay/index.ts";
 import { isProductionProvider, PRODUCTION_PROVIDER_REQUIRED_MESSAGE, type ProviderSettings } from "./model.ts";
 import { SettingsError } from "./store.ts";
@@ -24,6 +26,7 @@ export async function verifyProviderApplicationKey(
   dependencies: {
     readonly transport?: V3Transport;
     readonly clock?: () => number;
+    readonly createProvider?: (options: AlipayLedgerProviderOptions) => LedgerProvider;
   } = {},
 ): Promise<void> {
   if (!isProductionProvider(provider)) {
@@ -35,7 +38,7 @@ export async function verifyProviderApplicationKey(
     AbortSignal.timeout(timeoutMilliseconds),
     ...(options.signal ? [options.signal] : []),
   ]);
-  const client = new AlipayLedgerProvider({
+  const providerOptions: AlipayLedgerProviderOptions = {
     appId: provider.appId,
     privateKey: provider.privateKey,
     alipayPublicKey: provider.publicKey,
@@ -45,7 +48,10 @@ export async function verifyProviderApplicationKey(
     timeoutMilliseconds,
     pageSize: 1,
     clock,
-  });
+  };
+  const client = dependencies.createProvider
+    ? dependencies.createProvider(providerOptions)
+    : new AlipayLedgerProvider(providerOptions);
   // Query a small recent window, allowing for the same provider clock lag as normal collection.
   const end =
     Math.floor((clock() - provider.safetyLagMilliseconds) / 1_000) * 1_000;

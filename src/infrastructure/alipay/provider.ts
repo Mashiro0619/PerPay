@@ -151,7 +151,8 @@ export class AlipayLedgerProvider implements LedgerProvider {
 
 }
 
-function parseAccountLogPage(
+/** Shared parsing boundary for provider adapters and their contract tests. */
+export function parseAccountLogPage(
   value: unknown,
   input: AccountLogPageRequest,
   verified: ReturnType<typeof verifyV3Response>,
@@ -338,7 +339,7 @@ function rejectUnsupportedRepresentations(
   }
 }
 
-function validatePageRequest(input: AccountLogPageRequest, defaultPageSize: number): void {
+export function validatePageRequest(input: AccountLogPageRequest, defaultPageSize: number): void {
   validateWindow(input.startTime, input.endTime);
   if (!Number.isSafeInteger(input.pageNo) || input.pageNo < 1) {
     throw paginationError("pageNo must be a positive integer");
@@ -363,7 +364,7 @@ function validateWindow(startTime: string, endTime: string): void {
   if (startTime >= endTime) throw paginationError("startTime must be earlier than endTime");
 }
 
-function validateRawResponse(response: RawV3Response): RawV3Response {
+export function validateRawResponse(response: RawV3Response): RawV3Response {
   if (!response || !Number.isInteger(response.status) || response.status < 100 || response.status > 599) {
     throw new AlipayProviderError({
       kind: "invalid_response",
