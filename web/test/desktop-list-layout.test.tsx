@@ -50,7 +50,7 @@ const lists = [
     path: "/orders",
     element: <Orders />,
     data: [longOrder],
-    hiddenColumn: "PerPay 确认时间",
+    hiddenColumn: "确认时间",
     summaryFields: ["状态", "创建时间"],
     centeredColumns: ["payable_amount_cents", "received_amount_cents", "status", "created_at", "payment_confirmed_at"],
   },

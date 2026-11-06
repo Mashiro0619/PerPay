@@ -28,6 +28,7 @@ import {
   CardTitle,
   CardContent,
   CardAction,
+  CardDescription,
 } from "@/components/ui/card";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 
@@ -122,6 +123,8 @@ function DashboardContent() {
         : null
       : state?.work_items?.total
     : null;
+  const workEmpty = workTotal === 0 && work.isSuccess && !work.isPlaceholderData &&
+    !work.isPaused && work.data.data.length === 0;
   return (
     <div
       className="flex w-full min-w-0 flex-col gap-4"
@@ -180,15 +183,16 @@ function DashboardContent() {
         />
       </div>
       {!clientId && <SiteOverviewList range={range} />}
-      <div className="overview-records">
+      <div className="overview-records" data-work-empty={workEmpty || undefined}>
         <Card size="sm" className="overview-record-panel overview-work-panel" role="region" aria-labelledby="overview-work-title">
           <CardHeader className="overview-records-header">
             <CardTitle id="overview-work-title" role="heading" aria-level={2} aria-label={clientId ? "本站待处理" : "全部待处理"} className="flex items-center gap-2">
               {clientId ? "本站待处理" : "全部待处理"}
-              <Badge variant={workTotal != null && workTotal > 0 ? "warning" : "secondary"} aria-label={workTotal == null ? "待处理总数未知" : `共 ${workTotal} 条提醒待处理`}>
+              {!workEmpty && <Badge variant={workTotal != null && workTotal > 0 ? "warning" : "secondary"} aria-label={workTotal == null ? "待处理总数未知" : `共 ${workTotal} 条提醒待处理`}>
                 {workTotal ?? "—"}
-              </Badge>
+              </Badge>}
             </CardTitle>
+            {workEmpty && <CardDescription>暂无待处理提醒</CardDescription>}
             <CardAction>
               <Link
                 to={"/work-items"}
@@ -199,11 +203,11 @@ function DashboardContent() {
               </Link>
             </CardAction>
           </CardHeader>
-          <CardContent className="overview-records-content">
+          {!workEmpty && <CardContent className="overview-records-content">
             <QueryView query={work} loading={<OverviewRecordsLoading count={4} />}>
               {(page) => <OverviewWorkItems items={page.data} />}
             </QueryView>
-          </CardContent>
+          </CardContent>}
         </Card>
         <div className="overview-orders-container">
           <Card size="sm" className="overview-record-panel overview-orders-panel" role="region" aria-labelledby="overview-orders-title">

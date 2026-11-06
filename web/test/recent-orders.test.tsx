@@ -122,7 +122,7 @@ describe("overview order progress", () => {
 
     resize(768);
     expect(screen.getAllByRole("columnheader")).toHaveLength(4);
-    expect(screen.getByRole("table").querySelector('tbody [data-column-id="created_at"]')).toContainElement(screen.getByText("PerPay 确认"));
+    expect(screen.getByRole("table").querySelector('tbody [data-column-id="created_at"]')).toContainElement(screen.getByText("确认", { exact: true }));
     expect(view.container.querySelectorAll("time")).toHaveLength(2);
 
     resize(1024);

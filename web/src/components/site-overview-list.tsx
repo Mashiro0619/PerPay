@@ -124,7 +124,7 @@ export function SiteOverviewList({ range }: { range: 7 | 30 | 90 }) {
             <Info aria-hidden="true" />
           </PopoverTrigger>
           <PopoverContent align="start" className="flex flex-col gap-2">
-            <p>实收按北京时间的 PerPay 确认时间统计，未扣退款和费用；包含尚未结束的今天。</p>
+            <p>实收按北京时间的确认时间统计，未扣退款和费用；包含尚未结束的今天。</p>
             {latest && <p>统计区间：<time dateTime={latest.period.from}>{latest.period.from}</time> 至 <time dateTime={latest.period.to}>{latest.period.to}</time>。</p>}
             <p>横条以全站本期最高实收为基准，含暂停接单网站，不受分页影响。</p>
           </PopoverContent>

@@ -127,7 +127,7 @@ export function ChartAreaInteractive({
                     className="flex flex-col gap-3"
                   >
                     <p className="text-sm">
-                      按北京时间统计：订单按创建时间，收款按 PerPay 确认时间。
+                      按北京时间统计：订单按创建时间，收款按确认时间。
                     </p>
                     <p className="text-sm">
                       确认金额不是支付宝账单合计，未扣退款和费用，非净结算收入。确认笔数按确认次数计，不等于当前已确认订单数。

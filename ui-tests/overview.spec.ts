@@ -3,6 +3,64 @@ import { audit, screenshot } from "./audit";
 import { MIN_TOUCH_TARGET_SIZE } from "./touch-targets";
 import type { AdminWorkItem } from "../web/src/api/generated/types.gen";
 
+test("empty reminders stay compact and give recent orders the full dashboard width", async ({ page, manifest }, info) => {
+  await page.route("**/api/admin/v1/system/status", async route => {
+    const body = await (await route.fetch()).json();
+    body.data.work_items = { total: 0, financial_exceptions: 0, ledger_conflicts: 0, notification_failures: 0 };
+    await route.fulfill({ json: body });
+  });
+  await page.route("**/api/admin/v1/work-items?*", route => route.fulfill({ json: { data: [], page: { next_cursor: null } } }));
+  await page.route("**/api/admin/v1/sites/overview?*", async route => {
+    const body = await (await route.fetch()).json();
+    await route.fulfill({ json: {
+      ...body,
+      data: body.data.slice(0, 2).map((site: Record<string, unknown>) => ({ ...site, work_items: 0 })),
+      page: { next_cursor: null },
+    } });
+  });
+  await login(page, manifest);
+  for (const width of [320, 390, 1440, 1920]) for (const theme of ["light", "dark"]) {
+    await page.setViewportSize({ width, height: 1100 });
+    await page.evaluate(theme => localStorage.setItem("perpay:theme", theme), theme);
+    await page.goto(manifest.origin + "/admin/");
+    const work = page.getByRole("region", { name: "全部待处理", exact: true });
+    const orders = page.getByRole("region", { name: "最近订单", exact: true });
+    await expect(page.locator(".overview-records")).toHaveAttribute("data-work-empty", "true");
+    await expect(work.getByText("暂无待处理提醒")).toBeVisible();
+    await expect(work.getByRole("link", { name: "查看全部" })).toBeVisible();
+    await expect(orders.locator('[data-business-row]')).toHaveCount(5);
+    await expect(page.locator(".site-overview-grid > li")).toHaveCount(2);
+    const geometry = await page.evaluate(() => {
+      const records = document.querySelector(".overview-records")!.getBoundingClientRect();
+      const work = document.querySelector(".overview-work-panel")!.getBoundingClientRect();
+      const orders = document.querySelector(".overview-orders-panel")!.getBoundingClientRect();
+      const grid = document.querySelector(".site-overview-grid")!.getBoundingClientRect();
+      const cards = [...document.querySelectorAll(".site-overview-grid > li")].map(element => element.getBoundingClientRect());
+      return {
+        recordsWidth: records.width, workHeight: work.height, ordersWidth: orders.width,
+        ordersBelowWork: orders.top >= work.bottom,
+        sitesFillRow: Math.abs(cards.at(-1)!.right - grid.right) < 1,
+        clipped: document.documentElement.scrollWidth > innerWidth,
+      };
+    });
+    expect(geometry.ordersWidth).toBe(geometry.recordsWidth);
+    expect(geometry.ordersBelowWork).toBe(true);
+    expect(geometry.workHeight).toBeLessThan(width < 768 ? 100 : 72);
+    expect(geometry.sitesFillRow).toBe(true);
+    expect(geometry.clipped).toBe(false);
+    await expect(orders.getByText("PerPay 确认", { exact: true })).toHaveCount(0);
+    if (width >= 1440) {
+      await expect(orders.getByRole("columnheader", { name: "收款状态", exact: true })).toBeVisible();
+      await expect(orders.getByRole("columnheader", { name: "通知状态", exact: true })).toBeVisible();
+      await expect(orders.getByText("确认", { exact: true }).first()).toBeVisible();
+    }
+    await page.locator(".site-overview-section").scrollIntoViewIfNeeded();
+    await record(page, info, { width, theme, emptyWorkLayout: geometry });
+    await screenshot(page, info, `overview-empty-${width}-${theme}`);
+    await page.locator(".overview-records").screenshot({ path: info.outputPath(`overview-records-${width}-${theme}.png`) });
+  }
+});
+
 test.describe("touch overview links", () => {
   test.use({ hasTouch: true, isMobile: true });
   test("keeps independent reminder links reachable at 320 and 390 pixels", async ({ page, manifest }, info) => {

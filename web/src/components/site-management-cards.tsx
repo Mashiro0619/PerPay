@@ -50,7 +50,7 @@ export function SiteManagementCards() {
           <Popover>
             <PopoverTrigger render={<Button variant="ghost" size="icon-sm" className="shrink-0" aria-label="网站经营指标说明" />}><Info /></PopoverTrigger>
             <PopoverContent align="start" className="flex flex-col gap-2">
-              <p>实收按北京时间的 PerPay 确认时间统计，未扣退款和费用；今天尚未结束。</p>
+              <p>实收按北京时间的确认时间统计，未扣退款和费用；今天尚未结束。</p>
               {latest && <p>统计区间：<time dateTime={latest.period.from}>{latest.period.from}</time> 至 <time dateTime={latest.period.to}>{latest.period.to}</time>。</p>}
               <p>待处理为当前数量。打开网站概况可查看确认笔数、待付款和通知状态。</p>
             </PopoverContent>

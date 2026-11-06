@@ -57,7 +57,10 @@ describe("website-scoped dashboard cards", () => {
     expect(href("待处理").pathname).toContain("/sites/site_a/");
     await act(async () => { await view.router.navigate("/sites/site_b"); });
     await waitFor(() => expect(card("待处理").getByRole("link")).toHaveTextContent("0"));
-    expect(screen.getByLabelText("共 0 条提醒待处理")).toHaveTextContent("0");
+    const work = screen.getByRole("region", { name: "本站待处理" });
+    expect(within(work).getByText("暂无待处理提醒")).toBeVisible();
+    expect(work.parentElement).toHaveAttribute("data-work-empty", "true");
+    expect(within(work).queryByLabelText("共 0 条提醒待处理")).not.toBeInTheDocument();
     expect(href("待处理").pathname).toContain("/sites/site_b/");
     await act(async () => { await view.router.navigate("/"); });
     await waitFor(() => expect(card("待处理").getByRole("link")).toHaveTextContent("77"));
@@ -97,6 +100,22 @@ describe("website-scoped dashboard cards", () => {
     await screen.findByText("刷新失败");
     expect(card("待处理").getByRole("link")).toHaveTextContent("—");
     expect(screen.getByLabelText("待处理总数未知")).toHaveTextContent("—");
+  });
+
+  it("expands the compact empty reminder panel when refreshing its list fails", async () => {
+    let fail = false;
+    mount(async () => json({ data: { total: 0 } }), async kind =>
+      fail && kind === "work-items"
+        ? json({ error: { code: "internal_error", message: "提醒刷新失败" } }, 500)
+        : json({ data: [], page: { next_cursor: null } }));
+    const work = await screen.findByRole("region", { name: "本站待处理" });
+    await waitFor(() => expect(work.parentElement).toHaveAttribute("data-work-empty", "true"));
+    expect(work.querySelector('[data-slot="card-content"]')).toBeNull();
+    fail = true;
+    await act(async () => { await queryClient.invalidateQueries({ queryKey: ["work-items", "recent", "site_a"] }); });
+    expect(await within(work).findByText("提醒刷新失败")).toBeVisible();
+    expect(work.parentElement).not.toHaveAttribute("data-work-empty");
+    expect(within(work).getByRole("button", { name: "重试" })).toBeVisible();
   });
 
   it("requests prioritized reminders and keeps order and notification progress visible after a failed refresh", async () => {
