@@ -41,7 +41,15 @@ export function Dialog({ presentation = "auto", ...props }: ComponentProps<typeo
     return () => registerNested?.(id, false);
   }, [id, nested, registerNested, state.root.open]);
   return <StepDialogContext value={step}><RetainDialogContext value={state.requestedOpen}>
-    <DialogUI.Dialog {...props} {...state.root} {...(step ? { modal: false } : {})} />
+    <DialogUI.Dialog {...props} {...state.root} {...(step ? { modal: false } : {})} onOpenChange={(open, event) => {
+      const target = event.reason === "focus-out" && event.event instanceof FocusEvent ? event.event.relatedTarget : event.event.target;
+      const outsideInteraction = event.reason === "outside-press" || event.reason === "focus-out";
+      if (step && !open && outsideInteraction && target instanceof Element && target.closest('[data-slot="toast-viewport"]')) {
+        event.cancel();
+        return;
+      }
+      state.root.onOpenChange(open, event);
+    }} />
   </RetainDialogContext></StepDialogContext>;
 }
 export function AlertDialog(props: ComponentProps<typeof AlertUI.AlertDialog>) {
@@ -55,7 +63,7 @@ export function AlertDialog(props: ComponentProps<typeof AlertUI.AlertDialog>) {
   return <RetainDialogContext value={state.requestedOpen}><AlertUI.AlertDialog {...props} {...state.root} /></RetainDialogContext>;
 }
 const content = "flex max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-[calc(100%-2rem)] flex-col overflow-hidden";
-function DialogScroll({ children, scrollRef }: { children: ReactNode; scrollRef?: RefObject<HTMLDivElement | null> }) {
+function DialogScroll({ children, scrollRef, step = false }: { children: ReactNode; scrollRef?: RefObject<HTMLDivElement | null>; step?: boolean }) {
   const localRef = useRef<HTMLDivElement>(null);
   const element = scrollRef ?? localRef;
   const [scrollable, setScrollable] = useState(false);
@@ -74,44 +82,11 @@ function DialogScroll({ children, scrollRef }: { children: ReactNode; scrollRef?
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(scroll);
-    for (const child of scroll.children) observer.observe(child);
+    for (const child of scroll.querySelectorAll(":scope > *, :scope > form > *")) observer.observe(child);
     return () => observer.disconnect();
   }, [children]);
-  return <div ref={element} tabIndex={scrollable ? 0 : -1} data-admin-dialog-scroll data-scrollable={scrollable}>{children}</div>;
-}
-function stepScrollRegion(layout: HTMLElement | null) {
-  return layout?.querySelector<HTMLElement>(
-    ':scope > [data-admin-dialog-body], :scope > [data-slot="field-group"], :scope > .overflow-auto, ' +
-    ':scope > form > [data-admin-dialog-body], :scope > form > [data-slot="field-group"], :scope > form > .overflow-auto',
-  ) ?? null;
-}
-/** Keep the existing form/body/footer nodes while restoring a keyboard reading entry. */
-function StepDialogLayout({ children, layoutRef }: { children: ReactNode; layoutRef: RefObject<HTMLDivElement | null> }) {
-  useLayoutEffect(() => {
-    const layout = layoutRef.current;
-    const scroll = stepScrollRegion(layout);
-    if (!layout || !scroll) return;
-    const priorTabIndex = scroll.getAttribute("tabindex");
-    scroll.setAttribute("data-overlay-step-scroll", "");
-    const measure = () => {
-      const scrollable = scroll.scrollHeight > scroll.clientHeight + 1;
-      scroll.dataset.scrollable = String(scrollable);
-      scroll.tabIndex = scrollable ? 0 : -1;
-    };
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(layout);
-    observer.observe(scroll);
-    for (const child of scroll.children) observer.observe(child);
-    return () => {
-      observer.disconnect();
-      scroll.removeAttribute("data-overlay-step-scroll");
-      scroll.removeAttribute("data-scrollable");
-      if (priorTabIndex === null) scroll.removeAttribute("tabindex");
-      else scroll.setAttribute("tabindex", priorTabIndex);
-    };
-  }, [children, layoutRef]);
-  return <div ref={layoutRef} data-overlay-step-layout>{children}</div>;
+  return <div ref={element} tabIndex={scrollable ? 0 : -1} data-admin-dialog-scroll
+    data-overlay-step-scroll={step || undefined} data-scrollable={scrollable}>{children}</div>;
 }
 export function DialogContent({ className, kind = "form", size, children, initialFocus, ...props }: ComponentProps<typeof DialogUI.DialogContent> & { kind?: "form" | "technical" | "detail"; size?: OverlaySize }) {
   const keepMounted = useContext(RetainDialogContext);
@@ -154,7 +129,7 @@ export function DialogContent({ className, kind = "form", size, children, initia
     });
     return false;
   } : props.finalFocus} initialFocus={openType => {
-    const scroll = step ? stepScrollRegion(scrollRef.current) : scrollRef.current;
+    const scroll = scrollRef.current;
     if (initialFocus === undefined && scroll && scroll.scrollHeight > scroll.clientHeight + 1) return scroll;
     if (typeof initialFocus === "function") return initialFocus(openType);
     if (initialFocus && typeof initialFocus === "object") return initialFocus.current;
@@ -163,9 +138,8 @@ export function DialogContent({ className, kind = "form", size, children, initia
     hidden: switching || stepHidden || props.portalProps?.hidden, inert: switching || stepHidden || props.portalProps?.inert }} data-admin-dialog={kind} data-overlay-step={step ? step.id : undefined}
     className={cn(className, step ? "flex min-h-0 max-h-full w-full flex-1 flex-col overflow-hidden" : content,
       !step && (kind === "detail" ? detailClass : "max-md:translate-x-0 max-md:translate-y-0 " + (kind === "technical" ? "sm:max-w-3xl" : "sm:max-w-xl")))}>
-    <LocalRequestNotices>{kind === "detail" || (kind === "technical" && !step) ? children : step
-      ? <StepDialogLayout layoutRef={scrollRef}>{children}</StepDialogLayout>
-      : <DialogScroll scrollRef={scrollRef}>{children}</DialogScroll>}</LocalRequestNotices>
+    <LocalRequestNotices>{kind === "detail" || (kind === "technical" && !step) ? children
+      : <DialogScroll scrollRef={scrollRef} step={!!step}>{children}</DialogScroll>}</LocalRequestNotices>
   </DialogUI.DialogContent>;
 }
 export function AlertDialogContent({ className, initialFocus, children, ...props }: ComponentProps<typeof AlertUI.AlertDialogContent>) {

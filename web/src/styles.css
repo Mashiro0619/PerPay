@@ -1480,25 +1480,13 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 [data-technical-dialog] [data-detail-fields] dt { font-size: 0.8125rem; }
 [data-overlay-step-host] > [data-slot="dialog-portal"]:not([hidden]) { display: contents; }
 [data-overlay-step] { max-height: 100%; max-width: 100%; overflow: visible; }
-[data-overlay-step-layout] {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-height: 0;
-  min-width: 0;
-  gap: var(--overlay-chrome-space, 1rem);
-  overflow: visible;
-}
-[data-overlay-step-layout] > form { display: contents; }
-[data-overlay-step-layout] :is([data-slot="dialog-header"], [data-slot="dialog-footer"]) { flex-shrink: 0; }
-[data-overlay-step-layout] > :is([data-admin-dialog-body], [data-slot="field-group"], .overflow-auto),
-[data-overlay-step-layout] > form > :is([data-admin-dialog-body], [data-slot="field-group"], .overflow-auto) {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-}
-[data-overlay-step-layout] [data-slot="dialog-footer"] { margin: 0; padding: var(--overlay-chrome-space, 1rem); border-radius: 0; }
+[data-overlay-step]:has(> [data-overlay-step-scroll][data-scrollable="true"]):has(> [data-slot="dialog-close"]) { padding-top: calc(max(40px, 1.75rem) + var(--overlay-chrome-space, 1rem)); }
+[data-overlay-step] > [data-slot="dialog-close"] { top: 4px; right: 0; }
+[data-overlay-step-scroll] { margin-block: 0; }
+[data-overlay-step-scroll] > form { display: contents; }
+[data-overlay-step-scroll] [data-slot="dialog-header"] { min-height: 2rem; padding-right: 3rem; }
+[data-overlay-step-scroll] > form > :is([data-admin-dialog-body], [data-slot="field-group"], .overflow-auto) { overflow: visible; }
+[data-overlay-step-scroll] [data-slot="dialog-footer"] { margin: 0; padding: var(--overlay-chrome-space, 1rem); border-radius: 0; }
 [data-overlay-viewport="sheet"]:has(> :is([data-list-filter-scroll], [data-list-display-scroll])) { overflow: clip; }
 @media (pointer: coarse) {
   /* Keep the close touch slot separate from adjacent scrolling controls. */

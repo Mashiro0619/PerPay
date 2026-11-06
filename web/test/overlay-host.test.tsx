@@ -20,6 +20,7 @@ import { PageHeaderActions, PageHeaderActionsProvider, PageHeaderActionsSlot } f
 import { Dialog, DialogContent, DialogHeader, DialogBody, DialogFooter, DialogTitle, AlertDialog, AlertDialogContent, AlertDialogTitle, AlertDialogCancel } from "../src/components/admin-dialog";
 import { useWorkspace } from "../src/workspace";
 import { TechnicalDetails } from "../src/components/detail/DetailPrimitives";
+import { Toaster, createToastManager } from "../src/components/ui/toast";
 
 let mounts = 0;
 const parentFailure = new Error("父页面读取失败");
@@ -113,12 +114,13 @@ const detailRoutes = <>
   <Route path="/sites/:clientId/orders/:orderId" element={<Detail />} />
 </>;
 
-function mount(entries: NonNullable<Parameters<typeof createMemoryRouter>[1]>["initialEntries"] = ["/orders"], initialIndex?: number) {
+function mount(entries: NonNullable<Parameters<typeof createMemoryRouter>[1]>["initialEntries"] = ["/orders"], initialIndex?: number, toastManager?: ReturnType<typeof createToastManager>) {
   const router = createMemoryRouter([{ element: <RequestNoticeProvider><PageHeaderActionsProvider><DraftProvider><OverlayProvider><div data-testid="parent-actions"><PageHeaderActionsSlot /></div><div data-testid="parent-banner"><RequestNoticeBanner /></div><Outlet /><OverlayHost routes={detailRoutes} /></OverlayProvider></DraftProvider></PageHeaderActionsProvider></RequestNoticeProvider>, children: [
     { path: "/orders", element: <ListPage /> }, { path: "/notifications", element: <ListPage /> },
     { path: "/orders/:orderId", element: <LegacyOverlayRedirect /> }, { path: "/outside", element: <div>外部来源</div> },
   ] }], { initialEntries: entries, ...(initialIndex !== undefined ? { initialIndex } : {}) });
-  const rendered = render(<QueryClientProvider client={queryClient}><RouterProvider router={router} /></QueryClientProvider>);
+  const application = <QueryClientProvider client={queryClient}><RouterProvider router={router} /></QueryClientProvider>;
+  const rendered = render(toastManager ? <Toaster toastManager={toastManager}>{application}</Toaster> : application);
   return { router, ...rendered };
 }
 
@@ -421,7 +423,7 @@ describe("one routed detail surface", () => {
     const save = within(step).getByRole("button", { name: "保存步骤" }) as HTMLButtonElement;
     const input = within(step).getByLabelText("内部步骤理由") as HTMLInputElement;
     expect(save.form).toBe(input.form);
-    expect(save.closest("[data-overlay-step-layout]")).not.toBeNull();
+    expect(save.closest("[data-overlay-step-scroll]")).not.toBeNull();
     await user.click(save);
     expect(within(step).getByLabelText("已保存理由")).toHaveTextContent("固定理由");
     await user.click(within(step).getByRole("button", { name: "关闭对话框" }));
@@ -429,13 +431,13 @@ describe("one routed detail surface", () => {
     await waitFor(() => expect(trigger).toHaveFocus());
   });
 
-  it("keeps a keyboard reading entry on the existing step body and restores its default footer trigger", async () => {
+  it("keeps a keyboard reading entry around the complete step form and restores its default footer trigger", async () => {
     let availableHeight = 120;
     vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockImplementation(function (this: HTMLElement) {
-      return this.hasAttribute("data-admin-dialog-body") ? availableHeight : 0;
+      return this.hasAttribute("data-overlay-step-scroll") ? availableHeight : 0;
     });
     vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockImplementation(function (this: HTMLElement) {
-      return this.hasAttribute("data-admin-dialog-body") ? 400 : 0;
+      return this.hasAttribute("data-overlay-step-scroll") ? 400 : 0;
     });
     const measures = new Set<() => void>();
     vi.stubGlobal("ResizeObserver", class {
@@ -450,12 +452,13 @@ describe("one routed detail surface", () => {
     const trigger = within(detail).getByRole("button", { name: "编辑内部步骤" });
     await user.click(trigger);
     const step = await screen.findByRole("dialog", { name: "编辑内部步骤" });
-    const scroll = step.querySelector<HTMLElement>("[data-admin-dialog-body]")!;
+    const scroll = step.querySelector<HTMLElement>("[data-overlay-step-scroll]")!;
     expect(scroll).toHaveAttribute("data-overlay-step-scroll");
     expect(scroll).toHaveAttribute("data-scrollable", "true");
     expect(scroll).toHaveAttribute("tabindex", "0");
     await waitFor(() => expect(scroll).toHaveFocus());
-    expect(within(step).getByRole("button", { name: "保存步骤" }).closest("form")).toBe(scroll.closest("form"));
+    expect(within(step).getByRole("button", { name: "保存步骤" }).closest("form"))
+      .toBe(within(step).getByLabelText("内部步骤理由").closest("form"));
     availableHeight = 800;
     act(() => { for (const measure of measures) measure(); });
     expect(scroll).toHaveAttribute("data-scrollable", "false");
@@ -468,6 +471,37 @@ describe("one routed detail surface", () => {
     await user.keyboard("{Escape}");
     await waitFor(() => expect(detail.querySelector("[data-overlay-primary]")).toBeVisible());
     await waitFor(() => expect(trigger).toHaveFocus());
+  });
+
+  it("dismisses toast feedback while preserving the active step and its draft", async () => {
+    const manager = createToastManager();
+    mount(undefined, undefined, manager);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("link", { name: "打开记录" }));
+    const detail = await screen.findByRole("dialog", { name: "记录 order-1" });
+    const trigger = within(detail).getByRole("button", { name: "编辑内部步骤" });
+    await user.click(trigger);
+    const step = await screen.findByRole("dialog", { name: "编辑内部步骤" });
+    await user.type(within(step).getByLabelText("内部步骤理由"), "保留步骤草稿");
+    act(() => { manager.add({ title: "步骤内操作反馈", timeout: 0 }); });
+    await user.keyboard("{F6}");
+    await waitFor(() => expect(screen.getByRole("region", { name: "提示" })).toHaveFocus());
+    expect(step).toBeVisible();
+    await user.hover(await screen.findByText("步骤内操作反馈"));
+    await user.click(await screen.findByRole("button", { name: "关闭提示" }));
+    await waitFor(() => expect(screen.queryByText("步骤内操作反馈")).not.toBeInTheDocument());
+    expect(step).toBeVisible();
+    expect(within(step).getByLabelText("内部步骤理由")).toHaveValue("保留步骤草稿");
+    await user.click(within(step).getByLabelText("内部步骤理由"));
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(step).not.toBeInTheDocument());
+    await waitFor(() => expect(trigger).toHaveFocus());
+
+    await user.click(trigger);
+    const reopened = await screen.findByRole("dialog", { name: "编辑内部步骤" });
+    await user.click(detail.parentElement!.querySelector<HTMLElement>('[data-slot="dialog-overlay"]')!);
+    await waitFor(() => expect(reopened).not.toBeInTheDocument());
+    expect(detail).toBeVisible();
   });
 
   it("gives a cross-scope detail its actual params and resource provider while leaving the parent global", async () => {
