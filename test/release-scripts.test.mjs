@@ -313,7 +313,7 @@ test("release builds, scans, verifies, and publishes fixed and latest images", (
   assert.doesNotMatch(checkVersionText, /image tag=.*does not match package\.json/u);
 });
 
-test("daily CI keeps bounded Linux checks and a separate Chromium regression job", () => {
+test("daily CI keeps bounded Linux checks and complete independent Chromium shards", () => {
   const workflow = parse(ciWorkflowText);
   assert.deepEqual(Object.keys(workflow.jobs), ["check", "ui"]);
   assert.equal(workflow.jobs.check["runs-on"], "ubuntu-24.04");
@@ -325,13 +325,19 @@ test("daily CI keeps bounded Linux checks and a separate Chromium regression job
     "npm audit --audit-level=high",
   ]);
   assert.doesNotMatch(ciWorkflowText, /windows|docker build|trivy|compose up/iu);
+  assert.equal(workflow.jobs.ui.name, "UI ${{ matrix.shard }}/3");
   assert.equal(workflow.jobs.ui["runs-on"], "ubuntu-24.04");
   assert.equal(workflow.jobs.ui["timeout-minutes"], 25);
+  assert.equal(workflow.jobs.ui.strategy["fail-fast"], false);
+  assert.deepEqual(workflow.jobs.ui.strategy.matrix, { shard: [1, 2, 3] });
+  assert.equal(workflow.jobs.ui["continue-on-error"], undefined);
   assert.deepEqual(workflow.jobs.ui.steps.map(step => step.run).filter(Boolean), [
-    "npm ci --ignore-scripts", "npx playwright install --with-deps chromium", "npm run build", "npm run test:ui -- --project core --workers=2",
+    "npm ci --ignore-scripts", "npx playwright install --with-deps chromium", "npm run build",
+    "npm run test:ui -- --project core --workers=2 --shard=${{ matrix.shard }}/3",
   ]);
   const artifact = workflow.jobs.ui.steps.find(step => step.uses?.startsWith("actions/upload-artifact@"));
   assert.equal(artifact.if, "failure() || cancelled()");
+  assert.equal(artifact.with.name, "ui-evidence-${{ matrix.shard }}-${{ github.run_attempt }}");
   assert.equal(artifact.with.path, ".ui-audit/runs/");
   assert.equal(artifact.with["include-hidden-files"], true);
 });

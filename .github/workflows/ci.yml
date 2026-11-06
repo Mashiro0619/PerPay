@@ -39,8 +39,13 @@ jobs:
         run: npm audit --audit-level=high
 
   ui:
+    name: UI ${{ matrix.shard }}/3
     runs-on: ubuntu-24.04
     timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -52,11 +57,11 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npx playwright install --with-deps chromium
       - run: npm run build
-      - run: npm run test:ui -- --project core --workers=2
+      - run: npm run test:ui -- --project core --workers=2 --shard=${{ matrix.shard }}/3
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: failure() || cancelled()
         with:
-          name: ui-evidence
+          name: ui-evidence-${{ matrix.shard }}-${{ github.run_attempt }}
           path: .ui-audit/runs/
           include-hidden-files: true
           retention-days: 7
