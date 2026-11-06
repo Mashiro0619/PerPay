@@ -1,0 +1,13 @@
+{
+  "name": "perpay-alipay-sdk-validation",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --experimental-strip-types --test *.test.mjs"
+  },
+  "dependencies": {
+    "alipay-sdk": "4.14.0",
+    "urllib": "4.9.0"
+  }
+}
