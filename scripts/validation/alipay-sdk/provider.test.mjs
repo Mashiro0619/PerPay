@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
+import { createHash, createPrivateKey, createPublicKey } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -14,7 +14,12 @@ import { LedgerStore } from '../../../src/ledger/store.ts';
 import { parseProviderKeys } from '../../../src/settings/model.ts';
 import { verifyProviderApplicationKey } from '../../../src/settings/provider-key-verification.ts';
 import { createFixture } from './fixture.mjs';
-import { SdkLedgerProvider } from './provider.mjs';
+import { SdkAlipayLedgerProvider } from '../../../src/infrastructure/alipay/sdk-provider.ts';
+import { SdkLedgerProvider as PrototypeProvider } from './provider.mjs';
+
+const SdkLedgerProvider = process.env.PERPAY_SDK_PROTOTYPE === 'true'
+  ? PrototypeProvider
+  : SdkAlipayLedgerProvider;
 
 const NOW = Date.parse('2026-11-07T12:00:00+08:00');
 const input = { startTime: '2026-11-07 11:00:00', endTime: '2026-11-07 12:00:00', pageNo: 1, pageSize: 1 };
@@ -251,6 +256,18 @@ test('certificate identity must be present and match when configured', { timeout
   await rejected(candidate.queryPage(input), 'response_certificate_mismatch', false);
   f.enqueue(f.signedResponse(page, { 'alipay-sn': 'expected' }));
   assert.equal((await candidate.queryPage(input)).rawResponse.signatureVerified, true);
+});
+
+test('PKCS1 and KeyObject inputs use the same SDK signing identity', { timeout: 10000 }, async t => {
+  const f = await fixture(t);
+  const privateKey = createPrivateKey(f.sdkConfig.privateKey);
+  const publicKey = createPublicKey(f.sdkConfig.alipayPublicKey);
+  for (const key of [privateKey, privateKey.export({ type: 'pkcs1', format: 'pem' }).toString()]) {
+    f.enqueue(f.signedResponse(page));
+    const result = await provider(f, { privateKey: key, alipayPublicKey: publicKey }).queryPage(input);
+    assert.equal(result.rawResponse.signatureVerified, true);
+  }
+  assert.ok(f.requests.every(request => request.signatureValid));
 });
 
 test('SDK verifies a full 2000-entry page through dispatcher backpressure', { timeout: 10000 }, async t => {

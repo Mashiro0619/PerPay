@@ -7,7 +7,7 @@ import type { LedgerManualScanRequest, LedgerManualScanStatus, LedgerManualScanU
 import { ledgerScanGate } from "../ledger/scan-gate.ts";
 import type { AppDatabase } from "../database/database.ts";
 import {
-  AlipayLedgerProvider,
+  SdkAlipayLedgerProvider,
   DEFAULT_ACCOUNT_LOG_PAGE_SIZE,
   NodeV3Transport,
 } from "../infrastructure/alipay/index.ts";
@@ -671,7 +671,7 @@ export class RuntimeController {
       clock: this.#clock,
     });
     const getIntervalMilliseconds = () => cadence.current().intervalMilliseconds;
-    const provider = new AlipayLedgerProvider({
+    const provider = new SdkAlipayLedgerProvider({
       appId: providerSettings.appId,
       privateKey: providerSettings.privateKey,
       alipayPublicKey: providerSettings.publicKey,

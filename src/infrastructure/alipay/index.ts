@@ -5,3 +5,4 @@ export * from "./v3.ts";
 export * from "./provider.ts";
 export * from "./fake.ts";
 export * from "./node-transport.ts";
+export * from "./sdk-provider.ts";

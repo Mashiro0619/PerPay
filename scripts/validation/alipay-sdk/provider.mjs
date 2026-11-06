@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// Isolated candidate. Production still constructs AlipayLedgerProvider.
+// Phase-one reference adapter for comparison with the production SDK provider.
 import { createPrivateKey, createPublicKey, KeyObject, randomUUID } from 'node:crypto';
 import { AlipaySdk } from 'alipay-sdk';
 import { parseStrictJson } from '../../../src/http/strict-json.ts';

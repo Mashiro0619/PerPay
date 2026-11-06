@@ -1,5 +1,5 @@
 import {
-  AlipayLedgerProvider,
+  SdkAlipayLedgerProvider,
   AlipayProviderError,
   NodeV3Transport,
   type V3Transport,
@@ -51,7 +51,7 @@ export async function verifyProviderApplicationKey(
   };
   const client = dependencies.createProvider
     ? dependencies.createProvider(providerOptions)
-    : new AlipayLedgerProvider(providerOptions);
+    : new SdkAlipayLedgerProvider(providerOptions);
   // Query a small recent window, allowing for the same provider clock lag as normal collection.
   const end =
     Math.floor((clock() - provider.safetyLagMilliseconds) / 1_000) * 1_000;

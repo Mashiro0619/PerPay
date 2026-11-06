@@ -6,7 +6,7 @@ import { join, resolve } from "node:path";
 import { it } from "node:test";
 
 import { createApp } from "../src/http/app.ts";
-import { AlipayLedgerProvider } from "../src/infrastructure/alipay/provider.ts";
+import { SdkAlipayLedgerProvider } from "../src/infrastructure/alipay/sdk-provider.ts";
 import { LedgerStore } from "../src/ledger/store.ts";
 import { WebhookStore } from "../src/notifications/store.ts";
 import { ReconciliationStore } from "../src/reconciliation/store.ts";
@@ -22,7 +22,7 @@ it("blocks readiness and new payments until an actual provider scan succeeds", a
   const reconciliation = new ReconciliationStore(services.database);
   const webhooks = new WebhookStore(services.database);
   let now = ledger.activeProviderIdentity()!.activatedAt;
-  const provider = context.mock.method(AlipayLedgerProvider.prototype, "queryPage", async (input: Parameters<AlipayLedgerProvider["queryPage"]>[0]) => ({
+  const provider = context.mock.method(SdkAlipayLedgerProvider.prototype, "queryPage", async (input: Parameters<SdkAlipayLedgerProvider["queryPage"]>[0]) => ({
     pageNo: 1, pageSize: input.pageSize, totalSize: 0, hasMore: false, details: [], traceId: "first-scan-test",
     rawResponse: { status: 200, headers: {}, body: "{\"total_size\":0}", traceId: "first-scan-test", signatureVerified: true },
   }));
@@ -84,7 +84,7 @@ it("counts a slow successful scan against collection freshness before accepting 
   let now = Date.now() + 30_000;
   const startedAt = now;
   let slow = true;
-  context.mock.method(AlipayLedgerProvider.prototype, "queryPage", async (input: Parameters<AlipayLedgerProvider["queryPage"]>[0]) => {
+  context.mock.method(SdkAlipayLedgerProvider.prototype, "queryPage", async (input: Parameters<SdkAlipayLedgerProvider["queryPage"]>[0]) => {
     if (slow) { now += 90_000; slow = false; }
     return {
       pageNo: 1, pageSize: input.pageSize, totalSize: 0, hasMore: false, details: [], traceId: "slow-scan-test",

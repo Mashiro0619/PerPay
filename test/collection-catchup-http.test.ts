@@ -9,7 +9,7 @@ import { it } from "node:test";
 import { AppDatabase } from "../src/database/database.ts";
 import { createApp } from "../src/http/app.ts";
 import { IdentityService } from "../src/identity/service.ts";
-import { AlipayLedgerProvider } from "../src/infrastructure/alipay/provider.ts";
+import { SdkAlipayLedgerProvider } from "../src/infrastructure/alipay/sdk-provider.ts";
 import type { AccountLogPage } from "../src/infrastructure/alipay/types.ts";
 import { parseOccurredAt } from "../src/ledger/model.ts";
 import { LedgerIngestService } from "../src/ledger/service.ts";
@@ -43,7 +43,7 @@ it("keeps readiness and both payment entry points closed until a restarted scann
     }
     return originalExec.call(this, sql);
   });
-  const emptyPage = async (input: Parameters<AlipayLedgerProvider["queryPage"]>[0]): Promise<AccountLogPage> => ({
+  const emptyPage = async (input: Parameters<SdkAlipayLedgerProvider["queryPage"]>[0]): Promise<AccountLogPage> => ({
     pageNo: 1, pageSize: input.pageSize, totalSize: 0, hasMore: false, details: [], traceId: "catchup-http-test",
     rawResponse: { status: 200, headers: {}, body: "{\"total_size\":0}", traceId: "catchup-http-test", signatureVerified: true },
   });
@@ -79,7 +79,7 @@ it("keeps readiness and both payment entry points closed until a restarted scann
     const webhooks = new WebhookStore(database);
     const now = Date.now();
     let requests = 0;
-    context.mock.method(AlipayLedgerProvider.prototype, "queryPage", async (input: Parameters<AlipayLedgerProvider["queryPage"]>[0]) => {
+    context.mock.method(SdkAlipayLedgerProvider.prototype, "queryPage", async (input: Parameters<SdkAlipayLedgerProvider["queryPage"]>[0]) => {
       if (++requests > 1) await scansPaused;
       return emptyPage(input);
     });

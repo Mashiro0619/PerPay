@@ -72,6 +72,7 @@ export async function createFixture(options = {}) {
       body: bytes,
       headers: {
         'content-type': 'application/json; charset=utf-8',
+        date: new Date(clock()).toUTCString(),
         'alipay-timestamp': timestamp,
         'alipay-nonce': nonce,
         'alipay-trace-id': `synthetic-${randomUUID()}`,

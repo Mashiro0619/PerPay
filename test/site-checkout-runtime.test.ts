@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { setImmediate } from "node:timers/promises";
 import { it } from "node:test";
 import { createApp } from "../src/http/app.ts";
-import { AlipayLedgerProvider } from "../src/infrastructure/alipay/provider.ts";
+import { SdkAlipayLedgerProvider } from "../src/infrastructure/alipay/sdk-provider.ts";
 import { LedgerStore } from "../src/ledger/store.ts";
 import { WebhookStore } from "../src/notifications/store.ts";
 import { ReconciliationStore } from "../src/reconciliation/store.ts";
@@ -29,8 +29,8 @@ it("merges HTTP checks from different websites into one protected scan and await
       minimum_scan_interval_seconds: 5, safety_lag_seconds: 10, maximum_success_age_seconds: 120 }, { actorId: "admin" });
     f.setNow(f.now() + 30_000);
     t.mock.timers.enable({ apis: ["setTimeout"] });
-    const queries: { at: number; request: Parameters<AlipayLedgerProvider["queryPage"]>[0] }[] = [];
-    t.mock.method(AlipayLedgerProvider.prototype, "queryPage", async (request: Parameters<AlipayLedgerProvider["queryPage"]>[0]) => {
+    const queries: { at: number; request: Parameters<SdkAlipayLedgerProvider["queryPage"]>[0] }[] = [];
+    t.mock.method(SdkAlipayLedgerProvider.prototype, "queryPage", async (request: Parameters<SdkAlipayLedgerProvider["queryPage"]>[0]) => {
       queries.push({ at: f.now(), request });
       if (queries.length === 2) await scan.promise;
       return { pageNo: 1, pageSize: request.pageSize, totalSize: 0, hasMore: false, details: [], traceId: "multi-site-test",
