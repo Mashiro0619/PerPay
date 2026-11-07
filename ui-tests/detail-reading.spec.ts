@@ -74,9 +74,11 @@ async function openDetail(page: Page, manifest: Manifest, key: string) {
   await expandCredentials(detailBody(page));
 }
 async function expandCredentials(owner: Locator) {
-  for (const trigger of await owner.locator('[data-detail-credentials] button[aria-expanded="false"]').all()) {
-    await trigger.click();
-    await expect(trigger).toHaveAttribute("aria-expanded", "true");
+  for (const trigger of await owner.locator('[data-detail-credentials] button[aria-expanded]').all()) {
+    if (await trigger.getAttribute("aria-expanded") === "false") {
+      await trigger.click();
+      await expect(trigger).toHaveAttribute("aria-expanded", "true");
+    }
   }
 }
 async function fields(owner: Locator, names: readonly string[]) {
@@ -892,9 +894,10 @@ test("long products, complete identifiers and multiline details wrap without cli
     for (const scenario of scenarios) {
       await openDetail(page, manifest, scenario.key);
       if (scenario.kind === "ledger") await readDetailSection(page, "收款关联");
+      else if (scenario.kind === "notification") await readDetailSection(page, "关联订单");
       const orderOwner = scenario.kind === "ledger"
         ? detailSection(page, "payments").locator(`[data-ledger-match="${ledger.matches[0]!.payment_match_id}"]`)
-        : scenario.kind === "notification" ? detailSection(page, "overview").getByRole("group", { name: "关联订单", exact: true })
+        : scenario.kind === "notification" ? detailSection(page, "order").getByRole("group", { name: "关联订单", exact: true })
           : detailBody(page).getByRole("group", { name: "收款关联记录", exact: true });
       const factsOwner = scenario.kind === "ledger" ? detailSection(page, "transaction").locator("[data-ledger-summary]")
         : scenario.kind === "notification" ? detailSection(page, "overview").locator("[data-notification-information]")

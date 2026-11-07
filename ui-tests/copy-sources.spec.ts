@@ -193,7 +193,8 @@ test("overview and normal notifications label payable amounts and actual events 
     await row.locator("a[data-row-link]").click();
     const notificationOverlay = await settleOverlay(page);
     await expect(notificationOverlay.getByRole("group", { name: "通知信息", exact: true }).getByText("收款已确认", { exact: true })).toBeVisible();
-    const orderSummary = notificationOverlay.locator('[data-detail-section="overview"] [data-detail-order-summary]');
+    await revealDetailSection(page, "order");
+    const orderSummary = notificationOverlay.locator('[data-detail-section="order"] [data-detail-order-summary]');
     const merchantOrder = orderSummary.locator("dt").filter({ hasText: /^商户订单号（业务网站）$/ }).locator("..").locator("dd");
     await expect(merchantOrder.getByText(order.merchant_order_no, { exact: true })).toBeVisible();
     const detailPayable = orderSummary.locator("dt").filter({ hasText: /^应付金额$/ }).locator("..").locator("dd");

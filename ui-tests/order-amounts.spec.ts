@@ -10,6 +10,7 @@ test("mobile summaries and details retain accurate amounts across desktop column
   const order = (await response.json() as AdminOrderDetailEnvelope).data;
   expect(order.payable_amount_cents).toBeGreaterThan(0);
   expect(order.received_amount_cents).toBeGreaterThan(0);
+  expect(order.received_amount_cents).toBe(order.payable_amount_cents);
   const money = new Intl.NumberFormat("zh-CN", { style: "currency", currency: "CNY", minimumFractionDigits: 2 });
   const payable = money.format(order.payable_amount_cents / 100);
   const received = money.format(order.received_amount_cents! / 100);
@@ -17,10 +18,10 @@ test("mobile summaries and details retain accurate amounts across desktop column
   const row = page.locator('[data-business-row="' + order.order_id + '"]');
   const aside = row.locator(".list-summary-aside");
   const expectSummaryAmounts = async () => {
-    await expect(aside.getByText("应付金额", { exact: true })).toBeVisible();
-    await expect(aside.getByText("实收金额", { exact: true })).toBeVisible();
-    await expect(aside.getByRole("group", { name: "应付金额 " + payable, exact: true })).toHaveText(payable);
+    await expect(aside.getByText("实收", { exact: true })).toBeVisible();
+    await expect(aside.getByRole("group", { name: "应付金额 " + payable, exact: true })).toHaveCount(0);
     await expect(aside.getByRole("group", { name: "实收金额 " + received, exact: true })).toHaveText(received);
+    await expect(aside.locator(".list-money")).toHaveCount(1);
   };
   await expectSummaryAmounts();
   await page.getByRole("button", { name: "更多订单操作", exact: true }).click();
