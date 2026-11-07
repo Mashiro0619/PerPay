@@ -6,9 +6,9 @@ import {
   type AlipayAccount,
 } from "@/api/client";
 import { accountHealth, accountState } from "@/lib/alipay-accounts";
-import { dateTime } from "@/lib/format";
 import { manualScanActive } from "@/lib/manual-ledger-scan";
 import { AlipayAccountIdentity } from "@/components/alipay-account-identity";
+import { ListDateTime } from "@/components/list-primitives";
 import { ErrorNotice } from "@/components/request-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -38,25 +38,23 @@ export function AlipayAccountStatus({
           {accounts.map((account) => (
             <div
               key={account.id}
-              className="flex min-w-0 flex-wrap items-center gap-3 py-3 first:pt-0 last:pb-0"
+              className="flex min-w-0 flex-col gap-3 py-3 first:pt-0 last:pb-0"
+              data-account-runtime={account.id}
             >
-              <div className="flex min-w-0 flex-1 flex-col gap-1">
+              <div className="flex min-w-0 flex-wrap items-center justify-between gap-2" data-account-runtime-heading>
                 <AlipayAccountIdentity id={account.id} name={account.name} />
-                <p className="text-sm text-muted-foreground">
-                  {account.health?.last_success_at
-                    ? "最近成功查账：" +
-                      dateTime(account.health.last_success_at)
-                    : "尚无成功查账记录"}
-                </p>
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <Badge variant="outline">{accountState(account)}</Badge>
+                  <Badge variant={account.health?.last_error_code ? "destructive" : "outline"}>
+                    {accountHealth(account)}
+                  </Badge>
+                </div>
               </div>
-              <Badge variant="outline">{accountState(account)}</Badge>
-              <Badge
-                variant={
-                  account.health?.last_error_code ? "destructive" : "outline"
-                }
-              >
-                {accountHealth(account)}
-              </Badge>
+              <p className="text-sm text-muted-foreground" data-account-runtime-time>
+                {account.health?.last_success_at
+                  ? <>最近成功查账：<ListDateTime value={account.health.last_success_at} inline /></>
+                  : "尚无成功查账记录"}
+              </p>
               <AccountScan account={account} />
             </div>
           ))}
@@ -94,7 +92,7 @@ function AccountScan({ account }: { account: AlipayAccount }) {
       : serverRequest;
   const active = manualScanActive(request);
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="flex min-w-0 flex-wrap items-center gap-2" data-account-runtime-actions>
       <Button
         variant="outline"
         size="sm"
