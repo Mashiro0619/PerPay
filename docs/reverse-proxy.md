@@ -23,15 +23,24 @@ server {
 }
 ```
 
-将 Compose 顶部 `x-perpay-public-url` 设为 `https://pay.example.com`。通过服务器上的 Docker 网络检查及请求日志确认 PerPay 实际看到的直连来源；常见为桥接网关，例如 `172.18.0.1`，但不能照抄。仅在确认后，把 `x-perpay-trusted-proxy-cidrs` 设为该地址的 `/32`（IPv6 用 `/128`）。
+将 Compose 顶部 `x-perpay-public-url` 设为 `https://pay.example.com`。首次部署先创建应用容器和网络，此时应用尚未启动：
 
 ```sh
-docker network inspect perpay_default
+docker compose config --quiet
+docker compose create app
+docker network inspect perpay_default --format '{{range .IPAM.Config}}{{println .Gateway}}{{end}}'
+```
+
+输出是本项目的桥接网关。宿主机 Nginx 经回环端口访问容器时，直连来源通常是该网关；将实际输出填入 `x-perpay-trusted-proxy-cidrs`，IPv4 加 `/32`，IPv6 加 `/128`，多个地址用逗号分隔。然后启动服务：
+
+```sh
 nginx -t
 docker compose config --quiet
 docker compose up -d
 curl -fsS https://pay.example.com/healthz
 ```
+
+首次登录后，在 **系统设置 → 密钥与安全 → 管理员 IP 白名单** 点击“编辑”，查看“当前识别 IP”，应显示自己的客户端地址。如果仍显示 Docker 网关，核对 Nginx 的 `X-Forwarded-For` 和实际直连代理地址，修正后执行 `docker compose up -d app`。确认识别正确后再启用白名单。
 
 ## 同网络容器代理
 
