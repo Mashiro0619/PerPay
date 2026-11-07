@@ -109,11 +109,11 @@ function readAnalytics(
       SUM(CASE WHEN payment_status = 'CONFIRMED' THEN 1 ELSE 0 END) AS confirmed,
       SUM(CASE WHEN payment_status = 'DISPUTED' THEN 1 ELSE 0 END) AS disputed,
       SUM(CASE WHEN checkout_status = 'CLOSED' THEN 1 ELSE 0 END) AS closed,
-      SUM(CASE WHEN checkout_status = 'EXPIRED' THEN 1 ELSE 0 END) AS expired
+      SUM(CASE WHEN checkout_status = 'EXPIRED' OR (checkout_status = 'OPEN' AND expires_at <= ?) THEN 1 ELSE 0 END) AS expired
     FROM payment_orders
     WHERE created_at >= ? AND created_at < ?
       AND (? IS NULL OR api_client_id = ?)
-  `).get(start, end, clientId, clientId) as Record<string, number | bigint | null>;
+  `).get(now, start, end, clientId, clientId) as Record<string, number | bigint | null>;
 
   const confirmations = connection.prepare(`
     SELECT COUNT(*) AS count,

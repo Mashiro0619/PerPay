@@ -73,9 +73,9 @@ export class AlipayAccountStore {
       return row?this.#change(row):null;
     });
   }
-  assertProviderSwitchAllowed(id:string):void {
+  assertProviderSwitchAllowed(id:string,now=Date.now()):void {
     this.#database.read(db=>{
-      if(db.prepare("SELECT 1 FROM payment_orders WHERE alipay_account_id=? AND checkout_status='OPEN' AND payment_status='UNPAID' LIMIT 1").get(id)) {
+      if(db.prepare("SELECT 1 FROM payment_orders WHERE alipay_account_id=? AND checkout_status='OPEN' AND payment_status='UNPAID' AND expires_at>? LIMIT 1").get(id,now)) {
         throw new SettingsError("provider_switch_blocked","这个账号仍有未支付订单，请先处理这些订单再更换应用。");
       }
       if(db.prepare("SELECT 1 FROM ingest_runs AS run JOIN alipay_account_generations AS generation USING(provider_account_key) WHERE generation.account_id=? AND run.status='RUNNING' LIMIT 1").get(id)) {

@@ -73,6 +73,7 @@ describe("system analytics", () => {
           const result = systemAnalytics(database, 7, timestamp, clientId);
           assert.equal(result.pending.orders, pending);
           assert.equal(result.orders.unpaid, unpaid);
+          assert.equal(result.orders.expired, unpaid - pending);
         }
       }
       assert.deepEqual(connection.prepare("SELECT order_id, checkout_status FROM payment_orders ORDER BY order_id").all().map((row) => ({ ...row })), [

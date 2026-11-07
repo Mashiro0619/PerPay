@@ -15,6 +15,7 @@ import {
 
 export interface AlipayAccountServiceOptions {
   readonly store:AlipayAccountStore;
+  readonly clock?:()=>number;
   readonly onMutationStarted?:(accountId:string)=>void|Promise<void>;
   readonly onApplied?:(accountId:string)=>void|Promise<void>;
   readonly guardProviderSwitch?:(input:{current:AlipayAccountSnapshot;nextAppId:string|null;nextEndpoint:string})=>void|Promise<void>;
@@ -41,7 +42,7 @@ export class AlipayAccountService {
       assertProductionAlipayEnvironment(current.environment);
       return this.#apply(id,async()=>{
         if(current.providerAccountKey&&(current.appId!==parsed.app_id||current.environment!==parsed.environment||parsed.platform_public_key===null)) {
-          this.#store.assertProviderSwitchAllowed(id);
+          this.#store.assertProviderSwitchAllowed(id,this.#options.clock?.()??Date.now());
           await this.#options.guardProviderSwitch?.({current,nextAppId:parsed.app_id,nextEndpoint:providerEndpoint(parsed.environment)});
         }
         return this.#store.update(id,parsed.revision,parsed,audit);

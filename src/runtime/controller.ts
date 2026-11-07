@@ -362,6 +362,7 @@ export class RuntimeController {
     alipayAccountId?: string,
   ): void {
     if (!accountKey) return;
+    const now = safeNow(this.#clock());
     const counts = this.#database.read((connection) => {
       const row = connection.prepare(
         `SELECT
@@ -373,17 +374,19 @@ export class RuntimeController {
                 ON link.profile_id = orders.collection_profile_id
              WHERE link.provider_account_key = ?
                AND orders.checkout_status = 'OPEN'
+               AND orders.expires_at > ?
                AND orders.payment_status = 'UNPAID') AS open_orders,
-           (SELECT MAX(COALESCE(orders.closed_at, orders.expires_at))
+           -- EXPIRED.closed_at is the later materialization time, not the payment deadline.
+           (SELECT MAX(CASE WHEN orders.checkout_status = 'CLOSED' THEN orders.closed_at ELSE orders.expires_at END)
               FROM payment_orders AS orders
               JOIN collection_profile_provider_accounts AS link
                 ON link.profile_id = orders.collection_profile_id
              WHERE link.provider_account_key = ?
-               AND orders.checkout_status != 'OPEN'
+               AND (orders.checkout_status != 'OPEN' OR orders.expires_at <= ?)
                AND orders.payment_status = 'UNPAID') AS latest_ended_order_at,
            (SELECT COUNT(*) FROM ingest_runs
              WHERE provider_account_key = ? AND status = 'RUNNING') AS running_scans`,
-      ).get(accountKey, accountKey, accountKey, accountKey) as {
+      ).get(accountKey, accountKey, now, accountKey, now, accountKey) as {
         readonly ledger_entries: bigint | number;
         readonly open_orders: bigint | number;
         readonly latest_ended_order_at: bigint | number | null;
@@ -412,7 +415,6 @@ export class RuntimeController {
     // No recorded income does not prove that the last order has no late-visible payment.
     // Only an unused account can skip the final collection/confirmation checks.
     if (counts.ledgerEntries === 0 && counts.latestEndedOrderAt === null) return;
-    const now = safeNow(this.#clock());
     const maximumAge = current.provider?.maximumSuccessAgeMilliseconds;
     if (
       maximumAge === undefined ||
