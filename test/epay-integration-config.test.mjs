@@ -33,7 +33,8 @@ test('export rejects unusable callback configurations and accepted downloads cre
     });
     for (const protocol of ['native', 'epay_v1', 'epay_v2']) {
       for (const field of ['notify_url', 'return_url']) {
-        const badQueries = protocol === 'native' ? ['?a=1&a=2', '?a=1&%61=2'] : ['?a=1&b=2'];
+        const badQueries = protocol === 'native' ? ['?a=1&a=2', '?a=1&%61=2']
+          : ['?a=1&b=2', '?tracking.id=123', '?tracking%2Eid=123'];
         for (const query of badQueries) {
           const response = await download({ protocol, [field]: origin + '/callback' + query });
           assert.equal(response.status, 422, `${protocol} ${field} ${query}`);

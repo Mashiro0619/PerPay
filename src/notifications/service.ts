@@ -190,6 +190,9 @@ export class WebhookDeliveryService {
     return resultFrom(delivery, outcome, ack.code);
   }
   async #send(claimed: ClaimedWebhookAttempt, signal: AbortSignal | undefined) {
+    if (claimed.preparationError) {
+      throw new WebhookTransportError({ code: claimed.preparationError, message: "历史通知地址不符合当前易支付参数要求，停止投递", retryable: false });
+    }
     if (claimed.attempt.protocol && claimed.attempt.protocol !== "native") {
       const beforeSend = () => {
         if (!this.#store.canDeliver?.(claimed.event.eventId)) {

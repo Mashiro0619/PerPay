@@ -41,10 +41,10 @@ function configure(f: Fixture, protocol: EpayProtocol, name: string = protocol) 
   return epay.credentialsForSite(site.clientId)!;
 }
 
-function createOrder(f: Fixture, credentials: EpayCredentials, protocol: EpayProtocol) {
+function createOrder(f: Fixture, credentials: EpayCredentials, protocol: EpayProtocol, notifyUrl = target) {
   const request = {
     merchant_order_no: `MERCHANT_${randomUUID()}`, idempotency_key: randomUUID(),
-    amount_cents: 10000, product_name: "商品 A+B 中文", notify_url: target,
+    amount_cents: 10000, product_name: "商品 A+B 中文", notify_url: notifyUrl,
   };
   return f.orders.forSite(credentials.siteId).create(request, undefined, {
     siteId: credentials.siteId, protocol, configurationRevision: credentials.revision,
@@ -116,6 +116,62 @@ function requestFingerprint(url: string, keyId: string): string {
 }
 
 for (const protocol of ["epay_v1", "epay_v2"] as const) {
+  test(`${protocol} ends invalid historical callbacks permanently and continues later valid deliveries`, async () => {
+    const f = await createSitePaymentFixture();
+    try {
+      const credentials = configure(f, protocol);
+      // The core order fixture reproduces a target persisted before the HTTP admission check was tightened.
+      const historicalTarget = `${origin}/notify?tracking.id=123`;
+      const historical = createOrder(f, credentials, protocol, historicalTarget);
+      confirmOrder(f, historical);
+      const webhooks = new WebhookStore(f.database);
+      // Materialize separately so the historical delivery is due before the valid delivery.
+      assert.equal(webhooks.materialize(64, f.now(), credentials.siteId), 1);
+      f.setNow(f.now() + 1000);
+      const valid = createOrder(f, credentials, protocol);
+      confirmOrder(f, valid);
+      const sent: string[] = [];
+      const service = processor(f, webhooks, async input => {
+        input.beforeSend?.();
+        sent.push(input.targetUrl);
+        return response();
+      });
+      const failed = await service.processOne();
+      assert.equal(failed.processed, true);
+      assert.equal(failed.status, "DEAD_LETTER");
+      assert.equal(failed.outcome, "PERMANENT_FAILURE");
+      assert.equal(failed.errorCode, "webhook_target_invalid");
+      assert.equal(sent.length, 0);
+      const retained = webhooks.delivery(failed.deliveryId!)!;
+      assert.equal(retained.event.orderId, historical.orderId);
+      assert.equal(retained.target.targetUrl, historicalTarget);
+      assert.equal(retained.attempts.length, 1);
+      assert.equal(retained.attempts[0]!.requestUrl, historicalTarget);
+      assert.equal(retained.attempts[0]!.outcome, "PERMANENT_FAILURE");
+      assert.equal(retained.attempts[0]!.httpStatus, null);
+      assert.equal(retained.attempts[0]!.connectedAddress, null);
+      const delivered = await service.processOne();
+      assert.equal(delivered.outcome, "ACKNOWLEDGED");
+      assert.equal(webhooks.delivery(delivered.deliveryId!)!.event.orderId, valid.orderId);
+      assert.equal(sent.length, 1);
+      assert.equal(verifies(sent[0]!, protocol, credentials), true);
+      assert.equal((await service.processOne()).processed, false);
+      webhooks.replay({ redeliveryId: randomUUID(), deliveryId: failed.deliveryId!, actorId: "admin",
+        reason: "重新核查旧回调地址", activeAllowedOrigin: origin, now: f.now() });
+      const repeated = await service.processOne();
+      assert.equal(repeated.outcome, "PERMANENT_FAILURE");
+      assert.equal(repeated.errorCode, "webhook_target_invalid");
+      assert.equal(sent.length, 1);
+      assert.deepEqual(webhooks.delivery(failed.deliveryId!)!.attempts, retained.attempts);
+      assert.equal(f.database.integrityCheck().ok, true);
+      const backupPath = join(f.config.backupDir, `${protocol}-historical-invalid-callback.sqlite3`);
+      await f.database.backup(backupPath);
+      const backup = new DatabaseSync(backupPath, { readOnly: true, enableForeignKeyConstraints: true, readBigInts: true });
+      try { assertDatabaseIntegrity(backup, "historical callback preflight evidence"); }
+      finally { backup.close(); }
+    } finally { f.close(); }
+  });
+
   test(`${protocol} alone admits compatible orders and delivers the confirmed original amount with a complete signed query`, async () => {
     const f = await createSitePaymentFixture();
     try {

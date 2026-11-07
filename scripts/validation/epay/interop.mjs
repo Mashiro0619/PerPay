@@ -58,10 +58,17 @@ try {
       platform_public_key: platform.publicKey.export({ format: 'der', type: 'spki' }).toString('base64') };
     const request = { pid: '1001', type: 'alipay', method: 'jump', out_trade_no: 'SDK-1', name: '中文 +=%26', money: '10.00',
       notify_url: 'https://shop.example/notify', return_url: 'https://shop.example/return', clientip: '127.0.0.1', zero: '0', blank: ' ', empty: '' };
-    const callback = buildEpayCallbackUrl('https://shop.example/notify?source=demo%2B%3D%2526',
-      { pid: '1001', tradeNo: '202611070001', outTradeNo: 'SDK-1', name: request.name, moneyCents: 1000, param: '0' }, protocol, protocol === 'epay_v1' ? key : platform.privateKey);
+    const order = { pid: '1001', tradeNo: '202611070001', outTradeNo: 'SDK-1', name: request.name, moneyCents: 1000, param: '0' };
+    const signingKey = protocol === 'epay_v1' ? key : platform.privateKey;
+    const staticQuery = '?source=demo%2B%3D%2526&tracking_id=demo.example&tracking-id=0&tracking%252Eid=%2526';
+    for (const path of ['notify', 'return']) {
+      assert.throws(() => buildEpayCallbackUrl(`https://shop.example/${path}?tracking.id=123`, order, protocol, signingKey),
+        { code: 'invalid_return_url' });
+    }
+    const callback = buildEpayCallbackUrl('https://shop.example/notify' + staticQuery, order, protocol, signingKey);
+    const returned = buildEpayCallbackUrl('https://shop.example/return' + staticQuery, order, protocol, signingKey);
     const notification = parseEpayParameters(new URL(callback).search);
-    const data = { protocol, config, request, notification };
+    const data = { protocol, config, request, notification, notification_url: callback, return_url: returned };
     await writeFile(join(scratch, protocol + '.json'), JSON.stringify(data), { mode: 0o600 });
     const sdk = protocol === 'epay_v1' ? 'v1/lib/EpayCore.class.php' : 'v2/SDK/lib/EpayCore.class.php';
     const output = await run('docker', ['run', '--rm', '--add-host', 'host.docker.internal:host-gateway', '-v', `${root}:/work:ro`, image,
@@ -70,6 +77,8 @@ try {
     assert.equal(protocol === 'epay_v1' ? verifyEpayV1(result.request, key) : verifyEpayV2(result.request, merchant.publicKey), true);
     assert.equal(result.create.code, protocol === 'epay_v1' ? 1 : 0); assert.equal(result.query.status, 1);
     assert.equal(result.notify, true); assert.equal(result.return, true);
+    assert.deepEqual(result.notify_parameters, { ...notification });
+    assert.deepEqual(result.return_parameters, { ...parseEpayParameters(new URL(returned).search) });
     if (protocol === 'epay_v2') assert.equal(result.list.data.length, 1);
     console.log(`${protocol} PHP SDK request/create/query/notify/return passed`);
   }

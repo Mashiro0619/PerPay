@@ -9,10 +9,14 @@ $url = $client->getPayLink($request);
 parse_str(parse_url($url, PHP_URL_QUERY), $generated);
 $created = $client->apiPay($request);
 $queried = $client->queryOrder('202611070001');
-$_GET = $input['notification'];
+// Follow PHP's actual query decoding, including its parameter-name normalization.
+parse_str(parse_url($input['notification_url'], PHP_URL_QUERY), $_GET);
+$notifyParameters = $_GET;
 $notify = $v2 ? $client->verify($_GET) : $client->verifyNotify();
-$_GET = $input['notification'];
+parse_str(parse_url($input['return_url'], PHP_URL_QUERY), $_GET);
+$returnParameters = $_GET;
 $returned = $v2 ? $client->verify($_GET) : $client->verifyReturn();
 $listed = $v2 ? $client->execute('api/merchant/orders', ['offset' => 0, 'limit' => 20]) : null;
 echo json_encode(['request' => $generated, 'create' => $created, 'query' => $queried,
-    'notify' => $notify, 'return' => $returned, 'list' => $listed], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+    'notify' => $notify, 'return' => $returned, 'list' => $listed,
+    'notify_parameters' => $notifyParameters, 'return_parameters' => $returnParameters], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);

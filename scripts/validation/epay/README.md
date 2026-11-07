@@ -32,7 +32,7 @@ node --experimental-strip-types scripts/validation/epay/interop.mjs
 node --experimental-strip-types scripts/validation/epay/new-api.mjs
 ```
 
-PHP 验证使用原始 SDK 类的公开方法生成链接、调用下单和查单接口、验证异步通知与同步返回。HTTP 请求由隔离协议服务接收，服务端使用生产 `src/epay/protocol.ts` 验签并生成响应。V2 另验证顶层 `data` 数组的列表响应。Go 验证实际调用 `Purchase` 和 `Verify`，同时确认歧义分隔符被拒绝。
+PHP 验证使用原始 SDK 类的公开方法生成链接、调用下单和查单接口。异步通知与同步返回由实际 URL 经 PHP `parse_str` 解码到 `$_GET` 后验签，并核对解码后的参数名和值。HTTP 请求由隔离协议服务接收，服务端使用生产 `src/epay/protocol.ts` 验签并生成响应。V2 另验证顶层 `data` 数组的列表响应。Go 验证实际调用 `Purchase` 和 `Verify`，同时确认歧义分隔符被拒绝。
 
 New API 构建使用固定后端源码，仅在隔离副本补一个 `go:embed` 所需的静态首页。验证进程使用新 SQLite、随机管理员密码和会话密钥。原仓库、现有容器及用户实例保持独立。
 
@@ -40,7 +40,7 @@ New API 构建使用固定后端源码，仅在隔离副本补一个 `go:embed` 
 
 ## 已执行结果
 
-- PHP V1.3 与 V2.0 的请求生成、HTTP 下单、HTTP 查单、通知验签和同步返回验签通过。中文、空格、`+`、`=`、字面量 `%26`、零值及带静态查询参数的回调均通过。
+- PHP V1.3 与 V2.0 的请求生成、HTTP 下单、HTTP 查单、通知验签和同步返回验签通过。中文、空格、`+`、`=`、字面量 `%26`、零值及带静态查询参数的回调均通过。回调参数名中的点号在准入时拒绝，下划线、连字符及只解码一次的百分号参数名经过实际 PHP 解码验证。
 - PHP V1.3 保留空格值参与 MD5，V2.0 排除 PHP `trim` 后为空的值。两者保留字符串 `0`。原始数组请求拒绝，V2 列表响应的 `data` 数组按 SDK 规则排除顶层签名。
 - go-epay v0.0.5 的页面下单参数与 PerPay 验签一致，PerPay 生成的通知被 Go 验签通过，参数值中的 `&` 被 Go SDK 与 PerPay 一致拒绝。
 - New API 充值与订阅各完成两组真实后端流程，分别让同步返回、异步通知先到。每单收到三次异步通知，其中两次并发重复，SQLite 断言充值额度与订阅权益均只增加一次。

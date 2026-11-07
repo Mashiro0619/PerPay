@@ -77,3 +77,33 @@ test("notification and browser return carry original price and refresh V2 signat
   for (const body of ["SUCCESS", "successx", "{\"success\":true}"]) assert.equal(isEpaySuccessAck(200, body), false);
   assert.equal(isEpaySuccessAck(302, "success"), false);
 });
+
+test("callback URL admission rejects PHP-renamed parameter names before signing", () => {
+  const order = { pid: "1001", tradeNo: "202611070001", outTradeNo: "SHOP-1", name: "商品", moneyCents: 1000 };
+  for (const path of ["notify", "return"]) {
+    for (const name of ["tracking.id", "tracking%2Eid", "tracking%2eid", ".tracking", "tracking."]) {
+      const target = `https://shop.example/${path}?${name}=123`;
+      assert.throws(() => appendEpayParameters(target, {}), { code: "invalid_return_url" });
+      for (const protocol of ["epay_v1", "epay_v2"] as const) {
+        assert.throws(() => buildEpayCallbackUrl(target, order, protocol, protocol === "epay_v1" ? "secret" : keys.privateKey, now),
+          { code: "invalid_return_url" });
+      }
+    }
+    for (const name of ["tracking+id", "tracking%20id", "tracking%00id", "tracking%5Bid%5D"]) {
+      assert.throws(() => appendEpayParameters(`https://shop.example/${path}?${name}=123`, {}));
+    }
+  }
+});
+
+test("callback signatures retain supported static names and decode percent escapes once", () => {
+  const order = { pid: "1001", tradeNo: "202611070001", outTradeNo: "SHOP-1", name: "商品", moneyCents: 1000, param: "0" };
+  const target = "https://shop.example/notify?tracking_id=demo.example&tracking-id=0&tracking%252Eid=%2526";
+  for (const protocol of ["epay_v1", "epay_v2"] as const) {
+    const callback = buildEpayCallbackUrl(target, order, protocol, protocol === "epay_v1" ? "secret" : keys.privateKey, now);
+    const delivered = parseEpayParameters(new URL(callback).search);
+    assert.equal(delivered.tracking_id, "demo.example");
+    assert.equal(delivered["tracking-id"], "0");
+    assert.equal(delivered["tracking%2Eid"], "%26");
+    assert.equal(protocol === "epay_v1" ? verifyEpayV1(delivered, "secret") : verifyEpayV2(delivered, keys.publicKey), true);
+  }
+});

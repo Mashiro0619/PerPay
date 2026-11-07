@@ -297,6 +297,14 @@ test("page submit accepts an omitted type while rejecting conflicting return par
       const base = { out_trade_no: protocol + "-page", name: "Page item", money: "3.14", notify_url: merchantOrigin + "/notify", return_url: merchantOrigin + "/return" };
       const bad = await f.send(path, f.parameters(f.first.credentials, protocol, { ...base, return_url: merchantOrigin + "/return?money=3.14" }), "GET");
       assert.equal((await bad.json() as { code: number }).code, -1);
+      for (const field of ["notify_url", "return_url"] as const) {
+        const renamed = await f.send(path, f.parameters(f.first.credentials, protocol, {
+          ...base, [field]: merchantOrigin + "/callback?tracking%2Eid=123",
+        }), "GET");
+        const failure = await renamed.json() as { code: number; msg: string };
+        assert.equal(failure.code, -1);
+        assert.match(failure.msg, /点号/);
+      }
       const signed = f.parameters(f.first.credentials, protocol, base);
       const repeated = await f.app.request(path + "?money=3.14", { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams(signed).toString() });
       assert.equal((await repeated.json() as { code: number }).code, -1);

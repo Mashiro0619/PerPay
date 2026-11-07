@@ -52,6 +52,7 @@ export interface WebhookTargetProjection {
 }
 
 export interface ClaimedWebhookAttempt {
+  readonly preparationError?: "webhook_target_invalid" | undefined;
   readonly delivery: WebhookDelivery;
   readonly event: WebhookEvent;
   readonly target: WebhookTargetProjection;
@@ -444,7 +445,7 @@ export class WebhookStore {
         startedAt: input.now,
         finishedAt: null,
       };
-      return { delivery, event, target, attempt, key };
+      return { delivery, event, target, attempt, key, ...(epay?.preparationError ? { preparationError: epay.preparationError } : {}) };
     });
   }
 

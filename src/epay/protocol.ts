@@ -192,6 +192,8 @@ export function appendEpayParameters(target: string, parameters: EpayParameters)
   const url = new URL(target);
   const existing = parseEpayParameters(url.search);
   for (const name of Object.keys(existing)) {
+    // PHP decodes dots as underscores in $_GET, changing the signed parameter name.
+    if (name.includes(".")) throw new EpayProtocolError("invalid_return_url", "回调地址参数名不能包含点号，PHP 接收端会改变该名称。");
     if (EPAY_NOTIFICATION_FIELDS.includes(name)) throw new EpayProtocolError("invalid_return_url", "返回地址已有易支付保留参数。");
   }
   for (const [name, value] of Object.entries(parameters)) url.searchParams.append(name, value);
