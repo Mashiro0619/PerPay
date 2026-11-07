@@ -283,9 +283,6 @@ describe("checkout desktop composition", () => {
     expect(container.querySelectorAll("[data-qr-image]")).toHaveLength(1);
     expect(container.querySelectorAll("[data-payable-amount]")).toHaveLength(1);
     expect(container.querySelectorAll("[data-countdown]")).toHaveLength(1);
-    expect(
-      summary.querySelector("[data-checkout-payment-guide]"),
-    ).toHaveTextContent("支付宝扫码");
   });
   it("keeps the same QR and in-flight read while resizing instead of mounting another checkout", async () => {
     const { fetch: read, finish } = pendingFetch();
@@ -307,7 +304,7 @@ describe("checkout desktop composition", () => {
       screen.getByText("核实进度暂不可用，页面会继续自动更新。"),
     );
   });
-  it("puts the confirmed return action in the summary and removes desktop payment guidance", async () => {
+  it("shows the confirmed return action and removes the QR and countdown", async () => {
     const { finish } = pendingFetch();
     const { container } = render(
       createElement(CheckoutApp, { initial: initial() }),
@@ -326,7 +323,6 @@ describe("checkout desktop composition", () => {
     expect(container.querySelector("[data-checkout-actions]")).toContainElement(
       screen.getByRole("link", { name: "返回商家" }),
     );
-    expect(container.querySelector("[data-checkout-payment-guide]")).toBeNull();
     expect(container.querySelector("[data-qr-image]")).toBeNull();
     expect(container.querySelector("[data-countdown]")).toBeNull();
   });
@@ -354,9 +350,6 @@ describe("checkout desktop composition", () => {
         "data-has-order",
         "false",
       );
-      expect(
-        container.querySelector("[data-checkout-payment-guide]"),
-      ).toBeNull();
       expect(container.querySelector("[data-qr-image]")).toBeNull();
       expect(container.querySelector("[data-payable-amount]")).toBeNull();
     },
@@ -399,16 +392,12 @@ describe("checkout compact QR and page shell", () => {
 
 describe("checkout compact order summary", () => {
   it.each([true, false])(
-    "keeps one natural-flow action group and unboxed guidance when product visibility is %s",
+    "keeps one natural-flow action group when product visibility is %s",
     (showProductName) => {
       const { container } = render(
         createElement(CheckoutApp, { initial: initial({ showProductName }) }),
       );
       const summary = screen.getByRole("region", { name: "订单信息" });
-      const guide = summary.querySelector("[data-checkout-payment-guide]")!;
-      expect(guide.tagName).toBe("DIV");
-      expect(guide).not.toHaveClass("hidden");
-      expect(guide.closest('[data-slot="alert"]')).toBeNull();
       const actions = container.querySelector("[data-checkout-actions]");
       expect(actions).not.toHaveClass("mt-auto");
       expect(actions).toHaveClass("lg:col-start-3", "lg:row-start-2");

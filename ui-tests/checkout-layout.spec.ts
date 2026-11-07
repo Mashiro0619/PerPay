@@ -6,12 +6,6 @@ test("checkout keeps one query before order information on phones and scales the
     const query = page.getByRole("button", { name: "查询付款状态", exact: true });
     await expect(query).toBeVisible();
     await expect(query).toHaveCount(1);
-    const guide = page.locator("[data-checkout-payment-guide]");
-    await expect(guide).toBeVisible();
-    await expect(guide).toContainText("请输入准确金额 " + await page.locator("[data-payable-amount]").innerText());
-    await expect(guide).toContainText("含识别尾数");
-    await expect(guide).toContainText("页面约每 2.5 秒更新状态");
-    await expect(guide).toContainText("请勿重复付款");
     const bounds = await page.evaluate(() => {
       const rect = (selector: string) => { const r = document.querySelector(selector)!.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height, bottom: r.bottom }; };
       return { card: rect("[data-checkout-layout]"), amount: rect("[data-checkout-amount]"), qr: rect("[data-qr-image]"),
@@ -25,6 +19,8 @@ test("checkout keeps one query before order information on phones and scales the
     } else {
       expect(bounds.summary.x).toBeGreaterThan(bounds.qr.x);
       expect(bounds.card.width).toBe(Math.min(width! >= 1280 ? 1152 : 1024, width!) - 48);
+      expect(Math.abs(bounds.actions.bottom - bounds.card.bottom)).toBeLessThanOrEqual(1);
+      expect(bounds.summary.bottom).toBeLessThanOrEqual(bounds.actions.y);
     }
     await record(page, info, bounds);
     await info.attach(`checkout-${width}-${height}`, { body: await page.screenshot(), contentType: "image/png" });

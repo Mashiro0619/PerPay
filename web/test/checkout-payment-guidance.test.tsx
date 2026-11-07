@@ -26,18 +26,11 @@ beforeEach(() => {
 });
 afterEach(() => { vi.useRealTimers(); });
 
-describe("checkout payment guidance", () => {
-  it("shows the exact payable amount and confirmation guidance in the main phone view", () => {
+describe("checkout payment essentials", () => {
+  it("shows the exact payable amount and query action without verbose payment guidance", () => {
     render(<CheckoutApp initial={initial()} />);
-    const guide = screen.getByText("用支付宝扫码，核对收款方。请输入准确金额 ¥10.01（含识别尾数），否则无法自动确认。");
-    expect(guide).toBeVisible();
-    expect(guide.closest('[role="dialog"]')).toBeNull();
-    expect(screen.getByText("付款后会自动查账确认；页面约每 2.5 秒更新状态。到账记录可能延迟，请勿重复付款。")).toBeVisible();
-  });
-  it("removes payment instructions when the local payment deadline is reached", async () => {
-    render(<CheckoutApp initial={initial()} />);
-    expect(screen.getByText(/请输入准确金额/)).toBeVisible();
-    await act(async () => { await vi.advanceTimersByTimeAsync(60000); });
+    expect(document.querySelector('[data-payable-amount]')).toHaveTextContent("¥10.01");
+    expect(screen.getByRole("button", { name: "查询付款状态" })).toBeVisible();
     expect(screen.queryByText(/请输入准确金额/)).not.toBeInTheDocument();
     expect(screen.queryByText(/付款后会自动查账确认/)).not.toBeInTheDocument();
   });

@@ -158,7 +158,7 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
     <CardFooter
       className={cn(
         "flex flex-col items-stretch gap-3",
-        order && "lg:col-start-3 lg:row-start-2 lg:self-start lg:px-6 lg:pb-8",
+        order && "lg:col-start-3 lg:row-start-2 lg:rounded-none lg:px-6 lg:py-6",
       )}
       data-checkout-actions
     >
@@ -243,7 +243,7 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
         <Card
           className={cn(
             order &&
-              "lg:relative lg:grid lg:grid-cols-[minmax(0,1.1fr)_auto_minmax(0,1fr)] lg:gap-0 lg:py-0",
+              "lg:relative lg:grid lg:grid-cols-[minmax(0,1.1fr)_auto_minmax(0,1fr)] lg:grid-rows-[1fr_auto] lg:gap-0 lg:py-0",
           )}
           data-checkout-layout
           data-has-order={!!order}
@@ -452,7 +452,7 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
               <Separator orientation="vertical" className="hidden lg:col-start-2 lg:row-start-1 lg:row-span-2 lg:block" />
               <section
                 aria-label="订单信息"
-                className="flex min-w-0 flex-col gap-5 lg:col-start-3 lg:row-start-1 lg:self-end lg:px-6 lg:pt-8 lg:pb-4"
+                className="flex min-w-0 flex-col gap-5 lg:col-start-3 lg:row-start-1 lg:self-center lg:px-6 lg:pt-8 lg:pb-4"
                 data-checkout-summary
               >
                 <CardHeader className="hidden lg:block lg:px-0 lg:pr-36">
@@ -492,16 +492,6 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                         此为历史退款记录，具体金额请联系商家。
                       </AlertDescription>
                     </Alert>
-                  )}
-                  {canPay && (
-                    <div className="flex flex-col gap-2" data-checkout-payment-guide>
-                      <p className="text-sm leading-relaxed text-muted-foreground">
-                        用支付宝扫码，核对收款方。请输入准确金额 {checkoutMoney(cents)}（含识别尾数），否则无法自动确认。
-                      </p>
-                      <p className="text-sm leading-relaxed text-muted-foreground">
-                        付款后会自动查账确认；页面约每 2.5 秒更新状态。到账记录可能延迟，请勿重复付款。
-                      </p>
-                    </div>
                   )}
                 </CardContent>
               </section>
