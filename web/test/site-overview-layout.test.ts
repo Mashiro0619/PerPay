@@ -74,19 +74,21 @@ describe("website overview card layout", () => {
     });
     expect(base(".site-overview-grid")).toMatchObject({
       display: "grid",
-      "grid-template-columns": "minmax(0, 1fr)",
       gap: "1rem",
       margin: "0",
       padding: "0",
       "list-style": "none",
     });
+    expect(base(".site-overview-grid")["grid-template-columns"]?.replace(/\s+/g, " ")).toBe(
+      "repeat(auto-fit, minmax( calc((100% - (var(--site-overview-columns, 1) - 1) * 1rem) / var(--site-overview-columns, 1)), 1fr ))",
+    );
     const columns: [number, number][] = [];
     sheet.walkAtRules("container", (container) => {
       const match = container.params.match(/^site-overview \(min-width: (\d+)rem\)$/);
       if (!match) return;
       container.walkRules(".site-overview-grid", (rule) => {
-        const count = declarations(rule)["grid-template-columns"]?.match(/^repeat\((\d+),/);
-        if (count) columns.push([Number(match[1]), Number(count[1])]);
+        const count = declarations(rule)["--site-overview-columns"];
+        if (count) columns.push([Number(match[1]), Number(count)]);
       });
     });
     expect(columns).toEqual([[41, 2], [62, 3], [76, 4]]);
