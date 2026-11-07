@@ -23,7 +23,9 @@ describe("provider switch final collection guard", () => {
         const ended = terminal === "CLOSED" ? store.closeOrder("default", order.orderId) : store.orderById("default", order.orderId);
         assert.equal(ended?.order.checkoutStatus, terminal);
         assert.equal(f.database.read(db => db.prepare("SELECT count(*) AS n FROM ledger_entries").get()?.n), 0n);
-        const endedAt = ended!.order.closedAt!;
+        // Expiry may be materialized later; final collection is anchored to the
+        // actual payment deadline, while an explicit close uses its close time.
+        const endedAt = terminal === "CLOSED" ? ended!.order.closedAt! : ended!.order.expiresAt;
         now += 1000;
         // Freshly restarted / never-collected accounts must not bypass the guard.
         assert.throws(() => runtime.assertProviderSwitchAllowed(snapshot), blocked);
