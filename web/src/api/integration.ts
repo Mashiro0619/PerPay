@@ -1,0 +1,59 @@
+import { api, ApiError, getSessionRequestGeneration, result, type IntegrationExportRequest, type SiteEpayConfiguration } from "./client";
+export type { SiteEpayConfiguration } from "./client";
+
+export type IntegrationProtocol = "native" | "epay_v1" | "epay_v2";
+export type EpaySecret = "epay_v1" | "epay_merchant" | "epay_platform";
+
+export type IntegrationExport = IntegrationExportRequest;
+
+const secretViewers = {
+  epay_v1: api.viewSiteEpayV1Secret,
+  epay_merchant: api.viewSiteEpayMerchantSecret,
+  epay_platform: api.viewSiteEpayPlatformSecret,
+};
+const secretRotators = {
+  epay_v1: api.rotateSiteEpayV1Secret,
+  epay_merchant: api.rotateSiteEpayMerchantSecret,
+  epay_platform: api.rotateSiteEpayPlatformSecret,
+};
+export const siteEpayKey = (clientId: string) => ["site-epay", clientId] as const;
+
+export async function getSiteEpay(clientId: string, signal: AbortSignal): Promise<SiteEpayConfiguration> {
+  const response = await result(api.getSiteEpay({ path: { clientId }, signal }));
+  if (!response.data || response.data.client_id !== clientId || typeof response.data.pid !== "string" || !Number.isSafeInteger(response.data.revision)) {
+    throw new Error("接入配置读取不完整，请重新读取。");
+  }
+  return response.data;
+}
+
+export async function saveSiteEpay(clientId: string, body: Pick<SiteEpayConfiguration, "revision" | "v1_enabled" | "v2_enabled">) {
+  const response = await result(api.updateSiteEpay({ path: { clientId }, body }));
+  return response.data;
+}
+
+export async function viewEpaySecret(clientId: string, purpose: EpaySecret, signal: AbortSignal) {
+  const response = await result(secretViewers[purpose]({ path: { clientId }, body: {}, signal }));
+  return response.data;
+}
+
+export async function rotateEpaySecret(clientId: string, purpose: EpaySecret, revision: number) {
+  const response = await result(secretRotators[purpose]({ path: { clientId }, body: { revision } }));
+  // Only the public snapshot may enter the mutation cache.
+  return response.data.configuration;
+}
+
+export async function exportSiteIntegration(clientId: string, body: IntegrationExport, signal: AbortSignal): Promise<Blob> {
+  const generation = getSessionRequestGeneration();
+  const response = await api.exportSiteIntegration({ path: { clientId }, body, signal, parseAs: "text" });
+  signal.throwIfAborted();
+  if (generation !== getSessionRequestGeneration()) {
+    throw new DOMException("管理员会话已变化，已忽略旧请求结果。", "AbortError");
+  }
+  if (response.error instanceof Error && response.error.name === "AbortError") throw response.error;
+  if (!response.response?.ok) throw new ApiError(response.response, response.error);
+  if (response.error !== undefined || typeof response.data !== "string" ||
+      !response.response.headers.get("content-type")?.startsWith("text/plain")) {
+    throw new Error("未收到完整的配置文件，请重新下载。");
+  }
+  return new Blob([response.data], { type: "text/plain;charset=utf-8" });
+}

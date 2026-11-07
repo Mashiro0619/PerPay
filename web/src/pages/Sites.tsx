@@ -34,6 +34,7 @@ import { accountState, alipayAccountsQuery, type AlipayAccount, type SiteCollect
 import { siteTimeoutError, siteTimeoutSeconds } from "@/lib/site-timeout";
 import { SiteConfigurationConflicts } from "@/components/site-configuration-conflicts";
 import { SiteClientIdChange } from "@/components/site-client-id-change";
+import { SiteIntegrationAssistant } from "@/components/site-integration-assistant";
 import { mergeSiteConfiguration, resolveSiteConflicts, type SiteConflictChoices } from "@/lib/site-configuration";
 import { latestEditorSnapshot, siteEditorKey, siteEditorQueryOptions } from "@/lib/site-editor-query";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -161,7 +162,10 @@ export function SiteSettingsPage() {
         {siteSections.map(item => <TabsTrigger key={item.value} value={item.value}>{item.label}</TabsTrigger>)}
       </TabsList></ScrollingTabs>
     </Tabs>
-    <QueryView query={query}>{({ site }) => <SettingsSummary title={selected.label} rows={siteSummaryRows(site, section)} editTo={"/sites/" + encodeURIComponent(site.client_id) + "/edit?section=" + section} />}</QueryView>
+    <QueryView query={query}>{({ site }) => <>
+      <SettingsSummary title={selected.label} rows={siteSummaryRows(site, section)} editTo={"/sites/" + encodeURIComponent(site.client_id) + "/edit?section=" + section} />
+      {section === "integration" && <SiteIntegrationAssistant site={site} onReloadSite={() => { void query.refetch(); }} />}
+    </>}</QueryView>
   </div>;
 }
 
@@ -606,13 +610,6 @@ function SiteEditor({
                   disabled={busy || dirty || requiresReview} onClick={() => setChangingClientId(true)}>更换客户端 ID</Button>
                 {dirty && <FieldDescription>请先保存或撤销当前配置修改，再更换客户端 ID。</FieldDescription>}
               </Field>
-              <Field>
-                <FieldLabel>PerPay 地址</FieldLabel>
-                <CopyValue
-                  value={window.location.origin}
-                  label="复制 PerPay 地址"
-                />
-              </Field>
             </FieldGroup>
           </CardContent>
 
@@ -797,6 +794,8 @@ function SiteEditor({
           </CardContent>
         </Card>
       )}
+      {saved && visible("integration") && <SiteIntegrationAssistant site={saved} siteDirty={dirty || requiresReview}
+        disabled={busy} showClientId={false} onReloadSite={() => reload.mutate()} />}
       {revealed && (
         <Card>
           <CardHeader>
