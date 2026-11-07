@@ -202,7 +202,17 @@ it("upgrades schema 23 with presentation defaults while preserving revisions, co
       assert.deepEqual(after.provider, before.provider);
       assert.deepEqual(after.display, { system_name: "PerPay", dashboard_chart_type: "AREA" });
       assert.deepEqual(settings.siteStore()!.get("default")!.configuration.policy.display, { checkout_name: "PerPay", checkout_help_url: null, checkout_show_product_name: true });
-      assert.deepEqual(snapshot(upgraded), evidence);
+      const actual = snapshot(upgraded);
+      const auditIndex = tables.indexOf("audit_events");
+      const originalAuditCount = evidence[auditIndex]!.length;
+      assert.deepEqual(actual[auditIndex]!.slice(originalAuditCount).map(row => [row.actor_type, row.actor_id, row.action]), [
+        ["SYSTEM", null, "epay.secret_rotated"],
+        ["SYSTEM", null, "epay.secret_rotated"],
+        ["SYSTEM", null, "epay.secret_rotated"],
+        ["SYSTEM", null, "epay.configuration_updated"],
+      ]);
+      actual[auditIndex] = actual[auditIndex]!.slice(0, originalAuditCount);
+      assert.deepEqual(actual, evidence);
       assert.equal(upgraded.integrityCheck().ok, true);
     } finally {
       upgraded.close();
