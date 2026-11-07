@@ -32,7 +32,7 @@ function renderOrders(orders, origin) {
     const item = element('article', '', 'order');
     item.append(element('h3', order.product_name), element('p', order.merchant_order_no, 'id'));
     const snapshot = order.snapshot;
-    item.append(element('p', '请求金额 ' + money(order.amount_cents) + (snapshot ? ' · 实际应付 ' + money(snapshot.payable_amount_cents) : ' · 尚未取得订单响应')));
+    item.append(element('p', '请求金额 ' + money(order.amount_cents) + (snapshot ? snapshot.payment_protocol ? ' · 实际应付以收银台为准' : ' · 实际应付 ' + money(snapshot.payable_amount_cents) : ' · 尚未取得订单响应')));
     if (snapshot) {
       item.append(element('p', (labels[snapshot.payment_status] ?? snapshot.payment_status) + ' · ' + (labels[snapshot.refund_status] ?? snapshot.refund_status) + ' · 版本 ' + snapshot.version));
       item.append(element('p', '来源：' + (snapshot.source === 'webhook' ? '已验签通知' : 'PerPay 服务端响应'), 'muted'));
@@ -40,7 +40,7 @@ function renderOrders(orders, origin) {
     if (!order.notifications) item.append(element('p', '此旧订单没有回调地址，需手动查单；新订单会使用当前回调配置。', 'muted'));
     if (order.last_error) item.append(element('p', order.last_error, 'error'));
     const actions = element('div', '', 'actions');
-    if (snapshot?.checkout_url && snapshot.payment_status === 'UNPAID' && snapshot.checkout_status === 'OPEN' && Date.parse(snapshot.expires_at) > Date.now()) {
+    if (snapshot?.checkout_url && snapshot.payment_status === 'UNPAID' && snapshot.checkout_status === 'OPEN' && (!snapshot.expires_at || Date.parse(snapshot.expires_at) > Date.now())) {
       const url = new URL(snapshot.checkout_url);
       if (url.origin === origin && url.pathname.startsWith('/checkout/')) {
         const link = element('a', '打开收银台'); link.href = url.href; link.target = '_blank'; link.rel = 'noreferrer'; actions.append(link);

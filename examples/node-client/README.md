@@ -2,6 +2,16 @@
 
 默认通过**回调通知**确认付款，验签保存后页面自动更新；手动查单只作补偿。需要 **Node.js 24.15+（24.x）**，无需安装依赖。
 
+支持 `PAYMENT_PROTOCOL=native`、`epay_v1` 和 `epay_v2`，默认原生协议。可从网站设置的接入助手下载完整 `.env`，放入本目录后运行 `npm start`。易支付网关地址以 `/` 结尾。
+
+| 协议 | 连接配置 |
+| --- | --- |
+| 原生 | `PERPAY_URL`、`PERPAY_CLIENT_ID`、`PERPAY_API_SECRET`、`PERPAY_WEBHOOK_SECRET` |
+| 易支付 V1 | `EPAY_URL`、`EPAY_PID`、`EPAY_V1_KEY` |
+| 易支付 V2 | `EPAY_URL`、`EPAY_PID`、`EPAY_MERCHANT_PRIVATE_KEY`、`EPAY_PLATFORM_PUBLIC_KEY` |
+
+三种模式都需要 `DEMO_NOTIFY_URL`，可配置 `DEMO_RETURN_URL`。默认示例为 `https://业务域名/webhooks/perpay` 和 `https://业务域名/return`，也支持自定义路径、代理前缀及固定查询参数。代理公开配置中的路径并保留查询参数，本机操作页面通过 `http://127.0.0.1:6196` 访问。V2 RSA 密钥可使用完整 PEM 或后台导出的单行 Base64。
+
 ## 配置与启动
 
 1. [配好 PerPay](https://github.com/Mashiro0619/PerPay/blob/main/docs/alipay-setup.md)，创建业务网站，进入“网站设置 → 接入与通知”。先点击“生成／轮换 API 密钥”和“生成／轮换通知密钥”，复制**网站 API 密钥**、**通知签名密钥**和**客户端 ID**。已有密钥可直接查看复用，无需轮换；先保持通知关闭，保存配置不会自动生成密钥。
@@ -64,3 +74,9 @@ PERPAY_WEBHOOK_KEYS='{"11111111-1111-4111-8111-111111111111":"当前通知密钥
 每份示例服务连接一个明确的网站，必须填写 `PERPAY_CLIENT_ID`，不会自动使用 `default`。多份业务网站可以指向同一 `PERPAY_URL`，但分别使用各自 API／通知密钥、回调地址、端口和 `DEMO_DATA_DIR`。PerPay 后台也要分别配置通知来源。
 
 本地数据库绑定 PerPay 来源和网站 ID，不能通过修改环境变量把旧订单带到另一个网站。旧示例数据库只可在原实例的 `default` 网站下原地使用；其他网站使用新的数据目录。轮换同一网站密钥不会改变此绑定。示例不负责部署或自动同步密钥。
+
+易支付数据目录绑定实例来源、固定 PID 和协议。未指定目录时使用 `data-PID-epay_v1` 或 `data-PID-epay_v2`。修改 PID 或切换协议时使用新目录，同一网站轮换密钥后可以继续使用原目录。原生旧目录仍按原生协议解释。
+
+易支付模式通过 API 下单取得 PerPay 收银台链接，通知和同步返回先验签，再主动查单核对商户单号、原价与当前付款状态。两者使用同一持久化去重记录，重复通知返回 `success`。V2 响应和通知均检查五分钟时间偏差。兼容接口返回商品原价，实际应付金额在收银台展示。易支付没有远端订单版本，Demo 展示的版本是本地记录版本；已确认记录随后查到未支付状态时显示付款争议，供人工核查。
+
+原生通知继续使用 POST JSON，易支付通知使用 GET 表单参数。`/return` 未带成功签名时展示返回提示，订单状态由已验签通知或手动查单更新。

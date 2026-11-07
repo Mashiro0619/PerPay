@@ -88,10 +88,11 @@ export class PerPayClient {
   }
 }
 export function validateSnapshot(snapshot) {
-  if (!snapshot || !UUID.test(snapshot.order_id) || !MERCHANT_NO.test(snapshot.merchant_order_no) ||
+  const epay = ['epay_v1', 'epay_v2'].includes(snapshot?.payment_protocol);
+  if (!snapshot || !(epay ? /^[1-9]\d{0,63}$/.test(snapshot.order_id) : UUID.test(snapshot.order_id)) || !MERCHANT_NO.test(snapshot.merchant_order_no) ||
     snapshot.currency !== 'CNY' || !Number.isSafeInteger(snapshot.version) || snapshot.version < 1 ||
     !Number.isSafeInteger(snapshot.requested_amount_cents) || snapshot.requested_amount_cents < 1 ||
-    !Number.isSafeInteger(snapshot.payable_amount_cents) || snapshot.payable_amount_cents < snapshot.requested_amount_cents ||
+    (!(epay && snapshot.payable_amount_cents === null) && (!Number.isSafeInteger(snapshot.payable_amount_cents) || snapshot.payable_amount_cents < snapshot.requested_amount_cents)) ||
     (snapshot.received_amount_cents !== null && (!Number.isSafeInteger(snapshot.received_amount_cents) || snapshot.received_amount_cents < 0)) ||
     !['UNPAID', 'CONFIRMED', 'DISPUTED'].includes(snapshot.payment_status) || !['NONE', 'PARTIAL', 'FULL'].includes(snapshot.refund_status)) {
     throw new DemoError(422, '订单数据缺少有效的 ID、金额、状态或版本。');

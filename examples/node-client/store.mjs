@@ -5,8 +5,11 @@ import { DatabaseSync } from 'node:sqlite';
 import { DemoError, validateSnapshot, validateClientId } from './perpay.mjs';
 
 export class DemoStore {
-  constructor(filename, origin, siteId) {
-    siteId = validateClientId(siteId);
+  constructor(filename, origin, siteId, protocol = 'native') {
+    if (!['native', 'epay_v1', 'epay_v2'].includes(protocol)) throw new Error('支付协议无效。');
+    if (protocol === 'native') siteId = validateClientId(siteId);
+    else if (!/^[1-9]\d{0,19}$/.test(siteId)) throw new Error('易支付 PID 无效。');
+    this.protocol = protocol;
     if (filename !== ':memory:') mkdirSync(dirname(filename), { recursive: true, mode: 0o700 });
     this.db = new DatabaseSync(filename);
     this.db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA busy_timeout=5000;');
@@ -20,12 +23,15 @@ export class DemoStore {
         const existing = this.db.prepare('SELECT value FROM meta WHERE name = ?').get('perpay_origin');
         // Keep the metadata key for older databases. Its value is the stable website identity.
         const website = this.db.prepare('SELECT value FROM meta WHERE name = ?').get('perpay_client_id');
+        const savedProtocol = this.db.prepare('SELECT value FROM meta WHERE name = ?').get('payment_protocol');
         const historical = this.db.prepare('SELECT 1 FROM orders LIMIT 1').get();
-        if ((existing && existing.value !== origin) || (website && website.value !== siteId) || (!website && historical && siteId !== 'default')) {
+        if ((existing && existing.value !== origin) || (website && website.value !== siteId) ||
+            ((savedProtocol?.value ?? (existing ? 'native' : protocol)) !== protocol) || (!website && historical && siteId !== 'default')) {
           throw new Error('数据目录已绑定另一个 PerPay 实例或业务网站。请使用新的 DEMO_DATA_DIR，不要把旧业务单号发到另一个网站。');
         }
         this.db.prepare('INSERT OR IGNORE INTO meta VALUES (?, ?)').run('perpay_origin', origin);
         this.db.prepare('INSERT OR IGNORE INTO meta VALUES (?, ?)').run('perpay_client_id', siteId);
+        this.db.prepare('INSERT OR IGNORE INTO meta VALUES (?, ?)').run('payment_protocol', protocol);
       });
     } catch (error) { this.db.close(); throw error; }
   }
@@ -53,10 +59,18 @@ export class DemoStore {
   apply(snapshot, source) { return this.transaction(() => this.applyInsideTransaction(snapshot, source)); }
   applyInsideTransaction(snapshot, source) {
     validateSnapshot(snapshot);
+    if ((snapshot.payment_protocol ?? 'native') !== this.protocol) throw new DemoError(409, '订单协议与数据目录不一致。');
     const row = this.get(snapshot.merchant_order_no);
     if (!row) return 'ignored_unknown_order';
     if (row.request.amount_cents !== snapshot.requested_amount_cents || (row.order_id && row.order_id !== snapshot.order_id)) throw new DemoError(409, '订单 ID 或金额与本地业务订单不一致，未更新状态。');
     const previous = row.snapshot;
+    if (this.protocol !== 'native') {
+      // Compatibility responses have no remote order version. Version this local projection.
+      const payment = previous?.payment_status === 'CONFIRMED' && snapshot.payment_status === 'UNPAID'
+        ? 'DISPUTED' : snapshot.payment_status;
+      const changed = previous && previous.payment_status !== payment;
+      snapshot = { ...snapshot, payment_status: payment, version: previous ? previous.version + Number(changed) : 1 };
+    }
     if (previous && snapshot.version < previous.version) return 'ignored_older_version';
     if (previous && snapshot.version === previous.version && (snapshot.payment_status !== previous.payment_status || snapshot.refund_status !== previous.refund_status || snapshot.payable_amount_cents !== previous.payable_amount_cents || snapshot.received_amount_cents !== previous.received_amount_cents)) {
       throw new DemoError(409, '同一订单版本出现不一致的状态，未更新本地记录。');

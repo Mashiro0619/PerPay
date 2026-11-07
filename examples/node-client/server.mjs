@@ -6,11 +6,21 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DemoError, MERCHANT_NO, UUID, PerPayClient, decodeKey, orderSnapshot, perpayOrigin, validateClientId, verifyWebhook } from './perpay.mjs';
 import { DemoStore } from './store.mjs';
+import { EpayClient, readEpayConfig, verifyEpayNotification } from './epay.mjs';
 
 const directory = fileURLToPath(new URL('.', import.meta.url));
 export function readConfig(env = process.env) {
+  const protocol = env.PAYMENT_PROTOCOL ?? 'native';
+  if (!['native', 'epay_v1', 'epay_v2'].includes(protocol)) throw new Error('PAYMENT_PROTOCOL 必须是 native、epay_v1 或 epay_v2。');
   const port = Number(env.DEMO_PORT ?? '6196');
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('DEMO_PORT 必须是 1–65535 的整数。');
+  const returnUrl = demoEndpoint(env.DEMO_RETURN_URL, '/return', 'DEMO_RETURN_URL', false);
+  if (protocol !== 'native') {
+    const connection = readEpayConfig(env, protocol);
+    return { ...connection, port, returnUrl,
+      notifyUrl: demoEndpoint(env.DEMO_NOTIFY_URL, '/webhooks/perpay', 'DEMO_NOTIFY_URL', true),
+      database: join(resolve(directory, env.DEMO_DATA_DIR ?? `data-${connection.pid}-${protocol}`), 'demo.sqlite3') };
+  }
   const url = perpayOrigin(env.PERPAY_URL ?? 'http://localhost:6190');
   const clientId = validateClientId(env.PERPAY_CLIENT_ID);
   const secret = env.PERPAY_API_SECRET ?? '';
@@ -32,11 +42,30 @@ export function readConfig(env = process.env) {
   } else {
     webhookSecret = decodeKey(env.PERPAY_WEBHOOK_SECRET, 'PERPAY_WEBHOOK_SECRET');
   }
-  let notify;
-  try { notify = new URL(notifyUrl); } catch { throw new Error('DEMO_NOTIFY_URL 不是完整 URL。'); }
-  if (notify.protocol !== 'https:' || notify.username || notify.password || notify.port || notify.search || notify.hash || notify.pathname !== '/webhooks/perpay') throw new Error('DEMO_NOTIFY_URL 必须是公开 HTTPS 来源下的 /webhooks/perpay 地址，不带端口或查询参数。');
-  return { port, url, clientId, secret, notifyUrl, webhookSecret, webhookKeys, database: join(resolve(directory, env.DEMO_DATA_DIR ?? 'data'), 'demo.sqlite3') };
+  demoEndpoint(notifyUrl, '/webhooks/perpay', 'DEMO_NOTIFY_URL', true);
+  return { protocol, port, url, clientId, secret, notifyUrl, returnUrl, webhookSecret, webhookKeys, database: join(resolve(directory, env.DEMO_DATA_DIR ?? 'data'), 'demo.sqlite3') };
 }
+function demoEndpoint(value, path, label, required) {
+  if (!value && !required) return undefined;
+  let url;
+  try { url = new URL(value); } catch { throw new Error(`${label} 必须为完整 HTTPS 地址。`); }
+  if (url.protocol !== 'https:' || url.username || url.password || url.port || url.hash) throw new Error(`${label} 必须使用公开 HTTPS 地址，可使用 ${path} 路径。`);
+  const seen = new Set();
+  for (const key of url.searchParams.keys()) {
+    if (seen.has(key)) throw new Error(`${label} 查询参数名不能重复。`);
+    seen.add(key);
+  }
+  return url.href;
+}
+function matchesEndpoint(target, configured, fallback) {
+  const endpoint = new URL(configured ?? fallback, 'http://localhost');
+  if (target.pathname !== endpoint.pathname) return false;
+  for (const [key, value] of endpoint.searchParams) {
+    if (target.searchParams.getAll(key).length !== 1 || target.searchParams.get(key) !== value) return false;
+  }
+  return true;
+}
+export function createDemoClient(config) { return config.protocol && config.protocol !== 'native' ? new EpayClient(config) : new PerPayClient(config); }
 function json(response, status, data) {
   response.writeHead(status, { 'content-type': 'application/json; charset=utf-8' });
   response.end(JSON.stringify(data));
@@ -68,16 +97,20 @@ export function orderPayload(input, config) {
   const product = typeof input.product_name === 'string' ? input.product_name.trim() : '';
   const note = typeof input.note === 'string' ? input.note.trim() : '';
   if (!product || Array.from(product).length > 200 || !product.isWellFormed() || /[\u0000-\u001f\u007f]/.test(product) || Array.from(note).length > 500 || !note.isWellFormed() || /[\u0000-\u001f\u007f]/.test(note)) throw new DemoError(400, '商品名或备注无效；商品名最多 200 字，备注最多 500 字，不含控制字符。');
-  return { idempotency_key: 'demo:' + input.merchant_order_no, merchant_order_no: input.merchant_order_no, amount_cents: cents, product_name: product, ...(note ? { note } : {}), notify_url: config.notifyUrl };
+  return { idempotency_key: 'demo:' + input.merchant_order_no, merchant_order_no: input.merchant_order_no, amount_cents: cents, product_name: product, ...(note ? { note } : {}), notify_url: config.notifyUrl, ...(config.returnUrl ? { return_url: config.returnUrl } : {}) };
 }
 export async function openDemoStore(config, client) {
+  if (config.protocol && config.protocol !== 'native') {
+    const pid = await client.identity();
+    return new DemoStore(config.database, config.url, pid, config.protocol);
+  }
   const status = await client.request('GET', '/api/v1/system/status');
   if (status.client_id !== config.clientId) throw new DemoError(502, 'PerPay 返回的网站身份与接入配置不一致。');
   const siteId = validateClientId(status.site_id ?? status.client_id);
   return new DemoStore(config.database, config.url, siteId);
 }
 
-export function createDemoServer({ config, client = new PerPayClient(config), store = new DemoStore(config.database, config.url, config.clientId) }) {
+export function createDemoServer({ config, client = createDemoClient(config), store = new DemoStore(config.database, config.url, config.clientId, config.protocol) }) {
   const csrf = randomBytes(32).toString('base64url');
   const pending = new Map();
   async function perform(no, create) {
@@ -87,7 +120,7 @@ export function createDemoServer({ config, client = new PerPayClient(config), st
       if (!row) throw new DemoError(404, '本地没有这个业务订单。');
       try {
         const result = create ? await client.createOrder(row.request) : row.order_id ? await client.getOrder(row.order_id) : await client.getByMerchantNo(no);
-        const snapshot = orderSnapshot(result, config.url);
+        const snapshot = config.protocol && config.protocol !== 'native' ? result : orderSnapshot(result, config.url);
         if (snapshot.merchant_order_no !== no) throw new DemoError(502, 'PerPay 返回了另一笔业务订单。');
         store.apply(snapshot, 'api');
         return { merchant_order_no: no };
@@ -106,7 +139,31 @@ export function createDemoServer({ config, client = new PerPayClient(config), st
     response.setHeader('referrer-policy', 'no-referrer');
     response.setHeader('content-security-policy', "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
     try {
-      if (request.url === '/webhooks/perpay' && request.method === 'POST') {
+      const target = new URL(request.url, 'http://localhost');
+      const epay = config.protocol && config.protocol !== 'native';
+      const notificationEndpoint = matchesEndpoint(target, config.notifyUrl, '/webhooks/perpay');
+      const returnEndpoint = matchesEndpoint(target, config.returnUrl, '/return');
+      if (epay && request.method === 'GET' && (notificationEndpoint || returnEndpoint)) {
+        if (returnEndpoint && !target.searchParams.has('sign')) {
+          response.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' });
+          response.end('已返回业务网站。请在本机 Demo 页面查看订单或手动查单。'); return;
+        }
+        const verified = verifyEpayNotification(target.search, config);
+        const no = verified.parameters.out_trade_no;
+        const local = store.get(no);
+        if (!local || local.request.amount_cents !== verified.moneyCents) throw new DemoError(409, '通知与本机业务订单不一致。');
+        const snapshot = await client.getOrder(verified.parameters.trade_no);
+        if (snapshot.merchant_order_no !== no || snapshot.payment_status !== 'CONFIRMED' || snapshot.requested_amount_cents !== verified.moneyCents) throw new DemoError(409, '服务端查询未确认这笔付款。');
+        store.receive({ digest: verified.digest, snapshot,
+          event: { event_id: verified.eventId, event_type: 'PAYMENT_CONFIRMED' } });
+        response.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' });
+        response.end(notificationEndpoint ? 'success' : '付款已确认，可返回本机 Demo 页面查看记录。'); return;
+      }
+      if (!epay && returnEndpoint && request.method === 'GET') {
+        response.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' });
+        response.end('已返回业务网站。请在本机 Demo 页面查看已验签通知或手动查单。'); return;
+      }
+      if (!epay && notificationEndpoint && request.method === 'POST') {
         const keys = config.webhookKeys ?? config.webhookSecret;
         if (!keys) throw new DemoError(404, '通知接收未启用。');
         const bytes = await bodyBytes(request, 256 * 1024);
@@ -128,7 +185,7 @@ export function createDemoServer({ config, client = new PerPayClient(config), st
         response.writeHead(200, { 'content-type': type }); response.end(bytes); return;
       }
       if (request.method === 'GET' && request.url === '/demo/state') {
-        json(response, 200, { csrf, perpay_url: config.url, notifications: Boolean(config.notifyUrl), orders: store.list(), events: store.events() }); return;
+        json(response, 200, { csrf, perpay_url: config.url, protocol: config.protocol ?? 'native', notifications: Boolean(config.notifyUrl), orders: store.list(), events: store.events() }); return;
       }
       if (request.method === 'POST' && request.url === '/demo/orders') {
         const payload = orderPayload(parseJson(await bodyBytes(request)), config);
@@ -153,7 +210,7 @@ export function createDemoServer({ config, client = new PerPayClient(config), st
 if (import.meta.main) {
   try {
     const config = readConfig();
-    const client = new PerPayClient(config);
+    const client = createDemoClient(config);
     const store = await openDemoStore(config, client);
     const { server } = createDemoServer({ config, client, store });
     server.on('error', error => { console.error(error.code === 'EADDRINUSE' ? '端口已被占用，请修改 DEMO_PORT。' : '示例服务无法启动。'); store.close(); process.exitCode = 1; });

@@ -9,8 +9,9 @@ import { deflateRawSync } from 'node:zlib';
 const project = fileURLToPath(new URL('../', import.meta.url));
 export const DEMO_FILES = Object.freeze([
   '.env.example', '.gitignore', 'LICENSE', 'README.md', 'package.json',
-  'perpay.mjs', 'server.mjs', 'store.mjs',
-  'public/app.js', 'public/index.html', 'public/style.css', 'test/demo.test.mjs',
+  'perpay.mjs', 'epay.mjs', 'server.mjs', 'store.mjs',
+  'public/app.js', 'public/index.html', 'public/style.css',
+  'test/demo.test.mjs', 'test/epay.test.mjs', 'test/webhook-rotation.test.mjs',
 ].sort());
 const crcTable = Uint32Array.from({ length: 256 }, (_, byte) => {
   let crc = byte;
@@ -35,7 +36,7 @@ export async function buildDemoArchive(sourceDirectory = join(project, 'examples
     if (metadata.size > 1024 * 1024) throw new Error('Unexpectedly large demo source: ' + relative);
     const bytes = await readFile(file);
     if (relative === '.env.example') {
-      for (const key of ['PERPAY_API_SECRET', 'PERPAY_WEBHOOK_SECRET']) {
+      for (const key of ['PERPAY_API_SECRET', 'PERPAY_WEBHOOK_SECRET', 'EPAY_V1_KEY', 'EPAY_MERCHANT_PRIVATE_KEY', 'EPAY_PLATFORM_PUBLIC_KEY']) {
         const declarations = bytes.toString('utf8').split(/\r?\n/).filter(line => line.startsWith(key + '='));
         if (declarations.length !== 1 || declarations[0] !== key + '=') throw new Error('Refusing to package a non-empty or ambiguous secret in .env.example.');
       }

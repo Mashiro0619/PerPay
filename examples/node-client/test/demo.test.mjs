@@ -77,9 +77,11 @@ describe('standalone PerPay caller demo', () => {
     const configured = readConfig({ ...env, DEMO_NOTIFY_URL: config.notifyUrl, PERPAY_WEBHOOK_SECRET: secret.toString('base64url') });
     assert.equal(configured.notifyUrl, config.notifyUrl); assert.deepEqual(configured.webhookSecret, secret);
     assert.equal(orderPayload(input, configured).notify_url, config.notifyUrl);
-    for (const notifyUrl of ['http://127.0.0.1/webhooks/perpay', 'https://shop.example.com:8443/webhooks/perpay', 'https://shop.example.com/wrong-path', 'https://shop.example.com/webhooks/perpay?x=1']) {
+    for (const notifyUrl of ['http://127.0.0.1/webhooks/perpay', 'https://shop.example.com:8443/webhooks/perpay', 'https://user:secret@shop.example.com/webhooks/perpay', 'https://shop.example.com/webhooks/perpay#fragment']) {
       assert.throws(() => readConfig({ ...env, DEMO_NOTIFY_URL: notifyUrl, PERPAY_WEBHOOK_SECRET: secret.toString('base64url') }));
     }
+    const prefixed = 'https://shop.example.com/payments/notify?source=demo';
+    assert.equal(readConfig({ ...env, DEMO_NOTIFY_URL: prefixed, PERPAY_WEBHOOK_SECRET: secret.toString('base64url') }).notifyUrl, prefixed);
   });
   it('defaults to the server localhost origin and still accepts an explicit loopback IP', () => {
     const env = { PERPAY_CLIENT_ID: config.clientId, PERPAY_API_SECRET: secret.toString('base64url'), DEMO_NOTIFY_URL: config.notifyUrl, PERPAY_WEBHOOK_SECRET: secret.toString('base64url') };
