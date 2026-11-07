@@ -138,15 +138,15 @@ describe("overview order progress", () => {
     expect(screen.getByRole("list", { name: "最近订单" })).toBeVisible();
     expect(screen.getAllByRole("listitem")).toHaveLength(1);
     expect(screen.getAllByRole("link", { name: recent.product_name })).toHaveLength(1);
-    expect(screen.getByLabelText("应付金额 ¥199.01")).toBeVisible();
+    expect(screen.getByLabelText("实收金额 ¥199.01")).toBeVisible();
     expect(screen.getByRole("group", { name: "收款状态" })).toHaveTextContent("收款已确认");
     expect(screen.getByRole("group", { name: "通知状态" })).toHaveTextContent("等待重试");
     expect(screen.queryByText("收款状态", { exact: true })).not.toBeInTheDocument();
     expect(screen.queryByText("通知状态", { exact: true })).not.toBeInTheDocument();
     expect(screen.queryByText("时间", { exact: true })).not.toBeInTheDocument();
     expect(screen.getAllByLabelText(/^(应付|实收)金额 /)).toHaveLength(1);
-    expect(screen.getByText("应付", { exact: true })).toBeVisible();
-    expect(screen.queryByText("实收", { exact: true })).not.toBeInTheDocument();
+    expect(screen.getByText("实收", { exact: true })).toBeVisible();
+    expect(screen.queryByText("应付", { exact: true })).not.toBeInTheDocument();
     expect(screen.getByText("收款已确认")).toBeVisible();
     expect(screen.getByText("等待重试")).toBeVisible();
     expect(view.container.querySelectorAll("time")).toHaveLength(1);
@@ -246,7 +246,7 @@ describe("overview order progress", () => {
     const reference = "MERCHANT-".repeat(20);
     mount([{ ...recent, product_name: product, merchant_order_no: reference, payable_amount_cents: 987654321012 }]);
     expect(screen.getByRole("link", { name: product })).toHaveAttribute("title", product);
-    expect(screen.getByText(reference)).toHaveAttribute("title", reference);
+    expect(screen.queryByText(reference)).not.toBeInTheDocument();
     expect(screen.getByText("应付")).toBeVisible();
     expect(screen.getByText("实收")).toBeVisible();
     expect(screen.getByLabelText("应付金额 ¥9,876,543,210.12")).toHaveAttribute("data-wide", "true");
@@ -273,10 +273,10 @@ describe("overview order progress", () => {
     expect(screen.getByLabelText("当前地址")).toHaveTextContent("/sites/site_a");
   });
 
-  it("keeps selection available instead of navigating when copying order metadata", () => {
+  it("keeps selection available instead of navigating when copying the creation time", () => {
     mobileMedia(390);
     mount();
-    const reference = screen.getByText(recent.merchant_order_no);
+    const reference = screen.getByTitle("2026/10/11 10:30（北京时间）");
     const selection = window.getSelection()!;
     const range = document.createRange();
     range.selectNodeContents(reference);
@@ -284,7 +284,7 @@ describe("overview order progress", () => {
     selection.addRange(range);
     try {
       fireEvent.click(reference);
-      expect(selection.toString()).toBe(recent.merchant_order_no);
+      expect(selection.toString()).toBe("2026/10/11 10:30");
       expect(screen.getByLabelText("当前地址")).toHaveTextContent(/^\/$/);
     } finally {
       selection.removeAllRanges();
@@ -296,5 +296,29 @@ describe("overview order progress", () => {
     expect(screen.getByText("暂无订单")).toBeVisible();
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
     expect(screen.queryByText(/¥/)).not.toBeInTheDocument();
+  });
+
+  it.each(["NO_EVENT", "NOT_CONFIGURED"] as const)("omits %s placeholders in the mobile summary", status => {
+    mobileMedia(390);
+    mount([{ ...recent, notification_summary: { status, total_events: 0, acknowledged_events: 0 } }]);
+    expect(screen.queryByRole("group", { name: "通知状态" })).not.toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "收款状态" })).toHaveTextContent("收款已确认");
+    expect(screen.queryByText(recent.merchant_order_no)).not.toBeInTheDocument();
+  });
+
+  it.each([null, 0, 19900, 19901, 19902])("keeps mobile receipt semantics at %s cents", received => {
+    mobileMedia(390);
+    mount([{ ...recent, received_amount_cents: received }]);
+    if (received === null) {
+      expect(screen.getByText("金额暂缺")).toBeVisible();
+      expect(screen.getByLabelText("应付金额 ¥199.01")).toBeVisible();
+      expect(screen.queryByLabelText(/^实收金额 /)).not.toBeInTheDocument();
+    } else {
+      expect(screen.getByLabelText(/^实收金额 /)).toBeVisible();
+      if (received !== 19901) {
+        expect(screen.getByLabelText("应付金额 ¥199.01")).toBeVisible();
+        expect(screen.getByText(received < 19901 ? "少收" : "多收")).toBeVisible();
+      } else expect(screen.queryByLabelText(/^应付金额 /)).not.toBeInTheDocument();
+    }
   });
 });

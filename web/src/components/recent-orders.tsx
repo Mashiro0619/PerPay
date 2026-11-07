@@ -8,10 +8,10 @@ import {
   ListDateTime,
   ListIdentity,
   ListMoney,
+  ListSummary,
 } from "@/components/list-primitives";
 import { SiteIdentity } from "@/components/site-identity";
 import { Badge } from "@/components/ui/badge";
-import { ItemContent, ItemTitle } from "@/components/ui/item";
 import { Empty, EmptyHeader, EmptyTitle } from "@/components/admin-empty";
 
 function OrderAmounts({ order }: { order: AdminOrderSummary }) {
@@ -108,20 +108,35 @@ function OrderMeta({ order, showSite, showTimes = false }: { order: AdminOrderSu
 }
 
 function RecentOrderSummary({ order, showSite }: { order: AdminOrderSummary; showSite: boolean }) {
-  return <ItemContent className="overview-order-summary">
-    <div className="flex min-w-0 flex-col gap-1">
-      <ItemTitle className="list-identity-title min-w-0 w-full"><OrderProductLink order={order} /></ItemTitle>
-      <div role="group" className="flex min-w-0 max-w-full flex-wrap items-start gap-1 [&_[data-slot=badge]]:max-w-full [&_[data-slot=badge]]:whitespace-normal [&_[data-slot=badge]]:break-words" aria-label="收款与通知状态">
-        <div role="group" className="min-w-0 max-w-full" aria-label="收款状态"><PaymentResult order={order} /></div>
-        <div role="group" className="min-w-0 max-w-full" aria-label="通知状态"><NotificationResult order={order} /></div>
+  const received = order.received_amount_cents;
+  const hasReceipt = received != null;
+  const differs = hasReceipt && received !== order.payable_amount_cents;
+  const notification = order.notification_summary;
+  const showNotification = !notification || !["NO_EVENT", "NOT_CONFIGURED"].includes(notification.status);
+  return <ListSummary layout="order"
+    identity={<>
+      <ListIdentity><OrderProductLink order={order} /></ListIdentity>
+      <dl className="order-summary-metadata">
+        {showSite && <div><dt className="sr-only">网站</dt><dd><SiteIdentity clientId={order.api_client_id} name={order.site_name} /></dd></div>}
+        <div><dt className="sr-only">创建时间</dt><dd><ListDateTime value={order.created_at} inline /></dd></div>
+      </dl>
+    </>}
+    aside={<div className="order-summary-payment">
+      <dl className="order-summary-amounts">
+        <div className="order-summary-primary-amount">
+          <dt>{hasReceipt ? "实收" : "应付"}</dt>
+          <dd><ListMoney value={hasReceipt ? received : order.payable_amount_cents} label={hasReceipt ? "实收金额" : "应付金额"} /></dd>
+        </div>
+        {differs && <div className="order-summary-secondary-amount"><dt>应付</dt><dd><ListMoney value={order.payable_amount_cents} label="应付金额" secondary /></dd></div>}
+        {!hasReceipt && order.payment.status === "CONFIRMED" && <div className="order-summary-secondary-amount"><dt>实收</dt><dd>金额暂缺</dd></div>}
+      </dl>
+      <div role="group" className="overview-summary-statuses" aria-label="收款与通知状态">
+        <div role="group" aria-label="收款状态"><PaymentResult order={order} /></div>
+        {showNotification && <div role="group" aria-label="通知状态"><NotificationResult order={order} /></div>}
+        {differs && <Badge variant="warning">{received < order.payable_amount_cents ? "少收" : "多收"}</Badge>}
       </div>
-    </div>
-    <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-      <OrderAmounts order={order} />
-      <ListDateTime value={order.created_at} inline />
-    </div>
-    <OrderMeta order={order} showSite={showSite} />
-  </ItemContent>;
+    </div>}
+  />;
 }
 
 export function RecentOrders({ orders }: { orders: readonly AdminOrderSummary[] }) {

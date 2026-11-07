@@ -3,6 +3,38 @@ import { audit, screenshot } from "./audit";
 import { MIN_TOUCH_TARGET_SIZE } from "./touch-targets";
 import type { AdminWorkItem } from "../web/src/api/generated/types.gen";
 
+test("overview reminders keep readable groups at doubled mobile text size", async ({ page, manifest }, info) => {
+  await login(page, manifest);
+  for (const width of [423, 320]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto(manifest.origin + "/admin/");
+    const rows = page.locator('.overview-work-item');
+    await expect(rows).toHaveCount(4);
+    await page.evaluate(() => { document.documentElement.style.fontSize = "200%"; });
+    const geometry = await rows.evaluateAll(rows => rows.map(row => {
+      const bounds = row.getBoundingClientRect();
+      const title = row.querySelector('[data-row-link]')!.getBoundingClientRect();
+      const values = [...row.querySelectorAll('.list-money, time, [data-slot="badge"], .overview-work-product')].flatMap(value => {
+        const range = document.createRange();
+        range.selectNodeContents(value);
+        return [...range.getClientRects()].map(rect => ({ text: value.textContent, left: rect.left, right: rect.right }));
+      });
+      return { left: bounds.left, right: bounds.right, titleWidth: title.width, clipped: row.scrollWidth > row.clientWidth + 1, values };
+    }));
+    for (const row of geometry) {
+      expect(row.titleWidth, "a reminder title must not become a vertical strip beside its status").toBeGreaterThan(100);
+      expect(row.clipped).toBe(false);
+      for (const value of row.values) {
+        expect(value.left, value.text ?? "value").toBeGreaterThanOrEqual(row.left - 1);
+        expect(value.right, value.text ?? "value").toBeLessThanOrEqual(row.right + 1);
+      }
+    }
+    await rows.first().scrollIntoViewIfNeeded();
+    await screenshot(page, info, "overview-work-large-text-" + width);
+    await record(page, info, { width, font: 200, geometry });
+  }
+});
+
 test("empty reminders stay compact and give recent orders the full dashboard width", async ({ page, manifest }, info) => {
   await page.route("**/api/admin/v1/system/status", async route => {
     const body = await (await route.fetch()).json();
@@ -146,7 +178,7 @@ test("overview grids use container widths and preserve complete identifiers and 
             const body = row.querySelector(".overview-work-content")!.getBoundingClientRect();
             return { inset: body.left - panelBounds.left, hoverInset: body.left - bounds.left,
               contained: body.right <= bounds.right && bounds.right <= panelBounds.right,
-              inlineFields: [...row.querySelectorAll(".overview-work-fields > div")].every(field =>
+              inlineFields: [...row.querySelectorAll(".overview-work-fields > div:not(.overview-work-site)")].every(field =>
                 Math.abs(field.querySelector("dt")!.getBoundingClientRect().top - field.querySelector("dd")!.getBoundingClientRect().top) < 1) };
           }),
         } };
@@ -200,7 +232,7 @@ test("recent orders keep compact summaries and header geometry across themes and
       localStorage.setItem("perpay:content-width", mode);
     }, { theme, mode });
     await page.goto(manifest.origin + "/admin" + (scoped ? sitePath : "/"));
-    await expect(panel.locator(".overview-order-summary")).toHaveCount(5);
+    await expect(panel.locator('[data-summary-layout="order"]')).toHaveCount(5);
     await expect(panel.locator('[data-slot="card-description"]')).toHaveCount(0);
     const geometry = await panel.evaluate(panel => {
       const bounds = panel.getBoundingClientRect();
@@ -213,36 +245,21 @@ test("recent orders keep compact summaries and header geometry across themes and
         titleInset: title.left - bounds.left,
         listGap: parseFloat(getComputedStyle(panel.querySelector('.business-summary-list')!).gap),
         rows: [...panel.querySelectorAll('[data-business-row]')].map(row => {
-          const body = row.querySelector('.overview-order-summary')!.getBoundingClientRect();
+          const body = row.querySelector('[data-summary-layout="order"]')!.getBoundingClientRect();
           const product = row.querySelector('.list-identity-title')!.getBoundingClientRect();
           const money = row.querySelector('.list-money')!;
           const amount = (money.closest('.overview-order-money') ?? money.parentElement)!.getBoundingClientRect();
           const site = row.querySelector('.list-site-identity');
-          // Website order numbers keep their source label and complete text.
-          const merchantCode = row.querySelector('.list-code')!;
-          const merchant = row.querySelector('.overview-order-reference');
-          const codeRange = document.createRange();
-          codeRange.selectNodeContents(merchantCode);
-          const codeStyle = getComputedStyle(merchantCode);
-          const bodyBounds = body;
-          const merchantIdentity = {
-            text: merchantCode.textContent,
-            full: merchantCode.getAttribute('title'),
-            painted: codeStyle.visibility === 'visible' && Number(codeStyle.opacity) > 0 && [...codeRange.getClientRects()].every(bounds =>
-              bounds.width > 0 && bounds.left >= bodyBounds.left - 1 && bounds.right <= bodyBounds.right + 1),
-          };
-          const metadata = site && merchant ? (() => {
-            const first = merchant.getBoundingClientRect();
-            const second = site.getBoundingClientRect();
-            const sameLine = Math.min(first.bottom, second.bottom) > Math.max(first.top, second.top);
-            return { sameLine, gap: sameLine ? second.left - first.right : second.top - first.bottom };
-          })() : null;
+          const payment = row.querySelector('.list-summary-aside')!.getBoundingClientRect();
+          const identity = row.querySelector('.list-summary-identity')!.getBoundingClientRect();
+          const groupsOverlap = Math.min(payment.right, identity.right) - Math.max(payment.left, identity.left) > 1 &&
+            Math.min(payment.bottom, identity.bottom) - Math.max(payment.top, identity.top) > 1;
           return { height: row.getBoundingClientRect().height,
             inset: body.left - bounds.left, hoverInset: body.left - row.getBoundingClientRect().left,
             amountInset: amount.left - body.left, amountAfterProduct: amount.top >= product.bottom - 1,
             productContained: product.left >= body.left && product.right <= body.right,
             fieldsClipped: [...row.querySelectorAll('.list-code, .list-money, time')].some(element => element.scrollWidth > element.clientWidth + 1),
-            metadata, merchantIdentity,
+            groupsOverlap, merchantVisible: Boolean(row.querySelector('.overview-order-reference')),
             primaryHref: row.querySelector('a[data-row-link]')!.getAttribute('href'),
             siteHref: site?.getAttribute('href'),
             times: [...row.querySelectorAll('time')].map(time => ({
@@ -259,12 +276,8 @@ test("recent orders keep compact summaries and header geometry across themes and
     expect(geometry.headerAlignment).toBeLessThan(1);
     expect(geometry.titleInset).toBe(16);
     expect(geometry.listGap).toBe(4);
-    expect(geometry.rows.every(row => row.inset >= 12 && row.hoverInset >= 8 && !row.fieldsClipped && row.payment && row.notification), JSON.stringify(geometry.rows)).toBe(true);
-    expect(geometry.rows.every(row => row.amountInset === 0 && row.amountAfterProduct && row.productContained), JSON.stringify(geometry.rows)).toBe(true);
-    expect(geometry.rows.every(row => row.merchantIdentity.text && row.merchantIdentity.text === row.merchantIdentity.full && row.merchantIdentity.painted), JSON.stringify(geometry.rows)).toBe(true);
-    const metadata = geometry.rows.flatMap(row => row.metadata ? [row.metadata] : []);
-    expect(metadata.length).toBe(scoped ? 0 : 5);
-    expect(metadata.every(item => item.gap >= (item.sameLine ? 4 : 1)), JSON.stringify(metadata)).toBe(true);
+    expect(geometry.rows.every(row => row.inset >= 12 && row.hoverInset >= 4 && !row.fieldsClipped && row.payment), JSON.stringify(geometry.rows)).toBe(true);
+    expect(geometry.rows.every(row => !row.groupsOverlap && row.productContained && !row.merchantVisible), JSON.stringify(geometry.rows)).toBe(true);
     expect(await panel.locator(".list-site-identity").count()).toBe(scoped ? 0 : 5);
     for (const row of geometry.rows) {
       expect(new URL(row.primaryHref!, manifest.origin).searchParams.get("overlay")?.startsWith((scoped ? sitePath : "") + "/orders/")).toBe(true);
@@ -319,16 +332,16 @@ test("recent order headers and tables switch at the same measured container boun
         rows: [...list.querySelectorAll('[data-business-row]')].map(row => {
           const product = row.querySelector('.list-identity-title')!;
           const productLines = Math.round(product.getBoundingClientRect().height / parseFloat(getComputedStyle(product).lineHeight));
-          const reference = row.querySelector('.overview-order-reference')!;
-          const meta = row.querySelector('.overview-order-meta')!;
-          const code = reference.querySelector('.list-code')!;
-          const label = reference.firstElementChild!;
-          const labelBounds = label.getBoundingClientRect();
-          const codeBounds = code.getBoundingClientRect();
+          const reference = row.querySelector('.overview-order-reference');
+          const meta = row.querySelector('.overview-order-meta');
+          const code = reference?.querySelector('.list-code');
+          const label = reference?.firstElementChild;
+          const labelBounds = label?.getBoundingClientRect();
+          const codeBounds = code?.getBoundingClientRect();
           const codeRange = document.createRange();
-          codeRange.selectNodeContents(code);
-          const codeRects = [...codeRange.getClientRects()].filter(rect => rect.width > 0 && rect.height > 0);
-          const identity = row.querySelector('[data-column-id="identity"], .overview-order-summary')!.getBoundingClientRect();
+          if (code) codeRange.selectNodeContents(code);
+          const codeRects = code ? [...codeRange.getClientRects()].filter(rect => rect.width > 0 && rect.height > 0) : [];
+          const identity = row.querySelector('[data-column-id="identity"], [data-summary-layout="order"]')!.getBoundingClientRect();
           const times = [...row.querySelectorAll('time')].map(time => {
             const entry = time.closest('.overview-order-time-entry');
             const label = entry?.querySelector('dt');
@@ -351,13 +364,13 @@ test("recent order headers and tables switch at the same measured container boun
           });
           const amount = row.querySelector('[data-column-id="amounts"]');
           return { height: row.getBoundingClientRect().height, productLines,
-            sourceLabel: label.textContent,
-            numberComplete: code.textContent === code.getAttribute('title'),
+            sourceLabel: label?.textContent,
+            numberComplete: code ? code.textContent === code.getAttribute('title') : false,
             numberPainted: codeRects.length > 0 && codeRects.every(rect =>
               rect.left >= identity.left - 1 && rect.right <= identity.right + 1),
-            referenceInline: Math.abs(labelBounds.top - codeBounds.top) < 2,
-            referenceBorder: getComputedStyle(reference).borderRightWidth,
-            metaBorder: getComputedStyle(meta).borderRightWidth,
+            referenceInline: labelBounds && codeBounds ? Math.abs(labelBounds.top - codeBounds.top) < 2 : false,
+            referenceBorder: reference ? getComputedStyle(reference).borderRightWidth : null,
+            metaBorder: meta ? getComputedStyle(meta).borderRightWidth : null,
             amountAlignment: amount ? getComputedStyle(amount).textAlign : null,
             primaryHref: row.querySelector('a[data-row-link]')!.getAttribute('href'),
             payment: row.querySelector('[role="group"][aria-label="收款状态"]')?.textContent,
@@ -369,16 +382,19 @@ test("recent order headers and tables switch at the same measured container boun
     });
     expect(geometry.clipped, JSON.stringify(geometry)).toBe(false);
     for (const row of geometry.rows) {
-      expect(row.sourceLabel).toBe("网站订单号");
-      expect(row.numberComplete && row.numberPainted, JSON.stringify(row)).toBe(true);
-      expect(row.referenceBorder).toBe("0px");
-      expect(row.metaBorder).toBe("0px");
+      if (target >= 640) {
+        expect(row.sourceLabel).toBe("网站订单号");
+        expect(row.numberComplete && row.numberPainted, JSON.stringify(row)).toBe(true);
+        expect(row.referenceBorder).toBe("0px");
+        expect(row.metaBorder).toBe("0px");
+      } else expect(row.sourceLabel).toBeUndefined();
       expect(new URL(row.primaryHref!, manifest.origin).searchParams.get("overlay")).toMatch(/^\/orders\//);
       if (target >= 640 && target < 768) expect(row.times).toHaveLength(0);
       else expect(row.times.length).toBeGreaterThan(0);
       expect(row.times.every(time => time.lines === 1 && time.contained && time.complete), JSON.stringify(row.times)).toBe(true);
       if (target >= 640) expect(row.amountAlignment).toBe("right");
-      if (target < 1024) expect(row.payment && row.notification, JSON.stringify(row)).toBeTruthy();
+      if (target < 640) expect(row.payment, JSON.stringify(row)).toBeTruthy();
+      else if (target < 1024) expect(row.payment && row.notification, JSON.stringify(row)).toBeTruthy();
       if (target >= 768) {
         expect(row.timesAligned, JSON.stringify(row.times)).toBe(true);
         expect(row.times.every(time => time.sameLine === !stacked), JSON.stringify(row.times)).toBe(true);

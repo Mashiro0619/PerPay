@@ -99,7 +99,6 @@ export function OverviewWorkItems({ items }: { items: readonly AdminWorkItem[] }
                     >
                       {order.product_name}
                     </Link>
-                    {!clientId && <SiteIdentity clientId={order.api_client_id} name={order.site_name} />}
                   </ItemDescription>
                   <ItemActions className="overview-order-money-line" title="应付金额">
                     <span className="record-list-meta">应付</span>
@@ -125,6 +124,10 @@ export function OverviewWorkItems({ items }: { items: readonly AdminWorkItem[] }
                 </ItemDescription>
               )}
               <dl className="overview-work-fields">
+                {!clientId && order && <div className="overview-work-site">
+                  <dt className="sr-only">网站</dt>
+                  <dd><SiteIdentity clientId={order.api_client_id} name={order.site_name} /></dd>
+                </div>}
                 {order && order.product_name !== order.merchant_order_no && (
                   <div className="overview-work-order-reference">
                     <dt>商户订单号</dt>
