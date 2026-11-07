@@ -45,7 +45,7 @@
 | --- | --- |
 | ![全部网站汇总](docs/screenshots/dashboard-light.png) | ![网站后台](docs/screenshots/workspace-site.png) |
 
-截图均为本地只读合成数据。创建业务网站时填写名称、选择收款账号，并可选填客户端 ID，之后可在接入设置中更换。详细步骤见[多网站管理](docs/multi-site.md)。
+创建业务网站时填写名称、选择收款账号，并可选填客户端 ID。详细步骤见[多网站管理](docs/multi-site.md)。
 
 ## 部署前准备
 
@@ -70,6 +70,7 @@ curl -fsSLo docker-compose.yml https://raw.githubusercontent.com/Mashiro0619/Per
 
 | 配置项 | 怎么填 |
 | --- | --- |
+| `x-perpay-image` | 默认 `ghcr.io/mashiro0619/perpay:latest`；固定版本时修改这里，应用、备份和维护工具统一使用该镜像。 |
 | `x-perpay-public-url` | 你的 HTTPS 地址，如 `https://pay.example.com`，不带路径。 |
 | `x-perpay-trusted-proxy-cidrs` | PerPay 容器实际看到的直连代理 IP 或网段，多个用逗号分隔；HTTPS 部署必填。 |
 | `x-perpay-host-port` | 默认 `127.0.0.1:6190:6190`，只允许从宿主机访问。 |
@@ -93,35 +94,28 @@ docker compose ps
 
 ## 初始化
 
-当前源码默认关闭初始化令牌，首次只需设置管理员密码。需要启用时，把 Compose 顶部的 `x-perpay-setup-token-enabled` 改为 `"true"`，执行 `docker compose up -d app`；源码部署设置 `PERPAY_SETUP_TOKEN_ENABLED=true` 后重启服务。该开关只接受 `true` 或 `false`，不影响已有管理员。
-
-已发布镜像的初始化方式以对应版本为准：`1.0.0-alpha.2` 固定要求令牌，尚不支持此开关；默认镜像 `latest` 跟随稳定版。首次创建管理员前继续限制访问。
-
 1. 访问 `https://你的域名/admin/`；本机试用访问 [http://localhost:6190/admin/](http://localhost:6190/admin/)。已初始化的实例直接登录。
-2. 如果页面要求**初始化令牌**，在部署目录运行 `docker compose logs --tail=100 app`，读取最近一次启动时 `administrator_setup_required` 事件中的 `setup_token`；源码部署从服务启动终端读取。关闭时不显示令牌输入框，也不生成或输出令牌。
-3. 按页面要求设置管理员密码，至少 6 个字符，建议使用更长的随机密码。创建成功后用该密码登录。带令牌的版本会立即使令牌失效；未完成初始化时重启服务会生成新令牌，请重新读取启动日志。
+2. 如果页面要求**初始化令牌**，运行 `docker compose logs --tail=100 app`，读取最近一次启动时 `administrator_setup_required` 事件中的 `setup_token`。初始化前重启过服务时，使用新日志中的令牌。
+3. 设置管理员密码，至少 6 个字符，建议使用更长的随机密码。创建成功后用该密码登录。
 4. 按 [支付宝配置图文教程](docs/alipay-setup.md) 完成向导，检查收款就绪。
 
-初始化令牌只用于首次创建管理员，不是登录密码。不要公开包含令牌的启动日志；公网部署通过后台所在的 HTTPS 地址提交初始化，不把令牌放进网址。
+当前配置默认关闭初始化令牌；开启方式见上方配置表。旧镜像可能固定要求令牌，按页面提示填写即可。令牌只用于首次创建管理员，含令牌的启动日志应保密。
 
-订单结束后的应付金额默认冷却 10 分钟再复用；这不是补付宽限期，也不能完全消除静态码的归属风险。付款截止与重试规则见 [接入说明](USAGE.md#金额复用冷却与付款截止)。
+创建[业务网站](docs/multi-site.md)，从接入的业务系统下单并完成一笔小额付款，核对订单已确认、业务网站已收到通知。收款未就绪或通知失败时，在 **运行状态** 和对应订单详情查看原因。
 
 ## 更新
 
-在 **运行状态 → 官方更新** 选择检查通道、开关自动检查或手动检查。默认开启自动检查：登录后检查一次，后台页面可见且联网时每 6 小时检查；页面隐藏或离线时暂停，恢复后补查已到期的检查。偏好保存在当前浏览器，并在同源标签页之间同步，不修改服务器配置。
-
-检查通道只有“仅稳定版”和“包含预发布版”，默认“包含预发布版”，同时检查已公开的稳定版和预发布版，与当前安装版本无关。已有“仅稳定版”偏好会保留，旧的“跟随当前版本”偏好会按新默认值处理。检查通道不会改变 Docker 镜像标签，也不会自动下载或安装更新。
-
-检查由服务器访问 GitHub，不发送订单、配置或密钥；各有效通道的成功结果缓存 5 分钟，失败冷却 60 秒，不影响收款。后台失败不会反复弹窗，手动检查可在冷却结束后重试。
+在 **运行状态 → 官方更新** 查看新版和发布说明，选择“仅稳定版”或“包含预发布版”。默认开启自动检查并包含预发布版；这些设置保存在当前浏览器。后台提供更新提醒，安装由下面的部署命令完成。
 
 更新前做好备份，在原部署目录执行：
 
 ```sh
 docker compose pull
 docker compose up -d
+docker compose ps
 ```
 
-默认使用稳定版 `latest`，预发布版不会覆盖它。预发布 Release 附件固定到对应版本，详见 [预发布版本与更新通道](docs/maintenance.md#预发布版本与更新通道)；固定版本或回滚见 [维护说明](docs/maintenance.md#固定版本与回滚)。
+默认镜像 `latest` 跟随稳定版。使用固定版本或预发布版时，先将 Compose 顶部的 `x-perpay-image` 改为目标版本，再执行上述命令。旧配置没有此项时，将 `app`、`backup`、`maintenance` 三处镜像统一修改。详见 [版本与更新通道](docs/maintenance.md#预发布版本与更新通道)及[固定版本与回滚](docs/maintenance.md#固定版本与回滚)。
 
 ## 数据与备份
 
@@ -147,7 +141,8 @@ docker compose up -d
 | [调用端 Demo](examples/node-client/README.md) | 业务网站接入示例 |
 | [维护说明](docs/maintenance.md) | 备份恢复、版本升级、回滚与密码重设 |
 | [数据与隐私](docs/privacy.md) | 付款人相关字段、原始证据、会话信息与实际保留规则 |
-| [前端开发](web/README.md) · [OpenAPI](openapi.yaml) | 构建、测试与接口定义 |
+| [开发导航](docs/development/README.md) | 源码职责、修改入口与验证命令 |
+| [前端开发](web/README.md) · [OpenAPI](openapi.yaml) | 组件、交互约束与接口定义 |
 
 ## 许可证
 

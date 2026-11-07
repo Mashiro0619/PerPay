@@ -2,7 +2,7 @@
 
 # 前端开发
 
-后台和公开收银台使用 React、Vite、shadcn/ui、Base UI，组件采用 Nova / Neutral。生产环境由 Hono 提供前端资源，不需要独立前端服务。部署见[项目说明](../README.md)，业务契约见[接入说明](../USAGE.md)，本地预览和验收见[验证指南](../docs/development/ui-verification.md)。
+后台和公开收银台使用 React、Vite、shadcn/ui、Base UI，组件采用 Nova / Neutral。生产环境由 Hono 提供前端资源。部署见[项目说明](../README.md)，全栈代码入口见[开发导航](../docs/development/README.md)，业务契约见[接入说明](../USAGE.md)。
 
 后台入口为 `/admin/`，路由基址使用 Vite 的 `BASE_URL`。服务端将 `/admin` 规范化为 `/admin/` 并保留查询参数；根路径跳转到后台，深层路径返回对应的单页应用入口。
 
@@ -23,15 +23,30 @@
 
 ## 开发与构建
 
-使用 [package.json](../package.json) 的 `engines.node` 指定范围：Node.js 24.15.0 及以上的 24.x。在仓库根目录安装依赖并构建，再启动隔离后端和 Vite：
+使用 [package.json](../package.json) 的 `engines.node` 指定范围：Node.js 24.15.0 及以上的 24.x。在仓库根目录安装依赖、构建并启动可编辑的临时后端：
 
 ```sh
 npm ci
 npm run build
+npm run demo:preview -- --interactive
+```
+
+保留该终端，在第二个终端启动 Vite 热更新：
+
+```sh
+PERPAY_DEV_API_URL=http://127.0.0.1:6192 npm run dev:admin
+```
+
+PowerShell 使用：
+
+```powershell
+$env:PERPAY_DEV_API_URL = 'http://127.0.0.1:6192'
 npm run dev:admin
 ```
 
-后台开发入口为 `http://127.0.0.1:6191/admin/`，默认代理到 `http://localhost:6190`。可用 `PERPAY_DEV_API_URL` 指向[临时预览后端](../docs/development/ui-verification.md#本地预览)。自行运行 `npm run dev` 时，先设置独立的 `PERPAY_DATA_DIR`、`PERPAY_BACKUP_DIR`、`PERPAY_MASTER_KEY` 和 `PERPAY_PUBLIC_URL`，核对 Origin；真实支付宝或通知配置会启动真实后台任务。
+打开 `http://127.0.0.1:6191/admin/`，密码为 `123456`。临时后端支持配置编辑，停止后清理数据；预览模式与参数见[本地预览](../docs/development/ui-verification.md#本地预览)。
+
+需要真实后端时使用 `npm run dev`，先设置独立的 `PERPAY_DATA_DIR`、`PERPAY_BACKUP_DIR`、`PERPAY_MASTER_KEY` 和 `PERPAY_PUBLIC_URL`。Vite 未设置 `PERPAY_DEV_API_URL` 时代理到 `http://localhost:6190`；已配置的支付宝与通知任务会随真实后端启动。
 
 Vite 从后端 HTML 读取初始化标记及公开名称，后端不可用或标记未知时提供重试，不推断为首次部署。收银台始终由 Hono 提供 SSR；修改后执行 `npm run build:checkout` 并重启后端，Vite 代理不代替构建。
 
