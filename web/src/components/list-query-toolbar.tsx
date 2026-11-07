@@ -217,7 +217,7 @@ export function ListQueryToolbar({
                       <DropdownMenuTrigger
                         render={
                           <InputGroupButton
-                            size={compact ? "icon-xs" : "xs"}
+                            size="xs"
                             disabled={busy}
                           />
                         }
@@ -227,7 +227,7 @@ export function ListQueryToolbar({
                         title={"查询方式：" + (selectedMode?.label ?? "关键词")}
                       >
                         {compact ? (
-                          <Search />
+                          <Search data-icon="inline-start" />
                         ) : (
                           (selectedMode?.label ?? "关键词")
                         )}

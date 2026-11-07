@@ -24,6 +24,55 @@ async function tapMenuItemEdge(page: Page, target: Locator) {
 test.describe("compact mobile button visuals and separate touch targets", () => {
   test.use({ hasTouch: true, isMobile: true, viewport: { width: 360, height: 560 }, reducedMotion: "reduce" });
 
+  for (const width of [320, 423]) {
+    test(`${width}px: search addon icons retain padding and a separate editable input`, async ({ page, manifest }, info) => {
+      await page.setViewportSize({ width, height: 839 });
+      await login(page, manifest);
+      const measurements = [];
+      for (const path of ["/orders", "/reconciliation", "/notifications"]) {
+        await page.goto(manifest.origin + "/admin" + path);
+        const input = page.getByRole("searchbox");
+        await expect(input).toBeVisible();
+        const group = input.locator('xpath=..');
+        const addon = group.locator('[data-slot="input-group-addon"]');
+        const icons = addon.locator("svg");
+        await expect(icons).toHaveCount(path === "/notifications" ? 1 : 2);
+        const geometry = await group.evaluate(element => {
+          const bounds = element.getBoundingClientRect();
+          const input = element.querySelector("input")!.getBoundingClientRect();
+          const button = element.querySelector('[data-slot="input-group-addon"] button')?.getBoundingClientRect();
+          const icons = [...element.querySelectorAll('[data-slot="input-group-addon"] svg')].map(icon => {
+            const box = icon.getBoundingClientRect();
+            return { left: box.left, right: box.right, centerY: box.top + box.height / 2 };
+          });
+          return { left: bounds.left, centerY: bounds.top + bounds.height / 2, inputLeft: input.left,
+            button: button ? { left: button.left, right: button.right } : null, icons };
+        });
+        expect(geometry.icons[0]!.left - geometry.left, "the leading icon retains visible inset from the input border").toBeGreaterThanOrEqual(6);
+        for (const icon of geometry.icons) {
+          if (geometry.button) {
+            expect(icon.left, "both icons remain inside the query-mode button").toBeGreaterThanOrEqual(geometry.button.left);
+            expect(icon.right).toBeLessThanOrEqual(geometry.button.right);
+          }
+          expect(icon.right, "icons stay within the addon rather than entering the editable input").toBeLessThanOrEqual(geometry.inputLeft + 1);
+          expect(Math.abs(icon.centerY - geometry.centerY), "icons remain vertically centered").toBeLessThanOrEqual(1);
+        }
+        const inputBox = (await input.boundingBox())!;
+        await page.touchscreen.tap(inputBox.x + 12, inputBox.y + inputBox.height / 2);
+        await expect(input).toBeFocused();
+        if (path !== "/notifications") {
+          const mode = page.getByRole("button", { name: "查询方式：关键词", exact: true });
+          await expectTouchTarget(mode);
+          await mode.tap();
+          await expect(page.getByRole("menuitemradio", { name: "关键词", exact: true })).toBeVisible();
+          await page.keyboard.press("Escape");
+        }
+        measurements.push({ path, ...geometry });
+      }
+      await record(page, info, { evidence: "browser touch viewport", searchAddons: measurements });
+    });
+  }
+
   for (const width of [320, 360, 390, 430]) {
     test(`${width}px: settings page menu rows use compact 40px touch areas`, async ({ page, manifest }, info) => {
       await page.setViewportSize({ width, height: 560 });
