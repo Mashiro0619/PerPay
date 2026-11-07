@@ -11,7 +11,6 @@ import {
   Card,
   CardContent,
   CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -195,7 +194,7 @@ export function LoginForm({ onLogin }: { onLogin: () => void }) {
               </CardDescription>
             )}
           </CardHeader>
-          <CardContent className="min-w-0">
+          <CardContent className="flex min-w-0 flex-col gap-3">
             {initialized === null ? (
               <ErrorNotice
                 error={
@@ -378,9 +377,7 @@ export function LoginForm({ onLogin }: { onLogin: () => void }) {
                 </FieldGroup>
               </form>
             )}
-          </CardContent>
-          {initialized === true && (
-            <CardFooter className="justify-center py-3">
+            {initialized === true && (
               <Collapsible className="flex w-full min-w-0 flex-col items-end gap-2">
                 <CollapsibleTrigger render={<Button variant="ghost" size="sm" className="h-auto min-h-7 max-w-full whitespace-normal py-1" />}>
                   忘记密码？
@@ -400,8 +397,8 @@ export function LoginForm({ onLogin }: { onLogin: () => void }) {
                   </FieldDescription>
                 </CollapsibleContent>
               </Collapsible>
-            </CardFooter>
-          )}
+            )}
+          </CardContent>
         </Card>
       </div>
     </main>
