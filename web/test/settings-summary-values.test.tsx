@@ -44,6 +44,9 @@ describe("settings summaries expose the saved values", () => {
     mountCollection({ mode: "WEIGHTED", accounts: configured }, () => json({ data: [first, second] }));
     const list = await screen.findByRole("list", { name: "已分配收款账号" });
     await within(list).findByText(first.name);
+    expect(screen.getByRole("heading", { level: 1, name: "网站设置" })).toBeVisible();
+    expect(screen.getByRole("tab", { name: "收款账号", selected: true })).toBeVisible();
+    expect(screen.getByRole("link", { name: "编辑收款账号" })).toHaveAttribute("href", "/sites/shop/edit?section=collection");
     const items = within(list).getAllByRole("listitem");
     expect(items[0]).toHaveTextContent(first.id);
     expect(items[0]).toHaveTextContent("当前可收款");

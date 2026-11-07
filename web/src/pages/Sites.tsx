@@ -1,5 +1,6 @@
 import CreateSite from "./CreateSite";
 import { SiteManagementCards } from "@/components/site-management-cards";
+import { Pencil } from "lucide-react";
 import { CopyValue } from "@/components/copy-value";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
@@ -157,14 +158,20 @@ export function SiteSettingsPage() {
   const selected = siteSections.find(item => item.value === section);
   if (!selected) return <ErrorNotice error={new Error("网站设置分组不存在")} />;
   return <div className="admin-settings-layout flex min-w-0 flex-col gap-4">
-    <PageHeading title={selected.label} />
-    <Tabs value={section} onValueChange={value => { if (value) void navigate("/sites/" + encodeURIComponent(clientId!) + "/settings/" + value); }}>
-      <ScrollingTabs><TabsList aria-label="网站设置分组" variant="line" activateOnFocus={false} className="min-w-max">
-        {siteSections.map(item => <TabsTrigger key={item.value} value={item.value}>{item.label}</TabsTrigger>)}
-      </TabsList></ScrollingTabs>
-    </Tabs>
+    <PageHeading title="网站设置" />
+    <div className="site-settings-navigation flex min-w-0 items-center gap-2">
+      <Tabs className="min-w-0 flex-1" value={section} onValueChange={value => { if (value) void navigate("/sites/" + encodeURIComponent(clientId!) + "/settings/" + value); }}>
+        <ScrollingTabs><TabsList aria-label="网站设置分组" variant="line" activateOnFocus={false} className="min-w-max">
+          {siteSections.map(item => <TabsTrigger key={item.value} value={item.value}>{item.label}</TabsTrigger>)}
+        </TabsList></ScrollingTabs>
+      </Tabs>
+      <Link to={"/sites/" + encodeURIComponent(clientId!) + "/edit?section=" + section}
+        className={buttonVariants({ variant: "outline", size: "sm", className: "shrink-0" })}
+        aria-label={"编辑" + selected.label}
+      ><Pencil data-icon="inline-start" />编辑</Link>
+    </div>
     <QueryView query={query}>{({ site }) => <>
-      <SettingsSummary title={selected.label} rows={siteSummaryRows(site, section)} editTo={"/sites/" + encodeURIComponent(site.client_id) + "/edit?section=" + section} />
+      <SettingsSummary title={selected.label} rows={siteSummaryRows(site, section)} hideHeading />
       {section === "integration" && <SiteIntegrationAssistant site={site} onReloadSite={() => { void query.refetch(); }} />}
     </>}</QueryView>
   </div>;

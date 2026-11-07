@@ -1995,3 +1995,26 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   .ledger-summary-links > div:last-child { justify-content: flex-start; }
   .ledger-summary-amount { justify-content: flex-start; }
 }
+
+/* Settings navigation hierarchy: keep record actions with their identity. */
+.admin-settings-layout:has(> .site-settings-navigation) { container: site-settings / inline-size; }
+[data-management-summary] .list-summary-heading { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0.75rem; }
+[data-management-summary] .list-summary-aside { min-width: 0; max-width: none; }
+[data-business-table][data-embedded="false"] [data-management-summary] .list-identity-title { white-space: normal; overflow: visible; text-overflow: clip; }
+[data-management-summary] .list-summary-identity { min-width: 0; }
+[data-management-summary] .list-summary-identity :is(a, button) { min-width: 0; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+[data-management-summary] .business-summary-fields { margin-top: 0.25rem; }
+@container site-settings (max-width: 20rem) {
+  .site-settings-navigation { flex-wrap: wrap; }
+  .site-settings-navigation > [data-slot="tabs"] { flex-basis: 100%; }
+  .site-settings-navigation > a { margin-inline-start: auto; }
+}
+@container summary (max-width: 17rem) {
+  [data-management-summary] .list-summary-heading { grid-template-columns: minmax(0, 1fr); gap: 0.25rem; }
+  [data-management-summary] .list-summary-aside { align-items: flex-start; }
+  [data-management-summary] .list-summary-aside > div { flex-wrap: wrap; justify-content: flex-start; }
+}
+@container summary (min-width: 14rem) {
+  [data-management-summary="account"] .list-summary-heading { grid-template-columns: minmax(0, 1fr) auto; }
+  [data-management-summary="account"] .list-summary-aside { align-items: flex-end; }
+}

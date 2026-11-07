@@ -6,17 +6,19 @@ import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle }
 
 export type SettingsSummaryRow = readonly [label: string, value: ReactNode];
 
-export function SettingsSummary({ title, description, rows, editTo, editLabel = "编辑", actions }: {
+export function SettingsSummary({ title, description, rows, editTo, editLabel = "编辑", actions, hideHeading = false }: {
   title: string;
   description?: ReactNode;
   rows: readonly SettingsSummaryRow[];
   editTo?: string;
   editLabel?: string;
   actions?: ReactNode;
+  /** The surrounding page already provides the visible section heading and actions. */
+  hideHeading?: boolean;
 }) {
   return (
     <Card size="sm" data-settings-summary>
-      <CardHeader>
+      <CardHeader className={hideHeading ? "sr-only" : undefined}>
         <CardTitle role="heading" aria-level={2}>{title}</CardTitle>
         {description && <CardDescription>{description}</CardDescription>}
         {(editTo || actions) && <CardAction className="flex flex-wrap items-center gap-2">

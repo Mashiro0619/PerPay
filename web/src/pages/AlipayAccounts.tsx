@@ -19,6 +19,7 @@ import { cn } from "@/lib/utils";
 import { dateTime } from "@/lib/format";
 import { PageHeading } from "@/components/page-heading";
 import { BusinessTable, type BusinessColumn } from "@/components/business-table";
+import { ListIdentity, ListSummary, ListSummaryField } from "@/components/list-primitives";
 import { OverlayActions } from "@/components/overlay-actions";
 import { ScrollingTabs } from "@/components/scrolling-tabs";
 import { useOverlayCloseGuard, useOverlayContext } from "@/lib/overlay-context";
@@ -126,7 +127,15 @@ export function AlipayAccountList({ onSelect }: { onSelect?: (id: string) => voi
       </CardAction>
     </CardHeader>
     <CardContent>
-      <QueryView query={accounts}>{({ data }) => data.length ? <BusinessTable id="alipay-accounts" items={data} columns={columns} rowId={account => account.id} density="compact" columnsMenu={false} aria-label="支付宝账号列表" /> : <Empty><EmptyHeader><EmptyTitle>还没有支付宝账号</EmptyTitle><EmptyDescription>先添加一个账号，完成应用密钥、开放平台信息和收款码配置。</EmptyDescription></EmptyHeader></Empty>}</QueryView>
+      <QueryView query={accounts}>{({ data }) => data.length ? <BusinessTable id="alipay-accounts" items={data} columns={columns} rowId={account => account.id} density="compact" columnsMenu={false} aria-label="支付宝账号列表"
+        renderSummary={(account, context) => <div className="w-full min-w-0" data-management-summary="account">
+          <ListSummary identity={<ListIdentity>{columns[0]!.cell(account, context)}</ListIdentity>} aside={columns[5]!.cell(account, context)}>
+            {columns.slice(1, 3).map(column => <ListSummaryField key={column.id} label={column.label}>
+              {column.cell(account, context)}
+            </ListSummaryField>)}
+          </ListSummary>
+        </div>}
+      /> : <Empty><EmptyHeader><EmptyTitle>还没有支付宝账号</EmptyTitle><EmptyDescription>先添加一个账号，完成应用密钥、开放平台信息和收款码配置。</EmptyDescription></EmptyHeader></Empty>}</QueryView>
     </CardContent>
   </Card>;
 }

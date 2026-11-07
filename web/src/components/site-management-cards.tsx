@@ -6,6 +6,7 @@ import { count, money } from "@/lib/format";
 import { siteChoiceLabel } from "@/lib/site-choice-label";
 import { Link } from "@/navigation";
 import { BusinessTable, type BusinessColumn } from "@/components/business-table";
+import { ListIdentity, ListSummary, ListSummaryField } from "@/components/list-primitives";
 import { ErrorNotice } from "@/components/request-state";
 import { Empty, EmptyHeader, EmptyTitle } from "@/components/admin-empty";
 import { Badge } from "@/components/ui/badge";
@@ -65,7 +66,15 @@ export function SiteManagementCards() {
         {[0, 1, 2].map(row => <Skeleton key={row} className="h-10 w-full" />)}
       </div> : query.data === undefined ? <ErrorNotice scope="page" error={query.error} retry={refresh} /> : <>
         {!query.isFetchNextPageError && <ErrorNotice scope="page" error={query.error} retry={refresh} />}
-        {sites.length ? <BusinessTable id="sites" items={sites} columns={columns} rowId={site => site.client_id} density="compact" columnsMenu={false} aria-label="网站列表" /> : <Empty><EmptyHeader><EmptyTitle>暂无网站</EmptyTitle></EmptyHeader></Empty>}
+        {sites.length ? <BusinessTable id="sites" items={sites} columns={columns} rowId={site => site.client_id} density="compact" columnsMenu={false} aria-label="网站列表"
+          renderSummary={(site, context) => <div className="w-full min-w-0" data-management-summary="site">
+            <ListSummary identity={<ListIdentity>{columns[0]!.cell(site, context)}</ListIdentity>} aside={columns[4]!.cell(site, context)}>
+              {columns.slice(1, 4).map(column => <ListSummaryField key={column.id} label={column.label} visibleLabel={column.summaryLabel}>
+                {column.cell(site, context)}
+              </ListSummaryField>)}
+            </ListSummary>
+          </div>}
+        /> : <Empty><EmptyHeader><EmptyTitle>暂无网站</EmptyTitle></EmptyHeader></Empty>}
         {query.isFetchNextPageError ? <ErrorNotice scope="page" error={query.error} retry={loadMore} /> : query.hasNextPage && <Button className="self-start" variant="outline" disabled={query.isFetching} onClick={loadMore}>
           {query.isFetchingNextPage && <Spinner data-icon="inline-start" aria-hidden="true" />}{query.isFetchingNextPage ? "正在加载更多网站…" : "加载更多网站"}
         </Button>}

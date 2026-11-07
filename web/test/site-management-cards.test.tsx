@@ -71,7 +71,8 @@ function amount(item: HTMLElement) {
 }
 
 function workload(item: HTMLElement) {
-  const value = item.querySelector<HTMLElement>('[data-column-id="work"]');
+  const value = item.querySelector<HTMLElement>('[data-column-id="work"]') ??
+    within(item).queryByText("待处理", { selector: "dt" })?.parentElement;
   expect(value).not.toBeNull();
   return value!;
 }
@@ -102,7 +103,7 @@ function mount(handler: RequestHandler, path = "/sites", onCommit?: () => void) 
 }
 
 describe("website management compact table", () => {
-  it("keeps website actions reachable after all three mobile metrics", async () => {
+  it("keeps website actions reachable beside the identity and retains all three mobile metrics", async () => {
     mobileMedia(390);
     const view = mount(() => page([site("site_mobile", "手机网站")]));
     const row = await findCard("site_mobile");
