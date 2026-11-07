@@ -84,13 +84,13 @@ export function registerEpayRoutes(app: Hono<AppEnvironment>, dependencies: AppD
     let returnUrl = "";
     try {
       notifyUrl = prepareWebhookTarget(body.notify_url, site.configuration.notification_origin).url;
-      if (body.protocol !== "native") appendEpayParameters(body.notify_url, {});
-    } catch { throw new SettingsFieldError("notify_url", "通知地址须符合已保存的 HTTPS 来源，且参数不能重复或占用易支付字段。"); }
+    } catch { throw new SettingsFieldError("notify_url", "通知地址须符合已保存的 HTTPS 来源。"); }
+    validateExportCallback(notifyUrl, body.protocol, "notify_url");
     if (body.return_url) {
       try {
         returnUrl = prepareReturnUrl(body.return_url, site.configuration.return_origin);
-        if (body.protocol !== "native") appendEpayParameters(body.return_url, {});
-      } catch { throw new SettingsFieldError("return_url", "返回地址须符合已保存的 HTTPS 来源，且参数不能重复或占用易支付字段。"); }
+      } catch { throw new SettingsFieldError("return_url", "返回地址须符合已保存的 HTTPS 来源。"); }
+      validateExportCallback(returnUrl, body.protocol, "return_url");
     }
     const snapshot = epay.exportConfiguration(id, {
       protocol: body.protocol, siteRevision: body.site_revision, epayRevision: body.epay_revision,
@@ -210,6 +210,21 @@ export function registerEpayRoutes(app: Hono<AppEnvironment>, dependencies: AppD
       name: order.productName, moneyCents: order.requestedAmountCents, ...(metadata.param !== null ? { param: metadata.param } : {}) }, metadata.protocol, key, now());
     return context.redirect(target, 302);
   });
+}
+
+function validateExportCallback(value: string, protocol: "native" | EpayProtocol, field: "notify_url" | "return_url"): void {
+  const keys = new Set<string>();
+  for (const key of new URL(value).searchParams.keys()) {
+    if (keys.has(key)) throw new SettingsFieldError(field, "回调地址的查询参数名不能重复。");
+    keys.add(key);
+  }
+  if (protocol === "native") return;
+  if (value.includes("&")) throw new SettingsFieldError(field, "易支付回调地址不能包含 &，请移除该字符或简化查询参数。");
+  try { appendEpayParameters(value, {}); }
+  catch (error) {
+    if (error instanceof EpayProtocolError) throw new SettingsFieldError(field, error.message);
+    throw error;
+  }
 }
 
 function createEpayOrder(dependencies: AppDependencies, epay: EpayStore, credentials: EpayCredentials,
