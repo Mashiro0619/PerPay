@@ -167,10 +167,12 @@ export function mountOnboarding(
     document.head.append(meta);
   }
 
+  const viewportWidth = options.viewportWidth ?? 1440;
+  vi.stubGlobal("innerWidth", viewportWidth);
   vi.stubGlobal(
     "matchMedia",
     vi.fn((media: string) => ({
-      matches: options.viewportWidth !== undefined && matchesTestMedia(media, options.viewportWidth),
+      matches: matchesTestMedia(media, viewportWidth),
       addEventListener: vi.fn(),
       removeEventListener: vi.fn(),
     })),

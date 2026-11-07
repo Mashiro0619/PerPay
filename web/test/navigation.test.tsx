@@ -10,6 +10,7 @@ import { appRoutes } from "../src/App";
 import { queryClient, type SystemAnalytics } from "../src/api/client";
 import { apiError, json, settings } from "./fixtures";
 import { systemStatus } from "./onboarding-fixture";
+import { matchesTestMedia } from "./media-query";
 import { readOverlayTarget } from "../src/lib/overlay-navigation";
 
 function mount(
@@ -28,11 +29,12 @@ function mount(
     document.head.append(metadata);
   }
 
-  vi.stubGlobal("innerWidth", options.mobile ? 390 : 1440);
+  const viewportWidth = options.mobile ? 390 : 1440;
+  vi.stubGlobal("innerWidth", viewportWidth);
   vi.stubGlobal(
     "matchMedia",
-    vi.fn(() => ({
-      matches: !!options.mobile,
+    vi.fn((media: string) => ({
+      matches: matchesTestMedia(media, viewportWidth),
       addEventListener: vi.fn(),
       removeEventListener: vi.fn(),
     })),

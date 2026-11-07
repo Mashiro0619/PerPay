@@ -4,6 +4,7 @@ import { useOverlayViewport } from "../src/hooks/use-overlay-viewport";
 import { useIsMobile } from "../src/hooks/use-mobile";
 import { useCompactList } from "../src/hooks/use-compact-list";
 import { mobileMedia } from "./mobile-media";
+import { matchesTestMedia } from "./media-query";
 
 describe("visible overlay viewport", () => {
   it("follows the keyboard and panned visual viewport without a layout resize", () => {
@@ -50,7 +51,7 @@ describe("shared compact breakpoint", () => {
 
   it("trusts the CSS media result when overflow has expanded innerWidth", () => {
     vi.stubGlobal("innerWidth", 1202);
-    vi.stubGlobal("matchMedia", () => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() }));
+    vi.stubGlobal("matchMedia", (media: string) => ({ matches: matchesTestMedia(media, 390), addEventListener: vi.fn(), removeEventListener: vi.fn() }));
     const { result } = renderHook(() => [useIsMobile(), useCompactList()]);
     expect(result.current).toEqual([true, true]);
   });
