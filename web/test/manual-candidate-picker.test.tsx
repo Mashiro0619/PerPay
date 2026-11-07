@@ -110,8 +110,10 @@ describe("manual settlement selection instead of ID entry", () => {
       if (path.endsWith("/manual/orders")) return json({ data: choices, page: { next_cursor: null } });
       if (path.endsWith("/orders/" + orderId)) return json({ data: selected });
     });
-    const identity = await screen.findByText(/网站 A · site-a/);
-    expect(screen.getByText(new RegExp(otherName + " · site-b"))).toBeVisible();
+    const identity = await screen.findByTitle("site-a");
+    expect(identity).toHaveTextContent(otherName === "网站 A" ? "所属网站：网站 A · site-a" : "所属网站：网站 A");
+    expect(screen.getByTitle("site-b")).toHaveTextContent(otherName === "网站 A" ? "所属网站：网站 A · site-b" : "所属网站：网站 B");
+    if (otherName !== "网站 A") expect(identity).not.toHaveTextContent("site-a");
     const candidate = identity.closest('[data-slot="item"]')!;
     expect(within(candidate as HTMLElement).getByText("商户订单号（业务网站）：shared-number")).toBeVisible();
     await userEvent.click(within(candidate as HTMLElement).getByRole("button", { name: /选择订单：.*网站 A · site-a/ }));

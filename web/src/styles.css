@@ -2018,3 +2018,13 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   [data-management-summary="account"] .list-summary-heading { grid-template-columns: minmax(0, 1fr) auto; }
   [data-management-summary="account"] .list-summary-aside { align-items: flex-end; }
 }
+
+/* Manual candidate reading layout. */
+.manual-candidate-list { container: manual-candidates / inline-size; }
+@container manual-candidates (max-width: 17rem) {
+  .manual-candidate-row { flex-direction: column; align-items: stretch; }
+  .manual-candidate-row > [data-slot="item-content"] { width: 100%; }
+  .manual-candidate-row > [data-slot="item-actions"] { width: 100%; flex-direction: row; align-items: center; justify-content: space-between; }
+  .manual-candidate-row .list-time { white-space: normal; }
+  .manual-candidate-row .list-money { white-space: normal; overflow-wrap: anywhere; }
+}

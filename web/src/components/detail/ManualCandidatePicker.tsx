@@ -5,7 +5,7 @@ import { useState } from "react";
 import { Search } from "lucide-react";
 import { result, type ManualSettlementRecommendation } from "@/api/client";
 import { normalizeKeyword } from "@/lib/list-query";
-import { dateTime, money } from "@/lib/format";
+import { dateTime, money, shortId } from "@/lib/format";
 import { ListDateTime, ListMoney } from "@/components/list-primitives";
 import { Button } from "@/components/ui/button";
 import { Field, FieldGroup, FieldError } from "@/components/ui/field";
@@ -39,6 +39,7 @@ interface Choice {
   occurredAt: string;
   identifiers: ReadonlyArray<readonly [label: string, value: string]>;
   website?: string;
+  websiteId?: string;
   recommendation: ManualSettlementRecommendation | null;
 }
 export function ManualCandidatePicker({
@@ -92,7 +93,8 @@ export function ManualCandidatePicker({
             amount: order.payable_amount_cents,
             occurredAt: order.created_at,
             identifiers: [["商户订单号（业务网站）", order.merchant_order_no]],
-            website: `${order.site_name ?? "名称不可用"} · ${order.api_client_id}`,
+            website: order.site_name ?? "名称不可用",
+            websiteId: order.api_client_id,
             recommendation,
           })),
         };
@@ -214,23 +216,24 @@ export function ManualCandidatePicker({
         query.data && (
           <>
             {query.data.choices.length ? (
-              <ItemGroup className="record-list" data-density="compact">
+              <ItemGroup className="record-list manual-candidate-list" data-density="compact">
                 {query.data.choices.map((choice) => (
-                  <Item className="record-list-row" size="xs" key={choice.id} role="listitem">
+                  <Item className="record-list-row manual-candidate-row" size="xs" key={choice.id} role="listitem">
                     <ItemContent className="min-w-0">
                       <ItemTitle className="record-list-title" title={kind === "orders" ? choice.title : choice.summary}>
                         {kind === "orders" ? choice.title : choice.summary}
                       </ItemTitle>
                       {choice.website && (
-                        <ItemDescription className="line-clamp-none whitespace-normal wrap-anywhere">
+                        <ItemDescription className="line-clamp-none whitespace-normal wrap-anywhere" title={choice.websiteId}>
                           所属网站：{choice.website}
+                          {choice.websiteId && (choice.website === "名称不可用" || query.data.choices.some(other => other.website === choice.website && other.websiteId !== choice.websiteId)) && " · " + shortId(choice.websiteId)}
                         </ItemDescription>
                       )}
-                      <ItemDescription>
+                      <ItemDescription className="line-clamp-none whitespace-normal">
                         <ListDateTime value={choice.occurredAt} inline />
                         {kind === "orders" && " · " + choice.summary}
                       </ItemDescription>
-                      {choice.identifiers.map(([label, value]) => <ItemDescription key={label} className="whitespace-normal wrap-anywhere">
+                      {choice.identifiers.map(([label, value]) => <ItemDescription key={label} className="line-clamp-none whitespace-normal wrap-anywhere">
                         {label}：{value}
                       </ItemDescription>)}
                       {choice.recommendation?.amount_match && (
@@ -248,7 +251,7 @@ export function ManualCandidatePicker({
                         variant="outline"
                         size="sm"
                         disabled={disabled}
-                        aria-label={"选择" + noun + "：" + choice.title + (choice.website ? " · " + choice.website : "")}
+                        aria-label={"选择" + noun + "：" + choice.title + (choice.website ? " · " + choice.website : "") + (choice.websiteId ? " · " + choice.websiteId : "")}
                         onClick={() => onSelect(choice.id, choice.title)}
                       >
                         选择
