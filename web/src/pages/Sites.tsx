@@ -43,11 +43,11 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
+import { Spinner } from "@/components/ui/spinner";
 import { Item, ItemContent, ItemDescription, ItemGroup, ItemTitle } from "@/components/ui/item";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardFooter,
   CardHeader,
   CardTitle,
@@ -305,9 +305,15 @@ function SiteEditor({
     "save" | "api" | "webhook" | "delete" | null
   >(null);
   const [revealed, setRevealed] = useState<{
+    purpose: "api" | "webhook";
     label: string;
     value: string;
   } | null>(null);
+  const revealedInput = useRef<HTMLInputElement>(null);
+  const secretError = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (revealed) revealedInput.current?.focus();
+  }, [revealed]);
   const secretDisplayGeneration = useRef(0);
   const secretDisplayRequest = useRef<number | null>(null);
   const observedSecretRevision = useRef(initial?.revision ?? -1);
@@ -419,6 +425,7 @@ function SiteEditor({
         observeSecretRevision(latestEditorSnapshot(saved).site.revision);
         if (displayGeneration === secretDisplayGeneration.current)
           setRevealed({
+            purpose: kind === "view-api" ? "api" : "webhook",
             label: kind === "view-api" ? "API 密钥" : "通知签名密钥",
             value: response.data.secret,
           });
@@ -446,6 +453,7 @@ function SiteEditor({
       // explicit display request unless the user hid it or another request replaced it.
       if (secretDisplayRequest.current === displayGeneration && !superseded)
         setRevealed({
+          purpose: kind,
           label: kind === "api" ? "API 密钥" : "通知签名密钥",
           value: response.data.secret,
         });
@@ -455,6 +463,9 @@ function SiteEditor({
     },
     onError: revisionConflict,
   });
+  useEffect(() => {
+    if (action.error && action.variables !== "delete") secretError.current?.focus();
+  }, [action.error, action.variables]);
   function applyReview(site: Site, configuration: SiteConfiguration, timeoutResolved = false) {
     observeSecretRevision(site.revision);
     setSaved(site);
@@ -549,6 +560,17 @@ function SiteEditor({
       </Button>
     </OverlayActions>
   );
+  const secretResult = (purpose: "api" | "webhook") => <>
+    {action.error && (action.variables === purpose || action.variables === "view-" + purpose) &&
+      <div ref={secretError} tabIndex={-1} className="outline-none" data-site-secret-error><ErrorNotice error={action.error} showDiagnostics={false} /></div>}
+    {revealed?.purpose === purpose && <div className="flex min-w-0 flex-col gap-2" data-site-secret-result>
+      <div className="flex min-w-0 items-center gap-2">
+        <Input ref={revealedInput} aria-label={revealed.label} readOnly value={revealed.value} autoComplete="off" />
+        <CopyValue value={revealed.value} label={"复制" + revealed.label} buttonOnly />
+      </div>
+      <Button type="button" variant="outline" className="self-start" onClick={hideSecret}>隐藏密钥</Button>
+    </div>}
+  </>;
   return (
     <div className="admin-settings-layout flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -578,7 +600,7 @@ function SiteEditor({
           </ScrollingTabs>
         </Tabs>
       )}
-      <ErrorNotice error={save.error || action.error} />
+      <ErrorNotice error={save.error || (action.variables === "delete" || !visible("integration") ? action.error : null)} />
       <ErrorNotice error={reload.error} />
       {requiresReview && (
         <Alert>
@@ -761,10 +783,12 @@ function SiteEditor({
                 <div className="flex flex-wrap gap-2">
                   <Button
                     variant="outline"
+                    aria-label="查看 API 密钥"
+                    aria-busy={action.isPending && action.variables === "view-api"}
                     disabled={busy}
                     onClick={() => action.mutate("view-api")}
                   >
-                    查看 API 密钥
+                    {action.isPending && action.variables === "view-api" ? <><Spinner data-icon="inline-start" />正在读取…</> : "查看 API 密钥"}
                   </Button>
                   <Button
                     variant="outline"
@@ -774,16 +798,19 @@ function SiteEditor({
                     生成／轮换 API 密钥
                   </Button>
                 </div>
+                {secretResult("api")}
               </FieldSet>
               <FieldSet className="gap-2">
                 <FieldLegend variant="label">通知密钥</FieldLegend>
                 <div className="flex flex-wrap gap-2">
                   <Button
                     variant="outline"
+                    aria-label="查看通知密钥"
+                    aria-busy={action.isPending && action.variables === "view-webhook"}
                     disabled={busy}
                     onClick={() => action.mutate("view-webhook")}
                   >
-                    查看通知密钥
+                    {action.isPending && action.variables === "view-webhook" ? <><Spinner data-icon="inline-start" />正在读取…</> : "查看通知密钥"}
                   </Button>
                   <Button
                     variant="outline"
@@ -793,6 +820,7 @@ function SiteEditor({
                     生成／轮换通知密钥
                   </Button>
                 </div>
+                {secretResult("webhook")}
               </FieldSet>
             </FieldGroup>
           </CardContent>
@@ -816,29 +844,6 @@ function SiteEditor({
       )}
       {saved && visible("integration") && <SiteIntegrationAssistant site={saved} siteDirty={dirty || requiresReview}
         disabled={busy} showClientId={false} onReloadSite={() => reload.mutate()} />}
-      {revealed && (
-        <Card>
-          <CardHeader>
-            <CardTitle>{revealed.label}</CardTitle>
-            <CardDescription>
-              仅供此网站使用，请勿泄露。
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Input
-              aria-label={revealed.label}
-              readOnly
-              value={revealed.value}
-              autoComplete="off"
-            />
-          </CardContent>
-          <CardFooter>
-            <Button variant="outline" onClick={hideSecret}>
-              隐藏密钥
-            </Button>
-          </CardFooter>
-        </Card>
-      )}
       <AlertDialog
         open={confirmation !== null}
         onOpenChange={(open) => {

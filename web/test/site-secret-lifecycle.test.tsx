@@ -1,5 +1,5 @@
 import { Toaster } from "../src/components/ui/toast";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryRouter, RouterProvider } from "react-router";
@@ -20,9 +20,16 @@ function mount(action: "view" | "rotate", purpose: "api_secret" | "webhook_secre
   const held = new Promise<void>(resolve => { release = resolve; });
   const requests: Request[] = [];
   let delayNext = false;
+  let failNext = false;
+  let missingNext = false;
   vi.stubGlobal("fetch", vi.fn(async (request: Request) => {
     if (request.method === "GET") return json({ data: request.url.endsWith("/site_b") ? { ...site, client_id: "site_b", configuration: { ...site.configuration, name: "B" } } : site });
     requests.push(request);
+    if (failNext) {
+      failNext = false;
+      if (missingNext) return json({ error: { code: "site_secret_missing", message: "尚未生成该网站的密钥。" } }, 409);
+      return json({ error: { code: "temporarily_unavailable", message: "密钥读取暂不可用" } }, 503);
+    }
     if (delayNext) {
       delayNext = false;
       expect(request.url).toContain(`/secrets/${purpose}/actions/${action}`);
@@ -35,10 +42,50 @@ function mount(action: "view" | "rotate", purpose: "api_secret" | "webhook_secre
   }));
   const router = createMemoryRouter([{ path: "/sites/:clientId/settings/:section", element: <DraftProvider><SiteEditorPage /></DraftProvider> }], { initialEntries: ["/sites/site_a/settings/integration"] });
   render(<QueryClientProvider client={queryClient}><Toaster><RouterProvider router={router} /></Toaster></QueryClientProvider>);
-  return { router, requests, delay: () => { delayNext = true; }, release };
+  return { router, requests, delay: () => { delayNext = true; }, fail: (missing = false) => { failNext = true; missingNext = missing; }, release };
 }
 
 describe("website secret display lifetime", () => {
+  it.each(["api_secret", "webhook_secret"] as const)("explains a missing %s beside the view button without generating a key", async purpose => {
+    const view = mount("view", purpose), user = userEvent.setup();
+    const group = await screen.findByRole("group", { name: purpose === "api_secret" ? "API 密钥" : "通知密钥" });
+    view.fail(true);
+    await user.click(within(group).getByRole("button", { name: purpose === "api_secret" ? "查看 API 密钥" : "查看通知密钥" }));
+    expect(await within(group).findByText("尚未生成该网站的密钥。")).toBeVisible();
+    expect(view.requests).toHaveLength(1);
+    expect(view.requests[0]!.url).toContain("/actions/view");
+    expect(within(group).queryByRole("textbox")).not.toBeInTheDocument();
+  });
+
+  it.each(["api_secret", "webhook_secret"] as const)("shows the %s read progress and result next to its action", async purpose => {
+    const view = mount("view", purpose), user = userEvent.setup();
+    const group = await screen.findByRole("group", { name: purpose === "api_secret" ? "API 密钥" : "通知密钥" });
+    const button = within(group).getByRole("button", { name: purpose === "api_secret" ? "查看 API 密钥" : "查看通知密钥" });
+    view.delay();
+    await user.click(button);
+    expect(button).toHaveAttribute("aria-busy", "true");
+    expect(button).toHaveTextContent("正在读取");
+    await act(async () => { view.release(); });
+    const input = await within(group).findByDisplayValue("late-secret");
+    expect(input).toHaveFocus();
+    expect(within(group).getByRole("button", { name: /^复制/ })).toBeVisible();
+    await user.click(within(group).getByRole("button", { name: "隐藏密钥" }));
+    expect(within(group).queryByDisplayValue("late-secret")).not.toBeInTheDocument();
+  });
+
+  it.each(["api_secret", "webhook_secret"] as const)("shows a failed %s read beside the action and supports retry", async purpose => {
+    const view = mount("view", purpose), user = userEvent.setup();
+    const group = await screen.findByRole("group", { name: purpose === "api_secret" ? "API 密钥" : "通知密钥" });
+    const button = within(group).getByRole("button", { name: purpose === "api_secret" ? "查看 API 密钥" : "查看通知密钥" });
+    view.fail();
+    await user.click(button);
+    expect(await within(group).findByText("密钥读取暂不可用")).toBeVisible();
+    expect(button).toBeEnabled();
+    await user.click(button);
+    expect(await within(group).findByDisplayValue("explicit-secret")).toHaveFocus();
+    expect(within(group).queryByText("密钥读取暂不可用")).not.toBeInTheDocument();
+  });
+
   for (const action of ["view", "rotate"] as const) for (const purpose of ["api_secret", "webhook_secret"] as const) {
     it(`hides a late ${purpose} ${action} response without cancelling the operation or losing its revision`, async () => {
       const view = mount(action, purpose), user = userEvent.setup();
