@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router";
@@ -249,11 +249,11 @@ describe("always-visible detail evidence", () => {
       "data-comparison-result",
     );
     expect(row.querySelector('[data-slot="badge"]')).toBeNull();
-    expect(within(row).getByText("2.50")).toBeVisible();
+    expect(within(row).getByText("¥2.50")).toBeVisible();
     expect(within(row).getByText("¥1.00")).toBeVisible();
     expect(
-      within(table).getByRole("rowheader", { name: "支付宝商户单号" }),
-    ).toBeVisible();
+      within(table).queryByRole("rowheader", { name: "支付宝商户单号" }),
+    ).not.toBeInTheDocument();
   });
   it.each([false, true])(
     "keeps mobile values paired field-by-field without repeating the unavailable ledger (existing=%s)",
@@ -282,7 +282,7 @@ describe("always-visible detail evidence", () => {
       expect(within(header as HTMLElement).getByText("异常")).toBeInTheDocument();
       expect(
         [...amount.querySelectorAll("dt")].map((e) => e.textContent),
-      ).toEqual(existing ? ["本次收到的记录", "已保存的支付宝流水"] : ["本次收到的记录"]);
+      ).toEqual(existing ? ["本次收到的记录（新值）", "已保存的支付宝流水（旧值）"] : ["本次收到的记录"]);
       expect(
         [...amount.querySelectorAll("dd")].map((e) => e.textContent),
       ).toEqual(existing ? ["1.001", "¥1.00"] : ["1.001"]);
@@ -306,5 +306,62 @@ describe("always-visible detail evidence", () => {
     render(<ConflictComparison detail={detail} />);
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
     expect(screen.queryByText("交易对照")).not.toBeInTheDocument();
+  });
+  it.each([390, 1280])("shows differing fields first and reveals matching evidence on demand at %s px", async (width) => {
+    mobileMedia(width);
+    const detail = conflict(true);
+    detail.incoming_event!.amount_text = "1.0";
+    detail.incoming_event!.alipay_order_no = null;
+    const original = structuredClone(detail);
+    const user = userEvent.setup();
+    render(<ConflictComparison detail={detail} />);
+
+    expect(screen.getByText("1 项需核对 · 8 项相同")).toBeVisible();
+    expect(screen.getByText("支付宝交易备注")).toBeVisible();
+    expect(screen.queryByText("支付宝交易金额")).not.toBeInTheDocument();
+    const toggle = screen.getByRole("button", { name: "查看相同字段（8）" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+
+    await user.click(toggle);
+    const same = screen.getByRole(width < 640 ? "group" : "table", { name: "相同字段对照" });
+    expect(same).toBeVisible();
+    expect(within(same).getByText("支付宝交易金额")).toBeVisible();
+    expect(within(same).getAllByText("¥1.00")).toHaveLength(2);
+    expect(within(same).getAllByText("本次收到的记录（新值）").length).toBeGreaterThan(0);
+    expect(within(same).getAllByText("已保存的支付宝流水（旧值）").length).toBeGreaterThan(0);
+
+    await user.click(screen.getByRole("button", { name: "收起相同字段（8）" }));
+    await waitFor(() => expect(screen.queryByText("支付宝交易金额")).not.toBeInTheDocument());
+    expect(screen.getByText("支付宝交易备注")).toBeVisible();
+    expect(detail).toEqual(original);
+  });
+  it("keeps an invalid field visible even when its normalized value matches", () => {
+    const detail = conflict(true);
+    detail.conflict.conflict_type = "INVALID_AMOUNT";
+    detail.incoming_event!.amount_text = "1";
+    render(<ConflictComparison detail={detail} />);
+    const row = within(screen.getByRole("table", { name: "交易对照" }))
+      .getByRole("rowheader", { name: "支付宝交易金额" }).closest("tr")!;
+    expect(within(row).getByText("异常")).toBeVisible();
+    expect(within(row).getByText("1")).toBeVisible();
+  });
+  it("promotes newly differing values out of the collapsed matching fields after refresh", () => {
+    const detail = conflict(true);
+    detail.incoming_event!.amount_text = "1.00";
+    detail.incoming_event!.alipay_order_no = null;
+    const { rerender } = render(<ConflictComparison detail={detail} />);
+    expect(screen.queryByText("收支方向")).not.toBeInTheDocument();
+    rerender(<ConflictComparison detail={{ ...detail, incoming_event: { ...detail.incoming_event!, direction_text: "支出" } }} />);
+    expect(screen.getByText("收支方向")).toBeVisible();
+    expect(screen.getByText("2 项需核对 · 7 项相同")).toBeVisible();
+    expect(screen.getByRole("button", { name: "查看相同字段（7）" })).toHaveAttribute("aria-expanded", "false");
+  });
+  it.each([false, true])("keeps all available fields expanded when one comparison source is missing (existing=%s)", (existing) => {
+    const detail = conflict(existing);
+    if (existing) detail.incoming_event = null;
+    render(<ConflictComparison detail={detail} />);
+    expect(screen.queryByRole("button", { name: /相同字段/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("rowheader", { name: "支付宝商户单号" })).toBeVisible();
+    expect(screen.getByRole("rowheader", { name: "支付宝交易备注" })).toBeVisible();
   });
 });

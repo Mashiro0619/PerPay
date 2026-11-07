@@ -81,8 +81,8 @@ export function ConflictCard({ detail }: { detail: LedgerConflictDetail }) {
         {!overlay && <CardAction>{stateBadge}</CardAction>}
       </CardHeader>
       <CardContent className="flex min-w-0 flex-col gap-4">
-        {!overlay && timing}
         <ConflictComparison detail={detail} />
+        {!overlay && timing}
         {detail.raw_page && (
           <section
             className={cn("flex min-w-0 flex-col gap-3", overlay && "detail-section")}
@@ -127,7 +127,7 @@ export function ConflictCard({ detail }: { detail: LedgerConflictDetail }) {
               : []
           }
         />
-        {overlay && <TechnicalDetails data={detail} identifiers={[["冲突编号", conflict.conflict_id]]} />}
+        {overlay && <TechnicalDetails title="冲突记录技术信息" data={detail} identifiers={[["冲突编号", conflict.conflict_id]]} />}
       </CardContent>
       {conflict.status === "OPEN" &&
         conflict.conflict_type !== "RAW_PAGE_VARIANT" && (
