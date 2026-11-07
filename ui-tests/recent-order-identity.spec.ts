@@ -5,7 +5,7 @@ test("recent order identity stays readable beside long statuses at narrow widths
     const response = await route.fetch();
     const body = await response.json();
     if (new URL(route.request().url()).searchParams.get("limit") === "5") {
-      body.data[0].notification_summary = { status: "NOT_CONFIGURED", total_events: 0, acknowledged_events: 0 };
+      body.data[0].notification_summary = { status: "ACKNOWLEDGED", total_events: 2, acknowledged_events: 1 };
     }
     await route.fulfill({ response, json: body });
   });
@@ -14,8 +14,8 @@ test("recent order identity stays readable beside long statuses at narrow widths
   for (const [width, scale] of [[320, 1], [390, 2]]) {
     await page.setViewportSize({ width: width!, height: 900 });
     await page.evaluate(scale => { document.documentElement.style.fontSize = 16 * scale! + "px"; }, scale);
-    const row = page.locator(".overview-order-summary").first();
-    await expect(row.getByText("此订单未设置通知地址")).toBeVisible();
+    const row = page.getByRole("list", { name: "最近订单", exact: true }).getByRole("listitem").first();
+    await expect(row.getByRole("group", { name: "通知状态", exact: true })).toHaveText("尚未全部送达");
     await page.clock.runFor(100);
     const geometry = await row.evaluate(element => {
       const title = element.querySelector(".list-identity-title")!;

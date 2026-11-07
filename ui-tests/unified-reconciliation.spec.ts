@@ -197,7 +197,12 @@ test("legacy global details resolve the unified transaction while site evidence 
     expect(new URL(page.url()).pathname).toBe("/admin/reconciliation");
     const overlay = await settleOverlay(page);
     await revealDetailSection(page, "transaction");
-    await expect(overlay.locator("[data-ledger-summary]")).toContainText(group.external_event_id);
+    const transaction = overlay.locator("[data-ledger-summary]");
+    const credentials = transaction.getByRole("button", { name: "支付宝交易编号", exact: true });
+    await expect(credentials).toHaveAttribute("aria-expanded", "false");
+    await credentials.click();
+    await expect(credentials).toHaveAttribute("aria-expanded", "true");
+    await expect(transaction).toContainText(group.external_event_id);
     await revealDetailSection(page, "payments");
     await expect(overlay.locator('[data-ledger-match="' + match.payment_match_id + '"]')).toBeVisible();
   }
