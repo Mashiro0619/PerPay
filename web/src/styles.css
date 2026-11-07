@@ -1832,6 +1832,29 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 .audit-mobile-meta { display: flex; min-width: 0; align-items: baseline; justify-content: space-between; gap: 0.75rem; color: var(--muted-foreground); font-size: 0.75rem; }
 .audit-mobile-meta > * { min-width: 0; max-width: 65%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .audit-mobile-meta > .list-time { flex: none; font-size: 0.75rem; }
+/* Stable reading rows for full business lists; embedded summaries keep their density. */
+[data-business-table][data-embedded="false"] [data-summary-layout="record"] { gap: 0.625rem; }
+[data-business-table][data-embedded="false"] [data-summary-layout="record"] .list-summary-heading { flex-direction: row; flex-wrap: nowrap; align-items: flex-start; gap: 0.75rem; }
+[data-business-table][data-embedded="false"] [data-summary-layout="record"] .list-summary-identity { flex: 1 1 0%; }
+[data-business-table][data-embedded="false"] [data-summary-layout="record"] .list-summary-aside { flex: 0 0 auto; max-width: 45%; }
+[data-business-table][data-embedded="false"] [data-summary-layout="record"] .list-summary-heading:has(.list-money[data-wide="true"]) { flex-direction: column; align-items: stretch; }
+[data-business-table][data-embedded="false"] [data-summary-layout="record"] .list-summary-heading:has(.list-money[data-wide="true"]) .list-summary-aside { max-width: 100%; align-items: flex-start; }
+[data-business-table][data-embedded="false"] [data-summary-layout="record"] .list-identity-title { width: 100%; white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
+[data-business-table][data-embedded="false"] [data-summary-layout="record"] .business-summary-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 0.625rem 1rem; }
+[data-business-table][data-embedded="false"] [data-summary-layout="record"] .business-summary-field { display: flex; flex-direction: column; flex-wrap: nowrap; align-items: flex-start; gap: 0.125rem; }
+[data-business-table][data-embedded="false"] [data-summary-layout="record"] .business-summary-field[data-full-width] { grid-column: 1 / -1; }
+[data-business-table][data-embedded="false"] [data-summary-layout="record"] .business-summary-field[data-visible-label] dt { position: static; width: auto; height: auto; overflow: visible; clip-path: none; white-space: normal; }
+[data-business-table][data-embedded="false"] [data-summary-layout="record"] .business-summary-field dd { flex: none; width: 100%; max-width: 100%; font-size: 0.875rem; line-height: 1.5; white-space: normal; overflow: visible; text-overflow: clip; }
+[data-business-table][data-embedded="false"] [data-summary-layout="record"] .business-summary-field :is(.business-cell-stack, .business-cell-badges) { align-items: flex-start; }
+[data-business-table][data-embedded="false"] [data-summary-layout="record"] .list-summary-source { font-size: 0.8125rem; }
+[data-business-table][data-embedded="false"] [data-summary-layout="record"] [data-summary-status] { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: 0.375rem 0.75rem; font-size: 0.8125rem; }
+[data-business-table][data-embedded="false"] [data-summary-layout="record"] [data-summary-message] { font-size: 0.8125rem; line-height: 1.5; color: var(--muted-foreground); overflow-wrap: anywhere; }
+[data-business-table][data-embedded="false"] [data-summary-layout="record"] [data-summary-actions] { justify-content: flex-start; }
+@container summary (max-width: 20rem) {
+  [data-business-table][data-embedded="false"] [data-summary-layout="record"] .list-summary-heading { flex-direction: column; align-items: stretch; }
+  [data-business-table][data-embedded="false"] [data-summary-layout="record"] .list-summary-aside { max-width: 100%; align-items: flex-start; }
+  [data-business-table][data-embedded="false"] [data-summary-layout="record"] .business-summary-fields { grid-template-columns: minmax(0, 1fr); }
+}
 /* End console lists. */
 
 /* Root-owned overview and entry surfaces use the same compact reading rhythm. */

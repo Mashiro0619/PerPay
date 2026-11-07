@@ -29,6 +29,11 @@ async function menu(user: ReturnType<typeof userEvent.setup>) {
 function orderSummary() {
   return screen.getByRole("link", { name: order.product_name }).closest<HTMLElement>("[data-business-row]")!;
 }
+function expectOrderStatus() {
+  const status = within(orderSummary()).getByText("待付款", { exact: true });
+  expect(status).toBeVisible();
+  expect(status.closest("[data-summary-status]")).not.toBeNull();
+}
 describe("mobile column controls", () => {
   beforeEach(() => {
     localStorage.clear();
@@ -36,13 +41,17 @@ describe("mobile column controls", () => {
   });
   it.each([null, 0, 99, 101, 102, 9007199254740991])("shows one labelled receipt and distinguishes missing, zero and differing amounts: %s", received => {
     render(<MemoryRouter><DataTable data={[{ ...order, received_amount_cents: received }]} control={control} /></MemoryRouter>);
-    const aside = orderSummary().querySelector(".list-summary-aside")!;
-    expect(within(aside as HTMLElement).getByText("应付金额")).toBeVisible();
-    expect(within(aside as HTMLElement).getByText("实收金额")).toBeVisible();
+    const fields = orderSummary().querySelector<HTMLElement>(".business-summary-fields")!;
+    const payable = within(fields).getByText("应付金额", { selector: "dt" });
+    const receipt = within(fields).getByText("实收金额", { selector: "dt" });
+    expect(payable).toBeVisible();
+    expect(payable.nextElementSibling).toHaveTextContent(money(order.payable_amount_cents));
+    expect(receipt).toBeVisible();
+    expect(receipt.nextElementSibling).toHaveTextContent(money(received));
     expect(within(orderSummary()).getAllByLabelText("实收金额 " + money(received))).toHaveLength(1);
     if (received != null && received !== order.payable_amount_cents) {
-      expect(within(aside as HTMLElement).getByText(received < order.payable_amount_cents ? "少收" : "多收")).toHaveAttribute("data-variant", "warning");
-    } else expect(within(aside as HTMLElement).queryByText(/少收|多收/)).not.toBeInTheDocument();
+      expect(within(receipt.nextElementSibling as HTMLElement).getByText(received < order.payable_amount_cents ? "少收" : "多收")).toHaveAttribute("data-variant", "warning");
+    } else expect(within(fields).queryByText(/少收|多收/)).not.toBeInTheDocument();
   });
   it("keeps one fixed mobile summary and no column or row-expansion controls after migrating legacy defaults", () => {
     localStorage.setItem(
@@ -59,7 +68,7 @@ describe("mobile column controls", () => {
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
     expect(document.querySelectorAll("[data-business-row]")).toHaveLength(1);
     expect(orderSummary()).toHaveAttribute("role", "listitem");
-    expect(within(orderSummary()).getByText("状态")).toBeVisible();
+    expectOrderStatus();
     expect(within(orderSummary()).getByText("创建时间")).toBeVisible();
     expect(within(orderSummary()).getByText("实收金额")).toBeVisible();
     expect(
@@ -113,9 +122,7 @@ describe("mobile column controls", () => {
     expect(
       within(orderSummary()).getByText("实收金额"),
     ).toBeVisible();
-    expect(
-      within(orderSummary()).getByText("状态"),
-    ).toBeVisible();
+    expectOrderStatus();
     expect(
       within(orderSummary()).getByText("创建时间"),
     ).toBeVisible();
@@ -126,9 +133,7 @@ describe("mobile column controls", () => {
     expect(
       within(orderSummary()).getByText("实收金额"),
     ).toBeVisible();
-    expect(
-      within(orderSummary()).getByText("状态"),
-    ).toBeVisible();
+    expectOrderStatus();
     media.resize(1280);
     expect(screen.queryByRole("columnheader", { name: "状态" })).not.toBeInTheDocument();
   });

@@ -74,6 +74,17 @@ function RelatedRecord({ item, showSite }: { item: AdminWorkItem; showSite: bool
   );
 }
 
+function ReminderStatus({ item }: { item: AdminWorkItem }) {
+  return item.ended || item.ignored_at ? (
+    <Badge variant="secondary">{item.ended ? "已结束" : "已忽略"}</Badge>
+  ) : (
+    <StatusBadge
+      value={item.type === "NOTIFICATION_FAILURE" ? item.status : item.type}
+      label={item.type === "NOTIFICATION_FAILURE" && item.status !== "ACKNOWLEDGED" ? "通知失败" : undefined}
+    />
+  );
+}
+
 export function WorkItemsTable({
   items,
   actions,
@@ -222,16 +233,7 @@ export function WorkItemsTable({
       summaryDefault: true,
       cell: (item) => (
         <div className="business-cell-stack flex flex-col items-end gap-2">
-          {item.ended || item.ignored_at ? (
-            <Badge variant="secondary">
-              {item.ended ? "已结束" : "已忽略"}
-            </Badge>
-          ) : (
-            <StatusBadge
-              value={item.type === "NOTIFICATION_FAILURE" ? item.status : item.type}
-              label={item.type === "NOTIFICATION_FAILURE" && item.status !== "ACKNOWLEDGED" ? "通知失败" : undefined}
-            />
-          )}{" "}
+          <ReminderStatus item={item} />
           {actions?.(item)}
         </div>
       ),
@@ -255,9 +257,11 @@ export function WorkItemsTable({
       columnsMenu={!!control}
       renderSummary={(item, context) => (
         <ListSummary
+          layout={control ? "record" : undefined}
           identity={columns[0]!.cell(item, context)}
           source={control && !clientId && <SiteIdentity clientId={item.order_summary?.api_client_id} name={item.order_summary?.site_name} />}
-          aside={columns.find((column) => column.id === "actions")!.cell(item, context)}
+          aside={control ? <ReminderStatus item={item} /> : columns.find((column) => column.id === "actions")!.cell(item, context)}
+          actions={control && actions?.(item)}
           details={columns.filter((column) =>
             context.isColumnVisible(column.id) && !context.isSummaryPrimary(column.id),
           ).map((column) => (
@@ -272,12 +276,12 @@ export function WorkItemsTable({
             context.isSummaryPrimary(column.id),
           ).map((column) => (
             column.id === "related_record" ? (
-              <div key={column.id} className="business-summary-field col-span-full">
+              <div key={column.id} className="business-summary-field col-span-full" data-full-width>
                 <dt className="sr-only">{column.label}</dt>
                 <dd className="w-full">{column.cell(item, context)}</dd>
               </div>
             ) : (
-              <ListSummaryField key={column.id} label={column.label}>
+              <ListSummaryField key={column.id} label={column.label} visibleLabel={!!control} fullWidth={!!control && column.layout === "datetime"}>
                 {column.cell(item, context)}
               </ListSummaryField>
             )

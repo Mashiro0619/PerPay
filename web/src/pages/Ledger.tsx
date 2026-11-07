@@ -146,11 +146,13 @@ export function LedgerList({ onManual }: { onManual?: (trigger: HTMLButtonElemen
       <div className="min-w-0" aria-busy={query.isFetching || query.isPlaceholderData}>
         {page.data.length ? <BusinessTable id="administrator-ledger" aria-label="支付宝流水" tableClassName="ledger-table" items={page.data} columns={columns} rowId={entry => entry.ledger_entry_id} control={control}
           renderSummary={(entry, context) => <ListSummary
+            layout="record"
             identity={columns[0]!.cell(entry, context)}
             aside={context.isSummaryPrimary("amount_cents") && <LedgerMoney entry={entry} />}
+            status={columns.filter(column => ["direction", "association", "state"].includes(column.id) && context.isSummaryPrimary(column.id)).map(column => <div key={column.id} role="group" aria-label={column.label}>{column.cell(entry, context)}</div>)}
             details={columns.filter(column => context.isColumnVisible(column.id) && !context.isSummaryPrimary(column.id)).map(column => <ListSummaryField key={column.id} label={column.label}>{column.cell(entry, context)}</ListSummaryField>)}
           >
-            {columns.filter(column => !["identity", "amount_cents"].includes(column.id) && context.isSummaryPrimary(column.id)).map(column => <ListSummaryField key={column.id} label={column.label} visibleLabel={column.id === "order" || column.id === "alipay_account"}>{column.cell(entry, context)}</ListSummaryField>)}
+            {columns.filter(column => !["identity", "amount_cents", "direction", "association", "state"].includes(column.id) && context.isSummaryPrimary(column.id)).map(column => <ListSummaryField key={column.id} label={column.label} visibleLabel fullWidth>{column.cell(entry, context)}</ListSummaryField>)}
           </ListSummary>} /> : <Empty kind={activeFilters ? "filtered" : "page"}><EmptyHeader><EmptyTitle role="heading" aria-level={2}>{activeFilters ? "暂无符合条件的流水" : "暂无支付宝流水"}</EmptyTitle>{activeFilters && <EmptyDescription>调整筛选条件后重试。</EmptyDescription>}</EmptyHeader></Empty>}
       </div>
       <CursorPagination page={pagination.page} count={page.data.length} hasNext={!!page.page.next_cursor} pending={query.isFetching || query.isPlaceholderData} previousLabel={pagination.previousLabel} onPrevious={pagination.previous} onNext={() => pagination.next(page.page.next_cursor)} />

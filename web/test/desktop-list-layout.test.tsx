@@ -51,7 +51,8 @@ const lists = [
     element: <Orders />,
     data: [longOrder],
     hiddenColumn: "确认时间",
-    summaryFields: ["状态", "创建时间"],
+    summaryFields: ["应付金额", "实收金额", "创建时间"],
+    summaryStatuses: ["待付款"],
     centeredColumns: ["payable_amount_cents", "received_amount_cents", "status", "created_at", "payment_confirmed_at"],
   },
   {
@@ -60,6 +61,7 @@ const lists = [
     data: [reminder],
     hiddenColumn: "创建时间",
     summaryFields: ["关联记录", "应付金额", "提醒时间"],
+    summaryStatuses: [],
     centeredColumns: ["actionable_at", "created_at", "actions"],
     rightAlignedColumns: ["payable_amount_cents"],
   },
@@ -68,7 +70,8 @@ const lists = [
     element: <Reconciliation />,
     data: [groupedLedger],
     hiddenColumn: "最近关联时间",
-    summaryFields: ["交易时间", "收支", "关联状态", "当前关联订单", "收款账号", "PerPay 处理状态"],
+    summaryFields: ["交易时间", "当前关联订单", "收款账号"],
+    summaryStatuses: ["收入", "已关联", "已分配"],
     centeredColumns: ["association", "direction", "amount_cents", "occurred_at", "state"],
     optionalCenteredColumns: ["associated_at", "handled_at"],
   },
@@ -77,7 +80,8 @@ const lists = [
     element: <Notifications />,
     data: [notification],
     hiddenColumn: "商户订单号",
-    summaryFields: ["通知类型", "送达结果", "尝试次数", "下次尝试"],
+    summaryFields: ["尝试次数", "下次尝试"],
+    summaryStatuses: ["等待重试", "收款已确认"],
     centeredColumns: ["status", "attempt_count", "created_at", "next_attempt_at"],
   },
 ];
@@ -230,7 +234,7 @@ describe("desktop business list composition", () => {
 
   it.each(lists)(
     "uses the measured container and keeps desktop column preferences separate from mobile summaries on $path",
-    async ({ path, element, data, hiddenColumn, summaryFields, centeredColumns, optionalCenteredColumns, rightAlignedColumns }) => {
+    async ({ path, element, data, hiddenColumn, summaryFields, summaryStatuses, centeredColumns, optionalCenteredColumns, rightAlignedColumns }) => {
       if (path === "/notifications") {
         localStorage.setItem("perpay.table-columns.v2.notifications", JSON.stringify({ order: false }));
       }
@@ -251,6 +255,11 @@ describe("desktop business list composition", () => {
       expect(screen.queryByRole("table")).not.toBeInTheDocument();
       expect(within(summary).queryByRole("button", { name: "展开信息" })).not.toBeInTheDocument();
       expect(Array.from(summary.querySelectorAll(".business-summary-field > dt"), field => field.textContent)).toEqual(summaryFields);
+      for (const status of summaryStatuses) {
+        const value = within(summary.querySelector<HTMLElement>("[data-summary-status]")!).getByText(status, { exact: true });
+        expect(value).toBeVisible();
+        expect(value.closest("[data-summary-status]")).not.toBeNull();
+      }
       const user = userEvent.setup();
       await user.click(await screen.findByRole("button", { name: /^筛选与排序/ }));
       const sheet = await screen.findByRole("dialog", { name: "筛选与排序" });
@@ -407,8 +416,8 @@ describe("desktop business list composition", () => {
       const primary = await screen.findByRole("link", { name: groupedLedger.external_event_id });
       const summary = screen.getByRole("listitem");
       expect(within(summary).getByText("交易时间")).toBeVisible();
-      expect(within(summary).getByText("收支")).toBeVisible();
-      expect(within(summary).getByText("关联状态")).toBeVisible();
+      expect(within(summary).getByRole("group", { name: "收支" })).toHaveTextContent("收入");
+      expect(within(summary).getByRole("group", { name: "关联状态" })).toHaveTextContent("已关联");
       expect(within(summary).queryByRole("button", { name: "展开信息" })).not.toBeInTheDocument();
       expect(screen.queryByRole("columnheader", { name: "当前关联订单" })).not.toBeInTheDocument();
       const relatedOrder = within(summary).getByRole("link", { name: "查看订单：" + order.merchant_order_no });
@@ -418,7 +427,7 @@ describe("desktop business list composition", () => {
       const account = within(summary).getByRole("link", { name: alipayAccount.name });
       expect(account).toHaveAttribute("href", "/settings/accounts/" + alipayAccount.id);
       expect(account.closest(".business-summary-field")).toHaveAttribute("data-visible-label", "true");
-      expect(within(summary).getByText("PerPay 处理状态")).toBeInTheDocument();
+      expect(within(summary).getByRole("group", { name: "PerPay 处理状态" })).toHaveTextContent("已分配");
       await userEvent.click(primary);
       expect(await screen.findByRole("heading", { name: "流水详情" })).toBeVisible();
       expect(screen.getByLabelText("当前地址")).toHaveTextContent("/reconciliation/transactions/" + groupedLedger.ledger_entry_id);

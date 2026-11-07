@@ -336,8 +336,11 @@ function DeliveryPage({
                   columns={columns}
                   renderSummary={(delivery, context) => (
                     <ListSummary
+                      layout="record"
                       identity={columns[0]!.cell(delivery, context)}
                       source={!clientId && <SiteIdentity clientId={delivery.order_summary?.api_client_id} name={delivery.order_summary?.site_name} />}
+                      status={<><StatusBadge value={delivery.status} /><span>通知类型：<span>{label(delivery.event.event_type)}</span></span></>}
+                      message={delivery.last_error_code ? notificationErrorName(delivery.last_error_code) : undefined}
                       details={columns.filter((column) =>
                         context.isColumnVisible(column.id) && !context.isSummaryPrimary(column.id),
                       ).map((column) => (
@@ -347,9 +350,9 @@ function DeliveryPage({
                       ))}
                     >
                       {columns.filter((column) =>
-                        column.id !== "identity" && context.isSummaryPrimary(column.id),
+                        !["identity", "status", "event_type"].includes(column.id) && context.isSummaryPrimary(column.id),
                       ).map((column) => (
-                        <ListSummaryField key={column.id} label={column.label} visibleLabel={column.id === "event_type" || column.id === "attempt_count" || column.id === "next_attempt_at"}>
+                        <ListSummaryField key={column.id} label={column.label} visibleLabel={column.id === "attempt_count" || column.id === "next_attempt_at"} fullWidth={column.id === "next_attempt_at"}>
                           {column.cell(delivery, context)}
                         </ListSummaryField>
                       ))}

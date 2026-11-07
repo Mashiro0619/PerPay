@@ -1,6 +1,8 @@
 import type { Locator, Page } from "@playwright/test";
 import { test, expect, login, record } from "./fixtures";
 import { expectTouchTarget } from "./touch-targets";
+import type { AdminLedgerPageEnvelope } from "../web/src/api/generated/types.gen";
+import { money } from "../web/src/lib/format";
 
 async function readableText(target: Locator) {
   await expect(target).toBeVisible();
@@ -62,6 +64,54 @@ test("site periods keep complete single-line labels at desktop widths and enlarg
 
 test.describe("mobile list reflow retains complete choices", () => {
   test.use({ hasTouch: true, isMobile: true, viewport: { width: 320, height: 560 }, reducedMotion: "reduce" });
+
+  test("320px and 200% text: ledger amounts never overlap their record identity", async ({ page, manifest }, info) => {
+    await login(page, manifest);
+    const endpoint = "/api/admin/v1/ledger/entries";
+    const response = await page.request.get(manifest.origin + endpoint + "?direction=CREDIT&limit=1");
+    expect(response.ok()).toBe(true);
+    const source = await response.json() as AdminLedgerPageEnvelope;
+    expect(source.data.length).toBeGreaterThan(0);
+    let amountCents = 99_999_999;
+    // Retain a real local record identity; vary only the displayed amount.
+    await page.route(manifest.origin + endpoint + "?**", route => route.fulfill({
+      status: 200,
+      json: { ...source, data: [{ ...source.data[0]!, amount_cents: amountCents }], page: { next_cursor: null } },
+    }));
+    for (const amount of [99_999_999, 999_999_999_999]) {
+      amountCents = amount;
+      await page.goto(manifest.origin + "/admin/reconciliation?direction=CREDIT");
+      await page.evaluate(() => document.documentElement.style.fontSize = "200%");
+      const row = page.getByRole("list", { name: "支付宝流水", exact: true }).getByRole("listitem");
+      await expect(row).toHaveCount(1);
+      const heading = row.locator(".list-summary-heading");
+      const amountValue = heading.locator(".list-money");
+      await expect(amountValue).toHaveText(money(amount));
+      await expect(row.locator("a[data-row-link]")).toHaveText(source.data[0]!.external_event_id);
+      await page.evaluate(() => document.fonts.ready);
+      await page.clock.runFor(100);
+      const geometry = await heading.evaluate(element => {
+        const identity = element.querySelector<HTMLElement>(".list-summary-identity")!.getBoundingClientRect();
+        const amount = element.querySelector<HTMLElement>(".list-money")!.getBoundingClientRect();
+        const frame = element.getBoundingClientRect();
+        return { identity: identity.toJSON(), amount: amount.toJSON(), frame: frame.toJSON(),
+          overlapWidth: Math.min(identity.right, amount.right) - Math.max(identity.left, amount.left),
+          overlapHeight: Math.min(identity.bottom, amount.bottom) - Math.max(identity.top, amount.top) };
+      });
+      expect(geometry.overlapWidth <= 1 || geometry.overlapHeight <= 1, "the complete money box must not intrude into the record identity even when the page has no horizontal overflow").toBe(true);
+      expect(geometry.amount.left).toBeGreaterThanOrEqual(geometry.frame.left - 1);
+      expect(geometry.amount.right).toBeLessThanOrEqual(geometry.frame.right + 1);
+      await readableText(amountValue);
+      const dateField = row.locator(".business-summary-field dd").filter({ has: page.locator("time") }).first();
+      const dateGeometry = await dateField.evaluate(element => ({
+        height: element.getBoundingClientRect().height,
+        contentHeight: element.querySelector("time")!.getBoundingClientRect().height,
+        rootFont: Number.parseFloat(getComputedStyle(document.documentElement).fontSize),
+      }));
+      expect(dateGeometry.height - dateGeometry.contentHeight, "vertical fields must not inherit the old horizontal 8rem flex basis").toBeLessThanOrEqual(dateGeometry.rootFont / 2);
+      await record(page, info, { feature: "mobile-ledger-amount-identity-separation", width: 320, rootText: 200, amountCents: amount, geometry, dateGeometry });
+    }
+  });
 
   for (const width of [320, 360]) {
     test(`${width}px and 200% text: list pagination, notification statuses and site periods remain operable`, async ({ page, manifest }, info) => {

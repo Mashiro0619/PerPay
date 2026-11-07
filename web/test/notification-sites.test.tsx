@@ -24,7 +24,7 @@ describe("notification website identity", () => {
       const row = link.closest<HTMLElement>("[data-business-row]")!;
       expect(within(row).getByText("同名商品")).toBeVisible();
       if (width < 640) {
-        expect(within(row).getByText("通知类型", { selector: "dt" }).nextElementSibling).toHaveTextContent("收款已确认");
+        expect(within(row).getByText("收款已确认").closest("[data-summary-status]")).toHaveTextContent("通知类型：收款已确认");
         expect(within(row).getByText("尝试次数", { selector: "dt" }).nextElementSibling).toHaveTextContent("3");
         expect(within(row).getByText("下次尝试", { selector: "dt" }).nextElementSibling).toHaveTextContent("2026/11/04 12:00");
       }

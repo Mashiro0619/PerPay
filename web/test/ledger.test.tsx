@@ -103,10 +103,10 @@ describe("administrator ledger pages", () => {
     act(() => { width = 600; window.dispatchEvent(new Event("resize")); });
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
     const summary = await screen.findByRole("listitem");
-    expect(within(summary).getByText("关联状态")).toBeVisible();
+    expect(within(summary).getByRole("group", { name: "关联状态" })).toHaveTextContent("已关联");
     expect(within(summary).getByRole("link", { name: externalEventId })).toHaveTextContent(externalEventId);
     expect(within(summary).getByText("交易时间")).toBeVisible();
-    expect(within(summary).getByText("收支")).toBeVisible();
+    expect(within(summary).getByRole("group", { name: "收支" })).toHaveTextContent("收入");
     const relatedOrder = within(summary).getByRole("link", { name: "查看订单：real-order" });
     expect(relatedOrder).toHaveTextContent(match.product_name);
     expect(relatedOrder).toHaveAttribute("href", "/orders/" + orderId);
@@ -114,11 +114,11 @@ describe("administrator ledger pages", () => {
     const account = within(summary).getByRole("link", { name: alipayAccount.name });
     expect(account).toHaveAttribute("href", "/settings/accounts/" + alipayAccount.id);
     expect(account.closest(".business-summary-field")).toHaveAttribute("data-visible-label", "true");
-    expect(within(summary).getByText("PerPay 处理状态")).toBeInTheDocument();
+    expect(within(summary).getByRole("group", { name: "PerPay 处理状态" })).toHaveTextContent("已分配");
     expect(within(summary).queryByText("本地流水备注")).not.toBeInTheDocument();
     expect(within(summary).queryByRole("button", { name: "展开信息" })).not.toBeInTheDocument();
     expect(Array.from(summary.querySelectorAll(".business-summary-field > dt"), field => field.textContent)).toEqual([
-      "交易时间", "收支", "关联状态", "当前关联订单", "收款账号", "PerPay 处理状态",
+      "交易时间", "当前关联订单", "收款账号",
     ]);
     expect(JSON.parse(localStorage.getItem("perpay.table-columns.v2.administrator-ledger")!)).toEqual({ memo: true });
     expect(screen.getByLabelText("位置")).toHaveTextContent(/^\/reconciliation$/);

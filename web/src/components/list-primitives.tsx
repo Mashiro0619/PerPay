@@ -91,6 +91,9 @@ export function ListSummary({
   identity,
   aside,
   source,
+  layout,
+  status,
+  message,
   children,
   details,
   actions,
@@ -99,6 +102,10 @@ export function ListSummary({
   aside?: ReactNode;
   /** Cross-site context stays visible alongside the record's primary fields. */
   source?: ReactNode;
+  /** Stable title, status and metadata rows for standalone record lists. */
+  layout?: "record";
+  status?: ReactNode;
+  message?: ReactNode;
   children?: ReactNode;
   /** Selected secondary fields; unmounted after this record finishes collapsing. */
   details?: ReactNode;
@@ -107,12 +114,14 @@ export function ListSummary({
   const compact = useContext(CompactRowContext);
   const fields = Children.toArray(children);
   return (
-    <ItemContent className="min-w-0 w-full">
+    <ItemContent className="min-w-0 w-full" data-summary-layout={layout}>
       <ItemHeader className="list-summary-heading">
         <div className="list-summary-identity">{identity}</div>
         {aside && <ItemActions className="list-summary-aside">{aside}</ItemActions>}
       </ItemHeader>
+      {status && <div data-summary-status>{status}</div>}
       {compact && source && <div className="list-summary-source flex min-w-0 items-baseline gap-1.5"><span className="shrink-0">网站</span>{source}</div>}
+      {message && <div data-summary-message>{message}</div>}
       {fields.length > 0 && <dl className="business-summary-fields">{fields}</dl>}
       <ListSummaryDetails>{details}</ListSummaryDetails>
       {actions && <ItemActions className="w-full flex-wrap justify-end" data-summary-actions>{actions}</ItemActions>}
@@ -167,13 +176,15 @@ export function ListSummaryField({
   label,
   children,
   visibleLabel = false,
+  fullWidth = false,
 }: {
   label: string;
   children: ReactNode;
   visibleLabel?: boolean;
+  fullWidth?: boolean;
 }) {
   return (
-    <div className="business-summary-field" data-visible-label={visibleLabel || undefined}>
+    <div className={cn("business-summary-field", fullWidth && "col-span-full")} data-visible-label={visibleLabel || undefined} data-full-width={fullWidth || undefined}>
       <dt>{label}</dt>
       <dd>{children}</dd>
     </div>
