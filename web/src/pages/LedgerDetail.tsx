@@ -9,12 +9,11 @@ import { Link, useDetailBack } from "@/navigation";
 import { label } from "@/lib/labels";
 import { cn } from "@/lib/utils";
 import { useOverlayContext } from "@/lib/overlay-context";
-import { useOptionalSystemStatus } from "@/features/system-status";
 import { PageHeading } from "@/components/page-heading";
 import { PageHeaderActions } from "@/components/page-header-actions";
 import { RefreshButton } from "@/components/refresh-button";
 import { QueryView } from "@/components/request-state";
-import { LedgerFreshness } from "@/components/ledger-freshness";
+import { AccountLedgerFreshness } from "@/components/ledger-freshness";
 import { LedgerDirection, LedgerMoney, ledgerFact } from "@/components/ledger-record";
 import { ListDateTime } from "@/components/list-primitives";
 import { DetailCredentials, DetailFields, DetailNavigation, DetailPage, TechnicalDetails } from "@/components/detail/DetailPrimitives";
@@ -49,7 +48,6 @@ export default function LedgerDetail() {
   const overlay = useOverlayContext();
   const { ledgerEntryId = "" } = useParams();
   const back = useDetailBack("/reconciliation", "返回对账");
-  const system = useOptionalSystemStatus();
   const query = useQuery({ queryKey: ["administrator-ledger-detail", ledgerEntryId], queryFn: ({ signal }) => result(api.getAdministratorLedgerEntry({ signal, path: { ledgerEntryId } })) });
   const fetching = useIsFetching({ predicate: isReconciliationDetailQuery });
   return <DetailPage>
@@ -82,7 +80,7 @@ export default function LedgerDetail() {
             ["支付宝订单号", <LedgerIdentifier value={data.provider_order_no} name="支付宝订单号" />],
             ["支付宝商户单号", <LedgerIdentifier value={data.merchant_order_no} name="支付宝商户单号" />],
           ]} />
-          <LedgerFreshness size="default" value={system && !system.checking && !system.unavailable ? system.status.data?.data.ledger.last_success_at : undefined} />
+          <AccountLedgerFreshness size="default" accountId={data.alipay_account_id ?? null} />
           {overlay && <TechnicalDetails title="流水技术信息" data={data} identifiers={[["内部流水编号（PerPay）", data.ledger_entry_id], ["支付宝流水号", data.external_event_id]]} />}
         </CardContent>
       </Card>

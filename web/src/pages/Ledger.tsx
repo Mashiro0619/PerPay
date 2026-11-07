@@ -20,7 +20,7 @@ import { ListQueryToolbar, type ListFilter } from "@/components/list-query-toolb
 import { ListDateTime, ListIdentity, ListMeta, ListSummary } from "@/components/list-primitives";
 import { CreatedDateFilter } from "@/components/created-date-filter";
 import { LedgerAmountFilter } from "@/components/ledger-amount-filter";
-import { LedgerFreshness } from "@/components/ledger-freshness";
+import { AccountLedgerFreshness } from "@/components/ledger-freshness";
 import { LedgerActiveOrder, LedgerOrderLink, LedgerAssociationStatus, LedgerDirection, LedgerMoney, LedgerStates, ledgerFact } from "@/components/ledger-record";
 import { CursorPagination } from "@/components/cursor-pagination";
 import { QueryView, ErrorNotice } from "@/components/request-state";
@@ -139,7 +139,7 @@ export function LedgerList({ onManual }: { onManual?: (trigger: HTMLButtonElemen
           {onManual && <DropdownMenuItem onClick={() => onManual(trigger.current)}><Link2 />人工关联收款</DropdownMenuItem>}
           <DropdownMenuItem disabled={query.isFetching || !!filterError} onClick={refresh}><RefreshCw />刷新</DropdownMenuItem>
         </>}</ListActionsMenu>}>
-        <div className="basis-full"><LedgerFreshness value={system && !system.checking && !system.unavailable ? system.status.data?.data.ledger.last_success_at : undefined} /></div>
+        <div className="basis-full"><AccountLedgerFreshness accountId={filters?.alipay_account_id} /></div>
       </ListQueryToolbar>
     </ListToolbarPart>
     {filterError ? <ErrorNotice error={filterError} /> : <QueryView query={query}>{page => <>
