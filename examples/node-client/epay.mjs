@@ -134,15 +134,17 @@ export class EpayClient {
     if (typeof payurl !== 'string') throw new DemoError(502, '易支付没有返回可用的跳转收银台。');
     const checkout = new URL(payurl);
     if (checkout.origin !== this.config.url || checkout.username || checkout.password || !/^\/checkout\/pct1_[A-Za-z0-9_-]{43}$/.test(checkout.pathname) || checkout.search || checkout.hash) throw new DemoError(502, '收银台地址与当前 PerPay 实例不一致。');
-    return this.snapshot({ trade_no: result.trade_no, out_trade_no: payload.merchant_order_no,
-      pid: this.config.pid, money: parameters.money, status: 0 }, checkout.href);
+    const order = await this.query({ trade_no: result.trade_no }, checkout.href);
+    if (order.order_id !== String(result.trade_no) || order.merchant_order_no !== payload.merchant_order_no ||
+        order.requested_amount_cents !== payload.amount_cents) throw new DemoError(502, '创建后的查单结果与原业务订单不一致。');
+    return order;
   }
   async getOrder(id) { return this.query({ trade_no: id }); }
   async getByMerchantNo(no) { return this.query({ out_trade_no: no }); }
-  async query(parameters) {
+  async query(parameters, checkoutUrl) {
     const result = await this.request(this.config.protocol === 'epay_v1' ? '/api.php' : '/api/pay/query',
       { ...(this.config.protocol === 'epay_v1' ? { act: 'order' } : {}), ...parameters }, true);
-    return this.snapshot(result);
+    return this.snapshot(result, checkoutUrl);
   }
   snapshot(order, checkoutUrl) {
     if (!/^[1-9]\d{0,63}$/.test(String(order.trade_no)) || !MERCHANT_NO.test(order.out_trade_no ?? '') ||

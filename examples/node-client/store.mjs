@@ -66,7 +66,7 @@ export class DemoStore {
     const previous = row.snapshot;
     if (this.protocol !== 'native') {
       // Compatibility responses have no remote order version. Version this local projection.
-      const payment = previous?.payment_status === 'CONFIRMED' && snapshot.payment_status === 'UNPAID'
+      const payment = ['CONFIRMED', 'DISPUTED'].includes(previous?.payment_status) && snapshot.payment_status === 'UNPAID'
         ? 'DISPUTED' : snapshot.payment_status;
       const changed = previous && previous.payment_status !== payment;
       snapshot = { ...snapshot, payment_status: payment, version: previous ? previous.version + Number(changed) : 1 };
