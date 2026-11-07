@@ -1,7 +1,8 @@
 import type { InstanceRuntimeSettingsSnapshot } from "./model.ts";
 import { AlipayAccountStore } from "../alipay-accounts/store.ts";
 import { SiteStore } from "../sites/store.ts";
-import { EpayStore, hasEpaySchema } from "../epay/store.ts";
+import { EpayStore } from "../epay/store.ts";
+import { ensureRuntimeMasterKeyGuard } from "./master-key-guard.ts";
 import { collectionPolicyInputSchema, type CollectionPolicyInput } from "./collection-policy.ts";
 import { collectionCodeInputSchema, type CollectionCodeInput } from "./model.ts";
 import { readAdminAccess, type AdminAccessInput, type AdminAccess } from "./admin-access.ts";
@@ -42,7 +43,7 @@ import {
   type RuntimeSettingsStatus,
   type WebhookSettingsInput,
 } from "./model.ts";
-import { RuntimeSecretCipher, type EncryptedSecret } from "./crypto.ts";
+import { RuntimeSecretCipher } from "./crypto.ts";
 
 export type PaymentSettingsSnapshot = RuntimeSettingsSnapshot | InstanceRuntimeSettingsSnapshot;
 
@@ -136,13 +137,6 @@ interface ApplicationKeyChangeRow {
   readonly finished_revision: bigint | number | null;
 }
 
-interface GuardRow {
-  readonly cipher_version: bigint | number;
-  readonly nonce: Uint8Array;
-  readonly ciphertext: Uint8Array;
-  readonly authentication_tag: Uint8Array;
-}
-
 export interface SettingsAuditContext {
   readonly actorId: string;
   readonly requestId?: string | undefined;
@@ -200,41 +194,11 @@ export class RuntimeSettingsStore {
   }
 
   initialize(): void {
-    this.#write((connection) => {
-      const existing = readGuard(connection);
-      if (existing) {
-        this.#cipher.verifyGuard(existing);
-        return;
-      }
-      const encryptedSecret = connection.prepare(
-        `SELECT 1 AS present FROM runtime_secrets
-         UNION ALL SELECT 1 FROM provider_application_key_changes WHERE state = 'PENDING'
-         ${hasSiteSchema(connection) ? "UNION ALL SELECT 1 FROM site_secrets" : ""}
-         ${hasEpaySchema(connection) ? "UNION ALL SELECT 1 FROM epay_credentials" : ""}
-         ${connection.prepare("SELECT 1 FROM sqlite_schema WHERE name='alipay_accounts' AND type='table'").get()
-           ? "UNION ALL SELECT 1 FROM alipay_account_secrets UNION ALL SELECT 1 FROM alipay_application_key_changes WHERE state = 'PENDING'" : ""} LIMIT 1`,
-      ).get() as { present: number } | undefined;
-      if (encryptedSecret) {
-        throw new Error(
-          "runtime master key guard is missing while encrypted settings still exist",
-        );
-      }
-      const encrypted = this.#cipher.createGuard();
-      const inserted = connection.prepare(
-        `INSERT INTO runtime_master_key_guard(
-           singleton_key, cipher_version, nonce, ciphertext,
-           authentication_tag, created_at
-         ) VALUES (1, ?, ?, ?, ?, ?)`,
-      ).run(
-        encrypted.cipherVersion,
-        encrypted.nonce,
-        encrypted.ciphertext,
-        encrypted.authenticationTag,
-        Date.now(),
-      );
-      if (Number(inserted.changes) !== 1) throw new Error("master key guard was not initialized");
-    });
+    this.#write(connection => ensureRuntimeMasterKeyGuard(connection, this.#cipher));
     this.accountStore()?.verifySecrets();
+    if (this.#epay.available()) {
+      this.#write(connection => this.#epay.initializeDefaults(connection));
+    }
   }
 
   /** Reads public presentation flags without loading or decrypting runtime secrets. */
@@ -1264,20 +1228,6 @@ function decryptSecret(cipher: RuntimeSecretCipher, row: SecretRow): string {
     ciphertext: Buffer.from(row.ciphertext),
     authenticationTag: Buffer.from(row.authentication_tag),
   }).toString("utf8");
-}
-
-function readGuard(connection: DatabaseSync): EncryptedSecret | null {
-  const row = connection.prepare(
-    `SELECT cipher_version, nonce, ciphertext, authentication_tag
-       FROM runtime_master_key_guard WHERE singleton_key = 1`,
-  ).get() as GuardRow | undefined;
-  if (!row) return null;
-  return {
-    cipherVersion: safeInteger(row.cipher_version, "guard cipher version") as 1,
-    nonce: Buffer.from(row.nonce),
-    ciphertext: Buffer.from(row.ciphertext),
-    authenticationTag: Buffer.from(row.authentication_tag),
-  };
 }
 
 function safeInteger(value: bigint | number, label: string): number {

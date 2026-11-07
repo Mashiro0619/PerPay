@@ -20,8 +20,14 @@ export async function createPerPayInteropFixture(newApiPort) {
     ...generated.site.configuration, notifications_enabled: true,
     notification_origin: 'https://shop.example', return_origin: 'https://shop.example',
   } }, audit);
-  const configuration = epay.update(site.clientId, { revision: 0, v1_enabled: true, v2_enabled: true }, audit);
+  const configuration = epay.get(site.clientId);
+  assert.equal(configuration.revision, 1);
+  assert.equal(configuration.v1Enabled, true);
+  assert.equal(configuration.v2Enabled, true);
   const credentials = epay.credential(configuration.pid);
+  assert.equal(credentials.v1KeyVersion, 1);
+  assert.equal(credentials.merchantKeyVersion, 1);
+  assert.equal(credentials.platformKeyVersion, 1);
   const health = () => ({ enabled: true, state: 'healthy', inFlight: false, lastAttemptAt: f.now(), lastSuccessAt: f.now(), lastErrorCode: null, consecutiveFailures: 0 });
   const app = createApp({ ...f, config: { ...f.config, publicOrigin: 'https://pay.example' }, startedAt: new Date(f.now()), clock: f.now,
     ledgerHealth: health, reconciliationHealth: () => ({ ...health(), pendingOrders: 0, continuationPending: false }) });

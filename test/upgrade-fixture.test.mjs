@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
 import { assertIsolation, loadImageModules, seedBusinessData, growObservationHistory, captureSnapshot, verifyBusinessData, advanceBusinessData, verifyHttpIdentity } from "../scripts/validation/upgrade-fixture.mjs";
 import { createApp } from "../src/http/app.ts";
+import { EpayStore } from "../src/epay/store.ts";
 
 describe("isolated cross-version business fixture", () => {
   it("refuses missing isolation and non-Linux command execution before accessing a volume", () => {
@@ -41,9 +42,8 @@ describe("isolated cross-version business fixture", () => {
       const verified = await verifyBusinessData({ modules: m, database, config, fixture: seeded.fixture, baseline, expectedSchema: m.DATABASE_COMPATIBILITY.maximum });
       assert.equal(verified.originalCredentialsVerified, true);
       assert.equal(verified.originalCheckoutTokensVerified, true);
-      const legacySnapshot = { ...baseline, schemaVersion: 40, tables: { ...baseline.tables } };
+      const legacySnapshot = { ...baseline };
       delete legacySnapshot.observationHistory;
-      for (const table of ["epay_sites", "epay_credentials", "epay_orders"]) delete legacySnapshot.tables[table];
       await verifyBusinessData({ modules: m, database, config, fixture: seeded.fixture, baseline: legacySnapshot, expectedSchema: m.DATABASE_COMPATIBILITY.maximum });
       const changedEpayIdentity = structuredClone(baseline);
       changedEpayIdentity.tables.epay_sites.rows[0].digest = "0".repeat(64);
@@ -74,6 +74,43 @@ describe("isolated cross-version business fixture", () => {
       const site = sites.get(seeded.siteId);
       sites.update(site.clientId, { revision: site.revision, configuration: { ...site.configuration, name: "Intentional changed fixture" } }, { actorId: "admin" });
       await assert.rejects(verifyBusinessData({ modules: m, database, config, fixture: seeded.fixture, baseline, expectedSchema: m.DATABASE_COMPATIBILITY.maximum }), /preserved_row_changed:sites/);
+    } finally {
+      database?.close();
+      assert.equal(dirname(resolve(directory)), resolve(tmpdir()));
+      assert.match(directory, /perpay-upgrade-fixture-/);
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("accepts one audited default initialization and preserves its credentials and the historical audit prefix", async t => {
+    const directory = mkdtempSync(join(tmpdir(), "perpay-upgrade-fixture-"));
+    const m = await loadImageModules(fileURLToPath(new URL("../src/", import.meta.url)), ".ts");
+    const config = m.loadConfig({ PERPAY_MASTER_KEY: "43".repeat(32), PERPAY_DATA_DIR: join(directory, "data"), PERPAY_BACKUP_DIR: join(directory, "backups"), PERPAY_PUBLIC_URL: "http://127.0.0.1:6190" });
+    let database;
+    try {
+      database = await m.AppDatabase.open(config.databasePath, { masterKey: config.masterKey });
+      const deferredDefaults = t.mock.method(EpayStore.prototype, "initializeSite", () => undefined);
+      const seeded = await seedBusinessData({ modules: m, database, config });
+      const baseline = captureSnapshot(database, seeded.fixture, m.APP_VERSION);
+      assert.equal(baseline.tables.epay_credentials.rows.length, 0);
+      deferredDefaults.mock.restore();
+      const verify = snapshot => verifyBusinessData({ modules: m, database, config, fixture: seeded.fixture,
+        baseline: snapshot, expectedSchema: m.DATABASE_COMPATIBILITY.maximum });
+      const verified = await verify(baseline);
+      const initialized = captureSnapshot(database, seeded.fixture, m.APP_VERSION);
+      assert.equal(verified.initializedEpaySites, initialized.tables.epay_sites.rows.length);
+      assert.equal(initialized.tables.epay_credentials.rows.length, initialized.tables.epay_sites.rows.length * 3);
+      assert.equal(initialized.audit.length - baseline.audit.length, initialized.tables.epay_sites.rows.length * 4);
+      await verify(baseline);
+      await verify(initialized);
+      assert.deepEqual(captureSnapshot(database, seeded.fixture, m.APP_VERSION), initialized);
+      const legacySnapshot = { ...baseline, schemaVersion: 40, tables: { ...baseline.tables } };
+      for (const table of ["epay_sites", "epay_credentials", "epay_orders"]) delete legacySnapshot.tables[table];
+      await verify(legacySnapshot);
+      const epay = new m.RuntimeSettingsStore(database, config.masterKey).epayStore();
+      const current = epay.get(seeded.siteId);
+      epay.update(seeded.siteId, { revision: current.revision, v1_enabled: false, v2_enabled: true }, { actorId: "admin" });
+      await assert.rejects(verify(baseline), /preserved_row_changed:epay_sites/);
     } finally {
       database?.close();
       assert.equal(dirname(resolve(directory)), resolve(tmpdir()));

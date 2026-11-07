@@ -227,12 +227,39 @@ export function captureSnapshot(database, fixture, imageVersion) {
   });
 }
 
+/** Accept only the audited, one-time initialization of a previously empty merchant identity. */
+function isInitializedEpayDefault(db, row, baseline, originalDigest) {
+  if (!row || Number(row.revision) !== 1 || Number(row.v1_enabled) !== 1 || Number(row.v2_enabled) !== 1) return false;
+  if (originalDigest !== undefined) {
+    const integer = value => typeof row.revision === "bigint" ? BigInt(value) : value;
+    const original = { ...row, revision: integer(0), v1_enabled: integer(0), v2_enabled: integer(0), updated_at: row.created_at };
+    if (digest(original) !== originalDigest) return false;
+  }
+  const credentials = db.prepare("SELECT credential_id, purpose, key_version, retired_at, created_at FROM epay_credentials WHERE site_id = ?").all(row.site_id);
+  const purposes = ["v1_key", "v2_merchant", "v2_platform"];
+  const existingIds = new Set((baseline.tables.epay_credentials?.rows ?? []).map(saved => saved.key[0]));
+  if (credentials.length !== 3 || !purposes.every(purpose => credentials.some(key => key.purpose === purpose &&
+    Number(key.key_version) === 1 && key.retired_at === null && Number(key.created_at) === Number(row.updated_at) && !existingIds.has(key.credential_id)))) return false;
+  const events = db.prepare(`SELECT action, actor_type, actor_id, outcome, details_json FROM audit_events
+    WHERE sequence > ? AND subject_type = 'website' AND subject_id = ? AND occurred_at = ?
+      AND action IN ('epay.secret_rotated', 'epay.configuration_updated') ORDER BY sequence`)
+    .all(baseline.audit.at(-1)?.sequence ?? 0, row.site_id, row.updated_at);
+  if (events.length !== 4 || events.some(event => event.actor_type !== "SYSTEM" || event.actor_id !== null || event.outcome !== "SUCCESS")) return false;
+  const rotations = events.filter(event => event.action === "epay.secret_rotated").map(event => JSON.parse(event.details_json));
+  const configured = events.find(event => event.action === "epay.configuration_updated");
+  const details = configured && JSON.parse(configured.details_json);
+  return purposes.every(purpose => rotations.some(event => event.purpose === purpose && event.key_version === 1)) &&
+    details?.revision === 1 && details.v1_enabled === true && details.v2_enabled === true && details.defaults_initialized === true;
+}
+
 export async function verifyBusinessData({ modules: m, database, config, fixture, baseline, expectedSchema }) {
   requireCondition(baseline.audit.length > 0 && baseline.tables.payment_orders.rows.length >= 2 &&
     baseline.tables.ledger_entries.rows.length > 0 && baseline.tables.financial_operations.rows.length > 0 &&
     baseline.tables.outbox_events.rows.length > 0, "baseline_business_evidence_empty");
   requireCondition(database.instanceId() === baseline.instanceId && fixture.instanceId === baseline.instanceId, "instance_identity_changed");
+  const settingsStore = new m.RuntimeSettingsStore(database, config.masterKey); settingsStore.initialize();
   requireCondition(database.integrityCheck().ok, "database_integrity_failed");
+  let initializedEpaySites = 0;
   const preservedRows = database.read(db => {
     if (baseline.observationHistory !== undefined) {
       requireCondition(digest(captureObservationHistory(db, baseline.observationHistory.count)) === digest(baseline.observationHistory), "historical_observations_changed");
@@ -242,8 +269,15 @@ export async function verifyBusinessData({ modules: m, database, config, fixture
     for (const [table, saved] of Object.entries(baseline.tables)) {
       requireCondition(TABLES.includes(table) || EPAY_TABLES.includes(table), "unknown_snapshot_table");
       const actual = new Map(db.prepare(`SELECT ${saved.columns.map(quote).join(",")} FROM ${quote(table)}`).all()
-        .map(row => [JSON.stringify(canonical(saved.primary.map(name => row[name]))), digest(row)]));
-      for (const row of saved.rows) { requireCondition(actual.get(JSON.stringify(row.key)) === row.digest, "preserved_row_changed:" + table); checked++; }
+        .map(row => [JSON.stringify(canonical(saved.primary.map(name => row[name]))), row]));
+      for (const row of saved.rows) {
+        const current = actual.get(JSON.stringify(row.key));
+        if (current && digest(current) === row.digest) checked++;
+        else {
+          requireCondition(table === "epay_sites" && isInitializedEpayDefault(db, current, baseline, row.digest), "preserved_row_changed:" + table);
+          initializedEpaySites++;
+        }
+      }
     }
     const audit = db.prepare("SELECT * FROM audit_events WHERE sequence <= ? ORDER BY sequence").all(baseline.audit.at(-1)?.sequence ?? 0);
     requireCondition(audit.length === baseline.audit.length, "historical_audit_count_changed");
@@ -256,8 +290,10 @@ export async function verifyBusinessData({ modules: m, database, config, fixture
     if (expectedSchema >= 41) {
       requireCondition(!db.prepare("SELECT 1 FROM sites LEFT JOIN epay_sites ON epay_sites.site_id = sites.client_id WHERE epay_sites.pid IS NULL LIMIT 1").get(), "epay_site_identity_missing");
       if (baseline.schemaVersion < 41) {
-        requireCondition(!db.prepare("SELECT 1 FROM epay_sites WHERE v1_enabled != 0 OR v2_enabled != 0 LIMIT 1").get(), "epay_migration_enabled_protocol");
-        requireCondition(Number(db.prepare("SELECT COUNT(*) AS count FROM epay_credentials").get().count) === 0, "epay_migration_created_credentials");
+        for (const row of db.prepare("SELECT epay_sites.* FROM epay_sites JOIN sites ON sites.client_id = epay_sites.site_id WHERE sites.deleted_at IS NULL").all()) {
+          requireCondition(isInitializedEpayDefault(db, row, baseline), "epay_defaults_not_initialized");
+          initializedEpaySites++;
+        }
       }
     }
     if (expectedSchema >= 42 && baseline.schemaVersion < 42) {
@@ -269,7 +305,6 @@ export async function verifyBusinessData({ modules: m, database, config, fixture
     }
     return checked;
   });
-  const settingsStore = new m.RuntimeSettingsStore(database, config.masterKey); settingsStore.initialize();
   const settings = new m.RuntimeSettingsService({ store: settingsStore, verifyProviderApplicationKey: async () => { throw new Error("verification_must_not_contact_provider"); } });
   const sites = settingsStore.siteStore(), accounts = settingsStore.accountStore(); accounts.verifySecrets();
   const account = accounts.snapshot(fixture.accountId);
@@ -285,7 +320,7 @@ export async function verifyBusinessData({ modules: m, database, config, fixture
   const delivery = new m.WebhookStore(database).delivery(fixture.deliveryId);
   requireCondition(delivery?.delivery.status === "PENDING" && delivery.attempts.length === 0 && delivery.event.eventId === fixture.eventId, "pending_notification_changed");
   return { ok: true, imageVersion: m.APP_VERSION, schemaVersion: expectedSchema, instanceId: baseline.instanceId,
-    preservedRows, historicalAuditEvents: baseline.audit.length, historicalAuditHead: baseline.audit.at(-1)?.eventHash ?? null,
+    preservedRows, initializedEpaySites, historicalAuditEvents: baseline.audit.length, historicalAuditHead: baseline.audit.at(-1)?.eventHash ?? null,
     originalAdminPasswordVerified: true, originalCredentialsVerified: true, originalCheckoutTokensVerified: true,
     paidOrderId: fixture.orders.paid.orderId, openOrderId: fixture.orders.open.orderId, pendingDeliveryId: fixture.deliveryId,
     networkUsed: false, verifiedAt: new Date().toISOString() };

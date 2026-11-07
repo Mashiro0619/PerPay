@@ -1,4 +1,5 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { EpayStore } from "../epay/store.ts";
 import { LIVE_NOTIFICATION_TARGET } from "../notifications/live-target.ts";
 import type { DatabaseSync } from "node:sqlite";
 import type { AppDatabase } from "../database/database.ts";
@@ -42,9 +43,11 @@ export class SiteError extends Error {
 export class SiteStore {
   readonly #database: DatabaseOwner;
   readonly #cipher: SiteSecretCipher;
+  readonly #epay: EpayStore;
   constructor(database: DatabaseOwner, masterKey: Uint8Array) {
     this.#database = database;
     this.#cipher = new SiteSecretCipher(masterKey, database.instanceId());
+    this.#epay = new EpayStore(database, masterKey);
   }
 
   get(clientId: string): SiteSnapshot | null {
@@ -114,6 +117,7 @@ export class SiteStore {
       if (hasApiClientIds(connection)) {
         connection.prepare("INSERT INTO site_api_client_ids(api_client_id, client_id, is_current, created_at) VALUES (?, ?, 1, ?)").run(clientId, clientId, now);
       }
+      this.#epay.initializeSite(connection, clientId, audit, now);
       connection.prepare("INSERT INTO site_creation_requests(operation_id, request_fingerprint, client_id, created_at) VALUES (?, ?, ?, ?)").run(parsed.operation_id, fingerprint, clientId, now);
       auditSite(connection, audit, "site.created", clientId, now, { revision: 0 }, auditChanges(null, requiredSite(connection, clientId).configuration, SITE_AUDIT_FIELDS));
       return requiredSite(connection, clientId);

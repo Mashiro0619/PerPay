@@ -27,11 +27,20 @@ async function fixture() {
       ...webhook.site.configuration, notifications_enabled: true,
       notification_origin: merchantOrigin, return_origin: merchantOrigin,
     } }, audit);
-    const configured = epay.update(site.clientId, { revision: 0, v1_enabled: true, v2_enabled: true }, audit);
+    const configured = epay.get(site.clientId);
+    assert.equal(configured.revision, 1);
+    assert.equal(configured.v1Enabled, true);
+    assert.equal(configured.v2Enabled, true);
+    assert.equal(configured.v1KeyVersion, 1);
+    assert.equal(configured.merchantKeyVersion, 1);
+    assert.equal(configured.platformKeyVersion, 1);
     return { site, credentials: epay.credential(configured.pid)!, apiSecret: api.secret, webhookSecret: webhook.secret };
   }
   const first = merchant("HTTP 商户一");
   const second = merchant("HTTP 商户二");
+  assert.notEqual(first.credentials.v1Key, second.credentials.v1Key);
+  assert.notEqual(first.credentials.merchantPrivateKey, second.credentials.merchantPrivateKey);
+  assert.notEqual(first.credentials.platformPrivateKey, second.credentials.platformPrivateKey);
   const health = () => ({ enabled: true, state: "healthy" as const, inFlight: false, lastAttemptAt: f.now(), lastSuccessAt: f.now(), lastErrorCode: null, consecutiveFailures: 0 });
   const app = createApp({ ...f, startedAt: new Date(f.now()), clock: f.now,
     ledgerHealth: health,

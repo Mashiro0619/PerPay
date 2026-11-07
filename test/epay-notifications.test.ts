@@ -6,6 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
 import { assertDatabaseIntegrity } from "../src/database/database.ts";
 import type { EpayCredentials } from "../src/epay/model.ts";
+import { EpayStore } from "../src/epay/store.ts";
 import { parseEpayParameters, verifyEpayV1, verifyEpayV2, type EpayProtocol } from "../src/epay/protocol.ts";
 import { adminOrderNotificationSummaries } from "../src/http/admin-order-notification-summary.ts";
 import { LedgerStore } from "../src/ledger/store.ts";
@@ -26,7 +27,13 @@ const emptyBodyFingerprint = createHash("sha256").update("").digest("hex");
 function configure(f: Fixture, protocol: EpayProtocol, name: string = protocol) {
   const site = f.createSite(name);
   const epay = f.settings.epayStore()!;
-  epay.update(site.clientId, { revision: 0, v1_enabled: protocol === "epay_v1", v2_enabled: protocol === "epay_v2" }, audit);
+  const initial = epay.get(site.clientId);
+  assert.equal(initial.v1Enabled, true);
+  assert.equal(initial.v2Enabled, true);
+  assert.equal(initial.v1KeyVersion, 1);
+  assert.equal(initial.merchantKeyVersion, 1);
+  assert.equal(initial.platformKeyVersion, 1);
+  epay.update(site.clientId, { revision: initial.revision, v1_enabled: protocol === "epay_v1", v2_enabled: protocol === "epay_v2" }, audit);
   f.sites.update(site.clientId, { revision: site.revision, configuration: {
     ...site.configuration, notifications_enabled: true, notification_origin: origin,
   } }, audit);
@@ -248,10 +255,14 @@ for (const protocol of ["epay_v1", "epay_v2"] as const) {
   });
 }
 
-test("notification admission rejects a website with no signing key or only a V2 merchant request key", async () => {
+test("notification admission rejects a historical website with no signing key or only a V2 merchant request key", async context => {
   const f = await createSitePaymentFixture();
   try {
+    // Reproduce a website saved before automatic credential initialization existed.
+    const initialization = context.mock.method(EpayStore.prototype, "initializeSite", () => false);
     const site = f.createSite("商户请求密钥不能签通知");
+    initialization.mock.restore();
+    assert.equal(f.settings.epayStore()!.get(site.clientId).revision, 0);
     const configuration = { ...site.configuration, notifications_enabled: true, notification_origin: origin };
     assert.throws(() => f.sites.update(site.clientId, { revision: site.revision, configuration }, audit), { code: "site_secret_missing" });
     f.settings.epayStore()!.rotate(site.clientId, "v2_merchant", 0, audit);

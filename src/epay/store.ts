@@ -5,6 +5,7 @@ import type { AppDatabase } from "../database/database.ts";
 import { appendAuditEvent } from "../database/identity-store.ts";
 import { auditSiteContext, redactedAuditChange } from "../audit/context.ts";
 import { RuntimeSecretCipher } from "../settings/crypto.ts";
+import { ensureRuntimeMasterKeyGuard } from "../settings/master-key-guard.ts";
 import { fingerprintSecret, isCanonicalSecret } from "../settings/model.ts";
 import { fingerprintApiSecret } from "../identity/service.ts";
 import type { SettingsAuditContext } from "../settings/store.ts";
@@ -69,6 +70,35 @@ export class EpayStore {
   }
 
   available(): boolean { return this.#database.read(hasEpaySchema); }
+
+  initializeDefaults(connection: DatabaseSync, now = Date.now()): void {
+    if (!hasEpaySchema(connection)) return;
+    const sites = connection.prepare(`SELECT epay.site_id FROM epay_sites AS epay
+      JOIN sites AS site ON site.client_id = epay.site_id
+      WHERE site.deleted_at IS NULL AND epay.revision = 0
+        AND NOT EXISTS (SELECT 1 FROM epay_credentials WHERE site_id = epay.site_id)
+      ORDER BY epay.pid`).all() as Array<{ site_id: string }>;
+    for (const site of sites) this.initializeSite(connection, site.site_id, undefined, now);
+  }
+
+  initializeSite(connection: DatabaseSync, siteId: string, audit?: SettingsAuditContext, now = Date.now()): boolean {
+    if (!connection.isTransaction) throw new Error("epay defaults require the website transaction");
+    if (!hasEpaySchema(connection)) return false;
+    const site = readSite(connection, siteId);
+    if (!site) return false;
+    const current = requiredConfiguration(connection, siteId);
+    if (safeInteger(current.revision) !== 0 || connection.prepare("SELECT 1 FROM epay_credentials WHERE site_id = ? LIMIT 1").get(siteId)) return false;
+    const writtenAt = Math.max(safeInteger(current.updated_at), validTime(now));
+    ensureRuntimeMasterKeyGuard(connection, this.#cipher, writtenAt);
+    for (const purpose of ["v1_key", "v2_merchant", "v2_platform"] as const) {
+      this.#rotateCredential(connection, siteId, purpose, audit, writtenAt);
+    }
+    connection.prepare(`UPDATE epay_sites SET v1_enabled = 1, v2_enabled = 1,
+      revision = revision + 1, updated_at = ? WHERE site_id = ?`).run(writtenAt, siteId);
+    recordAudit(connection, audit, siteId, "epay.configuration_updated", writtenAt,
+      { revision: 1, v1_enabled: true, v2_enabled: true, defaults_initialized: true });
+    return true;
+  }
 
   get(siteId: string): EpaySiteSnapshot {
     siteClientIdSchema.parse(siteId);
@@ -232,7 +262,7 @@ export class EpayStore {
       v1Fingerprint: v1?.fingerprint ?? null, merchantFingerprint: merchant?.fingerprint ?? null, platformFingerprint: platform?.fingerprint ?? null };
   }
 
-  #rotateCredential(connection: DatabaseSync, siteId: string, purpose: EpayCredentialPurpose, audit: SettingsAuditContext, now: number): void {
+  #rotateCredential(connection: DatabaseSync, siteId: string, purpose: EpayCredentialPurpose, audit: SettingsAuditContext | undefined, now: number): void {
     const previous = readCredential(connection, siteId, purpose);
     const version = previous ? safeInteger(previous.key_version) + 1 : 1;
     const createdAt = Math.max(now, previous ? safeInteger(previous.created_at) : 0);
@@ -383,9 +413,9 @@ function checkRevision(current: EpaySiteRow, expected: number): void {
   }
 }
 
-function recordAudit(connection: DatabaseSync, audit: SettingsAuditContext, siteId: string, action: string, now: number,
+function recordAudit(connection: DatabaseSync, audit: SettingsAuditContext | undefined, siteId: string, action: string, now: number,
   details: Record<string, unknown>, purpose?: EpayCredentialPurpose, existed = false): void {
-  appendAuditEvent(connection, { occurredAt: now, actorType: "ADMIN", actorId: audit.actorId, action, outcome: "SUCCESS",
-    subjectType: "website", subjectId: siteId, requestId: audit.requestId, remoteAddressHash: audit.remoteAddressHash, details,
+  appendAuditEvent(connection, { occurredAt: now, actorType: audit ? "ADMIN" : "SYSTEM", actorId: audit?.actorId, action, outcome: "SUCCESS",
+    subjectType: "website", subjectId: siteId, requestId: audit?.requestId, remoteAddressHash: audit?.remoteAddressHash, details,
     context: { ...auditSiteContext(connection, siteId), changes: purpose ? [redactedAuditChange(purpose, existed, true)] : [] } });
 }

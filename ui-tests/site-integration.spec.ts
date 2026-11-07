@@ -20,8 +20,8 @@ for (const width of [1440, 390, 320]) {
         expect(response.status()).toBe(200);
         return (await response.json()).data as Site;
       };
-      const readConfiguration = async () => {
-        const response = await page.request.get(fixture.origin + apiPath + "/epay");
+      const readConfiguration = async (clientId = "default") => {
+        const response = await page.request.get(fixture.origin + "/api/admin/v1/sites/" + clientId + "/epay");
         expect(response.status()).toBe(200);
         return (await response.json()).data as SiteEpayConfiguration;
       };
@@ -44,44 +44,66 @@ for (const width of [1440, 390, 320]) {
       const created = await page.request.post(fixture.origin + "/api/admin/v1/sites", { headers, data: {
         operation_id: randomUUID(), client_id: "browser_other", configuration: {
           name: "浏览器隔离网站", accepting_orders: true, notifications_enabled: false,
-          notification_origin: null, return_origin: null, policy: site.configuration.policy,
+          notification_origin: "https://other-demo.example.com", return_origin: "https://other-demo.example.com", policy: site.configuration.policy,
         },
       } });
       expect(created.status()).toBe(201);
+      const otherSite = (await created.json()).data as Site;
       await page.goto(fixture.origin + "/admin/sites/default/settings/integration");
       const assistant = page.locator('[data-slot="card"]').filter({ has: page.getByText("网站接入助手", { exact: true }) });
       await expect(assistant).toBeVisible();
-      async function downloadConfiguration(protocol: "native" | "epay_v1" | "epay_v2") {
+      async function downloadConfiguration(protocol: "native" | "epay_v1" | "epay_v2", targetSite = site) {
+        const exportPath = "/api/admin/v1/sites/" + targetSite.client_id + "/integration/export";
         const downloading = page.waitForEvent("download");
-        const responding = page.waitForResponse(response => new URL(response.url()).pathname === apiPath + "/integration/export");
+        const responding = page.waitForResponse(response => new URL(response.url()).pathname === exportPath);
         await assistant.getByRole("button", { name: "下载完整配置", exact: true }).click();
         const response = await responding;
         expect(response.status()).toBe(200);
         expect(response.headers()["cache-control"]).toBe("no-store");
         const download = await downloading;
-        expect(download.suggestedFilename()).toBe("perpay-default-" + protocol + ".env");
+        expect(download.suggestedFilename()).toBe("perpay-" + targetSite.client_id + "-" + protocol + ".env");
         const contents = parseEnv(readFileSync((await download.path())!, "utf8"));
         expect(contents.PAYMENT_PROTOCOL).toBe(protocol);
-        expect(contents.DEMO_NOTIFY_URL).toBe("https://demo.example.com/webhooks/perpay");
-        expect(response.request().postDataJSON()).toMatchObject({ protocol, site_revision: site.revision,
-          epay_revision: (await readConfiguration()).revision });
+        expect(contents.DEMO_NOTIFY_URL).toBe(targetSite.configuration.notification_origin + "/webhooks/perpay");
+        expect(response.request().postDataJSON()).toMatchObject({ protocol, site_revision: targetSite.revision,
+          epay_revision: (await readConfiguration(targetSite.client_id)).revision });
         return contents;
       }
       const native = await downloadConfiguration("native");
       expect(native.PERPAY_API_SECRET).toBe(nativeSecrets.api_secret);
       expect(native.PERPAY_WEBHOOK_SECRET).toBe(nativeSecrets.webhook_secret);
+      let firstMerchantPrivateKey: string | undefined;
       for (const protocol of ["epay_v1", "epay_v2"] as const) {
         const label = protocol === "epay_v1" ? "易支付 V1" : "易支付 V2";
         const keyLabel = protocol === "epay_v1" ? "V1 密钥" : "V2 商户私钥";
         await assistant.getByRole("button", { name: label, exact: true }).click();
         await expect(assistant.getByText(fixture.origin + "/", { exact: true })).toBeVisible();
-        await expect(assistant.getByRole("button", { name: "下载完整配置", exact: true })).toBeDisabled();
-        await assistant.getByRole("switch", { name: "允许" + label + "新订单", exact: true }).click();
+        const initial = await readConfiguration();
+        expect(initial.v1_enabled).toBe(true);
+        expect(initial.v2_enabled).toBe(true);
+        expect(initial.v1_key_version).toBeGreaterThanOrEqual(1);
+        expect(initial.merchant_key_version).toBeGreaterThanOrEqual(1);
+        expect(initial.platform_key_version).toBeGreaterThanOrEqual(1);
+        await expect(assistant.getByRole("button", { name: "下载完整配置", exact: true })).toBeEnabled();
+        const accepting = assistant.getByRole("switch", { name: "允许" + label + "新订单", exact: true });
+        await expect(accepting).toBeChecked();
+        await accepting.click();
         const saving = page.waitForResponse(response => new URL(response.url()).pathname === apiPath + "/epay" && response.request().method() === "PUT");
         await assistant.getByRole("button", { name: "保存易支付设置", exact: true }).click();
         expect((await saving).status()).toBe(200);
+        const paused = await readConfiguration();
+        expect(protocol === "epay_v1" ? paused.v1_enabled : paused.v2_enabled).toBe(false);
+        await expect(accepting).not.toBeChecked();
+        const pausedExport = await downloadConfiguration(protocol);
+        await accepting.click();
+        const resuming = page.waitForResponse(response => new URL(response.url()).pathname === apiPath + "/epay" && response.request().method() === "PUT");
+        await assistant.getByRole("button", { name: "保存易支付设置", exact: true }).click();
+        expect((await resuming).status()).toBe(200);
         const configuration = await readConfiguration();
         expect(protocol === "epay_v1" ? configuration.v1_enabled : configuration.v2_enabled).toBe(true);
+        expect(configuration.v1_key_version).toBe(initial.v1_key_version);
+        expect(configuration.merchant_key_version).toBe(initial.merchant_key_version);
+        expect(configuration.platform_key_version).toBe(initial.platform_key_version);
         await expect(assistant.getByText(configuration.pid, { exact: true })).toBeVisible();
         const viewing = page.waitForResponse(response => new URL(response.url()).pathname.endsWith("/actions/view"));
         await assistant.getByRole("button", { name: "查看" + keyLabel, exact: true }).click();
@@ -90,6 +112,8 @@ for (const width of [1440, 390, 320]) {
         const exported = await downloadConfiguration(protocol);
         expect(protocol === "epay_v1" ? exported.EPAY_V1_KEY : exported.EPAY_MERCHANT_PRIVATE_KEY)
           .toBe(protocol === "epay_v1" ? secret : secret.replace(/-----[^-]+-----|\s/g, ""));
+        expect(protocol === "epay_v1" ? pausedExport.EPAY_V1_KEY : pausedExport.EPAY_MERCHANT_PRIVATE_KEY)
+          .toBe(protocol === "epay_v1" ? exported.EPAY_V1_KEY : exported.EPAY_MERCHANT_PRIVATE_KEY);
         expect(exported.EPAY_PID).toBe(configuration.pid);
         await assistant.getByRole("button", { name: "生成／轮换" + keyLabel, exact: true }).click();
         const rotating = page.waitForResponse(response => new URL(response.url()).pathname.endsWith("/actions/rotate"));
@@ -99,6 +123,7 @@ for (const width of [1440, 390, 320]) {
         const replacement = await downloadConfiguration(protocol);
         expect(protocol === "epay_v1" ? replacement.EPAY_V1_KEY : replacement.EPAY_MERCHANT_PRIVATE_KEY)
           .toBe(protocol === "epay_v1" ? rotated.secret : rotated.secret.replace(/-----[^-]+-----|\s/g, ""));
+        if (protocol === "epay_v2") firstMerchantPrivateKey = replacement.EPAY_MERCHANT_PRIVATE_KEY;
       }
       // An independent administrator write makes the displayed revision stale.
       const current = await readConfiguration();
@@ -134,10 +159,29 @@ for (const width of [1440, 390, 320]) {
       const otherResponse = await page.request.get(fixture.origin + "/api/admin/v1/sites/browser_other/epay");
       const other = (await otherResponse.json()).data as SiteEpayConfiguration;
       expect(other.pid).not.toBe(current.pid);
+      expect(other.v1_enabled).toBe(true);
+      expect(other.v2_enabled).toBe(true);
+      expect(other.v1_key_version).toBe(1);
+      expect(other.merchant_key_version).toBe(1);
+      expect(other.platform_key_version).toBe(1);
       await expect(assistant.getByText(other.pid, { exact: true })).toBeVisible();
-      await expect(assistant.getByRole("button", { name: "下载完整配置", exact: true })).toBeDisabled();
-      await expect(assistant.getByLabel("Demo 通知地址", { exact: true })).toHaveValue("");
+      await expect(assistant.getByRole("switch", { name: "允许易支付 V1新订单", exact: true })).toBeChecked();
+      await expect(assistant.getByRole("button", { name: "下载完整配置", exact: true })).toBeEnabled();
+      await expect(assistant.getByLabel("Demo 通知地址", { exact: true })).toHaveValue("https://other-demo.example.com/webhooks/perpay");
       expect(await assistant.textContent()).not.toContain(previousSecret);
+      const otherExport = await downloadConfiguration("epay_v1", otherSite);
+      expect(otherExport.EPAY_PID).toBe(other.pid);
+      expect(otherExport.EPAY_V1_KEY).not.toBe(previousSecret);
+      const viewingOther = page.waitForResponse(response => new URL(response.url()).pathname === "/api/admin/v1/sites/browser_other/secrets/epay_v1/actions/view");
+      await assistant.getByRole("button", { name: "查看V1 密钥", exact: true }).click();
+      const otherSecret = (await (await viewingOther).json()).data.secret as string;
+      expect(otherExport.EPAY_V1_KEY).toBe(otherSecret);
+      await assistant.getByRole("button", { name: "易支付 V2", exact: true }).click();
+      const otherV2Export = await downloadConfiguration("epay_v2", otherSite);
+      expect(otherV2Export.EPAY_PID).toBe(other.pid);
+      expect(otherV2Export.EPAY_MERCHANT_PRIVATE_KEY).toBeTruthy();
+      expect(otherV2Export.EPAY_MERCHANT_PRIVATE_KEY).not.toBe(firstMerchantPrivateKey);
+      expect(otherV2Export.EPAY_PLATFORM_PUBLIC_KEY).toBeTruthy();
     } finally { await fixture.close(); }
   });
 }

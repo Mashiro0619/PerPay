@@ -18,8 +18,13 @@ test("epay merchant identity survives public ID changes and website deletion", a
     const site = f.createSite("接入网站");
     const initial = store.get(site.clientId);
     assert.match(initial.pid, /^[1-9]\d*$/);
-    assert.equal(initial.v1KeyVersion, 0);
-    assert.equal(initial.merchantPublicKey, null);
+    assert.equal(initial.revision, 1);
+    assert.equal(initial.v1Enabled, true);
+    assert.equal(initial.v2Enabled, true);
+    assert.equal(initial.v1KeyVersion, 1);
+    assert.equal(initial.merchantKeyVersion, 1);
+    assert.equal(initial.platformKeyVersion, 1);
+    assert.ok(initial.merchantPublicKey);
     const renamed = f.sites.changeClientId(site.clientId, { operation_id: randomUUID(), revision: site.revision, client_id: "renamed-shop" }, audit);
     assert.equal(store.get(site.clientId).pid, initial.pid);
     assert.equal(store.get(site.clientId).clientId, "renamed-shop");
@@ -37,7 +42,7 @@ test("epay key material is encrypted, versioned, auditable and reloadable", asyn
   try {
     const store = f.settings.epayStore()!;
     const site = f.createSite("密钥网站");
-    const configured = store.update(site.clientId, { revision: 0, v1_enabled: true, v2_enabled: true }, audit);
+    const configured = store.get(site.clientId);
     const credential = store.credential(configured.pid, { protocol: "epay_v2", forCreation: true })!;
     assert.match(credential.v1Key!, /^[a-f0-9]{32}$/);
     assert.equal(credential.merchantKeyVersion, 1);
@@ -80,10 +85,11 @@ test("complete native and epay exports validate one versioned snapshot and audit
     const api = f.sites.rotateSecret(site.clientId, "api_secret", site.revision, audit);
     const webhook = f.sites.rotateSecret(site.clientId, "webhook_secret", api.site.revision, audit);
     site = webhook.site;
-    const native = store.exportConfiguration(site.clientId, { protocol: "native", siteRevision: site.revision, epayRevision: 0 }, audit);
+    const initial = store.get(site.clientId);
+    const native = store.exportConfiguration(site.clientId, { protocol: "native", siteRevision: site.revision, epayRevision: initial.revision }, audit);
     assert.equal(native.apiSecret, api.secret);
     assert.equal(native.webhookSecret, webhook.secret);
-    const config = store.update(site.clientId, { revision: 0, v1_enabled: false, v2_enabled: true }, audit);
+    const config = store.update(site.clientId, { revision: initial.revision, v1_enabled: false, v2_enabled: true }, audit);
     const input = { protocol: "epay_v2" as const, siteRevision: site.revision, epayRevision: config.revision };
     const exported = store.exportConfiguration(site.clientId, input, audit);
     assert.equal(store.exportConfiguration(site.clientId, input, audit).credentials!.merchantPrivateKey, exported.credentials!.merchantPrivateKey);
@@ -96,16 +102,16 @@ test("complete native and epay exports validate one versioned snapshot and audit
   } finally { f.close(); }
 });
 
-test("failed epay credential initialization rolls back configuration and secrets", async () => {
+test("failed epay credential rotation preserves configuration and existing secrets", async () => {
   const f = await createSitePaymentFixture();
   try {
     const store = f.settings.epayStore()!;
     const site = f.createSite("回滚网站");
+    const before = store.credentialsForSite(site.clientId)!;
     f.database.read(db => db.exec("CREATE TEMP TRIGGER reject_epay_key BEFORE INSERT ON audit_events WHEN NEW.action = 'epay.secret_rotated' BEGIN SELECT RAISE(ABORT, 'key audit failed'); END"));
-    assert.throws(() => store.update(site.clientId, { revision: 0, v1_enabled: true, v2_enabled: true }, audit), /key audit failed/);
-    assert.equal(store.get(site.clientId).revision, 0);
-    assert.equal(store.get(site.clientId).v1Enabled, false);
-    assert.equal(f.database.read(db => db.prepare("SELECT count(*) AS count FROM epay_credentials WHERE site_id = ?").get(site.clientId)!.count), 0n);
+    assert.throws(() => store.rotate(site.clientId, "v1_key", before.revision, audit), /key audit failed/);
+    assert.deepEqual(store.credentialsForSite(site.clientId), before);
+    assert.equal(f.database.read(db => db.prepare("SELECT count(*) AS count FROM epay_credentials WHERE site_id = ?").get(site.clientId)!.count), 3n);
   } finally { f.close(); }
 });
 
@@ -114,7 +120,7 @@ test("compatibility metadata commits with the core order and is preserved in ver
   try {
     const store = f.settings.epayStore()!;
     const site = f.createSite("订单网站");
-    const config = store.update(site.clientId, { revision: 0, v1_enabled: true, v2_enabled: false }, audit);
+    const config = store.get(site.clientId);
     const request = { idempotency_key: "epay-order-one", merchant_order_no: "USR1NOabc123", amount_cents: 1000, product_name: "商品" };
     const metadata = { siteId: site.clientId, protocol: "epay_v1" as const, configurationRevision: config.revision,
       requestFingerprint: "a".repeat(64), param: "0", returnUrl: null };
@@ -143,7 +149,7 @@ test("compatibility metadata commits with the core order and is preserved in ver
     try {
       assertDatabaseIntegrity(backup, "epay backup");
       assert.equal(backup.prepare("SELECT param FROM epay_orders WHERE order_id = ?").get(created.order.orderId)!.param, "0");
-      assert.equal(backup.prepare("SELECT count(*) AS count FROM epay_credentials WHERE site_id = ?").get(site.clientId)!.count, 1n);
+      assert.equal(backup.prepare("SELECT count(*) AS count FROM epay_credentials WHERE site_id = ?").get(site.clientId)!.count, 3n);
     } finally { backup.close(); }
   } finally { f.close(); }
 });

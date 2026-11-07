@@ -276,7 +276,7 @@ function IntegrationContent({ site, siteDirty = false, disabled = false, showCli
         </Field>
       </FieldGroup>
       {!protocolEnabled && <p className="text-sm text-muted-foreground">此协议已暂停新订单。</p>}
-      {!keysReady && <p className="text-sm text-muted-foreground">请开启此协议并保存，或生成所需密钥后下载配置。</p>}
+      {!keysReady && <p className="text-sm text-muted-foreground">接入密钥尚未就绪，请重新读取配置或生成所需密钥。</p>}
       {!site.configuration.notifications_enabled && <p className="text-sm text-muted-foreground">当前通知已暂停，联调前请在网站设置中开启。</p>}
       {(!site.configuration.notification_origin || !site.configuration.notifications_enabled) &&
         <Link to={sitePath + "/edit?section=integration"} className="self-start">完善网站通知设置</Link>}

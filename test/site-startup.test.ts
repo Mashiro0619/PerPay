@@ -43,6 +43,18 @@ function legacyFinancialRows(rows: Record<string, unknown>[]) {
   });
 }
 
+function assertPreservedHistory(actual: Record<string, Record<string, unknown>[]>, before: Record<string, Record<string, unknown>[]>) {
+  const previousAudit = before.audit_events!;
+  const audit = actual.audit_events!;
+  assert.deepEqual({ ...actual, audit_events: audit.slice(0, previousAudit.length) }, before);
+  assert.deepEqual(audit.slice(previousAudit.length).map(row => [row.actor_type, row.actor_id, row.action, row.subject_id]), [
+    ["SYSTEM", null, "epay.secret_rotated", "default"],
+    ["SYSTEM", null, "epay.secret_rotated", "default"],
+    ["SYSTEM", null, "epay.secret_rotated", "default"],
+    ["SYSTEM", null, "epay.configuration_updated", "default"],
+  ]);
+}
+
 it("boots the current schema without an implicit website and persists independent keys through two restarts and backup", async () => {
   const directory = temporary(), path = join(directory, "db.sqlite3"), masterKey = randomBytes(32);
   let database = await AppDatabase.open(path, { masterKey });
@@ -113,7 +125,7 @@ it("rolls back a real 0.3.2 upgrade without the correct master key, then preserv
       database = await AppDatabase.open(legacy.config.databasePath, { masterKey: legacy.config.masterKey });
       const { sites, settings } = stores(database, legacy.config.masterKey);
       assert.equal(sites.credential("default")?.secret, secret);
-      assert.deepEqual(history(database), before);
+    assertPreservedHistory(history(database), before);
       const orders = new OrderService(database, () => settings.instanceSnapshot(), undefined, sites, "default");
       assert.equal(orders.get(created.orderId).checkoutToken, created.checkoutToken);
       assert.equal(database.integrityCheck().ok, true);
@@ -147,7 +159,7 @@ it("preserves historical notification attempts and signature references before r
       const database = await AppDatabase.open(f.services.config.databasePath, { masterKey: f.services.config.masterKey });
       try {
         const { sites } = stores(database, f.services.config.masterKey);
-        assert.deepEqual(history(database), before);
+        assertPreservedHistory(history(database), before);
         assert.equal(sites.notificationSecret("default"), secret);
         if (restart === 1) {
           const second = sites.create({ operation_id: randomUUID(), configuration: {
