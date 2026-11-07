@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryRouter, RouterProvider } from "react-router";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { queryClient, type Site } from "../src/api/client";
 import { siteEpayKey, type SiteEpayConfiguration } from "../src/api/integration";
 import { SiteIntegrationAssistant } from "../src/components/site-integration-assistant";
@@ -27,7 +27,7 @@ const configuration: SiteEpayConfiguration = {
   v1_key_version: 1, merchant_key_version: 1, platform_key_version: 1, public_origin: "https://pay.example.com",
 };
 
-function mount(options: { dirty?: boolean; currentSite?: Site; failExport?: boolean } = {}) {
+function mount(options: { dirty?: boolean; currentSite?: Site } = {}) {
   let saved = { ...configuration };
   const writes: { path: string; body: Record<string, unknown> }[] = [];
   const reload = vi.fn();
@@ -37,12 +37,6 @@ function mount(options: { dirty?: boolean; currentSite?: Site; failExport?: bool
     if (request.method === "GET") return json({ data: saved });
     const body = await request.clone().json() as Record<string, unknown>;
     writes.push({ path, body });
-    if (path.endsWith("/integration/export")) {
-      if (options.failExport) return json({ error: { code: "epay_revision_conflict", message: "接入配置已变化，请重新读取。" } }, 409);
-      return new Response("PAYMENT_PROTOCOL=" + body.protocol + "\nSYNTHETIC_KEY=secret\n", {
-        headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" },
-      });
-    }
     if (path.endsWith("/actions/view")) return secretResponse ? secretResponse() : json({ data: { secret: "synthetic-private-key", public_key: "synthetic-public-key" } });
     if (path.endsWith("/actions/rotate")) {
       saved = { ...saved, revision: saved.revision + 1 };
@@ -68,12 +62,6 @@ function mount(options: { dirty?: boolean; currentSite?: Site; failExport?: bool
   };
 }
 
-beforeEach(() => {
-  vi.stubGlobal("URL", URL);
-  URL.createObjectURL = vi.fn(() => "blob:synthetic-config");
-  URL.revokeObjectURL = vi.fn();
-  vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
-});
 afterEach(async () => {
   vi.useRealTimers();
   await queryClient.cancelQueries();
@@ -83,136 +71,96 @@ afterEach(async () => {
 });
 
 describe("website integration assistant", () => {
-  it("uses the configured public origin and exports a version-bound native file without displaying its secrets", async () => {
+  it("shows website connection parameters and documentation without a Demo workflow", async () => {
     const fixture = mount();
-    expect(await screen.findByText("https://pay.example.com")).toBeInTheDocument();
-    expect(screen.getByText("public_alpha")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "下载完整配置" }));
-    await waitFor(() => expect(URL.createObjectURL).toHaveBeenCalledTimes(1));
-    expect(fixture.writes[0]).toEqual({ path: "/api/admin/v1/sites/site_alpha/integration/export", body: {
-      protocol: "native", site_revision: 7, epay_revision: 4,
-      notify_url: "https://demo.example.com/webhooks/perpay", return_url: "https://demo.example.com/return",
-    } });
-    expect(screen.queryByText(/SYNTHETIC_KEY/)).not.toBeInTheDocument();
-    expect(JSON.stringify(queryClient.getQueryCache().getAll().map(query => query.state.data))).not.toContain("SYNTHETIC_KEY");
-    fixture.unmount();
-    expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:synthetic-config");
+    expect(await screen.findByText("https://pay.example.com")).toBeVisible();
+    expect(screen.getByText("public_alpha")).toBeVisible();
+    expect(screen.getByRole("link", { name: "管理 API 与通知密钥" })).toHaveAttribute("href", expect.stringContaining("/sites/site_alpha/edit?section=integration"));
+    for (const label of ["原生 API", "易支付 V1", "易支付 V2"]) {
+      await userEvent.click(screen.getByRole("button", { name: label }));
+      expect(screen.getByRole("link", { name: "接入文档" })).toHaveAttribute("href",
+        "https://github.com/Mashiro0619/PerPay/blob/main/docs/" + (label === "原生 API" ? "integration-quickstart.md" : "epay-integration.md"));
+      expect(fixture.container).not.toHaveTextContent(/Demo|调用示例/);
+      expect(screen.queryByRole("textbox", { name: /通知地址|返回地址/ })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /下载/ })).not.toBeInTheDocument();
+    }
+    expect(screen.getByRole("button", { name: "查看V2 商户私钥" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "查看V2 平台公钥" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "密钥管理" })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("button", { name: "更新V2 商户私钥" })).not.toBeInTheDocument();
+    expect(fixture.writes).toHaveLength(0);
   });
 
-  it("switches V1/V2 instructions, gateway, PID and exported protocol", async () => {
-    const fixture = mount();
+  it("switches V1/V2 gateway, PID and key controls", async () => {
+    mount();
     await screen.findByText("网站接入助手");
     await userEvent.click(screen.getByRole("button", { name: "易支付 V2" }));
-    expect(screen.getByText("https://pay.example.com/")).toBeInTheDocument();
-    expect(screen.getByText("10001")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "查看V2 商户私钥" })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "下载完整配置" }));
-    await waitFor(() => expect(fixture.writes[0]?.body.protocol).toBe("epay_v2"));
-    await waitFor(() => expect(screen.getByRole("button", { name: "易支付 V1" })).toBeEnabled());
+    expect(screen.getByText("https://pay.example.com/")).toBeVisible();
+    expect(screen.getByText("10001")).toBeVisible();
+    expect(screen.getByRole("button", { name: "查看V2 商户私钥" })).toBeVisible();
     await userEvent.click(screen.getByRole("button", { name: "易支付 V1" }));
-    expect(screen.getByRole("button", { name: "查看V1 密钥" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "查看V1 密钥" })).toBeVisible();
     expect(screen.queryByRole("button", { name: "查看V2 商户私钥" })).not.toBeInTheDocument();
   });
 
-  it("blocks export and key mutations while the website has unsaved edits", async () => {
+  it("blocks key reads and mutations while the website has unsaved edits", async () => {
     const fixture = mount({ dirty: true });
     await screen.findByText("网站接入助手");
     await userEvent.click(screen.getByRole("button", { name: "易支付 V1" }));
-    expect(screen.getByRole("button", { name: "下载完整配置" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "生成／轮换V1 密钥" })).toBeDisabled();
+    await userEvent.click(screen.getByRole("button", { name: "密钥管理" }));
+    expect(screen.getByRole("button", { name: "查看V1 密钥" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "更新V1 密钥" })).toBeDisabled();
     expect(screen.getByRole("switch")).toHaveAttribute("aria-disabled", "true");
     expect(fixture.writes).toHaveLength(0);
   });
 
-  it("saves switches separately and prevents exporting an unsaved protocol draft", async () => {
+  it("saves switches separately and makes existing credentials available while paused", async () => {
     const fixture = mount();
     await screen.findByText("网站接入助手");
     await userEvent.click(screen.getByRole("button", { name: "易支付 V1" }));
     await userEvent.click(screen.getByRole("switch"));
-    expect(screen.getByRole("button", { name: "下载完整配置" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "查看V1 密钥" })).toBeDisabled();
     await userEvent.click(screen.getByRole("button", { name: "保存易支付设置" }));
     await waitFor(() => expect(fixture.writes[0]?.body).toEqual({ revision: 4, v1_enabled: false, v2_enabled: true }));
     await waitFor(() => expect(screen.queryByRole("button", { name: "保存易支付设置" })).not.toBeInTheDocument());
-    expect(screen.getByRole("button", { name: "下载完整配置" })).toBeEnabled();
-    expect(screen.getByText("此协议已暂停新订单。")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "查看V1 密钥" })).toBeEnabled();
+    expect(screen.getByText("此协议已暂停新订单。")).toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: "查看V1 密钥" }));
+    expect(await screen.findByDisplayValue("synthetic-private-key")).toBeVisible();
   });
 
-  it("keeps temporary callback inputs neutral until a download needs them", async () => {
-    const fixture = mount({ currentSite: { ...site, configuration: { ...site.configuration, notification_origin: null } } });
-    await screen.findByText("网站接入助手");
-    expect(screen.getByLabelText("Demo 通知地址")).toHaveAttribute("aria-invalid", "false");
-    expect(screen.queryByText("请填写完整的通知地址。")).not.toBeInTheDocument();
-    const download = screen.getByRole("button", { name: "下载完整配置" });
-    expect(download).toBeEnabled();
-    download.focus();
-    await userEvent.keyboard("{Enter}");
-    expect(screen.getByLabelText("Demo 通知地址")).toHaveFocus();
-    expect(screen.getByLabelText("Demo 通知地址")).toHaveAccessibleDescription("请填写完整的通知地址。");
-    expect(screen.getByLabelText("Demo 通知地址")).toHaveAttribute("aria-invalid", "true");
-    expect(fixture.writes).toHaveLength(0);
-    fireEvent.change(screen.getByLabelText("Demo 通知地址"), { target: { value: "https://evil.example.com/notify" } });
-    expect(screen.getByText("请先保存对应的地址前缀。")).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("Demo 返回地址（可选）"), { target: { value: "https://evil.example.com/return" } });
-    expect(screen.getByLabelText("Demo 返回地址（可选）")).toHaveAttribute("aria-invalid", "true");
-    await userEvent.click(screen.getByRole("button", { name: "易支付 V1" }));
-    await userEvent.click(screen.getByRole("switch"));
-    await userEvent.click(screen.getByRole("button", { name: "保存易支付设置" }));
-    await waitFor(() => expect(fixture.writes[0]?.body).toEqual({ revision: 4, v1_enabled: false, v2_enabled: true }));
-  });
-
-  it("validates corrected callback inputs and permits an empty optional return URL", async () => {
+  it("shows only the platform public key from the V2 integration entry", async () => {
     const fixture = mount();
     await screen.findByText("网站接入助手");
-    const notify = screen.getByLabelText("Demo 通知地址");
-    const returning = screen.getByLabelText("Demo 返回地址（可选）");
-    fireEvent.change(notify, { target: { value: "http://demo.example.com/notify" } });
-    expect(notify).toHaveAttribute("aria-invalid", "false");
-    await userEvent.click(screen.getByRole("button", { name: "下载完整配置" }));
-    expect(notify).toHaveAttribute("aria-invalid", "true");
-    expect(fixture.writes).toHaveLength(0);
-    fireEvent.change(notify, { target: { value: "https://demo.example.com/notify" } });
-    fireEvent.change(returning, { target: { value: "https://another.example.com/return" } });
-    await userEvent.click(screen.getByRole("button", { name: "下载完整配置" }));
-    expect(returning).toHaveFocus();
-    expect(fixture.writes).toHaveLength(0);
-    fireEvent.change(returning, { target: { value: "" } });
-    expect(notify).toHaveAttribute("aria-invalid", "false");
-    expect(returning).toHaveAttribute("aria-invalid", "false");
-    await userEvent.click(screen.getByRole("button", { name: "下载完整配置" }));
-    await waitFor(() => expect(URL.createObjectURL).toHaveBeenCalledTimes(1));
-    expect(fixture.writes[0]?.body).toEqual({ protocol: "native", site_revision: 7, epay_revision: 4,
-      notify_url: "https://demo.example.com/notify" });
-  });
-
-  it("clears rejected callback errors when the address or protocol changes", async () => {
-    const fixture = mount();
-    await screen.findByText("网站接入助手");
-    const reject = () => fixture.fetchMock.mockImplementationOnce(async () => json({ error: {
-      code: "settings_invalid", message: "请检查填写的内容。", fields: { notify_url: "通知地址不能包含重复参数。" },
-    } }, 422));
-    reject();
-    await userEvent.click(screen.getByRole("button", { name: "下载完整配置" }));
-    await screen.findByText("通知地址不能包含重复参数。");
-    fireEvent.change(screen.getByLabelText("Demo 通知地址"), { target: { value: "https://demo.example.com/updated" } });
-    expect(screen.queryByText("通知地址不能包含重复参数。")).not.toBeInTheDocument();
-    expect(screen.getByLabelText("Demo 通知地址")).toHaveAttribute("aria-invalid", "false");
-    reject();
-    await userEvent.click(screen.getByRole("button", { name: "下载完整配置" }));
-    await screen.findByText("通知地址不能包含重复参数。");
     await userEvent.click(screen.getByRole("button", { name: "易支付 V2" }));
-    expect(screen.queryByText("通知地址不能包含重复参数。")).not.toBeInTheDocument();
-    expect(screen.getByLabelText("Demo 通知地址")).toHaveAttribute("aria-invalid", "false");
+    await userEvent.click(screen.getByRole("button", { name: "查看V2 平台公钥" }));
+    await waitFor(() => expect(fixture.container).toHaveTextContent("synthetic-public-key"));
+    expect(screen.queryByDisplayValue("synthetic-private-key")).not.toBeInTheDocument();
+    expect(fixture.container).not.toHaveTextContent("synthetic-private-key");
+    expect(fixture.writes[0]?.path).toBe("/api/admin/v1/sites/site_alpha/secrets/epay_platform/actions/view");
+    expect(JSON.stringify(queryClient.getQueryCache().getAll().map(query => query.state.data))).not.toContain("synthetic-private-key");
   });
 
-  it("requires a refresh after a concurrent revision conflict", async () => {
-    const fixture = mount({ failExport: true });
+  it("clears platform private keys and cancels pending reads when key management closes", async () => {
+    const fixture = mount();
     await screen.findByText("网站接入助手");
-    await userEvent.click(screen.getByRole("button", { name: "下载完整配置" }));
-    await screen.findByText("接入配置已变化，请重新读取。");
-    expect(screen.getByRole("button", { name: "下载完整配置" })).toBeDisabled();
-    await userEvent.click(screen.getByRole("button", { name: "重新读取配置" }));
-    await waitFor(() => expect(fixture.reload).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(screen.getByRole("button", { name: "下载完整配置" })).toBeEnabled());
+    await userEvent.click(screen.getByRole("button", { name: "易支付 V2" }));
+    const management = screen.getByRole("button", { name: "密钥管理" });
+    await userEvent.click(management);
+    await userEvent.click(screen.getByRole("button", { name: "查看V2 平台私钥" }));
+    expect(await screen.findByDisplayValue("synthetic-private-key")).toBeInTheDocument();
+    await userEvent.click(management);
+    expect(screen.queryByDisplayValue("synthetic-private-key")).not.toBeInTheDocument();
+    await userEvent.click(management);
+    const release = fixture.deferSecret();
+    await userEvent.click(screen.getByRole("button", { name: "查看V2 平台私钥" }));
+    await waitFor(() => expect(fixture.writes.filter(write => write.path.endsWith("/actions/view"))).toHaveLength(2));
+    const request = fixture.fetchMock.mock.calls.map(([request]) => request).at(-1)!;
+    await userEvent.click(management);
+    expect(request.signal.aborted).toBe(true);
+    await act(async () => release());
+    await userEvent.click(management);
+    expect(screen.queryByDisplayValue("late-secret")).not.toBeInTheDocument();
   });
 
   it("hides revealed private keys on protocol changes and ignores responses after leaving", async () => {
@@ -235,7 +183,8 @@ describe("website integration assistant", () => {
     const fixture = mount();
     await screen.findByText("网站接入助手");
     await userEvent.click(screen.getByRole("button", { name: "易支付 V1" }));
-    await userEvent.click(screen.getByRole("button", { name: "生成／轮换V1 密钥" }));
+    await userEvent.click(screen.getByRole("button", { name: "密钥管理" }));
+    await userEvent.click(screen.getByRole("button", { name: "更新V1 密钥" }));
     expect(fixture.writes).toHaveLength(0);
     await userEvent.click(screen.getByRole("button", { name: "确认更新" }));
     await waitFor(() => expect(queryClient.getQueryData<SiteEpayConfiguration>(siteEpayKey(site.client_id))?.revision).toBe(5));
@@ -291,24 +240,6 @@ describe("website integration assistant", () => {
     await waitFor(() => expect(screen.queryByDisplayValue("synthetic-private-key")).not.toBeInTheDocument());
   });
 
-  it("aborts a hidden configuration export and requires an explicit new download", async () => {
-    const fixture = mount();
-    await screen.findByText("网站接入助手");
-    let release!: (response: Response) => void;
-    fixture.fetchMock.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
-    await userEvent.click(screen.getByRole("button", { name: "下载完整配置" }));
-    await waitFor(() => expect(fixture.fetchMock.mock.calls.some(([request]) => request.url.endsWith("/integration/export"))).toBe(true));
-    const request = fixture.fetchMock.mock.calls.map(([request]) => request).at(-1)!;
-    const hidden = vi.spyOn(document, "hidden", "get").mockReturnValue(true);
-    act(() => document.dispatchEvent(new Event("visibilitychange")));
-    expect(request.signal.aborted).toBe(true);
-    hidden.mockReturnValue(false);
-    await act(async () => release(new Response("SYNTHETIC_KEY=late-export", { headers: { "content-type": "text/plain" } })));
-    expect(URL.createObjectURL).not.toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: "下载完整配置" })).toBeEnabled();
-    await userEvent.click(screen.getByRole("button", { name: "下载完整配置" }));
-    await waitFor(() => expect(URL.createObjectURL).toHaveBeenCalledTimes(1));
-  });
 
   for (const remoteV2 of [true, false]) it(`rebases a rejected switch edit without overwriting remote V2=${remoteV2}`, async () => {
     const fixture = mount();

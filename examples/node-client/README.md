@@ -2,7 +2,7 @@
 
 默认通过**回调通知**确认付款，验签保存后页面自动更新；手动查单只作补偿。需要 **Node.js 24.15+（24.x）**，无需安装依赖。
 
-支持 `PAYMENT_PROTOCOL=native`、`epay_v1` 和 `epay_v2`，默认原生协议。可从网站设置的接入助手下载完整 `.env`，放入本目录后运行 `npm start`。易支付网关地址以 `/` 结尾。
+这是用于验证下单与通知的可选示例，支持 `PAYMENT_PROTOCOL=native`、`epay_v1` 和 `epay_v2`，默认原生协议。复制 `.env.example` 为 `.env`，根据网站接入助手中的地址、身份和密钥填写配置，再运行 `npm start`。易支付网关地址以 `/` 结尾。
 
 | 协议 | 连接配置 |
 | --- | --- |
@@ -10,11 +10,11 @@
 | 易支付 V1 | `EPAY_URL`、`EPAY_PID`、`EPAY_V1_KEY` |
 | 易支付 V2 | `EPAY_URL`、`EPAY_PID`、`EPAY_MERCHANT_PRIVATE_KEY`、`EPAY_PLATFORM_PUBLIC_KEY` |
 
-三种模式都需要 `DEMO_NOTIFY_URL`，可配置 `DEMO_RETURN_URL`。默认示例为 `https://业务域名/webhooks/perpay` 和 `https://业务域名/return`，也支持自定义路径、代理前缀及固定查询参数。代理公开配置中的路径并保留查询参数，本机操作页面通过 `http://127.0.0.1:6196` 访问。V2 RSA 密钥可使用完整 PEM 或后台导出的单行 Base64。
+三种模式都需要 `DEMO_NOTIFY_URL`，可配置 `DEMO_RETURN_URL`。默认示例为 `https://业务域名/webhooks/perpay` 和 `https://业务域名/return`，也支持自定义路径、代理前缀及固定查询参数。代理公开配置中的路径并保留查询参数，本机操作页面通过 `http://127.0.0.1:6196` 访问。V2 RSA 密钥可使用完整 PEM 或单行 Base64。
 
 ## 配置与启动
 
-1. [配好 PerPay](https://github.com/Mashiro0619/PerPay/blob/main/docs/alipay-setup.md)，创建业务网站，进入“网站设置 → 接入与通知”。先点击“生成／轮换 API 密钥”和“生成／轮换通知密钥”，复制**网站 API 密钥**、**通知签名密钥**和**客户端 ID**。已有密钥可直接查看复用，无需轮换；先保持通知关闭，保存配置不会自动生成密钥。
+1. [配好 PerPay](https://github.com/Mashiro0619/PerPay/blob/main/docs/alipay-setup.md)，创建业务网站，进入「网站设置 → 接入与通知」的网站接入助手。选择协议，复制服务地址／网关和客户端 ID／商户 PID。原生协议点击「管理 API 与通知密钥」查看 API 密钥和通知密钥；易支付 V1 查看商户密钥，V2 查看商户私钥和平台公钥。已有密钥可直接复用，缺少时再生成。
 2. 将业务域名下的 `POST /webhooks/perpay` 转发到 Demo 的 `http://127.0.0.1:6196/webhooks/perpay`，保留原始正文和请求头。**只开放回调路径**，Demo 页面没有登录保护。
 3. 解压 `demo.zip`，在 `perpay-client-demo` 中打开终端；源码位于 `examples/node-client`。复制配置模板：
 
@@ -22,9 +22,10 @@
    Copy-Item .env.example .env
    ```
 
-   Linux / macOS 使用 `cp .env.example .env`。已有 `.env` 直接编辑，填好五项：
+   Linux / macOS 使用 `cp .env.example .env`。已有 `.env` 直接编辑，设置 `PAYMENT_PROTOCOL` 并填写上表中对应协议的连接配置，以及通知地址和可选返回地址。原生协议示例：
 
    ```dotenv
+   PAYMENT_PROTOCOL=native
    PERPAY_URL=https://你的PerPay域名
    PERPAY_CLIENT_ID=业务网站页面显示的客户端ID
    PERPAY_API_SECRET=网站API密钥
@@ -32,7 +33,7 @@
    PERPAY_WEBHOOK_SECRET=通知签名密钥
    ```
 
-   PerPay 地址不带 `/admin`；两种密钥不要混用。回调地址和签名密钥缺一项都会停止启动，不会自动退回查单模式。
+   PerPay 地址不带 `/admin`。`DEMO_NOTIFY_URL` 填接收端的完整 HTTPS 地址，`DEMO_RETURN_URL` 按需填写。
 
 4. 运行 `npm start`，打开 [http://127.0.0.1:6196](http://127.0.0.1:6196)。远程服务器运行时，用 SSH 转发端口访问页面。修改配置后需重启。
 5. 接收端配置完成后，回到该网站的“网站设置 → 接入与通知”，通知来源填业务域名的 HTTPS Origin（如 `https://shop.example.com`，不带回调路径），开启通知并保存。确认保存成功后再创建测试订单；订单的回调地址必须属于该来源。
