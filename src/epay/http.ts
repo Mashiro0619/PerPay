@@ -203,10 +203,19 @@ export function registerEpayRoutes(app: Hono<AppEnvironment>, dependencies: AppD
     const credentials = epay.credentialsForSite(metadata.siteId);
     if (!credentials) return context.notFound();
     const order = dependencies.orders.forSite(metadata.siteId).get(metadata.orderId);
-    if (order.payment.status !== "CONFIRMED") return context.redirect(new URL(metadata.returnUrl).href, 302);
+    const returnUrl = new URL(metadata.returnUrl).href;
+    if (order.payment.status !== "CONFIRMED") return context.redirect(returnUrl, 302);
+    try { appendEpayParameters(returnUrl, {}); }
+    catch (error) {
+      // Historical requests remain immutable; an unsupported callback can still return to the merchant.
+      if (error instanceof EpayProtocolError && ["invalid_return_url", "invalid_parameters"].includes(error.code)) {
+        return context.redirect(returnUrl, 302);
+      }
+      throw error;
+    }
     const key = metadata.protocol === "epay_v1" ? credentials.v1Key : credentials.platformPrivateKey;
     if (!key) throw new EpayError("epay_secret_missing", "商户通知密钥不可用。");
-    const target = buildEpayCallbackUrl(metadata.returnUrl, { pid: metadata.pid, tradeNo: metadata.tradeNo, outTradeNo: order.merchantOrderNo,
+    const target = buildEpayCallbackUrl(returnUrl, { pid: metadata.pid, tradeNo: metadata.tradeNo, outTradeNo: order.merchantOrderNo,
       name: order.productName, moneyCents: order.requestedAmountCents, ...(metadata.param !== null ? { param: metadata.param } : {}) }, metadata.protocol, key, now());
     return context.redirect(target, 302);
   });

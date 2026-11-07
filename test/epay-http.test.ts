@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { test } from "node:test";
 import { parseEnv } from "node:util";
 import { createApp } from "../src/http/app.ts";
@@ -190,6 +190,44 @@ test("paid synchronous return signs the complete merchant query and uses the ori
       const refreshed = Object.fromEntries(new URL((await f.app.request(target)).headers.get("location")!).searchParams);
       assert.equal(protocol === "epay_v1" ? verifyEpayV1(refreshed, updated.credentials.v1Key!) : verifyEpayV2(refreshed, updated.credentials.platformPublicKey!), true);
     }
+  } finally { f.close(); }
+});
+
+test("historical paid orders retain their merchant return when callback parameters cannot be signed", async () => {
+  const f = await fixture();
+  try {
+    for (const protocol of ["epay_v1", "epay_v2"] as const) {
+      const outTradeNo = protocol + "-historical-return";
+      const returnUrl = merchantOrigin + "/返回?tracking.id=%2B%2526%3D";
+      const rejected = await (await f.create(protocol, outTradeNo, f.first.credentials, { return_url: returnUrl })).json() as { code: number };
+      assert.equal(rejected.code, -1, "new orders must still satisfy the callback admission rules");
+      const name = "Historical item";
+      const notifyUrl = merchantOrigin + "/notify";
+      // Persist the same transaction accepted before PHP-renamed callback names were rejected.
+      const order = f.orders.forSite(f.first.site.clientId).create({
+        idempotency_key: "epay:" + outTradeNo, merchant_order_no: outTradeNo, amount_cents: 1000,
+        product_name: name, notify_url: notifyUrl, return_url: returnUrl,
+      }, undefined, {
+        siteId: f.first.site.clientId, protocol, configurationRevision: f.first.credentials.revision,
+        requestFingerprint: createHash("sha256").update(JSON.stringify([protocol, outTradeNo, name, 1000, notifyUrl, returnUrl, null])).digest("hex"),
+        param: null, returnUrl,
+      }).order;
+      const metadata = f.epay.order(order.orderId);
+      const endpoint = "/api/public/v1/checkouts/" + order.checkoutToken + "/return";
+      const unpaid = await f.app.request(endpoint);
+      assert.equal(unpaid.status, 302);
+      assert.equal(unpaid.headers.get("location"), new URL(returnUrl).href);
+      f.settle(order);
+      const paid = await f.app.request(endpoint);
+      assert.equal(paid.status, 302);
+      assert.equal(paid.headers.get("location"), new URL(returnUrl).href);
+      const target = new URL(paid.headers.get("location")!);
+      assert.equal(target.searchParams.get("tracking.id"), "+%26=");
+      assert.deepEqual([...target.searchParams.keys()], ["tracking.id"], "fallback must not append unsigned payment claims");
+      assert.deepEqual(f.epay.order(order.orderId), metadata, "returning must not rewrite historical request metadata");
+      assert.equal(f.orders.forSite(f.first.site.clientId).get(order.orderId).payment.status, "CONFIRMED");
+    }
+    assert.equal(f.database.integrityCheck().ok, true);
   } finally { f.close(); }
 });
 
