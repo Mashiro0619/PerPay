@@ -4,6 +4,7 @@ import { useLocation, useNavigate, Link } from "react-router";
 import { Eye, EyeOff, WalletCards, CheckCircle2, ChevronDown } from "lucide-react";
 import { api, ApiError, result } from "@/api/client";
 import { MIN_ADMIN_PASSWORD_CHARACTERS, validatePassword } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import { ThemeControl } from "@/theme";
 import { ErrorNotice } from "@/components/request-state";
 import { Button } from "@/components/ui/button";
@@ -212,7 +213,7 @@ export function LoginForm({ onLogin }: { onLogin: () => void }) {
                   void submit(event);
                 }}
               >
-                <FieldGroup>
+                <FieldGroup className={cn(!setup && "gap-2 sm:gap-5")}>
                   {(configured || alreadyInitialized) && !setup && (
                     <Alert>
                       <CheckCircle2 />
