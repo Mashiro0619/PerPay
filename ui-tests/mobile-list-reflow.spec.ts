@@ -87,7 +87,10 @@ test.describe("mobile list reflow retains complete choices", () => {
       const heading = row.locator(".list-summary-heading");
       const amountValue = heading.locator(".list-money");
       await expect(amountValue).toHaveText(money(amount));
-      await expect(row.locator("a[data-row-link]")).toHaveText(source.data[0]!.external_event_id);
+      await expect(row.locator("a[data-row-link]")).toHaveText(source.data[0]!.other_account || source.data[0]!.memo || "支付宝流水");
+      await expect(row.locator("a[data-row-link]")).toHaveAttribute("title", source.data[0]!.external_event_id);
+      const identifier = row.locator(".ledger-summary-metadata .list-code");
+      await expect(identifier).toHaveText(source.data[0]!.external_event_id);
       await page.evaluate(() => document.fonts.ready);
       await page.clock.runFor(100);
       const geometry = await heading.evaluate(element => {
@@ -102,7 +105,9 @@ test.describe("mobile list reflow retains complete choices", () => {
       expect(geometry.amount.left).toBeGreaterThanOrEqual(geometry.frame.left - 1);
       expect(geometry.amount.right).toBeLessThanOrEqual(geometry.frame.right + 1);
       await readableText(amountValue);
-      const dateField = row.locator(".business-summary-field dd").filter({ has: page.locator("time") }).first();
+      await identifier.scrollIntoViewIfNeeded();
+      await readableText(identifier);
+      const dateField = row.locator(".ledger-summary-metadata dd").filter({ has: page.locator("time") }).first();
       const dateGeometry = await dateField.evaluate(element => ({
         height: element.getBoundingClientRect().height,
         contentHeight: element.querySelector("time")!.getBoundingClientRect().height,

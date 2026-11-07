@@ -49,6 +49,11 @@ test("order and ledger sources remain distinct at desktop and 320 pixels", async
     await expect(associations).toHaveCount(matches.length);
     for (const [index, match] of matches.entries()) {
       const association = associations.nth(index);
+      const credentials = association.getByRole("button", { name: "核对凭据", exact: true });
+      if (await credentials.count()) {
+        await credentials.click();
+        await expect(credentials).toHaveAttribute("aria-expanded", "true");
+      }
       await expect(association.getByText("支付宝交易金额", { exact: true }).locator("..")).toContainText(currency(match.ledger_entry.amount_cents));
       await expect(association.getByText("支付宝订单号", { exact: true }).locator("..").locator("dd")).toContainText(match.ledger_entry.provider_order_no ?? "未提供");
       await expect(association.getByText("支付宝交易对方", { exact: true }).locator("..").locator("dd")).toHaveText(match.ledger_entry.other_account ?? "未提供");
@@ -60,6 +65,11 @@ test("order and ledger sources remain distinct at desktop and 320 pixels", async
     const ledgerOverlay = await settleOverlay(page);
     await revealDetailSection(page, "transaction");
     const ledger = ledgerOverlay.locator("[data-ledger-summary]");
+    const credentials = ledger.getByRole("button", { name: "支付宝交易编号", exact: true });
+    if (await credentials.count()) {
+      await credentials.click();
+      await expect(credentials).toHaveAttribute("aria-expanded", "true");
+    }
     await expect(ledger.getByRole("heading", { name: "支付宝交易", exact: true })).toBeVisible();
     for (const label of ["交易金额", "交易时间", "支付宝订单号", "对方"]) {
       await expect(ledger.getByText(label, { exact: true })).toBeVisible();

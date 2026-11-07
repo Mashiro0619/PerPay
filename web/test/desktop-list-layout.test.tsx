@@ -80,7 +80,7 @@ const lists = [
     element: <Notifications />,
     data: [notification],
     hiddenColumn: "商户订单号",
-    summaryFields: ["尝试次数", "下次尝试"],
+    summaryFields: ["商户订单号", "尝试次数", "创建时间", "下次尝试", "应付金额"],
     summaryStatuses: ["等待重试"],
     centeredColumns: ["status", "attempt_count", "created_at", "next_attempt_at"],
   },

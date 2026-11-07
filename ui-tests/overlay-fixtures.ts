@@ -26,6 +26,9 @@ export async function expectOverlayFits(page: Page) {
     const viewport = { left: visible?.offsetLeft ?? 0, top: visible?.offsetTop ?? 0,
       width: visible?.width ?? innerWidth, height: visible?.height ?? innerHeight };
     const scrolling = [...element.querySelectorAll<HTMLElement>("*")].filter(node => {
+      // Native multiline editors/readers scroll their own text; they are not
+      // competing layout scroll containers. Keep checking every other element.
+      if (node instanceof HTMLTextAreaElement) return false;
       const box = node.getBoundingClientRect();
       return box.width > 0 && box.height > 0 && getComputedStyle(node).overflowY === "auto" && node.scrollHeight > node.clientHeight + 2;
     }).map(node => ({ tag: node.tagName, detail: node.hasAttribute("data-overlay-detail"), step: node.hasAttribute("data-admin-dialog-scroll") }));
