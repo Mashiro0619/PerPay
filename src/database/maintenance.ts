@@ -30,6 +30,8 @@ import {
   assertDatabaseIntegrity,
 } from "./database.ts";
 import { openIntegrityDatabase } from "./connection.ts";
+import { inspectDatabaseStorage, readDatabaseStoragePages, type DatabaseStoragePages } from "./storage.ts";
+import { BACKUP_WRITE_RESERVE_BYTES, inspectStorageHeadroom, StorageCapacityError } from "../infrastructure/storage/capacity.ts";
 import {
   acquireDatabaseMaintenanceLock,
   assertDatabaseMaintenanceIdle,
@@ -130,6 +132,20 @@ export interface OperationalBackupResult {
   readonly schemaVersion: number;
   readonly pages: number;
   readonly sha256: string;
+}
+
+export interface CompactDatabaseOptions {
+  readonly dataDirectory: string;
+  readonly masterKey: Uint8Array;
+  readonly confirmStoppedServices: boolean;
+  readonly now?: number | undefined;
+}
+
+export interface CompactDatabaseResult {
+  readonly instanceId: string;
+  readonly before: DatabaseStoragePages;
+  readonly after: DatabaseStoragePages;
+  readonly reclaimedBytes: number;
 }
 
 export type BackupArtifactClassification =
@@ -274,6 +290,72 @@ export function listBackupArtifacts(dataDirectory: string): readonly BackupArtif
   const directory = inspectDataDirectory(dataDirectory);
   const artifacts = inspectBackupArtifacts(directory, Date.now());
   return Object.freeze(artifacts.map((entry) => entry.artifact));
+}
+
+/** Reclaims unused pages in place after the application has stopped. */
+export function compactDatabase(options: CompactDatabaseOptions): CompactDatabaseResult {
+  if (!options.confirmStoppedServices) throw new Error("database compaction requires confirmation that app and backup services are stopped");
+  const now = inspectMaintenanceNow(options.now);
+  const directory = inspectDataDirectory(options.dataDirectory, true);
+  const target = join(directory, DATABASE_NAME);
+  const identity = inspectOrdinaryFile(target, "application database", false);
+  const probe = new DatabaseSync(target, { readOnly: true, defensive: true, readBigInts: true, timeout: SQLITE_TIMEOUT_MILLISECONDS });
+  let before: DatabaseStoragePages;
+  try {
+    if (hasLiveLease(probe, now)) throw new Error("application database is still owned; stop app and backup before compaction");
+    before = readDatabaseStoragePages(probe, target);
+  } finally { probe.close(); }
+  const instanceId = assertBackupMasterKey(target, options.masterKey, true)!;
+  const headroom = inspectStorageHeadroom(directory, BigInt(before.totalBytes) * 2n + BACKUP_WRITE_RESERVE_BYTES);
+  if (!headroom.sufficient) throw new StorageCapacityError(headroom.availableBytes, headroom.requiredBytes);
+  const lock = acquireDatabaseMaintenanceLock(target, "compact-database", now);
+  let claimed = false, retainLock = false;
+  try {
+    assertFilePathIdentity(target, identity, "application database", false, "compaction was being prepared");
+    claimed = claimAndQuiesceApplicationDatabase(target, now, lock.token, "compaction");
+    const database = new DatabaseSync(target, { enableForeignKeyConstraints: true, defensive: true, readBigInts: true, timeout: SQLITE_TIMEOUT_MILLISECONDS });
+    let previousTemporaryDirectory: unknown;
+    let temporaryDirectoryChanged = false;
+    try {
+      previousTemporaryDirectory = database.prepare("PRAGMA temp_store_directory").get()?.temp_store_directory;
+      // VACUUM needs a temporary database; the maintenance container's /tmp is only 64 MiB.
+      database.exec("PRAGMA synchronous = FULL; PRAGMA temp_store = FILE");
+      database.exec(`PRAGMA temp_store_directory = '${directory.replaceAll("'", "''")}'`);
+      temporaryDirectoryChanged = true;
+      if (database.prepare("PRAGMA temp_store_directory").get()?.temp_store_directory !== directory) {
+        throw new Error("SQLite cannot place compaction temporary files in the data directory");
+      }
+      assertDatabaseIntegrity(database, "database failed integrity checks before compaction");
+      database.exec("VACUUM");
+      assertDatabaseIntegrity(database, "database failed integrity checks after compaction");
+      deleteMaintenanceLease(database, lock.token);
+      claimed = false;
+      const after = readDatabaseStoragePages(database, target);
+      syncFile(target);
+      syncDirectory(directory);
+      return { instanceId, before, after, reclaimedBytes: Math.max(0, before.totalBytes - after.totalBytes) };
+    } finally {
+      try {
+        if (temporaryDirectoryChanged) database.exec(`PRAGMA temp_store_directory = '${String(previousTemporaryDirectory ?? "").replaceAll("'", "''")}'`);
+      } finally { database.close(); }
+    }
+  } catch (error) {
+    if (error instanceof MaintenanceLeaseClaimedError) claimed = true;
+    if (claimed) {
+      try {
+        const database = openIntegrityDatabase(target, { readOnly: true, defensive: true, readBigInts: true, timeout: SQLITE_TIMEOUT_MILLISECONDS });
+        try { assertDatabaseIntegrity(database, "database failed integrity checks after interrupted compaction"); }
+        finally { database.close(); }
+        releaseMaintenanceLease(target, lock.token);
+      } catch (releaseError) {
+        retainLock = true;
+        throw new AggregateError([error, releaseError], "database compaction failed; the maintenance lock was retained for recovery");
+      }
+    }
+    throw error;
+  } finally {
+    if (!retainLock) lock.release();
+  }
 }
 
 /** Deletes one exact, independently verified backup or recovery artifact. */
@@ -2141,7 +2223,7 @@ function inspectDatabase(
   }
 }
 
-function claimAndQuiesceApplicationDatabase(path: string, now: number, token: string): boolean {
+function claimAndQuiesceApplicationDatabase(path: string, now: number, token: string, operation = "restore"): boolean {
   const database = new DatabaseSync(path, {
     enableForeignKeyConstraints: true,
     timeout: SQLITE_TIMEOUT_MILLISECONDS,
@@ -2154,7 +2236,7 @@ function claimAndQuiesceApplicationDatabase(path: string, now: number, token: st
       database.exec("BEGIN IMMEDIATE");
       try {
         if (hasLiveLease(database, now)) {
-          throw new Error("application database is still owned; stop the app service before restore");
+          throw new Error(`application database is still owned; stop the app service before ${operation}`);
         }
         const maintenanceToken = maintenanceLeaseToken(token);
         const expiresAt = now + 24 * 60 * 60 * 1_000;
@@ -2316,7 +2398,8 @@ export async function runMaintenanceCommand(arguments_: readonly string[], envir
     "clear-stale-maintenance-lock": "maintenance.lock.clear", "delete-pre-restore-quarantine": "maintenance.quarantine.delete",
     "prune-pre-restore-quarantines": "maintenance.quarantine.prune", "restore-migration-backup": "maintenance.restore",
     "list-migration-backups": "maintenance.backups.list", "list-pre-restore-quarantines": "maintenance.quarantine.list",
-    "inspect-maintenance-lock": "maintenance.lock.inspect", "inspect-publication-lock": "maintenance.publication_lock.inspect" };
+    "inspect-maintenance-lock": "maintenance.lock.inspect", "inspect-publication-lock": "maintenance.publication_lock.inspect",
+    "inspect-storage": "maintenance.storage.inspect", "compact-database": "maintenance.database.compact" };
   const activity = new ActivitySpoolWriter({ backupDirectory: environment.PERPAY_BACKUP_DIR ?? "/backups", kind: "maintenance" });
   const action = actions[command] ?? "maintenance.command.invalid";
   const startedAt = Date.now(), operationId = randomUUID();
@@ -2346,6 +2429,18 @@ async function executeCommand(arguments_: readonly string[], environment: NodeJS
     setTargets(project(result));
     process.stdout.write(`${JSON.stringify(result)}\n`);
   };
+  if (arguments_.length === 1 && arguments_[0] === "inspect-storage") {
+    const directory = inspectDataDirectory(dataDirectory, true);
+    process.stdout.write(`${JSON.stringify(inspectDatabaseStorage(join(directory, DATABASE_NAME)))}\n`);
+    return;
+  }
+  if (arguments_.length === 2 && arguments_[0] === "compact-database" && arguments_[1] === "--confirm-stopped-services") {
+    output(compactDatabase({ dataDirectory, masterKey: resolveMaintenanceMasterKey(environment, "compaction"), confirmStoppedServices: true }), result => [{
+      subjectType: "instance", subjectId: result.instanceId, instanceId: result.instanceId,
+      details: { database_bytes_before: result.before.totalBytes, database_bytes_after: result.after.totalBytes, reclaimed_bytes: result.reclaimedBytes },
+    }]);
+    return;
+  }
   if (arguments_.length === 1 && arguments_[0] === "inspect-maintenance-lock") {
     process.stdout.write(`${JSON.stringify(inspectMaintenanceLock(dataDirectory))}\n`);
     return;
@@ -2497,7 +2592,7 @@ async function executeCommand(arguments_: readonly string[], environment: NodeJS
       dataDirectory,
       backupName: arguments_[1],
       confirmReplaceCurrentDatabase: true,
-      masterKey: resolveRestoreMasterKey(environment),
+      masterKey: resolveMaintenanceMasterKey(environment),
     }), result => {
       const target = artifactAuditTarget("backup", { name: result.backupName, sha256: result.sha256,
         schemaVersion: result.restoredSchemaVersion, instanceId: result.instanceId });
@@ -2507,7 +2602,7 @@ async function executeCommand(arguments_: readonly string[], environment: NodeJS
     return;
   }
   throw new Error(
-    `usage: maintenance <list-migration-backups|inspect-maintenance-lock|inspect-publication-lock|` +
+    `usage: maintenance <inspect-storage|compact-database --confirm-stopped-services|list-migration-backups|inspect-maintenance-lock|inspect-publication-lock|` +
     `list-pre-restore-quarantines|delete-pre-restore-quarantine NAME SHA256 ` +
     `--confirm-delete-pre-restore-quarantine|prune-pre-restore-quarantines KEEP_COUNT ` +
     `--confirm-prune-pre-restore-quarantines|` +
@@ -2520,17 +2615,17 @@ async function executeCommand(arguments_: readonly string[], environment: NodeJS
   );
 }
 
-function resolveRestoreMasterKey(environment: NodeJS.ProcessEnv): Buffer {
+function resolveMaintenanceMasterKey(environment: NodeJS.ProcessEnv, operation = "restore"): Buffer {
   const configured = environment.PERPAY_MASTER_KEY?.trim();
   if (configured !== undefined && configured.length > 0) {
     if (!MASTER_KEY_HEX_PATTERN.test(configured)) {
-      throw new Error("restore configuration validation failed: PERPAY_MASTER_KEY must contain 64 hexadecimal characters");
+      throw new Error(`${operation} configuration validation failed: PERPAY_MASTER_KEY must contain 64 hexadecimal characters`);
     }
     return Buffer.from(configured, "hex");
   }
   const secretsDirectory = environment.PERPAY_SECRETS_DIR?.trim();
   if (secretsDirectory === undefined || secretsDirectory.length === 0) {
-    throw new Error("restore configuration validation failed: set PERPAY_MASTER_KEY or PERPAY_SECRETS_DIR/master-key");
+    throw new Error(`${operation} configuration validation failed: set PERPAY_MASTER_KEY or PERPAY_SECRETS_DIR/master-key`);
   }
   const path = resolve(secretsDirectory, "master-key");
   let stat;
@@ -2538,16 +2633,16 @@ function resolveRestoreMasterKey(environment: NodeJS.ProcessEnv): Buffer {
     stat = lstatSync(path);
   } catch (error) {
     if (isFileSystemError(error, "ENOENT")) {
-      throw new Error("restore configuration validation failed: secrets/master-key is missing", { cause: error });
+      throw new Error(`${operation} configuration validation failed: secrets/master-key is missing`, { cause: error });
     }
     throw error;
   }
   if (stat.isSymbolicLink() || !stat.isFile() || stat.nlink !== 1) {
-    throw new Error("restore configuration validation failed: secrets/master-key must be a private ordinary file");
+    throw new Error(`${operation} configuration validation failed: secrets/master-key must be a private ordinary file`);
   }
   const value = readFileSync(path, "utf8").trim();
   if (!MASTER_KEY_HEX_PATTERN.test(value)) {
-    throw new Error("restore configuration validation failed: secrets/master-key must contain 64 hexadecimal characters");
+    throw new Error(`${operation} configuration validation failed: secrets/master-key must contain 64 hexadecimal characters`);
   }
   return Buffer.from(value, "hex");
 }

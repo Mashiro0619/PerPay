@@ -142,6 +142,30 @@ docker compose --profile maintenance run --rm maintenance list-backups
 
 采集状态中的缓冲条数表示尚未落库，丢弃、写入失败和来源缺口计数表示已检测到的不完整记录。检查数据库、备份卷的可用空间与权限，结合主进程和备份进程日志定位来源；修复后确认最近写入／采集时间继续前进。不要将失败期间没有记录解释为没有操作，也不要修改已有事件来补成成功。突然终止进程可能丢失尚未落库的活动；核心业务事实与其核心审计仍在原事务中保存。
 
+## 数据库空间与压实
+
+数据库体积还包括支付宝账单原始响应和采集记录。订单数量少时，高频空查账也会积累大量页面、观察记录与索引。
+
+schema 43 起，成功单页查账中的空结果和重复流水副本保留 7 天。应用启动后自动分批回收，并每小时检查一次。首次入账证据、异常及各账号最近的查账记录继续保留。日志事件 `ingest_history_pruned` 给出每批清理数量。
+
+查看主库、WAL、空闲页及主要表和索引占用：
+
+```sh
+docker compose run --rm --no-deps --entrypoint node maintenance dist/database/maintenance.js inspect-storage
+```
+
+输出中的 `usedBytes` 是已分配给数据和索引的页面空间，`reclaimableBytes` 是已释放、可复用的空间。`tables` 列出行数、表和索引字节数；SQLite 不支持 `dbstat` 时，表级字节数为 `null`。
+
+新备份会自动去掉空闲页。需要立即缩小主数据库文件时，先让应用完成历史重复采集清理，再执行：
+
+```sh
+docker compose stop app backup
+docker compose run --rm --no-deps --entrypoint node maintenance dist/database/maintenance.js compact-database --confirm-stopped-services
+docker compose up -d app backup
+```
+
+压实命令校验主密钥与数据库，使用数据卷中的临时空间，输出压实前后大小及回收字节数。该操作需要数据卷额外提供约两倍数据库大小的可用空间；命令会先检查容量。原主密钥使用现有 secrets 卷或 `PERPAY_MASTER_KEY` 配置。
+
 ## 固定版本与回滚
 
 当前源码对应 1.0.0-rc.4，发布状态以实际 Release 和镜像为准。1.0.0-alpha.2 的结构上限为 schema 36，1.0.0-rc.1 为 38，1.0.0-rc.2 与 1.0.0-rc.3 使用 schema 40，1.0.0-rc.4 使用 schema 42。回退到只支持较低结构版本的构建，必须恢复该构建支持的升级前备份及原主密钥。

@@ -242,6 +242,7 @@ const SAFE_DETAIL_KEYS = new Set([
   "attempt_number", "delivery_outcome",
   "backup_name", "backup_size_bytes", "backup_sha256", "instance_id", "schema_version", "duration_ms", "count", "retained_count", "deleted_count", "deleted_backups", "recovered_temporary_files",
   "quarantine_name", "quarantine_sha256", "quarantine_size_bytes", "quarantined_database_name", "restore_completed",
+  "database_bytes_before", "database_bytes_after", "reclaimed_bytes",
   "lock_kind", "lock_fingerprint", "lock_created_at", "lock_readable", "force_abandon_lease", "finalize_interrupted_restore",
   "command", "exit_code", "rebuild_state", "quarantine_unreadable", "force_unreadable_lock",
   "source_id", "source_sequence", "gap_count", "missing_events", "after_sequence", "through_sequence", "pruned_through_at", "signal",
