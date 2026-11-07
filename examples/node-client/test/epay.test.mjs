@@ -2,6 +2,9 @@
 import assert from 'node:assert/strict';
 import { generateKeyPairSync, sign } from 'node:crypto';
 import { once } from 'node:events';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { basename, dirname, join, resolve } from 'node:path';
 import { test } from 'node:test';
 import { EpayClient, epayContent, readEpayConfig, signEpay, verifyEpay, verifyEpayNotification } from '../epay.mjs';
 import { readConfig, createDemoServer } from '../server.mjs';
@@ -23,15 +26,20 @@ function platformSigned(fields, config) {
   return values;
 }
 
-async function orderServerFixture(t, protocol) {
+async function orderServerFixture(t, protocol, persistent = false) {
   const config = readConfig({ ...env, PAYMENT_PROTOCOL: protocol });
-  const state = { status: 1, failingQueries: 0, createRequests: [] };
+  const state = { status: 1, acceptingOrders: true, failingQueries: 0, failNextCreatedQuery: false, createRequests: [] };
   const client = new EpayClient(config, async (url, options) => {
     const creating = url.endsWith('/mapi.php') || url.endsWith('/api/pay/create');
     if (creating) {
       const parameters = new URLSearchParams(options.body);
       for (const key of ['sign', 'sign_type', 'timestamp']) parameters.delete(key);
       state.createRequests.push(Object.fromEntries(parameters));
+      if (state.failNextCreatedQuery) {
+        state.failNextCreatedQuery = false;
+        state.failingQueries++;
+      }
+      if (!state.acceptingOrders) return Response.json({ code: -1, msg: 'new orders paused' });
     } else if (state.failingQueries > 0) {
       state.failingQueries--;
       throw new Error('synthetic query outage');
@@ -42,15 +50,29 @@ async function orderServerFixture(t, protocol) {
       : { code: protocol === 'epay_v1' ? 1 : 0, pid: '1001', trade_no: '202611070001', out_trade_no: 'SHOP-1', status: state.status, money: '10.00' };
     return Response.json(protocol === 'epay_v2' ? platformSigned(fields, config) : fields);
   });
-  const store = new DemoStore(':memory:', config.url, config.pid, protocol);
-  const { server } = createDemoServer({ config, client, store });
-  server.listen(0, '127.0.0.1'); await once(server, 'listening');
-  t.after(async () => { await new Promise(resolve => server.close(resolve)); store.close(); });
-  const base = 'http://127.0.0.1:' + server.address().port;
-  const csrf = (await (await fetch(base + '/demo/state')).json()).csrf;
+  const directory = persistent ? mkdtempSync(join(tmpdir(), 'perpay-epay-demo-test-')) : null;
+  let store, server, base, csrf;
+  const start = async () => {
+    store = new DemoStore(directory ? join(directory, 'demo.sqlite3') : ':memory:', config.url, config.pid, protocol);
+    ({ server } = createDemoServer({ config, client, store }));
+    server.listen(0, '127.0.0.1'); await once(server, 'listening');
+    base = 'http://127.0.0.1:' + server.address().port;
+    csrf = (await (await fetch(base + '/demo/state')).json()).csrf;
+  };
+  const stop = async () => { await new Promise(resolve => server.close(resolve)); store.close(); };
+  t.after(async () => {
+    await stop();
+    if (directory) {
+      assert.equal(dirname(resolve(directory)), resolve(tmpdir()));
+      assert.ok(basename(directory).startsWith('perpay-epay-demo-test-'));
+      rmSync(directory, { recursive: true });
+    }
+  });
+  await start();
   const post = (path, body = {}) => fetch(base + path, { method: 'POST',
     headers: { origin: base, 'content-type': 'application/json', 'x-demo-csrf': csrf }, body: JSON.stringify(body) });
-  return { store, state, post,
+  return { get store() { return store; }, state, post, client,
+    restart: async () => { assert.ok(directory); await stop(); await start(); },
     create: () => post('/demo/orders', { merchant_order_no: 'SHOP-1', amount: '10.00',
       product_name: payload.product_name, confirm_real_payment: true }),
     action: name => post('/demo/orders/SHOP-1/' + name),
@@ -79,6 +101,42 @@ for (const protocol of ['epay_v1', 'epay_v2']) {
     assert.equal(requests[0].values.name, payload.product_name);
     if (protocol === 'epay_v1') assert.equal(requests[1].values.key, env.EPAY_V1_KEY);
     else assert.equal(requests[0].values.method, 'jump');
+  });
+
+  test(protocol + ' awaits durable creation metadata before querying and stops on storage failure', async () => {
+    const config = readConfig({ ...env, PAYMENT_PROTOCOL: protocol });
+    const store = new DemoStore(':memory:', config.url, config.pid, protocol);
+    store.prepare(payload);
+    let saved = false;
+    let queries = 0;
+    const client = new EpayClient(config, async url => {
+      const creating = url.endsWith('/mapi.php') || url.endsWith('/api/pay/create');
+      if (!creating) { queries++; assert.equal(saved, true); }
+      const fields = creating
+        ? { code: protocol === 'epay_v1' ? 1 : 0, trade_no: '202611070001', payurl: 'https://pay.example/checkout/pct1_' + 'a'.repeat(43), pay_type: 'jump', pay_info: 'https://pay.example/checkout/pct1_' + 'a'.repeat(43) }
+        : { code: protocol === 'epay_v1' ? 1 : 0, pid: '1001', trade_no: '202611070001', out_trade_no: 'SHOP-1', status: 1, money: '10.00' };
+      return Response.json(protocol === 'epay_v2' ? platformSigned(fields, config) : fields);
+    });
+    try {
+      const snapshot = await client.createOrder(payload, async created => {
+        await Promise.resolve();
+        store.saveCheckout('SHOP-1', created);
+        assert.equal(store.get('SHOP-1').snapshot, null);
+        saved = true;
+      });
+      assert.equal(queries, 1);
+      store.apply(snapshot, 'api');
+      const paid = store.get('SHOP-1');
+      const created = { order_id: paid.order_id, checkout_url: paid.checkout_url };
+      store.saveCheckout('SHOP-1', created);
+      assert.deepEqual(store.get('SHOP-1').snapshot, paid.snapshot);
+      assert.throws(() => store.saveCheckout('SHOP-1', { ...created, order_id: '202611070002' }), /订单 ID/);
+      assert.equal(store.get('SHOP-1').order_id, paid.order_id);
+      assert.throws(() => store.apply({ ...snapshot, order_id: '202611070002' }, 'api'), /订单 ID/);
+      await assert.rejects(client.createOrder(payload, async () => { throw new Error('synthetic storage failure'); }), /storage failure/);
+      assert.equal(queries, 1);
+      assert.deepEqual(store.get('SHOP-1').snapshot, paid.snapshot);
+    } finally { store.close(); }
   });
 
   test(protocol + ' keeps paid status when the UI retries creation after a failed refresh', async t => {
@@ -132,6 +190,116 @@ for (const protocol of ['epay_v1', 'epay_v2']) {
     assert.equal((await f.action('refresh')).status, 200);
     assert.equal(f.store.get('SHOP-1').snapshot.payment_status, 'CONFIRMED');
     assert.equal(f.store.get('SHOP-1').snapshot.version, disputed.version + 1);
+  });
+
+  test(protocol + ' restores checkout during refresh after a failed post-create query', async t => {
+    const f = await orderServerFixture(t, protocol);
+    f.state.status = 0;
+    f.state.failingQueries = 1;
+    assert.equal((await f.create()).status, 502);
+    const request = f.store.get('SHOP-1').request_json;
+    assert.equal((await f.action('refresh')).status, 200);
+    const restored = f.store.get('SHOP-1');
+    assert.equal(restored.snapshot.payment_status, 'UNPAID');
+    assert.match(restored.snapshot.checkout_url, /\/checkout\/pct1_/);
+    assert.equal(restored.snapshot.checkout_status, 'OPEN');
+    assert.equal(restored.last_error, null);
+    assert.equal(restored.request_json, request);
+    assert.equal(f.store.list().length, 1);
+    assert.equal(f.state.createRequests.length, 1);
+    assert.equal((await f.action('refresh')).status, 200);
+    assert.equal(f.state.createRequests.length, 1);
+  });
+
+  for (const historical of [false, true]) test(protocol + ' restores checkout after restart from ' + (historical ? 'a historical snapshot without checkout' : 'a failed creation'), async t => {
+    const f = await orderServerFixture(t, protocol, true);
+    f.state.status = 0;
+    f.state.failingQueries = 1;
+    assert.equal((await f.create()).status, 502);
+    const request = f.store.get('SHOP-1').request_json;
+    if (historical) {
+      // Reproduce the old refresh behavior that saved an unpaid snapshot and cleared its error.
+      f.store.db.prepare('UPDATE orders SET checkout_url = NULL').run();
+      f.store.apply(await f.client.getByMerchantNo('SHOP-1'), 'api');
+      assert.equal(f.store.get('SHOP-1').last_error, null);
+      // Reopen the pre-upgrade schema to verify the nullable-column migration as well.
+      f.store.db.exec('ALTER TABLE orders DROP COLUMN checkout_url');
+    } else {
+      f.state.acceptingOrders = false;
+    }
+    assert.equal(f.store.get('SHOP-1').snapshot?.checkout_url, undefined);
+    await f.restart();
+    assert.equal(f.store.get('SHOP-1').request_json, request);
+    assert.equal((await f.action('refresh')).status, 200);
+    const restored = f.store.get('SHOP-1');
+    assert.equal(restored.snapshot.payment_status, 'UNPAID');
+    assert.match(restored.snapshot.checkout_url, /\/checkout\/pct1_/);
+    assert.equal(restored.last_error, null);
+    assert.equal(f.state.createRequests.length, historical ? 2 : 1);
+    if (historical) assert.deepEqual(f.state.createRequests[1], f.state.createRequests[0]);
+  });
+
+  test(protocol + ' preserves a recoverable error when checkout recovery fails again', async t => {
+    const f = await orderServerFixture(t, protocol, true);
+    f.state.status = 0;
+    f.state.failingQueries = 1;
+    assert.equal((await f.create()).status, 502);
+    const request = f.store.get('SHOP-1').request_json;
+    // Legacy rows have no saved creation metadata and must recover it once.
+    f.store.db.prepare('UPDATE orders SET checkout_url = NULL').run();
+    f.state.failNextCreatedQuery = true;
+    assert.equal((await f.action('refresh')).status, 502);
+    const failed = f.store.get('SHOP-1');
+    assert.equal(failed.snapshot.payment_status, 'UNPAID');
+    assert.equal(failed.snapshot.checkout_url, undefined);
+    assert.ok(failed.last_error);
+    assert.equal(failed.request_json, request);
+    assert.match(failed.checkout_url, /\/checkout\/pct1_/);
+    f.state.acceptingOrders = false;
+    await f.restart();
+    assert.ok(f.store.get('SHOP-1').last_error);
+    assert.equal((await f.action('refresh')).status, 200);
+    const restored = f.store.get('SHOP-1');
+    assert.equal(restored.snapshot.payment_status, 'UNPAID');
+    assert.match(restored.snapshot.checkout_url, /\/checkout\/pct1_/);
+    assert.equal(restored.last_error, null);
+    assert.equal(restored.request_json, request);
+    assert.equal(f.state.createRequests.length, 2);
+    assert.deepEqual(f.state.createRequests[1], f.state.createRequests[0]);
+  });
+
+  test(protocol + ' does not recreate paid or disputed orders without a checkout', async t => {
+    const f = await orderServerFixture(t, protocol);
+    f.state.failingQueries = 1;
+    assert.equal((await f.create()).status, 502);
+    f.store.db.prepare('UPDATE orders SET checkout_url = NULL').run();
+    assert.equal((await f.action('refresh')).status, 200);
+    assert.equal(f.store.get('SHOP-1').snapshot.payment_status, 'CONFIRMED');
+    assert.equal(f.store.get('SHOP-1').snapshot.checkout_url, undefined);
+    f.state.status = 0;
+    assert.equal((await f.action('refresh')).status, 200);
+    const disputed = f.store.get('SHOP-1').snapshot;
+    assert.equal(disputed.payment_status, 'DISPUTED');
+    assert.equal((await f.action('refresh')).status, 200);
+    assert.deepEqual(f.store.get('SHOP-1').snapshot, disputed);
+    assert.equal(f.state.createRequests.length, 1);
+  });
+
+  test(protocol + ' keeps legacy checkout recovery retryable while new orders are paused', async t => {
+    const f = await orderServerFixture(t, protocol);
+    f.state.status = 0;
+    f.state.failingQueries = 1;
+    assert.equal((await f.create()).status, 502);
+    f.store.db.prepare('UPDATE orders SET checkout_url = NULL').run();
+    f.state.acceptingOrders = false;
+    assert.equal((await f.action('refresh')).status, 502);
+    assert.equal(f.store.get('SHOP-1').snapshot.payment_status, 'UNPAID');
+    assert.ok(f.store.get('SHOP-1').last_error);
+    f.state.acceptingOrders = true;
+    assert.equal((await f.action('refresh')).status, 200);
+    assert.match(f.store.get('SHOP-1').snapshot.checkout_url, /\/checkout\/pct1_/);
+    assert.equal(f.store.get('SHOP-1').last_error, null);
+    assert.deepEqual(f.state.createRequests[2], f.state.createRequests[0]);
   });
 
   for (const first of ['return', 'notify']) test(protocol + ' deduplicates ' + first + '-first delivery on configured callback paths', async t => {

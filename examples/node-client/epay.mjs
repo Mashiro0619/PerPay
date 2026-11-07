@@ -122,7 +122,7 @@ export class EpayClient {
     if (String(result.pid) !== this.config.pid) throw new DemoError(502, '易支付返回的 PID 与配置不一致。');
     return this.config.pid;
   }
-  async createOrder(payload) {
+  async createOrder(payload, onCreated) {
     const parameters = { type: 'alipay', out_trade_no: payload.merchant_order_no, name: payload.product_name,
       money: (payload.amount_cents / 100).toFixed(2), notify_url: payload.notify_url,
       clientip: '127.0.0.1', device: 'pc', param: payload.note ?? '' };
@@ -131,9 +131,10 @@ export class EpayClient {
     if (this.config.protocol === 'epay_v2') parameters.method = 'jump';
     const result = await this.request(this.config.protocol === 'epay_v1' ? '/mapi.php' : '/api/pay/create', parameters);
     const payurl = this.config.protocol === 'epay_v1' ? result.payurl : result.pay_type === 'jump' ? result.pay_info : null;
-    if (typeof payurl !== 'string') throw new DemoError(502, '易支付没有返回可用的跳转收银台。');
+    if (!/^[1-9]\d{0,63}$/.test(String(result.trade_no)) || typeof payurl !== 'string') throw new DemoError(502, '易支付没有返回有效订单号和跳转收银台。');
     const checkout = new URL(payurl);
     if (checkout.origin !== this.config.url || checkout.username || checkout.password || !/^\/checkout\/pct1_[A-Za-z0-9_-]{43}$/.test(checkout.pathname) || checkout.search || checkout.hash) throw new DemoError(502, '收银台地址与当前 PerPay 实例不一致。');
+    await onCreated?.({ order_id: String(result.trade_no), checkout_url: checkout.href });
     const order = await this.query({ trade_no: result.trade_no }, checkout.href);
     if (order.order_id !== String(result.trade_no) || order.merchant_order_no !== payload.merchant_order_no ||
         order.requested_amount_cents !== payload.amount_cents) throw new DemoError(502, '创建后的查单结果与原业务订单不一致。');

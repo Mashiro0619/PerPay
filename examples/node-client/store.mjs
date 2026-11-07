@@ -10,16 +10,20 @@ export class DemoStore {
     if (protocol === 'native') siteId = validateClientId(siteId);
     else if (!/^[1-9]\d{0,19}$/.test(siteId)) throw new Error('易支付 PID 无效。');
     this.protocol = protocol;
+    this.origin = origin;
     if (filename !== ':memory:') mkdirSync(dirname(filename), { recursive: true, mode: 0o700 });
     this.db = new DatabaseSync(filename);
     this.db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA busy_timeout=5000;');
     this.db.exec([
       'CREATE TABLE IF NOT EXISTS meta (name TEXT PRIMARY KEY, value TEXT NOT NULL) STRICT;',
-      'CREATE TABLE IF NOT EXISTS orders (merchant_order_no TEXT PRIMARY KEY, request_json TEXT NOT NULL, order_id TEXT UNIQUE, snapshot_json TEXT, last_error TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL) STRICT;',
+      'CREATE TABLE IF NOT EXISTS orders (merchant_order_no TEXT PRIMARY KEY, request_json TEXT NOT NULL, order_id TEXT UNIQUE, checkout_url TEXT, snapshot_json TEXT, last_error TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL) STRICT;',
       'CREATE TABLE IF NOT EXISTS received_events (event_id TEXT PRIMARY KEY, body_sha256 TEXT NOT NULL, merchant_order_no TEXT NOT NULL, event_type TEXT NOT NULL, order_version INTEGER NOT NULL, disposition TEXT NOT NULL, received_at INTEGER NOT NULL) STRICT;',
     ].join('\n'));
     try {
       this.transaction(() => {
+        if (!this.db.prepare('PRAGMA table_info(orders)').all().some(column => column.name === 'checkout_url')) {
+          this.db.exec('ALTER TABLE orders ADD COLUMN checkout_url TEXT');
+        }
         const existing = this.db.prepare('SELECT value FROM meta WHERE name = ?').get('perpay_origin');
         // Keep the metadata key for older databases. Its value is the stable website identity.
         const website = this.db.prepare('SELECT value FROM meta WHERE name = ?').get('perpay_client_id');
@@ -56,6 +60,19 @@ export class DemoStore {
   failure(no, message) {
     this.db.prepare('UPDATE orders SET last_error = ?, updated_at = ? WHERE merchant_order_no = ?').run(message.slice(0, 500), Date.now(), no);
   }
+  saveCheckout(no, created) {
+    const url = new URL(created.checkout_url);
+    if (this.protocol === 'native' || !/^[1-9]\d{0,63}$/.test(created.order_id) ||
+        url.origin !== this.origin || url.username || url.password || url.search || url.hash ||
+        !/^\/checkout\/pct1_[A-Za-z0-9_-]{43}$/.test(url.pathname)) throw new DemoError(502, '创建响应的订单或收银台地址无效。');
+    this.transaction(() => {
+      const row = this.get(no);
+      if (!row) throw new DemoError(404, '本地没有这个业务订单。');
+      if (row.order_id && row.order_id !== created.order_id) throw new DemoError(409, '创建响应的订单 ID 与本地业务订单不一致。');
+      this.db.prepare('UPDATE orders SET order_id = ?, checkout_url = ?, updated_at = ? WHERE merchant_order_no = ?')
+        .run(created.order_id, url.href, Date.now(), no);
+    });
+  }
   apply(snapshot, source) { return this.transaction(() => this.applyInsideTransaction(snapshot, source)); }
   applyInsideTransaction(snapshot, source) {
     validateSnapshot(snapshot);
@@ -65,6 +82,7 @@ export class DemoStore {
     if (row.request.amount_cents !== snapshot.requested_amount_cents || (row.order_id && row.order_id !== snapshot.order_id)) throw new DemoError(409, '订单 ID 或金额与本地业务订单不一致，未更新状态。');
     const previous = row.snapshot;
     if (this.protocol !== 'native') {
+      if (row.checkout_url) snapshot = { ...snapshot, checkout_url: row.checkout_url, checkout_status: 'OPEN', expires_at: null };
       // Compatibility responses have no remote order version. Version this local projection.
       const payment = ['CONFIRMED', 'DISPUTED'].includes(previous?.payment_status) && snapshot.payment_status === 'UNPAID'
         ? 'DISPUTED' : snapshot.payment_status;

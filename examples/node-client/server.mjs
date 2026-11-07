@@ -119,10 +119,20 @@ export function createDemoServer({ config, client = createDemoClient(config), st
       const row = store.get(no);
       if (!row) throw new DemoError(404, '本地没有这个业务订单。');
       try {
-        const result = create ? await client.createOrder(row.request) : row.order_id ? await client.getOrder(row.order_id) : await client.getByMerchantNo(no);
-        const snapshot = config.protocol && config.protocol !== 'native' ? result : orderSnapshot(result, config.url);
-        if (snapshot.merchant_order_no !== no) throw new DemoError(502, 'PerPay 返回了另一笔业务订单。');
-        store.apply(snapshot, 'api');
+        const epay = config.protocol && config.protocol !== 'native';
+        const apply = result => {
+          const snapshot = epay ? result : orderSnapshot(result, config.url);
+          if (snapshot.merchant_order_no !== no) throw new DemoError(502, 'PerPay 返回了另一笔业务订单。');
+          store.apply(snapshot, 'api');
+        };
+        const createRemote = request => client.createOrder(request, epay ? created => store.saveCheckout(no, created) : undefined);
+        const result = create ? await createRemote(row.request) : row.order_id ? await client.getOrder(row.order_id) : await client.getByMerchantNo(no);
+        apply(result);
+        const current = store.get(no);
+        if (!create && epay && current.snapshot.payment_status === 'UNPAID' && !current.snapshot.checkout_url) {
+          // Older records may predate durable creation metadata; recover with their original request.
+          apply(await createRemote(current.request));
+        }
         return { merchant_order_no: no };
       } catch (error) {
         const failure = error instanceof DemoError ? error : new DemoError(502, '订单处理失败，请保留原业务单号重试。');
