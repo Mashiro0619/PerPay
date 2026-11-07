@@ -39,19 +39,48 @@ describe("mobile column controls", () => {
     localStorage.clear();
     mobileMedia();
   });
-  it.each([null, 0, 99, 101, 102, 9007199254740991])("shows one labelled receipt and distinguishes missing, zero and differing amounts: %s", received => {
+  it.each([null, 0, 99, 101, 102, Number.MAX_SAFE_INTEGER])("distinguishes missing, zero, equal and differing receipts without duplicating the amount: %s", received => {
     render(<MemoryRouter><DataTable data={[{ ...order, received_amount_cents: received }]} control={control} /></MemoryRouter>);
-    const fields = orderSummary().querySelector<HTMLElement>(".business-summary-fields")!;
-    const payable = within(fields).getByText("应付金额", { selector: "dt" });
-    const receipt = within(fields).getByText("实收金额", { selector: "dt" });
-    expect(payable).toBeVisible();
-    expect(payable.nextElementSibling).toHaveTextContent(money(order.payable_amount_cents));
-    expect(receipt).toBeVisible();
-    expect(receipt.nextElementSibling).toHaveTextContent(money(received));
-    expect(within(orderSummary()).getAllByLabelText("实收金额 " + money(received))).toHaveLength(1);
+    const summary = within(orderSummary());
+    if (received === null) {
+      expect(summary.getByRole("group", { name: "应付金额 " + money(order.payable_amount_cents) })).toBeVisible();
+      expect(summary.queryByRole("group", { name: /^实收金额/ })).not.toBeInTheDocument();
+      expect(summary.queryByText("—")).not.toBeInTheDocument();
+    } else {
+      expect(summary.getByRole("group", { name: "实收金额 " + money(received) })).toBeVisible();
+      expect(summary.getByText("实收", { selector: "dt" })).toBeVisible();
+    }
     if (received != null && received !== order.payable_amount_cents) {
-      expect(within(receipt.nextElementSibling as HTMLElement).getByText(received < order.payable_amount_cents ? "少收" : "多收")).toHaveAttribute("data-variant", "warning");
-    } else expect(within(fields).queryByText(/少收|多收/)).not.toBeInTheDocument();
+      expect(summary.getByRole("group", { name: "应付金额 " + money(order.payable_amount_cents) })).toBeVisible();
+      expect(summary.getByText(received < order.payable_amount_cents ? "少收" : "多收")).toHaveAttribute("data-variant", "warning");
+      expect(summary.getByRole("group", { name: "差额 " + money(Math.abs(received - order.payable_amount_cents)) })).toBeVisible();
+    } else {
+      expect(summary.queryByText(/少收|多收/)).not.toBeInTheDocument();
+      if (received !== null) {
+        expect(summary.queryByRole("group", { name: /^应付金额/ })).not.toBeInTheDocument();
+        expect(summary.getAllByText(money(received))).toHaveLength(1);
+      }
+    }
+  });
+  it("calls out a missing receipt on a confirmed payment without presenting it as zero", () => {
+    render(<MemoryRouter><DataTable data={[{ ...order, payment: { ...order.payment, status: "CONFIRMED" } }]} control={control} /></MemoryRouter>);
+    const summary = within(orderSummary());
+    expect(summary.getByText("收款已确认", { exact: true })).toBeVisible();
+    expect(summary.getByText("金额暂缺")).toBeVisible();
+    expect(summary.getByText("实收", { selector: "dt" })).toBeVisible();
+    expect(summary.getByRole("group", { name: "应付金额 " + money(order.payable_amount_cents) })).toBeVisible();
+    expect(summary.queryByText("¥0.00")).not.toBeInTheDocument();
+  });
+  it("retains the refund mark alongside confirmation when the two amount fields collapse", () => {
+    render(<MemoryRouter><DataTable data={[{
+      ...order, received_amount_cents: order.payable_amount_cents,
+      payment: { ...order.payment, status: "CONFIRMED", received_amount_cents: order.payable_amount_cents },
+      refund_mark: { ...order.refund_mark, marked: true },
+    }]} control={control} /></MemoryRouter>);
+    const summary = within(orderSummary());
+    expect(summary.getByText("收款已确认", { exact: true })).toBeVisible();
+    expect(summary.getByText("已标记退款", { exact: true })).toBeVisible();
+    expect(summary.getAllByText(money(order.payable_amount_cents))).toHaveLength(1);
   });
   it("keeps one fixed mobile summary and no column or row-expansion controls after migrating legacy defaults", () => {
     localStorage.setItem(
@@ -69,13 +98,13 @@ describe("mobile column controls", () => {
     expect(document.querySelectorAll("[data-business-row]")).toHaveLength(1);
     expect(orderSummary()).toHaveAttribute("role", "listitem");
     expectOrderStatus();
-    expect(within(orderSummary()).getByText("创建时间")).toBeVisible();
-    expect(within(orderSummary()).getByText("实收金额")).toBeVisible();
+    expect(orderSummary().querySelector("time[datetime]")).toHaveAttribute("datetime", order.created_at);
+    expect(within(orderSummary()).getByRole("group", { name: "应付金额 " + money(order.payable_amount_cents) })).toBeVisible();
     expect(
       JSON.parse(localStorage.getItem("perpay.table-columns.v2.orders")!),
     ).toEqual({});
     expect(
-      within(orderSummary()).getAllByText(money(order.received_amount_cents)),
+      within(orderSummary()).getAllByText(money(order.payable_amount_cents)),
     ).toHaveLength(1);
   });
   it("restores responsive defaults and compact summaries after explicit show/hide", async () => {
@@ -94,10 +123,10 @@ describe("mobile column controls", () => {
     await user.keyboard("{Escape}");
     media.resize(390);
     expect(
-      within(orderSummary()).getByText("创建时间"),
+      orderSummary().querySelector("time[datetime]"),
     ).toBeVisible();
     expect(
-      within(orderSummary()).getByText("实收金额"),
+      within(orderSummary()).getByRole("group", { name: "应付金额 " + money(order.payable_amount_cents) }),
     ).toBeVisible();
     expect(
       JSON.parse(localStorage.getItem("perpay.table-columns.v2.orders")!),
@@ -120,18 +149,18 @@ describe("mobile column controls", () => {
     await user.keyboard("{Escape}");
     media.resize(390);
     expect(
-      within(orderSummary()).getByText("实收金额"),
+      within(orderSummary()).getByRole("group", { name: "应付金额 " + money(order.payable_amount_cents) }),
     ).toBeVisible();
     expectOrderStatus();
     expect(
-      within(orderSummary()).getByText("创建时间"),
+      orderSummary().querySelector("time[datetime]"),
     ).toBeVisible();
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
     expect(document.querySelectorAll("[data-business-row]")).toHaveLength(1);
     view.unmount();
     mountOrders();
     expect(
-      within(orderSummary()).getByText("实收金额"),
+      within(orderSummary()).getByRole("group", { name: "应付金额 " + money(order.payable_amount_cents) }),
     ).toBeVisible();
     expectOrderStatus();
     media.resize(1280);
@@ -196,7 +225,7 @@ describe("mobile column controls", () => {
       await user.keyboard("{Escape}");
       media.resize(390);
       expect(
-        within(orderSummary()).getByText("实收金额"),
+        within(orderSummary()).getByRole("group", { name: "应付金额 " + money(order.payable_amount_cents) }),
       ).toBeVisible();
     } finally {
       get.mockRestore();
@@ -218,7 +247,7 @@ describe("mobile column controls", () => {
       mountOrders();
       expect(screen.queryByRole("table")).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "显示列" })).not.toBeInTheDocument();
-      expect(within(orderSummary()).getByText("实收金额")).toBeVisible();
+      expect(within(orderSummary()).getByRole("group", { name: "应付金额 " + money(order.payable_amount_cents) })).toBeVisible();
       width = 640;
       act(() => window.dispatchEvent(new Event("resize")));
       expect(screen.getByRole("table")).toBeVisible();
@@ -228,7 +257,7 @@ describe("mobile column controls", () => {
       width = 639;
       act(() => window.dispatchEvent(new Event("resize")));
       expect(screen.queryByRole("table")).not.toBeInTheDocument();
-      expect(within(orderSummary()).getByText("实收金额")).toBeVisible();
+      expect(within(orderSummary()).getByRole("group", { name: "应付金额 " + money(order.payable_amount_cents) })).toBeVisible();
       expect(document.querySelectorAll("[data-business-row]")).toHaveLength(1);
     } finally {
       rect.mockRestore();

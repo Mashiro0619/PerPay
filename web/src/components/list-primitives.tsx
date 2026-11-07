@@ -104,7 +104,7 @@ export function ListSummary({
   /** Cross-site context stays visible alongside the record's primary fields. */
   source?: ReactNode;
   /** Stable title, status and metadata rows for standalone record lists. */
-  layout?: "record";
+  layout?: "record" | "order";
   status?: ReactNode;
   message?: ReactNode;
   metadata?: ReactNode;

@@ -44,6 +44,58 @@ function ReceivedAmount({ order }: { order: AdminOrderSummary }) {
     </Badge>}
   </div>;
 }
+function OrderSummary({ order, scoped }: { order: AdminOrderSummary; scoped: boolean }) {
+  const received = order.received_amount_cents;
+  const hasReceipt = received != null;
+  const differs = hasReceipt && received !== order.payable_amount_cents;
+  const receiptMissing = !hasReceipt && order.payment.status === "CONFIRMED";
+  return (
+    <ListSummary
+      layout="order"
+      identity={
+        <>
+          <ListIdentity>
+            <Link to={"/orders/" + order.order_id} data-row-link title={order.product_name} className="list-primary-link">
+              {order.product_name}
+            </Link>
+          </ListIdentity>
+          <dl className="order-summary-metadata">
+            {!scoped && <div>
+              <dt className="sr-only">网站</dt>
+              <dd><SiteIdentity clientId={order.api_client_id} name={order.site_name} /></dd>
+            </div>}
+            <div>
+              <dt className="sr-only">创建时间</dt>
+              <dd><ListDateTime value={order.created_at} inline /></dd>
+            </div>
+          </dl>
+        </>
+      }
+      aside={
+        <div className="order-summary-payment">
+          <dl className="order-summary-amounts">
+            <div className="order-summary-primary-amount">
+              <dt>{hasReceipt ? "实收" : "应付"}</dt>
+              <dd><ListMoney value={hasReceipt ? received : order.payable_amount_cents} label={hasReceipt ? "实收金额" : "应付金额"} /></dd>
+            </div>
+            {differs && <div className="order-summary-secondary-amount">
+              <dt>应付</dt>
+              <dd><ListMoney value={order.payable_amount_cents} label="应付金额" secondary /></dd>
+            </div>}
+            {receiptMissing && <div className="order-summary-secondary-amount">
+              <dt>实收</dt><dd>金额暂缺</dd>
+            </div>}
+          </dl>
+          <div data-summary-status><OrderStatus order={order} includeCheckout={false} /></div>
+          {differs && <div className="order-summary-difference">
+            <Badge variant="warning">{received < order.payable_amount_cents ? "少收" : "多收"}</Badge>
+            <ListMoney value={Math.abs(received - order.payable_amount_cents)} label="差额" secondary />
+          </div>}
+        </div>
+      }
+    />
+  );
+}
 export function DataTable({
   data,
   control,
@@ -193,23 +245,10 @@ export function DataTable({
         control={control}
         density={control ? "default" : "compact"}
         embedded={!control}
-        renderSummary={(order, context) => (
+        renderSummary={(order, context) => control ? <OrderSummary order={order} scoped={!!clientId} /> : (
           <ListSummary
-            layout={control ? "record" : undefined}
             identity={columns[0]!.cell(order, context)}
-            metadata={control && <dl className="order-summary-metadata">
-              {!clientId && <div>
-                <dt>网站</dt>
-                <dd><SiteIdentity clientId={order.api_client_id} name={order.site_name} /></dd>
-              </div>}
-              {context.isSummaryPrimary("created_at") && <div>
-                <dt>创建时间</dt>
-                <dd><ListDateTime value={order.created_at} inline /></dd>
-              </div>}
-            </dl>}
-            aside={control
-              ? context.isSummaryPrimary("status") && <div data-summary-status><OrderStatus order={order} includeCheckout={false} /></div>
-              : (context.isSummaryPrimary("payable_amount_cents") || context.isSummaryPrimary("received_amount_cents")) && (
+            aside={(context.isSummaryPrimary("payable_amount_cents") || context.isSummaryPrimary("received_amount_cents")) && (
               <dl className="order-summary-amounts flex flex-col items-end gap-3">
                 {context.isSummaryPrimary("payable_amount_cents") && <div className="flex flex-col items-end gap-1">
                   <dt className="text-xs text-muted-foreground">应付金额</dt>
@@ -231,10 +270,10 @@ export function DataTable({
           >
             {columns.filter((column) =>
               column.id !== "identity" &&
-              (control ? !["status", "created_at"].includes(column.id) : !["payable_amount_cents", "received_amount_cents"].includes(column.id)) &&
+              !["payable_amount_cents", "received_amount_cents"].includes(column.id) &&
               context.isSummaryPrimary(column.id),
             ).map((column) => (
-              <ListSummaryField key={column.id} label={column.label} visibleLabel={!!control} fullWidth={!!control && column.layout === "datetime"}>
+              <ListSummaryField key={column.id} label={column.label}>
                 {column.cell(order, context)}
               </ListSummaryField>
             ))}
