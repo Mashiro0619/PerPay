@@ -1,6 +1,6 @@
 import type { Locator, Page } from "@playwright/test";
 import { test, expect, login, record, type Manifest } from "./fixtures";
-import { expectTouchTarget } from "./touch-targets";
+import { expectTouchTarget, waitForControlAnimations } from "./touch-targets";
 
 async function completeSelectValue(trigger: Locator, page: Page) {
   await page.clock.runFor(100);
@@ -70,6 +70,8 @@ test.describe("narrow settings and overview controls remain usable", () => {
     await page.evaluate(() => document.documentElement.style.fontSize = "200%");
     await page.evaluate(() => document.fonts.ready);
     const collection = page.getByRole("tab", { name: "收款码", exact: true });
+    // Let resize observers finish revealing the selected tab before choosing a pointer coordinate.
+    await waitForControlAnimations(collection);
     const point = await collection.evaluate(element => {
       const strip = element.closest<HTMLElement>('[data-settings-tabs-scroll]')!;
       const viewport = strip.getBoundingClientRect();
