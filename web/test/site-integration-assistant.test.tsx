@@ -295,7 +295,7 @@ describe("website integration assistant", () => {
     fixture.replaceConfiguration({ ...configuration, revision: 5, v2_enabled: false });
     await userEvent.click(screen.getByRole("button", { name: "保存易支付设置" }));
     await screen.findByRole("button", { name: "重新读取配置" });
-    fixture.fetchMock.mockImplementationOnce(() => json({ error: { code: "internal_error", message: "暂时读取失败" } }, 503));
+    fixture.fetchMock.mockImplementationOnce(async () => json({ error: { code: "internal_error", message: "暂时读取失败" } }, 503));
     await userEvent.click(screen.getByRole("button", { name: "重新读取配置" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "重新读取配置" })).toBeEnabled());
     expect(screen.getByRole("switch")).not.toBeChecked();
