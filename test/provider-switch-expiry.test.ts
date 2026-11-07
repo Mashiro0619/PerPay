@@ -7,22 +7,37 @@ import { setTimeout as delay } from "node:timers/promises";
 import { it } from "node:test";
 import { AppDatabase } from "../src/database/database.ts";
 import { RuntimeSettingsStore, SettingsError } from "../src/settings/store.ts";
+import { RuntimeSettingsService } from "../src/settings/service.ts";
 import { AlipayAccountStore, AlipayAccountService } from "../src/alipay-accounts/index.ts";
 import { OrderService } from "../src/orders/service.ts";
 import { LedgerStore } from "../src/ledger/store.ts";
+import { parseOccurredAt } from "../src/ledger/model.ts";
 import { ReconciliationStore } from "../src/reconciliation/store.ts";
 import { WebhookStore } from "../src/notifications/store.ts";
 import { RuntimeController } from "../src/runtime/controller.ts";
 import { SdkAlipayLedgerProvider } from "../src/infrastructure/alipay/sdk-provider.ts";
+import type { AccountLogDetail } from "../src/infrastructure/alipay/types.ts";
 import { systemAnalytics } from "../src/http/system-analytics.ts";
 import { keyMaster, privatePem, platformPem, keyAudit } from "./application-key-fixture.ts";
 
-for (const materialize of [false, true]) it(`preserves final reconciliation before changing applications with ${materialize ? "later materialized" : "unread"} expiry`, async t => {
+const scenarios = [
+  { materialize: "never", tailPayment: false, reloadPolicy: false, name: "unread expiry" },
+  { materialize: "before-coverage", tailPayment: false, reloadPolicy: false, name: "expiry materialized before final coverage" },
+  { materialize: "after-coverage", tailPayment: false, reloadPolicy: false, name: "expiry materialized after final coverage" },
+  { materialize: "never", tailPayment: true, reloadPolicy: false, name: "a payment in the final second before expiry" },
+  { materialize: "never", tailPayment: false, reloadPolicy: true, name: "a collection policy reload before final coverage" },
+];
+
+for (const { materialize, tailPayment, reloadPolicy, name } of scenarios) it(`preserves final reconciliation before changing applications with ${name}`, async t => {
+  let upstreamPayment: AccountLogDetail | null = null;
   // The upstream page is synthetic; application guards, workers and database are real.
-  t.mock.method(SdkAlipayLedgerProvider.prototype, "queryPage", async (input: Parameters<SdkAlipayLedgerProvider["queryPage"]>[0]) => ({
-    pageNo: input.pageNo, pageSize: input.pageSize, totalSize: 0, details: [], hasMore: false,
-    traceId: "expiry-guard", rawResponse: { status: 200, headers: {}, body: '{"details":[]}', traceId: "expiry-guard", signatureVerified: true },
-  }));
+  t.mock.method(SdkAlipayLedgerProvider.prototype, "queryPage", async (input: Parameters<SdkAlipayLedgerProvider["queryPage"]>[0]) => {
+    const paymentTime = upstreamPayment?.occurredAt;
+    const details = paymentTime && parseOccurredAt(input.startTime) <= parseOccurredAt(paymentTime) &&
+      parseOccurredAt(input.endTime) >= parseOccurredAt(paymentTime) ? [upstreamPayment!] : [];
+    return { pageNo: input.pageNo, pageSize: input.pageSize, totalSize: details.length, details, hasMore: false,
+      traceId: "expiry-guard", rawResponse: { status: 200, headers: {}, body: JSON.stringify({ details }), traceId: "expiry-guard", signatureVerified: true } };
+  });
   const directory = mkdtempSync(join(tmpdir(), "perpay-provider-expiry-"));
   const db = await AppDatabase.open(join(directory, "state.sqlite3"), { masterKey: keyMaster });
   let runtime: RuntimeController | undefined;
@@ -49,8 +64,16 @@ for (const materialize of [false, true]) it(`preserves final reconciliation befo
     const orders = new OrderService(db, () => settings.instanceSnapshot(), () => now, sites, undefined, {
       accounts: () => store.snapshots(), available: id => runtime?.accountHealth(id).collectionReady ?? false,
     });
-    runtime = new RuntimeController({ database: db, orders, ledger: new LedgerStore(db),
-      reconciliation: new ReconciliationStore(db), webhooks: new WebhookStore(db), sites,
+    const ledger = new LedgerStore(db);
+    const reconciliation = new ReconciliationStore(db);
+    // Store transactions use their own clock argument; keep the real work on
+    // the same test clock as the scheduler and ingested ledger timestamps.
+    const reconcileEntry = reconciliation.reconcileEntry.bind(reconciliation);
+    const reconcileOrder = reconciliation.reconcileOrder.bind(reconciliation);
+    t.mock.method(reconciliation, "reconcileEntry", (id: string, timestamp?: number) => reconcileEntry(id, timestamp ?? now));
+    t.mock.method(reconciliation, "reconcileOrder", (id: string, limit?: number, timestamp?: number) => reconcileOrder(id, limit, timestamp ?? now));
+    runtime = new RuntimeController({ database: db, orders, ledger,
+      reconciliation, webhooks: new WebhookStore(db), sites,
       accounts: () => store.snapshots(), clock: () => now });
     const waitForIdle = async () => {
       for (let attempt = 0; attempt < 300; attempt++) {
@@ -63,6 +86,13 @@ for (const materialize of [false, true]) it(`preserves final reconciliation befo
     await waitForIdle();
     const scoped = orders.forSite(site.clientId);
     const order = scoped.create({ merchant_order_no: "unread-expired", idempotency_key: "unread-expired", amount_cents: 1000, product_name: "到期保护" }).order;
+    if (tailPayment) {
+      const amount = (order.payableAmountCents / 100).toFixed(2);
+      const occurredAt = new Date(order.checkout.expiresAt - 1 + 8 * 3_600_000).toISOString().slice(0, 19).replace("T", " ");
+      upstreamPayment = { accountLogId: "expiry-tail-payment", occurredAt, amount, direction: "CREDIT",
+        alipayOrderNo: "expiry-tail-payment", merchantOrderNo: null, transMemo: null, otherAccount: null,
+        raw: { account_log_id: "expiry-tail-payment", amount, occurred_at: occurredAt } };
+    }
     await runtime.triggerOrder(order.orderId);
     await waitForIdle();
     const storedStatus = () => db.read(connection => connection.prepare("SELECT checkout_status FROM payment_orders WHERE order_id = ?").get(order.orderId)!.checkout_status);
@@ -93,33 +123,93 @@ for (const materialize of [false, true]) it(`preserves final reconciliation befo
     assert.equal(storedStatus(), "OPEN", "guard and analytics must not materialize expiry");
     assert.equal(eventCount(), beforeEvents, "read-only checks must not append order events");
 
-    // Passing the deadline is insufficient: a scan and reconciliation after it remain required.
-    now += 20_000;
-    runtime.requestLedgerScan(account.id);
-    for (let attempt = 0; attempt < 300; attempt++) {
-      if (runtime.ledgerManualScan(account.id).request?.finished_at) break;
-      await delay(10);
-    }
-    assert.ok(runtime.ledgerManualScan(account.id).request?.finished_at);
-    for (let attempt = 0; attempt < 300; attempt++) {
-      if ((runtime.accountHealth(account.id).lastSuccessAt ?? 0) >= order.checkout.expiresAt) break;
-      await delay(10);
-    }
-    await runtime.triggerReconciliation("expiry-final-check");
-    await waitForIdle();
-    assert.ok(runtime.accountHealth(account.id).lastSuccessAt! >= order.checkout.expiresAt,
-      JSON.stringify({ now, expiry: order.checkout.expiresAt, health: runtime.accountHealth(account.id), scan: runtime.ledgerManualScan(account.id) }));
-    if (materialize) {
-      // Late materialization must not move the deadline past the already completed final scan.
+    const scanAndReconcile = async () => {
+      const scanAt = now;
+      runtime!.requestLedgerScan(account.id);
+      for (let attempt = 0; attempt < 300; attempt++) {
+        if (runtime!.ledgerManualScan(account.id).request?.finished_at &&
+          (runtime!.accountHealth(account.id).lastSuccessAt ?? 0) >= scanAt) break;
+        await delay(10);
+      }
+      assert.ok(runtime!.ledgerManualScan(account.id).request?.finished_at);
+      assert.ok((runtime!.accountHealth(account.id).lastSuccessAt ?? 0) >= scanAt,
+        JSON.stringify({ now, health: runtime!.accountHealth(account.id), scan: runtime!.ledgerManualScan(account.id) }));
+      await runtime!.triggerReconciliation("expiry-final-check");
+      await waitForIdle();
+      assert.equal(runtime!.reconciliationHealth().lastErrorCode, null);
+    };
+    const updateInput = { revision: account.revision, name: account.name, enabled: true,
+      code_payload: account.code_payload, environment: "PRODUCTION" as const, app_id: "expiry-after", platform_public_key: platformPem };
+    const blocksSwitch = (error: unknown) => error instanceof SettingsError && error.code === "provider_switch_blocked";
+
+    // A successful request after expiry can still end before the deadline.
+    now = order.checkout.expiresAt + 1_000;
+    await scanAndReconcile();
+    const earlyCursor = ledger.getCursor(account.provider_account_key!);
+    assert.ok(earlyCursor?.complete);
+    assert.ok(parseOccurredAt(earlyCursor.windowEnd) < order.checkout.expiresAt);
+    assert.ok(runtime.accountHealth(account.id).lastSuccessAt! > order.checkout.expiresAt);
+    if (materialize === "before-coverage") {
       now += 1_000;
       scoped.get(order.orderId);
       assert.equal(storedStatus(), "EXPIRED");
-      assert.doesNotThrow(() => runtime!.assertAccountProviderSwitchAllowed(store.snapshot(account.id)));
     }
-    const updated = await accounts.update(account.id, { revision: account.revision, name: account.name, enabled: true,
-      code_payload: account.code_payload, environment: "PRODUCTION", app_id: "expiry-after", platform_public_key: platformPem }, keyAudit());
+    assert.throws(() => runtime!.assertAccountProviderSwitchAllowed(store.snapshot(account.id)), blocksSwitch);
+    await assert.rejects(() => accounts.update(account.id, updateInput, keyAudit()), blocksSwitch);
+    assert.equal(store.snapshot(account.id).appId, "expiry-before");
+    assert.equal(store.snapshot(account.id).providerAccountKey, account.provider_account_key);
+    assert.equal(store.snapshot(account.id).revision, account.revision);
+    await waitForIdle();
+    assert.equal(db.read(connection => Number(connection.prepare("SELECT COUNT(*) AS count FROM ledger_entries").get()!.count)), 0);
+
+    let reconciliationBeforePolicyReload: number | null = null;
+    if (reloadPolicy) {
+      // The rejected account edit restored a fresh worker. Give it a healthy
+      // scan before the global pause, while the safe tail is still incomplete.
+      now = order.checkout.expiresAt + store.snapshot(account.id).provider!.safetyLagMilliseconds - 1_000;
+      await scanAndReconcile();
+      assert.ok(parseOccurredAt(ledger.getCursor(account.provider_account_key!)!.windowEnd) < order.checkout.expiresAt);
+      reconciliationBeforePolicyReload = runtime.reconciliationHealth().lastSuccessAt;
+      const settingsService = new RuntimeSettingsService({ store: settings, alipayAccounts: accounts,
+        onPaymentMutationStarted: () => runtime!.beginPaymentTransition(),
+        onApplied: () => runtime!.apply(settings.instanceSnapshot()),
+      });
+      const beforePaymentRevision = settings.instanceSnapshot().paymentRevision;
+      const policy = settingsService.collectionPolicy();
+      await settingsService.saveCollectionPolicy({ ...policy, timeout_milliseconds: policy.timeout_milliseconds + 1_000 }, keyAudit());
+      await waitForIdle();
+      assert.equal(settings.instanceSnapshot().paymentRevision, beforePaymentRevision + 1);
+      assert.equal(store.snapshot(account.id).providerAccountKey, account.provider_account_key);
+    }
+
+    // Keep the original source active until its normal scan covers the deadline.
+    now = order.checkout.expiresAt + store.snapshot(account.id).provider!.safetyLagMilliseconds + 20_000;
+    await scanAndReconcile();
+    const finalCursor = ledger.getCursor(account.provider_account_key!);
+    assert.ok(finalCursor?.complete);
+    assert.ok(parseOccurredAt(finalCursor.windowEnd) >= order.checkout.expiresAt);
+    if (reloadPolicy) {
+      assert.ok(runtime.reconciliationHealth().lastSuccessAt! > reconciliationBeforePolicyReload!);
+      assert.ok(runtime.reconciliationHealth().lastSuccessAt! >= finalCursor.lastCompletedAt!);
+    }
+    if (materialize === "after-coverage") {
+      // A later order read must not invalidate an already covered deadline.
+      now += 1_000;
+      scoped.get(order.orderId);
+      assert.equal(storedStatus(), "EXPIRED");
+      assert.ok(runtime.accountHealth(account.id).lastSuccessAt! < now);
+    }
+    if (tailPayment) {
+      const payment = db.read(connection => connection.prepare("SELECT payment_status,received_amount_cents FROM payment_orders WHERE order_id=?").get(order.orderId)!);
+      assert.equal(payment.payment_status, "CONFIRMED");
+      assert.equal(Number(payment.received_amount_cents), order.payableAmountCents);
+      assert.equal(db.read(connection => Number(connection.prepare("SELECT COUNT(*) AS count FROM ledger_entries WHERE provider_account_key=? AND external_event_id='expiry-tail-payment'").get(account.provider_account_key!)!.count)), 1);
+      assert.equal(db.read(connection => Number(connection.prepare("SELECT COUNT(*) AS count FROM outbox_events WHERE aggregate_id=? AND event_type='PAYMENT_CONFIRMED'").get(order.orderId)!.count)), 1);
+    }
+    assert.doesNotThrow(() => runtime!.assertAccountProviderSwitchAllowed(store.snapshot(account.id)));
+    const updated = await accounts.update(account.id, updateInput, keyAudit());
     assert.equal(updated.app_id, "expiry-after");
-    assert.equal(storedStatus(), materialize ? "EXPIRED" : "OPEN", "application switching does not need an order read first");
+    assert.equal(storedStatus(), materialize === "never" ? "OPEN" : "EXPIRED", "application switching does not need an order read first");
     const beforeRead = systemAnalytics(db, 7, now, site.clientId).orders;
     scoped.get(order.orderId);
     assert.equal(storedStatus(), "EXPIRED");

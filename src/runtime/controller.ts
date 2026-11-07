@@ -17,6 +17,7 @@ import {
   LedgerIngestService,
   LedgerScanCadencePolicy,
   normalLedgerOverlapMilliseconds,
+  parseOccurredAt,
   type LedgerSchedulerHealth,
   type LedgerStore,
 } from "../ledger/index.ts";
@@ -425,16 +426,24 @@ export class RuntimeController {
     ) {
       throw providerSwitchBlocked("切换前需要当前查账账户完成近期查账和自动确认收款");
     }
-    if (
-      counts.latestEndedOrderAt !== null &&
-      (
+    if (counts.latestEndedOrderAt !== null) {
+      // Success time records when a request started. Only the completed normal
+      // cursor proves that its actual safe-tail window covered the deadline.
+      const cursor = this.#ledger.getCursor(accountKey, "NORMAL");
+      if (
+        !cursor?.complete ||
+        cursor.lastCompletedAt === null ||
+        parseOccurredAt(cursor.windowEnd) < counts.latestEndedOrderAt ||
         ledger.lastSuccessAt === null ||
         reconciliation.lastSuccessAt === null ||
         ledger.lastSuccessAt < counts.latestEndedOrderAt ||
-        reconciliation.lastSuccessAt < counts.latestEndedOrderAt
-      )
-    ) {
-      throw providerSwitchBlocked("最近结束的未支付订单尚未经过查账和自动确认收款复核");
+        reconciliation.lastSuccessAt < counts.latestEndedOrderAt ||
+        reconciliation.lastSuccessAt < cursor.lastCompletedAt ||
+        reconciliation.inFlight ||
+        reconciliation.continuationPending
+      ) {
+        throw providerSwitchBlocked("最近结束的未支付订单尚未经过查账和自动确认收款复核");
+      }
     }
   }
 
@@ -534,6 +543,11 @@ export class RuntimeController {
     const webhookConfigured = this.#sites !== null || isWebhookConfigured(snapshot);
     if (!previous || (!this.#sites && !sameWebhookConfiguration(previous, snapshot))) await this.#stopWebhookScheduler();
     if (webhookConfigured && !this.#webhookScheduler) await this.#installWebhookScheduler(snapshot);
+    // Paused snapshots belong to the stopped workers; resumed guards must read
+    // the new workers' actual scan and reconciliation progress.
+    this.#pausedLedgerHealth = null;
+    this.#pausedReconciliationHealth = null;
+    for (const id of this.#accountWorkers.keys()) this.#pausedAccountHealth.delete(id);
     this.#transitioning = false;
   }
 

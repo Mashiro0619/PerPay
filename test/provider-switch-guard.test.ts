@@ -1,11 +1,23 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { OrderStore } from "../src/database/order-store.ts";
+import { type IngestScanKind } from "../src/ledger/model.ts";
+import { type LedgerStore } from "../src/ledger/store.ts";
 import { RuntimeController } from "../src/runtime/controller.ts";
 import { RuntimeSettingsService, SettingsError } from "../src/settings/index.ts";
 import { withHttpFixture } from "./reconciliation-http-fixture.ts";
 
 const blocked = (error: unknown) => error instanceof SettingsError && error.code === "provider_switch_blocked";
+
+const providerTime = (value: number) => new Date(value + 8 * 3600_000).toISOString().slice(0, 19).replace("T", " ");
+function startEmptyScan(ledger: LedgerStore, providerAccountKey: string, end: number, now: number, scanKind: IngestScanKind = "NORMAL") {
+  return ledger.startIngestRun({ providerAccountKey, start: providerTime(end - 60_000), end: providerTime(end),
+    pageSize: 10, scanKind, now });
+}
+function completeEmptyScan(ledger: LedgerStore, ingestRunId: string, now: number) {
+  ledger.recordPage({ ingestRunId, page: { pageNo: 1, pageSize: 10, totalSize: 0, hasMore: false, details: [] },
+    evidence: { httpStatus: 200, headers: {}, body: '{"details":[]}', traceId: "switch-coverage", signatureVerified: true }, now });
+}
 
 describe("provider switch final collection guard", () => {
   for (const terminal of ["CLOSED", "EXPIRED"] as const) {
@@ -19,7 +31,7 @@ describe("provider switch final collection guard", () => {
         const order = f.createOrder("switch-zero-ledger", 1000);
         assert.throws(() => runtime.assertProviderSwitchAllowed(snapshot), blocked);
         const store = new OrderStore(f.database, () => now);
-        now = terminal === "CLOSED" ? order.createdAt + 120_000 : order.checkout.expiresAt + 1;
+        now = terminal === "CLOSED" ? Math.floor((order.createdAt + 120_000) / 1000) * 1000 + 125 : order.checkout.expiresAt + 1;
         const ended = terminal === "CLOSED" ? store.closeOrder("default", order.orderId) : store.orderById("default", order.orderId);
         assert.equal(ended?.order.checkoutStatus, terminal);
         assert.equal(f.database.read(db => db.prepare("SELECT count(*) AS n FROM ledger_entries").get()?.n), 0n);
@@ -32,16 +44,53 @@ describe("provider switch final collection guard", () => {
         const baseLedger = runtime.ledgerHealth();
         const baseReconciliation = runtime.reconciliationHealth();
         let lastSuccessAt = endedAt - 1;
+        let reconciliationSuccessAt = lastSuccessAt;
+        let reconciliationInFlight = false;
+        let continuationPending = false;
         let paymentRevision = snapshot.paymentRevision;
         t.mock.method(runtime, "ledgerHealth", () => ({ ...baseLedger, enabled: true,
           state: "healthy" as const, paymentRevision, lastSuccessAt }));
         t.mock.method(runtime, "reconciliationHealth", () => ({ ...baseReconciliation, enabled: true,
-          state: "healthy" as const, paymentRevision, lastSuccessAt }));
+          state: "healthy" as const, paymentRevision, lastSuccessAt: reconciliationSuccessAt,
+          inFlight: reconciliationInFlight, continuationPending }));
         assert.throws(() => runtime.assertProviderSwitchAllowed(snapshot), blocked);
         lastSuccessAt = now;
+        reconciliationSuccessAt = now;
         paymentRevision -= 1;
         assert.throws(() => runtime.assertProviderSwitchAllowed(snapshot), blocked);
         paymentRevision = snapshot.paymentRevision;
+
+        // Health alone and a completed compensation scan cannot prove normal coverage.
+        assert.throws(() => runtime.assertProviderSwitchAllowed(snapshot), blocked);
+        const coveredEnd = Math.ceil(endedAt / 1000) * 1000;
+        now = coveredEnd + snapshot.provider!.safetyLagMilliseconds + 1000;
+        lastSuccessAt = reconciliationSuccessAt = now;
+        const accountKey = snapshot.activeProviderAccountKey!;
+        const compensation = startEmptyScan(f.ledger, accountKey, coveredEnd, now, "COMPENSATION_10M");
+        completeEmptyScan(f.ledger, compensation.ingestRunId, now);
+        assert.throws(() => runtime.assertProviderSwitchAllowed(snapshot), blocked);
+
+        // Keep the original millisecond deadline when comparing second-granularity windows.
+        const short = startEmptyScan(f.ledger, accountKey, coveredEnd - 1000, now);
+        completeEmptyScan(f.ledger, short.ingestRunId, now);
+        assert.throws(() => runtime.assertProviderSwitchAllowed(snapshot), blocked);
+        const covering = startEmptyScan(f.ledger, accountKey, coveredEnd, now);
+        f.ledger.recordIngestError({ ingestRunId: covering.ingestRunId, errorKind: "provider", errorCode: "temporary_failure", retryable: true, now });
+        assert.equal(f.ledger.getCursor(accountKey)!.complete, false);
+        assert.throws(() => runtime.assertProviderSwitchAllowed(snapshot), blocked);
+
+        const resumed = startEmptyScan(f.ledger, accountKey, coveredEnd, now);
+        completeEmptyScan(f.ledger, resumed.ingestRunId, now + 1);
+        now += 1;
+        // Final reconciliation must include the completed scan, not an earlier success.
+        assert.throws(() => runtime.assertProviderSwitchAllowed(snapshot), blocked);
+        reconciliationSuccessAt = now;
+        reconciliationInFlight = true;
+        assert.throws(() => runtime.assertProviderSwitchAllowed(snapshot), blocked);
+        reconciliationInFlight = false;
+        continuationPending = true;
+        assert.throws(() => runtime.assertProviderSwitchAllowed(snapshot), blocked);
+        continuationPending = false;
         assert.doesNotThrow(() => runtime.assertProviderSwitchAllowed(snapshot));
         now += snapshot.provider!.maximumSuccessAgeMilliseconds + 1;
         assert.throws(() => runtime.assertProviderSwitchAllowed(snapshot), blocked);
