@@ -197,9 +197,19 @@ export function DataTable({
           <ListSummary
             layout={control ? "record" : undefined}
             identity={columns[0]!.cell(order, context)}
-            source={control && !clientId && <SiteIdentity clientId={order.api_client_id} name={order.site_name} />}
-            status={control && context.isSummaryPrimary("status") && <OrderStatus order={order} includeCheckout={false} />}
-            aside={!control && (context.isSummaryPrimary("payable_amount_cents") || context.isSummaryPrimary("received_amount_cents")) && (
+            metadata={control && <dl className="order-summary-metadata">
+              {!clientId && <div>
+                <dt>网站</dt>
+                <dd><SiteIdentity clientId={order.api_client_id} name={order.site_name} /></dd>
+              </div>}
+              {context.isSummaryPrimary("created_at") && <div>
+                <dt>创建时间</dt>
+                <dd><ListDateTime value={order.created_at} inline /></dd>
+              </div>}
+            </dl>}
+            aside={control
+              ? context.isSummaryPrimary("status") && <div data-summary-status><OrderStatus order={order} includeCheckout={false} /></div>
+              : (context.isSummaryPrimary("payable_amount_cents") || context.isSummaryPrimary("received_amount_cents")) && (
               <dl className="order-summary-amounts flex flex-col items-end gap-3">
                 {context.isSummaryPrimary("payable_amount_cents") && <div className="flex flex-col items-end gap-1">
                   <dt className="text-xs text-muted-foreground">应付金额</dt>
@@ -221,7 +231,7 @@ export function DataTable({
           >
             {columns.filter((column) =>
               column.id !== "identity" &&
-              (control ? column.id !== "status" : !["payable_amount_cents", "received_amount_cents"].includes(column.id)) &&
+              (control ? !["status", "created_at"].includes(column.id) : !["payable_amount_cents", "received_amount_cents"].includes(column.id)) &&
               context.isSummaryPrimary(column.id),
             ).map((column) => (
               <ListSummaryField key={column.id} label={column.label} visibleLabel={!!control} fullWidth={!!control && column.layout === "datetime"}>

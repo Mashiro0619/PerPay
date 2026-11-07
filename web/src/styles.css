@@ -1857,6 +1857,27 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 }
 /* End console lists. */
 
+/* Orders keep their key facts in three stable rows at ordinary phone sizes. */
+[data-business-table="orders"][data-embedded="false"] [data-summary-layout="record"] { gap: 0.375rem; }
+[data-business-table="orders"][data-embedded="false"] [data-summary-layout="record"] .list-summary-heading { flex-direction: row; align-items: flex-start; }
+[data-business-table="orders"][data-embedded="false"] [data-summary-layout="record"] .business-summary-fields { gap: 0.375rem 1rem; }
+[data-business-table="orders"][data-embedded="false"] [data-summary-layout="record"] .business-summary-field {
+  display: grid; grid-template-columns: max-content minmax(0, 1fr); align-items: baseline; gap: 0.375rem;
+}
+[data-business-table="orders"] .order-summary-metadata { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.25rem 0.75rem; margin: 0; font-size: 0.75rem; color: var(--muted-foreground); }
+[data-business-table="orders"] .order-summary-metadata > div { display: flex; min-width: 0; max-width: 100%; align-items: center; gap: 0.375rem; }
+[data-business-table="orders"] .order-summary-metadata dt { flex: none; }
+[data-business-table="orders"] .order-summary-metadata dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
+[data-business-table="orders"] .order-summary-metadata .list-time { white-space: normal; }
+@container summary (max-width: 22rem) {
+  [data-business-table="orders"][data-embedded="false"] [data-summary-layout="record"] .business-summary-fields { grid-template-columns: minmax(0, 1fr); }
+}
+@container summary (max-width: 16rem) {
+  [data-business-table="orders"][data-embedded="false"] [data-summary-layout="record"] .list-summary-heading { flex-direction: column; align-items: stretch; }
+  [data-business-table="orders"][data-embedded="false"] [data-summary-layout="record"] .business-summary-field { grid-template-columns: minmax(0, 1fr); gap: 0.125rem; }
+  [data-business-table="orders"] .order-summary-metadata > div { flex-wrap: wrap; }
+}
+
 /* Root-owned overview and entry surfaces use the same compact reading rhythm. */
 [data-onboarding-workspace] > [data-slot="card"], [data-account-onboarding] > [data-slot="card"] { --card-spacing: 1rem; }
 [data-overview-layout] .overview-work-fields { display: flex; min-width: 0; flex-wrap: wrap; gap: 0.25rem 0.75rem; }

@@ -94,6 +94,7 @@ export function ListSummary({
   layout,
   status,
   message,
+  metadata,
   children,
   details,
   actions,
@@ -106,6 +107,7 @@ export function ListSummary({
   layout?: "record";
   status?: ReactNode;
   message?: ReactNode;
+  metadata?: ReactNode;
   children?: ReactNode;
   /** Selected secondary fields; unmounted after this record finishes collapsing. */
   details?: ReactNode;
@@ -123,6 +125,7 @@ export function ListSummary({
       {compact && source && <div className="list-summary-source flex min-w-0 items-baseline gap-1.5"><span className="shrink-0">网站</span>{source}</div>}
       {message && <div data-summary-message>{message}</div>}
       {fields.length > 0 && <dl className="business-summary-fields">{fields}</dl>}
+      {metadata}
       <ListSummaryDetails>{details}</ListSummaryDetails>
       {actions && <ItemActions className="w-full flex-wrap justify-end" data-summary-actions>{actions}</ItemActions>}
     </ItemContent>

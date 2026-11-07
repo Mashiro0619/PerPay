@@ -51,7 +51,7 @@ const lists = [
     element: <Orders />,
     data: [longOrder],
     hiddenColumn: "确认时间",
-    summaryFields: ["应付金额", "实收金额", "创建时间"],
+    summaryFields: ["应付金额", "实收金额"],
     summaryStatuses: ["待付款"],
     centeredColumns: ["payable_amount_cents", "received_amount_cents", "status", "created_at", "payment_confirmed_at"],
   },
@@ -255,6 +255,12 @@ describe("desktop business list composition", () => {
       expect(screen.queryByRole("table")).not.toBeInTheDocument();
       expect(within(summary).queryByRole("button", { name: "展开信息" })).not.toBeInTheDocument();
       expect(Array.from(summary.querySelectorAll(".business-summary-field > dt"), field => field.textContent)).toEqual(summaryFields);
+      if (path === "/orders") {
+        const metadata = summary.querySelector<HTMLElement>(".order-summary-metadata")!;
+        expect(within(metadata).getByText("网站", { selector: "dt" })).toBeVisible();
+        expect(within(metadata).getByText("创建时间", { selector: "dt" })).toBeVisible();
+        expect(metadata.querySelector("time[datetime]")).toBeVisible();
+      }
       for (const status of summaryStatuses) {
         const value = within(summary.querySelector<HTMLElement>("[data-summary-status]")!).getByText(status, { exact: true });
         expect(value).toBeVisible();
