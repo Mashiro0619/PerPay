@@ -1,5 +1,5 @@
-import { QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { onlineManager, QueryClientProvider } from "@tanstack/react-query";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { describe, expect, it, vi } from "vitest";
@@ -88,6 +88,51 @@ async function allConfirmation(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe("administrator login sessions", () => {
+  for (const kind of ["single", "others", "all", "logout"] as const) it(`rejects offline ${kind} without queuing, and requires confirmation again after reconnect`, async () => {
+    onlineManager.setOnline(true);
+    const view = mount();
+    const element = await card();
+    const user = userEvent.setup();
+    const online = vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
+    try {
+      act(() => onlineManager.setOnline(false));
+      if (kind === "all") await allConfirmation(user);
+      else await user.click(within(element).getByRole("button", { name: kind === "single" ? "撤销 Chrome · Android 会话" : kind === "logout" ? "退出登录" : "退出其他会话" }));
+      const dialog = await screen.findByRole("alertdialog");
+      const submit = within(dialog).getByRole("button", { name: kind === "single" ? "撤销" : kind === "all" ? "注销全部会话" : kind === "logout" ? "退出登录" : "退出其他会话" });
+      await user.click(submit);
+      expect(await within(dialog).findByText("网络已断开，会话操作未提交。恢复连接后请重新确认。")).toBeVisible();
+      expect(within(dialog).getByRole("button", { name: "取消" })).toBeEnabled();
+      expect(queryClient.getMutationCache().getAll().some(mutation => mutation.state.isPaused)).toBe(false);
+      expect(view.writes()).toHaveLength(0);
+      expect(view.state.authenticated).toBe(true);
+      // New sessions must not be targeted by an old action on reconnect.
+      view.state.rows.push({ ...rows[1]!, session_id: "44444444-4444-4444-8444-444444444444" });
+      await act(async () => { online.mockReturnValue(true); onlineManager.setOnline(true); });
+      expect(view.writes()).toHaveLength(0);
+      expect(view.state.rows).toHaveLength(4);
+      await user.click(submit);
+      await waitFor(() => expect(view.writes()).toHaveLength(1));
+      if (kind === "all" || kind === "logout") {
+        expect(await screen.findByRole("heading", { name: "登录管理后台" })).toBeVisible();
+        expect(queryClient.getQueryData(administratorSessionsKey)).toBeUndefined();
+      } else await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+    } finally { online.mockReturnValue(true); act(() => onlineManager.setOnline(true)); }
+  });
+
+  it("rejects when the browser is already offline before QueryCore receives its offline event", async () => {
+    const view = mount();
+    const element = await card();
+    vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
+    expect(onlineManager.isOnline()).toBe(true);
+    const user = userEvent.setup();
+    await user.click(within(element).getByRole("button", { name: "退出其他会话" }));
+    const dialog = await screen.findByRole("alertdialog");
+    await user.click(within(dialog).getByRole("button", { name: "退出其他会话" }));
+    expect(await within(dialog).findByText(/会话操作未提交/)).toBeVisible();
+    expect(view.writes()).toHaveLength(0);
+  });
+
   it("orders the current session first and shows full IPv6 and missing metadata", async () => {
     mount();
     const element = await card();

@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { useParams } from "react-router";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { onlineManager, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { LogOut, MoreHorizontal } from "lucide-react";
 import { Link } from "@/navigation";
 import { BusinessTable, type BusinessColumn } from "@/components/business-table";
@@ -79,7 +79,11 @@ export function AdministratorSessions({ detailSessionId }: { detailSessionId?: s
     refetchOnWindowFocus: "always",
   });
   const operation = useMutation({
+    networkMode: "always",
+    retry: false,
     mutationFn: async (nextAction: SessionAction) => {
+      if (!onlineManager.isOnline() || !navigator.onLine)
+        throw new Error("网络已断开，会话操作未提交。恢复连接后请重新确认。");
       switch (nextAction.kind) {
         case "logout": await result(api.logoutAdministratorSession({ body: {} })); return null;
         case "all": await result(api.revokeAllAdministratorSessions({ body: {} })); return null;

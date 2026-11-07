@@ -15,7 +15,7 @@ import {
   type ReactNode,
   type CSSProperties,
 } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { onlineManager, useMutation } from "@tanstack/react-query";
 import {
   createRoutesFromElements,
   Navigate,
@@ -110,7 +110,13 @@ function Workspace() {
   const navigate = useNavigate();
   const { requestDiscard } = useDraftGuard();
   const logout = useMutation({
-    mutationFn: () => result(api.logoutAdministratorSession({ body: {} })),
+    networkMode: "always",
+    retry: false,
+    mutationFn: () => {
+      if (!onlineManager.isOnline() || !navigator.onLine)
+        throw new Error("网络已断开，退出登录未提交。恢复连接后请重新退出。");
+      return result(api.logoutAdministratorSession({ body: {} }));
+    },
     onSuccess: session.forget,
   });
   useEffect(() => {

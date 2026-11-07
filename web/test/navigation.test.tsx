@@ -143,6 +143,29 @@ function unloadIsBlocked() {
 }
 
 describe("navigation and draft protection", () => {
+  it.each(["manager", "navigator"])("never queues sidebar logout while offline (%s)", async source => {
+    const view = mount();
+    await screen.findByRole("link", { name: "编辑查账设置" });
+    const user = userEvent.setup();
+    const online = vi.spyOn(navigator, "onLine", "get");
+    const logouts = () => view.fetchMock.mock.calls.filter(([request]) => request.url.endsWith("/session/logout"));
+    try {
+      if (source === "manager") act(() => onlineManager.setOnline(false));
+      else online.mockReturnValue(false);
+      await user.click(screen.getByRole("button", { name: /账户菜单$/ }));
+      await user.click(await screen.findByRole("menuitem", { name: "退出登录" }));
+      expect(await screen.findByText("网络已断开，退出登录未提交。恢复连接后请重新退出。")).toBeVisible();
+      expect(logouts()).toHaveLength(0);
+      await act(async () => { online.mockReturnValue(true); onlineManager.setOnline(true); });
+      expect(logouts()).toHaveLength(0);
+      expect(screen.queryByRole("heading", { name: "登录管理后台" })).not.toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: /账户菜单$/ }));
+      await user.click(await screen.findByRole("menuitem", { name: "退出登录" }));
+      await waitFor(() => expect(logouts()).toHaveLength(1));
+      expect(await screen.findByRole("heading", { name: "登录管理后台" })).toBeVisible();
+    } finally { online.mockReturnValue(true); act(() => onlineManager.setOnline(true)); }
+  });
+
   it.each(["manager", "navigator"])(
     "does not queue an offline password change after discarding the draft (%s)",
     async (source) => {
