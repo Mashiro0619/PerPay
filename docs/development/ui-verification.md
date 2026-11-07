@@ -45,7 +45,7 @@ npm run test:ui:full
 
 ## Linux 升级与进程恢复
 
-使用 [Linux 验证脚本](../../scripts/validation/run-linux-validation.mjs)，宿主需满足 [package.json](../../package.json) 的 Node.js 版本范围，并能运行 Docker 的 Linux 容器。先从待验证的源码分别构建本地基线与候选镜像；脚本不构建或拉取镜像。镜像须为 `linux/amd64`，具有 `org.opencontainers.image.version` 和 40 位提交 SHA 的 `org.opencontainers.image.revision` 标签；版本及 schema 必须符合脚本中的基线／候选契约。
+使用 [Linux 验证脚本](../../scripts/validation/run-linux-validation.mjs)，宿主需满足 [package.json](../../package.json) 的 Node.js 版本范围，并能运行 Docker 的 Linux 容器。先从待验证的源码分别构建本地基线与候选镜像；脚本不构建或拉取镜像。镜像架构须匹配 Docker 引擎的 `linux/amd64` 或 `linux/arm64`，具有 `org.opencontainers.image.version` 和 40 位提交 SHA 的 `org.opencontainers.image.revision` 标签。历史基线固定为 RC1/schema 38；候选升级、备份恢复及存储验证使用 [版本声明](../../src/version.ts) 中的 `DATABASE_COMPATIBILITY.maximum`，并由镜像内夹具严格核对实际结构版本。
 
 将以下镜像名替换为已构建的本地标签：
 

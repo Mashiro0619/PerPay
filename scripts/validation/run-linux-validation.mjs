@@ -7,9 +7,11 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
+import { DATABASE_COMPATIBILITY } from "../../src/version.ts";
 
 const scripts = dirname(fileURLToPath(import.meta.url));
 const owner = "perpay-linux-upgrade-validation";
+const candidateSchema = DATABASE_COMPATIBILITY.maximum;
 const scenarios = ["payment-before-commit", "payment-after-commit", "webhook-after-claim", "webhook-before-ack-commit",
   "spool-after-publish", "spool-before-import-commit", "spool-after-import-commit"];
 const options = Object.fromEntries(process.argv.slice(2).map(argument => {
@@ -180,17 +182,17 @@ async function upgrade() {
   await fixture(rc1, volumes, "rc1-baseline", "verify", "--schema=38", "--checkpoint=base", "--label=rc1-baseline");
   const before = await backup(rc1, volumes, "backup-schema38");
   // Validate unchanged rows before starting workers that may legitimately advance them.
-  await fixture(candidate, volumes, "upgrade-schema40", "verify", "--schema=40", "--checkpoint=base", "--label=upgraded");
-  await fixture(candidate, volumes, "new-schema40-business", "advance");
-  const current = await backup(candidate, volumes, "backup-schema40");
+  await fixture(candidate, volumes, `upgrade-schema${candidateSchema}`, "verify", `--schema=${candidateSchema}`, "--checkpoint=base", "--label=upgraded");
+  await fixture(candidate, volumes, `new-schema${candidateSchema}-business`, "advance");
+  const current = await backup(candidate, volumes, `backup-schema${candidateSchema}`);
   report.backups = { ...report.backups, beforeUpgrade: before, afterUpgrade: current };
   await application(candidate, volumes, "candidate", "upgraded");
   // Preserve the upgraded snapshot independently before testing the old-version recovery.
-  const recovered = await group("restore40");
+  const recovered = await group(`restore${candidateSchema}`);
   recovered.backups = volumes.backups; recovered.state = volumes.state; recovered.secrets = volumes.secrets;
-  await restore(candidate, recovered, "restore-schema40", current);
-  await fixture(candidate, recovered, "verify-restored40", "verify", "--schema=40", "--label=restored40", "--checkpoint=upgraded");
-  await application(candidate, recovered, "restored40", "upgraded");
+  await restore(candidate, recovered, `restore-schema${candidateSchema}`, current);
+  await fixture(candidate, recovered, `verify-restored${candidateSchema}`, "verify", `--schema=${candidateSchema}`, `--label=restored${candidateSchema}`, "--checkpoint=upgraded");
+  await application(candidate, recovered, `restored${candidateSchema}`, "upgraded");
   await restore(candidate, volumes, "restore-schema38", before);
   await fixture(rc1, volumes, "verify-restored38", "verify", "--schema=38", "--checkpoint=base", "--label=restored38");
   await application(rc1, volumes, "restored38", "base");
@@ -198,10 +200,10 @@ async function upgrade() {
 async function storage() {
   const volumes = await group("storage");
   await fixture(report.images.rc1.id, volumes, "rc1-storage-seed", "seed", "--storage-history");
-  await fixture(report.images.candidate.id, volumes, "storage-upgrade40", "verify", "--schema=40", "--checkpoint=base");
-  const saved = await backup(report.images.candidate.id, volumes, "storage-backup40");
-  await restore(report.images.candidate.id, volumes, "storage-restore40", saved);
-  await fixture(report.images.candidate.id, volumes, "storage-restored40", "verify", "--schema=40", "--checkpoint=base");
+  await fixture(report.images.candidate.id, volumes, `storage-upgrade${candidateSchema}`, "verify", `--schema=${candidateSchema}`, "--checkpoint=base");
+  const saved = await backup(report.images.candidate.id, volumes, `storage-backup${candidateSchema}`);
+  await restore(report.images.candidate.id, volumes, `storage-restore${candidateSchema}`, saved);
+  await fixture(report.images.candidate.id, volumes, `storage-restored${candidateSchema}`, "verify", `--schema=${candidateSchema}`, "--checkpoint=base");
   await application(report.images.candidate.id, volumes, "storage-candidate", "base");
   report.backups = { ...report.backups, storage: saved };
 }
@@ -263,7 +265,7 @@ try {
     return [role, entries[0]];
   }));
   const candidateVersion = JSON.parse(readFileSync(resolve(scripts, "../../package.json"), "utf8")).version;
-  report.images.candidate = await image(options["candidate-image"], candidateVersion);
+  report.images.candidate = { ...await image(options["candidate-image"], candidateVersion), schemaVersion: candidateSchema };
   if (phase !== "recovery") report.images.rc1 = await image(options["rc1-image"], "1.0.0-rc.1", "bb98093409d1da7e245a8d1e93f4de7511714a0d");
   log("run_started", { phase, output });
   if (phase === "storage" || phase === "all") await storage();
