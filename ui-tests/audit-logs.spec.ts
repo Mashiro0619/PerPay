@@ -121,7 +121,7 @@ test("audit summaries, source details and configuration changes stay readable ac
     const closedLayout = await expectDetailRecordLayout(page);
     await record(page, info, { auditSource: "synthetic edge cases", width, theme, view: "detail", layout: closedLayout });
     if (width === 390 || width === 1680) await screenshot(page, info, `audit-detail-${width}-${theme}`);
-    const trigger = overlay.getByRole("button", { name: "技术信息", exact: true });
+    const trigger = overlay.getByRole("button", { name: "审计日志技术信息", exact: true });
     await trigger.scrollIntoViewIfNeeded();
     await trigger.focus();
     const parentGeometry = () => overlay.evaluate(element => {
@@ -132,9 +132,9 @@ test("audit summaries, source details and configuration changes stay readable ac
     const beforeTechnical = await parentGeometry();
     const detailUrl = page.url();
     await page.keyboard.press("Enter");
-    const technical = page.getByRole("dialog", { name: "技术信息", exact: true });
+    const technical = page.getByRole("dialog", { name: "审计日志技术信息", exact: true });
     await expect(technical).toBeVisible();
-    await expect(technical.locator('pre[aria-label="技术信息"]')).toBeVisible();
+    await expect(technical.locator('pre[aria-label="审计日志技术信息"]')).toBeVisible();
     await expect(overlay.locator('[data-technical-information] pre')).toHaveCount(0);
     expect(await technical.evaluate(element => !!element.closest("[data-overlay-content]"))).toBe(false);
     const duringTechnical = await parentGeometry();

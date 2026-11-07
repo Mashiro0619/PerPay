@@ -2,7 +2,7 @@ import { useQuery } from '@/lib/workspace-query';
 import { useWorkspaceApi } from "@/workspace";
 import { useId, useRef, useState, type ReactNode } from "react";
 import { useIsFetching } from '@tanstack/react-query';
-import { ArrowLeft, Code, ExternalLink, X } from "lucide-react";
+import { ArrowLeft, ChevronDown, Code, ExternalLink, X } from "lucide-react";
 import { result, type AdminOrderDetail, type ReconciliationOrder } from "@/api/client";
 import { Link } from "@/navigation";
 import { ListDateTime, ListMoney } from "@/components/list-primitives";
@@ -13,6 +13,7 @@ import { StatusBadge, paymentBasisDescription } from "@/components/business-stat
 import { ErrorNotice, Loading } from "@/components/request-state";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   Dialog,
   DialogContent,
@@ -132,26 +133,38 @@ export function TechnicalDetails({ data, identifiers = [], title = "技术信息
 }) {
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
-  return <div className="min-w-0" data-technical-information>
-    <Button ref={trigger} variant="ghost" size="sm" aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(true)}>
+  return <div className="flex min-w-0" data-technical-information>
+    <Button ref={trigger} variant="ghost" size="sm" className="h-auto min-h-8 max-w-full whitespace-normal" aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(true)}>
       {title}
       <Code aria-hidden="true" data-icon="inline-end" />
     </Button>
     <TechnicalDetailsDialog open={open} onOpenChange={setOpen} finalFocus={() => trigger.current} data={data} identifiers={identifiers} title={title}>{children}</TechnicalDetailsDialog>
   </div>;
 }
-export function DetailCredentials({ items, title = "凭据编号", headingLevel = 3 }: {
+export function DetailCredentials({ items, title = "凭据编号", headingLevel = 3, collapsible = false }: {
   items: ReadonlyArray<readonly [string, ReactNode]>;
   title?: string;
   headingLevel?: 3 | 4;
+  collapsible?: boolean;
 }) {
   const titleId = useId();
   if (!items.length) return null;
   const Heading = headingLevel === 3 ? "h3" : "h4";
+  const fields = <DetailFields density="comfortable" wide={items.map(([name]) => name)} items={items} />;
+  if (collapsible) return <section aria-labelledby={titleId} data-detail-credentials>
+    <Collapsible className="flex min-w-0 flex-col gap-3">
+      <Heading id={titleId}>
+        <CollapsibleTrigger render={<Button variant="ghost" size="sm" className="max-w-full justify-start aria-expanded:[&_svg]:rotate-180" />}>
+          {title}<ChevronDown data-icon="inline-end" />
+        </CollapsibleTrigger>
+      </Heading>
+      <CollapsibleContent>{fields}</CollapsibleContent>
+    </Collapsible>
+  </section>;
   return <section className="flex min-w-0 flex-col gap-4" aria-labelledby={titleId} data-detail-credentials>
     <Separator />
     <Heading id={titleId} className="text-sm font-medium">{title}</Heading>
-    <DetailFields density="comfortable" wide={items.map(([name]) => name)} items={items} />
+    {fields}
   </section>;
 }
 export function TechnicalDetailsDialog({

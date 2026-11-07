@@ -125,7 +125,7 @@ for (const layout of layouts) {
     await reachable(dialog.getByRole("button", { name: "关闭对话框", exact: true }));
     await screenshot(page, info, "long-detail-top");
     const detailScroll = await scrollBody(page, dialog);
-    const technical = dialog.locator('[data-detail-section="history"]').getByRole("button", { name: "技术信息", exact: true });
+    const technical = dialog.locator('[data-detail-section="history"]').getByRole("button", { name: "订单技术信息", exact: true });
     await reachable(technical);
     await screenshot(page, info, "long-detail-bottom");
     await dialog.getByRole("button", { name: "关闭对话框", exact: true }).click();

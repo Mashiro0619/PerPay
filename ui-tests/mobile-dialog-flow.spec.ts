@@ -37,7 +37,7 @@ async function scrollRegion(dialog: Locator, kind: "detail" | "step" | "technica
   expect(geometry.scrollWidth, JSON.stringify(geometry)).toBeLessThanOrEqual(geometry.width + 1);
   // Footer Close actions may use DialogClose too; the fixed corner control
   // must remain outside the scroller and independently reachable.
-  const closeName = kind === "technical" ? "关闭技术信息" : "关闭对话框";
+  const closeName = kind === "technical" ? "关闭流水技术信息" : "关闭对话框";
   await expect(dialog.getByRole("button", { name: closeName, exact: true })).toHaveCount(1);
   await expect(scroll.getByRole("button", { name: closeName, exact: true })).toHaveCount(0);
   return geometry;
@@ -159,22 +159,22 @@ test.describe("enlarged admin dialogs keep fields and decisions reachable", () =
       const ledgerDialog = await openRecord(page, manifest, ledgerPath);
       await page.evaluate(font => document.documentElement.style.fontSize = font + "%", font);
       const technical = ledgerDialog.locator('[data-detail-section="transaction"] [data-ledger-summary] [data-technical-information]');
-      const trigger = technical.getByRole("button", { name: "技术信息", exact: true });
+      const trigger = technical.getByRole("button", { name: "流水技术信息", exact: true });
       await reveal(trigger, page);
       const parentBefore = await ledgerDialog.evaluate(element => ({ height: element.getBoundingClientRect().height, top: element.getBoundingClientRect().top, scrollTop: element.querySelector('[data-overlay-detail]')!.scrollTop }));
       await trigger.tap();
-      const reader = page.getByRole("dialog", { name: "技术信息", exact: true });
-      await expect(reader.locator('pre[aria-label="技术信息"]')).toContainText("synthetic_layout_evidence");
+      const reader = page.getByRole("dialog", { name: "流水技术信息", exact: true });
+      await expect(reader.locator('pre[aria-label="流水技术信息"]')).toContainText("synthetic_layout_evidence");
       const technicalScroll = await scrollRegion(reader, "technical");
       const copy = reader.getByRole("button", { name: "复制内部流水编号（PerPay）", exact: true });
       const copyTarget = await reveal(copy, page);
-      await expectTouchTarget(reader.getByRole("button", { name: "关闭技术信息", exact: true }));
+      await expectTouchTarget(reader.getByRole("button", { name: "关闭流水技术信息", exact: true }));
       await copy.focus();
       await copy.tap();
       await expect(copy).toBeFocused();
       await expect(reader.getByRole("status").filter({ hasText: "已复制" })).toHaveText("已复制");
       expect(await page.evaluate(() => (window as Window & { __copiedText?: string }).__copiedText)).toBe(ledgerPath.split("/").at(-1));
-      await reader.getByRole("button", { name: "关闭技术信息", exact: true }).tap();
+      await reader.getByRole("button", { name: "关闭流水技术信息", exact: true }).tap();
       await expect(reader).toHaveCount(0);
       await expect(technical.locator("pre")).toHaveCount(0);
       await expect(trigger).toBeFocused();

@@ -289,11 +289,11 @@ async function traceAudit(page: Page, fixture: BusinessFixture, info: TestInfo, 
   const overlay = page.locator("[data-overlay-content]");
   await expect(overlay.getByRole("heading", { name: "审计日志详情", exact: true })).toBeVisible();
   await expect(overlay.getByText(site.configuration.name, { exact: true }).first()).toBeVisible();
-  await overlay.getByRole("button", { name: "技术信息", exact: true }).click();
+  await overlay.getByRole("button", { name: "审计日志技术信息", exact: true }).click();
   const technical = page.locator("[data-technical-dialog]");
   await expect(technical).toContainText(order.order_id);
   await screenshot(page, info, "11-business-audit-detail");
-  await technical.getByRole("button", { name: "关闭技术信息", exact: true }).click();
+  await technical.getByRole("button", { name: "关闭审计日志技术信息", exact: true }).click();
   await closeOverlay(page);
   expect(new URL(page.url()).searchParams.get("q")).toBe(order.order_id);
   expect(audit.data.some(event => event.action === "orders.created" && event.subject_id === order.order_id)).toBe(true);
@@ -308,11 +308,11 @@ async function traceAudit(page: Page, fixture: BusinessFixture, info: TestInfo, 
   const event = financial.data.find(event => event.action === "financial.auto_settlement" && event.subject_id === operationId);
   expect(event).toBeDefined();
   await page.locator(`a[data-row-link][href*="${event!.event_id}"]`).click();
-  await overlay.getByRole("button", { name: "技术信息", exact: true }).click();
+  await overlay.getByRole("button", { name: "审计日志技术信息", exact: true }).click();
   await expect(technical).toContainText(order.order_id);
   await expect(technical).toContainText(match.ledger_entry_id);
   await screenshot(page, info, "12-financial-audit-correlation");
-  await technical.getByRole("button", { name: "关闭技术信息", exact: true }).click();
+  await technical.getByRole("button", { name: "关闭审计日志技术信息", exact: true }).click();
   await closeOverlay(page);
   expect(new URL(page.url()).searchParams.get("q")).toBe(operationId);
   return [...audit.data, ...financial.data].map(event => ({ id: event.event_id, action: event.action, subject: event.subject_id, site: event.site_id }));

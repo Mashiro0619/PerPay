@@ -115,7 +115,7 @@ export function DeliveryCard({
       ["前次投递编号", delivery.predecessor_delivery_id],
     ] as const : []),
   ] as const;
-  const technicalInformation = overlay && <TechnicalDetails data={detail} identifiers={technicalIdentifiers} />;
+  const technicalInformation = overlay && <TechnicalDetails title="通知技术信息" data={detail} identifiers={technicalIdentifiers} />;
   const tools = (
     <RecordTools
       inline={comfortable}

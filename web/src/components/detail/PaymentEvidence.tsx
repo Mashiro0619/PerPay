@@ -46,6 +46,7 @@ export function LedgerFacts({
   layout = "columns",
   showHeading = true,
   groupIdentifiers = false,
+  collapseCredentials = false,
 }: {
   entry: ReconciliationLedgerEntry;
   compact?: boolean;
@@ -53,6 +54,7 @@ export function LedgerFacts({
   layout?: DetailFieldLayout;
   showHeading?: boolean;
   groupIdentifiers?: boolean;
+  collapseCredentials?: boolean;
 }) {
   const titleId = useId();
   const overlay = useOverlayContext();
@@ -66,7 +68,7 @@ export function LedgerFacts({
         counterparty,
         ...(entry.memo ? [["支付宝交易备注", entry.memo] as const] : []),
       ]} />
-      <DetailCredentials title="核对凭据" headingLevel={showHeading ? 4 : 3} items={[
+      <DetailCredentials title="核对凭据" headingLevel={showHeading ? 4 : 3} collapsible={collapseCredentials} items={[
         ["支付宝订单号", entry.provider_order_no ? <CopyValue value={entry.provider_order_no} label="复制支付宝订单号" /> : "未提供"],
         ...(entry.merchant_order_no ? [["支付宝商户单号", <CopyValue value={entry.merchant_order_no} label="复制支付宝商户单号" />] as const] : []),
         ["内部流水编号（PerPay）", <CopyValue value={entry.ledger_entry_id} label="复制内部流水编号（PerPay）" />],
@@ -229,7 +231,7 @@ export function MatchCard({
   const operation = match.creation_operation;
   const reversal =
     match.status === "REVERSED" ? match.resolution_operation : null;
-  const technicalInformation = overlay ? <TechnicalDetails data={match} identifiers={[
+  const technicalInformation = overlay ? <TechnicalDetails title="收款关联技术信息" data={match} identifiers={[
     ["关联编号", match.payment_match_id],
     ["流水编号", match.ledger_entry_id],
     ["可能匹配记录编号", match.candidate_id],
@@ -332,7 +334,7 @@ export function MatchCard({
       </CardHeader>
       <CardContent className="flex min-w-0 flex-col gap-3">
         {!embedded && <OrderFacts order={match.order} />}
-        <LedgerFacts entry={match.ledger_entry} compact={embedded} density={overlay ? "comfortable" : "default"} layout={overlay ? "flow" : "columns"} groupIdentifiers={!!overlay} />
+        <LedgerFacts entry={match.ledger_entry} compact={embedded} density={overlay ? "comfortable" : "default"} layout={overlay ? "flow" : "columns"} groupIdentifiers={!!overlay} collapseCredentials={embedded && match.status === "SETTLED" && match.order.payment_status === "CONFIRMED"} />
         <DetailFields
           compact={embedded}
           wide={["关联理由", "撤销理由"]}
@@ -502,7 +504,7 @@ export function CandidateCard({
               : undefined
           }
         />
-        {overlay && <TechnicalDetails data={candidate} identifiers={[["可能匹配记录编号", candidate.candidate_id]]} />}
+        {overlay && <TechnicalDetails title="匹配记录技术信息" data={candidate} identifiers={[["可能匹配记录编号", candidate.candidate_id]]} />}
       </CardContent>
       {canAssociate && (
           <CardFooter>
@@ -623,7 +625,7 @@ export function ExceptionCard({
         </EvidenceSection>
         {candidate && <CandidateEvidence candidate={candidate} ledger={entry} density="comfortable" layout="flow" />}
         {!knownCandidate && exception.candidate_id && <ErrorNotice scope="page" error={candidateQuery.error} retry={() => { void candidateQuery.refetch(); }} />}
-        {overlay && <TechnicalDetails data={exception} identifiers={identifiers} />}
+        {overlay && <TechnicalDetails title="账务异常技术信息" data={exception} identifiers={identifiers} />}
       </CardContent>
     </Card>
   );

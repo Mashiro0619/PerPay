@@ -3,8 +3,12 @@ import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider, useLocation } from "react-router";
 import { describe, expect, it } from "vitest";
 import { DetailCredentials, DetailFields, DetailNavigation, OrderFacts } from "../src/components/detail/DetailPrimitives";
+import { MatchCard } from "../src/components/detail/PaymentEvidence";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { queryClient } from "../src/api/client";
+import { OverlayContext } from "../src/lib/overlay-context";
 import { isReadableDetailPage } from "../src/lib/detail-layout";
-import { paidOrder } from "./detail-fixtures";
+import { paidOrder, paymentMatch } from "./detail-fixtures";
 
 describe("independent readable detail scope", () => {
   it.each([
@@ -83,5 +87,29 @@ describe("independent readable detail scope", () => {
     await user.click(screen.getByRole("link", { name: "返回流水" }));
     expect(router.state.location.search).toBe("?q=a%20b&cursor=two&page=2");
     expect(router.state.location.state).toEqual({ page: 2 });
+  });
+
+  it("keeps settled order credentials available by keyboard without expanding technical evidence", async () => {
+    const user = userEvent.setup();
+    const router = createMemoryRouter([{ path: "/orders/:id", element: <MatchCard match={paymentMatch} embedded /> }], { initialEntries: ["/orders/" + paidOrder.order_id] });
+    render(<QueryClientProvider client={queryClient}><OverlayContext value={{ target: router.state.location, resourceScope: { clientId: null, base: "" }, size: "lg", requestClose() {} }}>
+      <RouterProvider router={router} />
+    </OverlayContext></QueryClientProvider>);
+    const credentials = screen.getByRole("region", { name: "核对凭据" });
+    const trigger = within(credentials).getByRole("button", { name: "核对凭据" });
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    expect(within(credentials).queryByRole("button", { name: "复制支付宝订单号" })).not.toBeInTheDocument();
+    expect(screen.getByText("支付宝交易金额")).toBeVisible();
+    expect(screen.getByRole("heading", { name: "匹配依据" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "收款关联技术信息" })).toHaveTextContent("收款关联技术信息");
+    expect(screen.getByRole("button", { name: "更多操作，收款关联记录操作" })).toHaveTextContent("收款关联记录操作");
+    trigger.focus();
+    await user.keyboard("{Enter}");
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+    await user.click(within(credentials).getByRole("button", { name: "复制支付宝订单号" }));
+    expect(await navigator.clipboard.readText()).toBe(paymentMatch.ledger_entry.provider_order_no);
+    await user.click(trigger);
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    expect(router.state.location.pathname).toBe("/orders/" + paidOrder.order_id);
   });
 });

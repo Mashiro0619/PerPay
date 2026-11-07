@@ -264,7 +264,7 @@ function LedgerDetail({ resourceId }: { resourceId: string }) {
                   ]}
                   label="流水记录操作"
                 />
-                {overlay && <TechnicalDetails data={data} identifiers={[
+                {overlay && <TechnicalDetails title="流水技术信息" data={data} identifiers={[
                   ["内部流水编号（PerPay）", resourceId],
                   ["支付宝流水号", data.external_event_id],
                 ]} />}

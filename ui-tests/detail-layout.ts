@@ -16,7 +16,7 @@ export async function revealDetailSection(page: Page, id: string) {
   return section;
 }
 
-/** Measure content-sized fields and their actual wrapped rows. */
+/** Check stable field columns, DOM reading order and complete value geometry. */
 export async function expectDetailFields(containers: Locator) {
   const groups = await containers.evaluateAll(containers => containers.map(container => {
     const dl = container.querySelector("dl")!, bounds = container.getBoundingClientRect(), style = getComputedStyle(dl);
@@ -80,9 +80,8 @@ export async function expectDetailFields(containers: Locator) {
     };
   }));
   for (const group of groups) {
-    expect(group.display, "detail facts wrap according to their content widths").toBe("flex");
-    expect(group.wrap).toBe("wrap");
-    expect(group.rowGap).toBeCloseTo(0.5 * group.rootFont, 3);
+    expect(group.display, "detail facts use stable columns rather than content-sized wrapping").toBe("grid");
+    expect(group.rowGap).toBeCloseTo(0.75 * group.rootFont, 3);
     expect(group.columnGap).toBeCloseTo(1.5 * group.rootFont, 3);
     expect(group.fields.length).toBeGreaterThan(0);
     const rows: typeof group.fields[] = [];
@@ -92,15 +91,9 @@ export async function expectDetailFields(containers: Locator) {
       else rows.push([field]);
       expect(field.labelFont, field.name ?? "field label").toBeGreaterThanOrEqual(0.8125 * group.rootFont);
       expect(field.valueFont, field.name ?? "field value").toBeGreaterThanOrEqual(0.875 * group.rootFont);
-      expect(field.display).toBe("flex");
-      expect(field.direction).toBe("row");
-      expect(field.wrap).toBe("wrap");
-      expect(field.grow, "short facts do not stretch into unused row space: " + field.name).toBe(0);
-      expect(field.shrink).toBe(1);
-      expect(field.basis).toBe(field.wide ? "100%" : "auto");
-      expect(field.valueGrow, "values retain their own natural width: " + field.name).toBe(0);
-      expect(field.rowGap).toBeCloseTo(0.125 * group.rootFont, 3);
-      expect(field.columnGap).toBeCloseTo(0.5 * group.rootFont, 3);
+      expect(field.display).toBe("grid");
+      expect(field.rowGap).toBeCloseTo(0.25 * group.rootFont, 3);
+      expect(field.columnGap).toBeCloseTo(0.75 * group.rootFont, 3);
       if (field.wide) expect(Math.abs(field.width - group.width), "wide values retain their own complete row: " + field.name).toBeLessThanOrEqual(1);
       expect(field.left, field.name ?? "field").toBeGreaterThanOrEqual(group.left - 1);
       expect(field.right, field.name ?? "field").toBeLessThanOrEqual(group.right + 1);
@@ -111,11 +104,10 @@ export async function expectDetailFields(containers: Locator) {
       expect(field.valueBottom).toBeLessThanOrEqual(field.bottom + 1);
       if (field.inline) {
         expect(Math.abs(field.valueLeft - field.labelRight - field.columnGap), "a short value follows its label on the same line: " + field.name).toBeLessThanOrEqual(1);
-        if (!field.wide) expect(Math.abs(field.width - field.labelWidth - field.columnGap - field.valueBoxWidth), "a short field occupies only its content width: " + field.name).toBeLessThanOrEqual(1);
+        expect(Math.abs(field.labelWidth - 8 * group.rootFont), "labels share a fixed reading column: " + field.name).toBeLessThanOrEqual(1);
       } else {
         expect(Math.abs(field.valueLeft - field.left), "a wrapped value returns to its field edge: " + field.name).toBeLessThanOrEqual(1);
         expect(Math.abs(field.valueTop - field.labelBottom - field.rowGap), "long values wrap below their own label with a compact gap: " + field.name).toBeLessThanOrEqual(1);
-        if (!field.wide) expect(Math.abs(field.width - group.width), "a constrained natural-width field uses its available row: " + field.name).toBeLessThanOrEqual(1);
       }
       expect(field.firstValue, "visible content exists for " + field.name).not.toBeNull();
       expect(Math.abs(field.firstValue!.left - field.valueLeft), "value content starts at its own value box: " + field.name).toBeLessThanOrEqual(1);
@@ -255,7 +247,9 @@ async function expectParentDetailPreserved(state: Awaited<ReturnType<typeof capt
 export async function openTechnicalDialog(page: Page, technical: Locator) {
   const parent = page.locator('[data-overlay-content][data-overlay-record="true"]');
   const trigger = technical.locator(':scope > button[aria-haspopup="dialog"]');
-  await expect(trigger).toHaveAccessibleName("技术信息");
+  const titleText = (await trigger.innerText()).trim();
+  expect(titleText).toMatch(/技术信息$/);
+  await expect(trigger).toHaveAccessibleName(titleText);
   await expect(trigger).toHaveAttribute("aria-expanded", "false");
   await expect(technical.locator("pre, [data-detail-fields]")).toHaveCount(0);
   const frameScroll = () => parent.evaluate(parent => ({ top: parent.scrollTop, left: parent.scrollLeft,
@@ -270,13 +264,13 @@ export async function openTechnicalDialog(page: Page, technical: Locator) {
   const dialog = page.locator("[data-technical-dialog]:visible");
   await expect(dialog).toHaveCount(1);
   await expect(dialog).toHaveAttribute("role", "dialog");
-  await expect(dialog).toHaveAccessibleName("技术信息");
+  await expect(dialog).toHaveAccessibleName(titleText);
   await expect(dialog).not.toHaveAttribute("data-overlay-step");
   await waitForControlAnimations(dialog);
-  const title = dialog.getByRole("heading", { name: "技术信息", exact: true });
-  const close = dialog.getByRole("button", { name: "关闭技术信息", exact: true });
+  const title = dialog.getByRole("heading", { name: titleText, exact: true });
+  const close = dialog.getByRole("button", { name: "关闭" + titleText, exact: true });
   const body = dialog.locator(":scope > [data-admin-dialog-body]");
-  const pre = body.locator('pre[aria-label="技术信息"]');
+  const pre = body.getByRole("group", { name: titleText, exact: true }).and(body.locator("pre"));
   await expect(title).toBeFocused();
   await expect(trigger).toHaveAttribute("aria-expanded", "true");
   await expect(pre).toBeVisible();
@@ -293,9 +287,9 @@ export async function expectTechnicalDialogLayout(session: TechnicalDialogSessio
   const measure = () => dialog.evaluate(dialog => {
     const body = dialog.querySelector<HTMLElement>(":scope > [data-admin-dialog-body]")!;
     const header = dialog.querySelector<HTMLElement>(':scope > [data-slot="dialog-header"]')!;
-    const close = header.querySelector<HTMLElement>('button[aria-label="关闭技术信息"]')!;
+    const close = header.querySelector<HTMLElement>('button[aria-label^="关闭"]')!;
     const footer = dialog.querySelector<HTMLElement>(':scope > [data-slot="dialog-footer"]')!;
-    const pre = body.querySelector<HTMLPreElement>('pre[aria-label="技术信息"]')!;
+    const pre = body.querySelector<HTMLPreElement>('pre[aria-label]')!;
     const rect = (element: Element) => { const bounds = element.getBoundingClientRect(); return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height, right: bounds.right, bottom: bounds.bottom }; };
     const visible = window.visualViewport;
     const viewport = { left: visible?.offsetLeft ?? 0, top: visible?.offsetTop ?? 0, width: visible?.width ?? innerWidth, height: visible?.height ?? innerHeight };
@@ -424,9 +418,9 @@ export async function expectDetailRecordLayout(page: Page, alternativeTable?: st
       }),
     };
   });
-  expect(geometry.pageGap).toBeCloseTo(geometry.rootFont, 3);
-  for (const gap of geometry.sectionGaps) expect(gap, "business sections retain a compact shared gap").toBeCloseTo(geometry.rootFont, 3);
-  for (const gap of geometry.internalGaps) expect(gap, "facts stay close to their owning section heading").toBeCloseTo(0.5 * geometry.rootFont, 3);
+  expect(geometry.pageGap).toBeCloseTo(1.5 * geometry.rootFont, 3);
+  for (const gap of geometry.sectionGaps) expect(gap, "business sections have a distinct reading rhythm").toBeCloseTo(1.5 * geometry.rootFont, 3);
+  for (const gap of geometry.internalGaps) expect(gap, "related facts stay grouped inside their section").toBeCloseTo(0.75 * geometry.rootFont, 3);
   expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.width + 1);
   expect(geometry.cards.filter(card => card.radius !== "0px" || card.shadow !== "none"), "record groups remain flat").toEqual([]);
   expect(geometry.timeFonts.filter(font => font < 0.875 * geometry.rootFont)).toEqual([]);

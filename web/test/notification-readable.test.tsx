@@ -54,7 +54,7 @@ describe("readable standalone notification detail", () => {
     expect(await screen.findByRole("heading", { name: "通知详情", level: 1 })).toBeVisible();
     const orderCard = await screen.findByRole("group", { name: "关联订单" });
     const information = screen.getByRole("group", { name: "通知信息" });
-    expect(screen.getAllByRole("heading", { level: 2 }).map(heading => heading.textContent)).toEqual(["通知信息", "关联订单", "投递历史"]);
+    expect(screen.getAllByRole("heading", { level: 2 }).map(heading => heading.textContent)).toEqual(["通知信息", "投递历史", "关联订单"]);
     expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
     const orderLink = await within(orderCard).findByRole("link", { name: paidOrder.product_name });
     expect(orderLink).toHaveAttribute("href", (site ? "/sites/site_dense" : "") + "/orders/" + paidOrder.order_id);
@@ -63,6 +63,7 @@ describe("readable standalone notification detail", () => {
     expect(within(information).queryByText("尝试次数", { selector: "dt" })).not.toBeInTheDocument();
     const history = screen.getByRole("group", { name: "投递历史" });
     expect(history).toBeVisible();
+    expect(history.compareDocumentPosition(orderCard) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.queryByText(deliveryId)).not.toBeInTheDocument();
     expect(within(information).queryByRole("link", { name: paidOrder.product_name })).not.toBeInTheDocument();
     expect(within(information).getByRole("alert")).toHaveTextContent("通知投递建议");

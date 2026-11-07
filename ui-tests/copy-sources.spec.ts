@@ -95,6 +95,12 @@ test("ledger credentials keep genuine Alipay, website and PerPay identities dist
       await expect(summary).toBeVisible();
       await expect(summary.getByText("PerPay 处理状态", { exact: true })).toHaveCount(0);
       const credentials = summary.locator("[data-detail-credentials]");
+      const credentialToggle = credentials.getByRole("button", { name: "支付宝交易编号", exact: true });
+      if (await credentialToggle.count()) {
+        await expect(credentialToggle).toHaveAttribute("aria-expanded", "false");
+        await credentialToggle.click();
+        await expect(credentialToggle).toHaveAttribute("aria-expanded", "true");
+      }
       await copyField(page, credentials, "支付宝流水号", entry.external_event_id);
       await optionalCopyField(page, credentials, "支付宝订单号", entry.provider_order_no, "复制支付宝订单号");
       await optionalCopyField(page, credentials, "支付宝商户单号", entry.merchant_order_no, "复制支付宝商户单号");
@@ -132,9 +138,9 @@ test("ledger credentials keep genuine Alipay, website and PerPay identities dist
         await revealDetailSection(page, "payments");
         await expect(card.getByText("支付宝交易金额", { exact: true })).toHaveCount(0);
         const technical = card.locator("[data-technical-information]");
-        const trigger = technical.getByRole("button", { name: "技术信息", exact: true });
+        const trigger = technical.getByRole("button", { name: "收款关联技术信息", exact: true });
         await trigger.click();
-        const reader = page.getByRole("dialog", { name: "技术信息", exact: true });
+        const reader = page.getByRole("dialog", { name: "收款关联技术信息", exact: true });
         await reader.getByRole("button", { name: "复制流水编号", exact: true }).click();
         await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(match.ledger_entry_id);
         await reader.getByRole("button", { name: "关闭", exact: true }).click();

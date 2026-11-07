@@ -223,8 +223,8 @@ test.describe("compact mobile button visuals and separate touch targets", () => 
     const parentBefore = await dialog.evaluate(element => ({ height: element.getBoundingClientRect().height, top: element.getBoundingClientRect().top, scrollTop: element.querySelector('[data-overlay-detail]')!.scrollTop }));
     await page.keyboard.press("Enter");
     await expect(view).toHaveAttribute("aria-expanded", "true");
-    const reader = page.getByRole("dialog", { name: "技术信息", exact: true });
-    await expect(reader.locator('pre[aria-label="技术信息"]')).toBeVisible();
+    const reader = page.getByRole("dialog", { name: "流水技术信息", exact: true });
+    await expect(reader.locator('pre[aria-label="流水技术信息"]')).toBeVisible();
     const body = reader.locator(":scope > [data-admin-dialog-body]");
     await expect(body).toHaveCSS("overflow-y", "auto");
     await body.evaluate(element => element.scrollTop = 0);
@@ -234,9 +234,9 @@ test.describe("compact mobile button visuals and separate touch targets", () => 
     }));
     expect(sectionStart.scrollTop).toBe(0);
     const copy = reader.getByRole("button", { name: "复制内部流水编号（PerPay）", exact: true });
-    await expect(reader.getByRole("heading", { name: "技术信息", exact: true })).toBeFocused();
+    await expect(reader.getByRole("heading", { name: "流水技术信息", exact: true })).toBeFocused();
     await page.keyboard.press("Tab");
-    await expect(reader.getByRole("button", { name: "关闭技术信息", exact: true })).toBeFocused();
+    await expect(reader.getByRole("button", { name: "关闭流水技术信息", exact: true })).toBeFocused();
     await page.keyboard.press("Tab");
     await expect(copy).toBeFocused();
     await expect(copy).toHaveAccessibleName("复制内部流水编号（PerPay）");

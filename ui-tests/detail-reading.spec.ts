@@ -58,7 +58,7 @@ async function openDetail(page: Page, manifest: Manifest, key: string) {
   await page.goto(manifest.origin + "/admin" + detailPath(manifest, key));
   await settleOverlay(page);
   await expect(detailBody(page).locator("[data-detail-page]")).toBeVisible();
-  if (key.startsWith("notification")) await expect(detailSection(page, "overview").locator("[data-detail-order-summary]")).toBeVisible();
+  if (key.startsWith("notification")) await expect(detailSection(page, "order").locator("[data-detail-order-summary]")).toBeVisible();
   else if (key.startsWith("match")) {
     const target = targetUrl(page);
     const matchId = detailPath(manifest, key).split("/").at(-1)!;
@@ -69,6 +69,15 @@ async function openDetail(page: Page, manifest: Manifest, key: string) {
   await expect(detailBody(page).locator('[data-slot="skeleton"]')).toHaveCount(0);
   await expect(detailBody(page).locator("[data-detail-identifier]")).toHaveCount(0);
   await page.evaluate(() => document.fonts.ready);
+  // These geometry cases inspect the complete values after an explicit reveal.
+  // The default collapsed state is covered by detail-record-layout.
+  await expandCredentials(detailBody(page));
+}
+async function expandCredentials(owner: Locator) {
+  for (const trigger of await owner.locator('[data-detail-credentials] button[aria-expanded="false"]').all()) {
+    await trigger.click();
+    await expect(trigger).toHaveAttribute("aria-expanded", "true");
+  }
 }
 async function fields(owner: Locator, names: readonly string[]) {
   for (const name of names) await expect(owner.locator("dt").filter({ hasText: new RegExp("^" + name + "$") })).toBeVisible();
@@ -154,7 +163,8 @@ async function readingCredentialsGeometry(page: Page) {
   for (const section of await sections.all()) {
     await expect(section).toHaveAccessibleName(/.+/);
     await expect(section.getByRole("heading")).toHaveCount(1);
-    await expect(section.locator("button[aria-expanded]")).toHaveCount(0);
+    const trigger = section.locator("button[aria-expanded]");
+    if (await trigger.count()) await expect(trigger).toHaveAttribute("aria-expanded", "true");
   }
   return expectDetailFields(sections.locator("[data-detail-fields]"));
 }
@@ -265,9 +275,10 @@ test("detail overlays separate facts into readable business sections", async ({ 
     expect(width, "notifications, payment evidence and transaction details share the same reading width").toBe(readingWidth);
     await expect(foreground(page).getByRole("tab")).toHaveCount(0);
     if (scenario.kind === "notification") {
-      await expect(detailSection(page, "overview").getByRole("heading", { level: 2 })).toHaveText(["通知信息", "关联订单"]);
+      await expect(detailSection(page, "overview").getByRole("heading", { level: 2 })).toHaveText(["通知信息"]);
+      await expect(detailSection(page, "order").getByRole("heading", { level: 2 })).toHaveText(["关联订单"]);
       await expect(detailBody(page).getByRole("group", { name: "关联订单", exact: true }).locator("[data-detail-order-summary]")).toBeVisible();
-      await expect(detailBody(page).getByRole("group", { name: "通知信息", exact: true }).getByRole("button", { name: "技术信息", exact: true })).toBeVisible();
+      await expect(detailBody(page).getByRole("group", { name: "通知信息", exact: true }).getByRole("button", { name: "通知技术信息", exact: true })).toBeVisible();
       await readDetailSection(page, "投递记录");
       await expect(detailSection(page, "attempts").getByRole("heading", { level: 2 })).toHaveText(["投递历史"]);
       await expectAttemptHistory(detailBody(page).getByRole("group", { name: "投递历史", exact: true }), 1);
@@ -298,7 +309,7 @@ test("detail overlays separate facts into readable business sections", async ({ 
   }
 });
 
-test("summaries and credentials wrap at their content widths without stretching short facts", async ({ page, manifest }, info) => {
+test("summaries and credentials retain reading order in stable responsive columns", async ({ page, manifest }, info) => {
   await page.setViewportSize({ width: 2190, height: 900 });
   await login(page, manifest);
   await layout(page, "dark", "full");
@@ -325,16 +336,16 @@ test("summaries and credentials wrap at their content widths without stretching 
         expect(roomy.height, "additional width never adds vertical space to the same facts").toBeLessThanOrEqual(narrow.height + 1);
         if (roomy.orderSummary) {
           const shortFacts = ["应付金额", "实收金额", "所属网站"];
-          expect(roomy.rows.some(row => shortFacts.every(name => row.includes(name))), "at least three short facts fit together when their natural widths fit").toBe(true);
-          expect(roomy.rows.length, "narrow layouts wrap the same complete facts into more rows").toBeLessThan(narrow.rows.length);
-          expect(roomy.height, "content wrapping produces a shorter summary when space is available").toBeLessThan(narrow.height);
-          for (const name of shortFacts.slice(0, 2)) {
-            const first = narrow.fields.find(field => field.name === name)!, last = roomy.fields.find(field => field.name === name)!;
-            expect(first.inline, name + " remains beside its label even in the narrow sample").toBe(true);
-            expect(last.inline).toBe(true);
-            expect(Math.abs(first.width - last.width), name + " does not grow to fill a fraction of the wider container").toBeLessThanOrEqual(1);
+          expect(roomy.fields.filter(field => shortFacts.includes(field.name!))).toHaveLength(shortFacts.length);
+          const columnCount = roomy.width >= 44 * roomy.rootFont ? 2 : 1;
+          expect(roomy.rows.every(row => row.length <= columnCount), "field groups use at most the responsive column count").toBe(true);
+          expect(narrow.rows.every(row => row.length === 1), "narrow content has one predictable field per row").toBe(true);
+          if (columnCount === 2) {
+            const first = roomy.fields.find(field => field.name === "应付金额")!, second = roomy.fields.find(field => field.name === "实收金额")!;
+            expect(roomy.rows[0]).toEqual(["应付金额", "实收金额"]);
+            expect(Math.abs(first.width - second.width), "the two monetary fields share equal column widths").toBeLessThanOrEqual(1);
+            expect(roomy.rows.length).toBeLessThan(narrow.rows.length);
           }
-          expect(roomy.fields.find(field => field.name === "商户订单号（业务网站）")?.wide, "the merchant reference uses natural wrapping, not a forced whole row").toBe(false);
         }
       }
     } finally {
@@ -353,9 +364,9 @@ test("summaries and credentials wrap at their content widths without stretching 
   const twoFacts = flows.find(group => group.fields.length === 2 && group.fields.map(field => field.name).join("/") === "关联方式/关联时间");
   expect(twoFacts, "the genuine inferred match has two short processing facts").toBeTruthy();
   expect(twoFacts!.rows).toEqual([["关联方式", "关联时间"]]);
-  expect(twoFacts!.fields.every(field => field.inline), "both short facts keep their labels and values on one line").toBe(true);
+  expect(Math.abs(twoFacts!.fields[0]!.width - twoFacts!.fields[1]!.width), "processing facts align in equal columns").toBeLessThanOrEqual(1);
   const occupiedWidth = twoFacts!.fields.at(-1)!.right - twoFacts!.fields[0]!.left;
-  expect(twoFacts!.width - occupiedWidth, "two short facts leave unused space at the row end instead of stretching into halves").toBeGreaterThan(twoFacts!.rootFont);
+  expect(Math.abs(twoFacts!.width - occupiedWidth), "processing columns use the available width").toBeLessThanOrEqual(1);
   await record(page, info, { feature: "detail-flow-two-facts", evidence: "local-synthetic-domain", geometry: twoFacts });
   await screenshot(page, info, "reading-flow-two-facts");
 
@@ -384,7 +395,7 @@ test.describe("detail reading width matrix", () => {
           await expect(page.locator("html")).toHaveClass(theme === "dark" ? /dark/ : /^(?!.*\bdark\b)/);
           if (scenario.kind === "notification") {
             await fields(detailSection(page, "overview").locator("[data-notification-information]"), scenario.key === "notificationSite" ? ["下次重试", "通知地址"] : ["所属网站", "下次重试", "通知地址"]);
-            await expect(detailSection(page, "overview").locator("[data-detail-order-summary]")).toBeVisible();
+            await expect(detailSection(page, "order").locator("[data-detail-order-summary]")).toBeVisible();
             await readDetailSection(page, "投递记录");
             await expectAttemptHistory(detailSection(page, "attempts"), 1);
             await expect(detailSection(page, "attempts").getByText(/通知域名解析失败/)).toBeVisible();
@@ -508,7 +519,7 @@ test("named notification scenarios retain delivery facts and safe resend recover
       await expect(card.getByText(/历史投递/)).toBeVisible();
       await expect(card.getByRole("button", { name: "重新发送", exact: true })).toHaveCount(0);
       await expect(card.getByRole("button", { name: "更多操作，通知记录操作", exact: true })).toHaveCount(0);
-      await expect(card.getByRole("button", { name: "技术信息", exact: true })).toBeVisible();
+      await expect(card.getByRole("button", { name: "通知技术信息", exact: true })).toBeVisible();
     }
     if (key === "notificationDead") {
       const trigger = card.getByRole("button", { name: "重新发送", exact: true });
@@ -689,7 +700,7 @@ test("automatic, manual and reversed matches keep full evidence in unified and s
       await expect(evidence.locator("dd").filter({ hasText: match.resolution_operation!.reason! })).toBeVisible();
       await expect(card.getByRole("button", { name: "更多操作，收款关联记录操作", exact: true })).toHaveCount(0);
       await expect(page.getByRole("menuitem", { name: "撤销错误关联", exact: true })).toHaveCount(0);
-      await expect(card.getByRole("button", { name: "技术信息", exact: true })).toBeVisible();
+      await expect(card.getByRole("button", { name: "收款关联技术信息", exact: true })).toBeVisible();
     } else {
       const trigger = card.getByRole("button", { name: "更多操作，收款关联记录操作", exact: true });
       await trigger.click();

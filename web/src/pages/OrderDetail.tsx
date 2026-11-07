@@ -116,7 +116,7 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
       { id: "history", label: "动态与记录", content: <>
         <DetailSection title="订单动态"><OrderTimeline events={order.events} matches={matches} /></DetailSection>
         {history.length > 0 && <Accordion><AccordionItem value="history"><AccordionTrigger>异常历史（{history.length}）</AccordionTrigger><AccordionContent>{history.map(renderException)}</AccordionContent></AccordionItem></Accordion>}
-        <TechnicalDetails data={order} identifiers={[["内部订单编号", order.order_id]]} />
+        <TechnicalDetails title="订单技术信息" data={order} identifiers={[["内部订单编号", order.order_id]]} />
       </> },
     ]} />
   </>;

@@ -76,6 +76,7 @@ function AuditDetailView({ source, eventId }: { source: string; eventId: string 
           </Item>)}</ItemGroup></CardContent>
         </Card>}
         <TechnicalDetails
+          title="审计日志技术信息"
           data={{ action: data.action, category: data.category, source: data.source, source_type: data.source_type, sequence: data.sequence,
             subject_type: data.subject_type, subject_id: data.subject_id, context_recorded: data.context_recorded, duration_ms: data.duration_ms,
             request: { source_address: data.source_address, user_agent: data.user_agent, http_method: data.http_method, route: data.route, http_status: data.http_status }, details: data.details,

@@ -75,7 +75,7 @@ async function geometry(page: Page, mode: "compact" | "full") {
   await expect(card).toHaveCSS("border-radius", "0px");
   await expect(card).toHaveCSS("box-shadow", "none");
   await expect(card.locator('[data-slot="card-footer"]')).toHaveCount(0);
-  await expect(card.getByRole("button", { name: "技术信息", exact: true })).toBeVisible();
+  await expect(card.getByRole("button", { name: "账务异常技术信息", exact: true })).toBeVisible();
   await expect(main.locator("[data-detail-identifier]")).toHaveCount(0);
   return measured;
 }
@@ -202,7 +202,7 @@ test("exception technical dialogs and manual confirmation preserve copy, scope a
     const exception = await read<FinancialException>(page, manifest, endpoint(manifest, key));
     const card = await open(page, manifest, key);
     const entry = card.locator("[data-technical-information]");
-    const tools = entry.getByRole("button", { name: "技术信息", exact: true });
+    const tools = entry.getByRole("button", { name: "账务异常技术信息", exact: true });
     const parent = page.locator("[data-overlay-content]");
     await tools.focus();
     const parentGeometry = () => parent.evaluate(element => {
@@ -213,16 +213,16 @@ test("exception technical dialogs and manual confirmation preserve copy, scope a
     const beforeTechnical = await parentGeometry();
     const detailUrl = page.url();
     await page.keyboard.press("Enter");
-    const technical = page.getByRole("dialog", { name: "技术信息", exact: true });
+    const technical = page.getByRole("dialog", { name: "账务异常技术信息", exact: true });
     await expect(technical).toBeVisible();
-    await expect(technical.locator('pre[aria-label="技术信息"]')).toBeVisible();
+    await expect(technical.locator('pre[aria-label="账务异常技术信息"]')).toBeVisible();
     await expect(entry.locator("pre")).toHaveCount(0);
     expect(await technical.evaluate(element => !!element.closest("[data-overlay-content]"))).toBe(false);
     const duringTechnical = await parentGeometry();
     for (const name of ["width", "height", "contentHeight", "scrollTop"] as const) expect(duringTechnical[name]).toBeCloseTo(beforeTechnical[name], 1);
     expect(page.url()).toBe(detailUrl);
     await page.keyboard.press("Tab");
-    await expect(technical.getByRole("button", { name: "关闭技术信息", exact: true })).toBeFocused();
+    await expect(technical.getByRole("button", { name: "关闭账务异常技术信息", exact: true })).toBeFocused();
     await page.keyboard.press("Tab");
     await expect(technical.getByRole("button", { name: "复制异常编号", exact: true })).toBeFocused();
     await page.keyboard.press("Enter");

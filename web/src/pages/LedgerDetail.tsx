@@ -17,7 +17,7 @@ import { QueryView } from "@/components/request-state";
 import { LedgerFreshness } from "@/components/ledger-freshness";
 import { LedgerDirection, LedgerMoney, ledgerFact } from "@/components/ledger-record";
 import { ListDateTime } from "@/components/list-primitives";
-import { DetailFields, DetailNavigation, DetailPage, TechnicalDetails } from "@/components/detail/DetailPrimitives";
+import { DetailCredentials, DetailFields, DetailNavigation, DetailPage, TechnicalDetails } from "@/components/detail/DetailPrimitives";
 import { DetailSections } from "@/components/detail/DetailSections";
 import { RecordTools } from "@/components/detail/RecordTools";
 import { CandidateCard, MatchCard } from "@/components/detail/PaymentEvidence";
@@ -35,9 +35,10 @@ function LedgerIdentifier({ value, name }: { value: string | null; name: string 
   return value ? <CopyValue value={value} label={"复制" + name} /> : <>—</>;
 }
 
-function LedgerCredentials({ title, items, headingLevel = 3 }: { title: string; items: ReadonlyArray<readonly [string, ReactNode]>; headingLevel?: 3 | 4 }) {
+function LedgerCredentials({ title, items, headingLevel = 3, collapsible = false }: { title: string; items: ReadonlyArray<readonly [string, ReactNode]>; headingLevel?: 3 | 4; collapsible?: boolean }) {
   const titleId = useId();
   const Heading = headingLevel === 3 ? "h3" : "h4";
+  if (collapsible) return <DetailCredentials title={title} items={items} headingLevel={headingLevel} collapsible />;
   return <section aria-labelledby={titleId} className="relative min-w-0" data-detail-credentials data-ledger-credentials>
     <Heading id={titleId} className="sr-only">{title}</Heading>
     <DetailFields density="comfortable" layout="flow" items={items} />
@@ -76,16 +77,16 @@ export default function LedgerDetail() {
             ["对方", ledgerFact(data.other_account)],
             ["支付宝备注", ledgerFact(data.memo)],
           ]} />
-          <LedgerCredentials title="支付宝交易编号" items={[
+          <LedgerCredentials title="支付宝交易编号" collapsible={!!overlay && data.content_consistent && data.active_match_count === 1 && !data.has_conflicts} items={[
             ["支付宝流水号", <CopyValue value={data.external_event_id} label="复制支付宝流水号" />],
             ["支付宝订单号", <LedgerIdentifier value={data.provider_order_no} name="支付宝订单号" />],
             ["支付宝商户单号", <LedgerIdentifier value={data.merchant_order_no} name="支付宝商户单号" />],
           ]} />
           <LedgerFreshness size="default" value={system && !system.checking && !system.unavailable ? system.status.data?.data.ledger.last_success_at : undefined} />
-          {overlay && <TechnicalDetails data={data} identifiers={[["内部流水编号（PerPay）", data.ledger_entry_id], ["支付宝流水号", data.external_event_id]]} />}
+          {overlay && <TechnicalDetails title="流水技术信息" data={data} identifiers={[["内部流水编号（PerPay）", data.ledger_entry_id], ["支付宝流水号", data.external_event_id]]} />}
         </CardContent>
       </Card>
-      {!overlay && <TechnicalDetails data={data} identifiers={[["内部流水编号（PerPay）", data.ledger_entry_id], ["支付宝流水号", data.external_event_id]]} />}
+      {!overlay && <TechnicalDetails title="流水技术信息" data={data} identifiers={[["内部流水编号（PerPay）", data.ledger_entry_id], ["支付宝流水号", data.external_event_id]]} />}
         </> },
         { id: "payments", label: "收款关联", content: <LedgerMatches entry={data} />, anchorPrefixes: ["match-"] },
         { id: "sources", label: `采集记录 · ${data.sources.length}`, anchorPrefixes: ["source-", "candidate-"], content:
@@ -121,7 +122,7 @@ function LedgerWarnings({ entry }: { entry: AdminLedgerDetail }) {
 function LedgerSource({ source, index, single, consistent, hasMatch }: { source: AdminLedgerSource; index: number; single: boolean; consistent: boolean; hasMatch: boolean }) {
   const overlay = useOverlayContext();
   const identifiers = [["内部流水编号（PerPay）", source.ledger_entry_id], ["原始事件编号", source.raw_event_id], ["支付宝 App ID", source.app_id], ["采集来源标识", source.provider_account_key], ["语义指纹", source.semantic_fingerprint]] as const;
-  const technicalInformation = overlay ? <TechnicalDetails data={source} identifiers={identifiers} /> : null;
+  const technicalInformation = overlay ? <TechnicalDetails title={`查账记录 ${index + 1} 技术信息`} data={source} identifiers={identifiers} /> : null;
   const heading = <h3 className={single ? "sr-only" : "text-sm font-medium"}>查账记录 {index + 1}</h3>;
   const canAssociate = source.direction === "CREDIT" && ["UNALLOCATED", "CANDIDATE", "CONFLICT"].includes(source.state);
   const actions = <div className="flex max-w-full flex-wrap items-center gap-2">
@@ -235,7 +236,7 @@ function LedgerConflicts({ entry }: { entry: AdminLedgerDetail }) {
         <LedgerCredentials title="问题对应的记录" headingLevel={4} items={[
           ["关联内部流水编号（PerPay）", <LedgerIdentifier value={conflict.existing_ledger_entry_id} name="冲突关联内部流水编号（PerPay）" />],
         ]} />
-        {overlay && <TechnicalDetails data={conflict} identifiers={[["账本冲突编号", conflict.conflict_id], ["关联内部流水编号（PerPay）", conflict.existing_ledger_entry_id]]} />}
+        {overlay && <TechnicalDetails title="账本冲突技术信息" data={conflict} identifiers={[["账本冲突编号", conflict.conflict_id], ["关联内部流水编号（PerPay）", conflict.existing_ledger_entry_id]]} />}
       </CardContent>
     </Card>)}
   </section>;

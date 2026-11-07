@@ -412,24 +412,14 @@ function DeliveryDetail({ deliveryId }: { deliveryId: string }) {
       <QueryView query={delivery}>
         {({ data }) => (
           <DetailSections label="通知详情内容" sections={[
-            { id: "overview", label: "概况", content: <>
-            <DeliveryCard
+            { id: "overview", label: "概况", content: <DeliveryCard
               detail={{ ...data, attempts: attempts.data?.data ?? [] }}
               attemptsAvailable={!!attempts.data}
               attemptsError={attempts.error}
               retryAttempts={() => { void attempts.refetch(); }}
               density="comfortable"
               section="overview"
-            />
-            <Card aria-label="关联订单" className="detail-section" data-notification-related-order>
-              <CardHeader>
-                <CardTitle role="heading" aria-level={2}>关联订单</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <RelatedOrder orderId={data.event.order_id} density="comfortable" layout="flow" />
-              </CardContent>
-            </Card>
-            </> },
+            /> },
             { id: "attempts", label: "投递记录", content: <DeliveryCard
               detail={{ ...data, attempts: attempts.data?.data ?? [] }}
               attemptsAvailable={!!attempts.data}
@@ -437,6 +427,14 @@ function DeliveryDetail({ deliveryId }: { deliveryId: string }) {
               retryAttempts={() => { void attempts.refetch(); }}
               density="comfortable" section="attempts"
             /> },
+            { id: "order", label: "关联订单", content: <Card aria-label="关联订单" className="detail-section" data-notification-related-order>
+              <CardHeader>
+                <CardTitle role="heading" aria-level={2}>关联订单</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <RelatedOrder orderId={data.event.order_id} density="comfortable" layout="flow" />
+              </CardContent>
+            </Card> },
           ]} />
         )}
       </QueryView>

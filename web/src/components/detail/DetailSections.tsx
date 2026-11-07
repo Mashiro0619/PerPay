@@ -1,5 +1,6 @@
 import { useId, useLayoutEffect, useRef, type ReactNode } from "react";
 import { useLocation, useSearchParams } from "react-router";
+import { Separator } from "@/components/ui/separator";
 
 export type DetailSectionDefinition = {
   id: string;
@@ -50,7 +51,8 @@ export function DetailSections({ sections, label = "详情内容" }: {
   }, [location.pathname, anchor, destination]);
 
   return <div ref={container} role="group" aria-label={label} className="detail-sections flex min-w-0 flex-col gap-4">
-    {sections.map(section => <section key={section.id} aria-label={section.label} data-detail-section={section.id} tabIndex={-1} className="min-w-0 scroll-mt-4">
+    {sections.map((section, index) => <section key={section.id} aria-label={section.label} data-detail-section={section.id} tabIndex={-1} className="flex min-w-0 scroll-mt-4 flex-col gap-4">
+      {index > 0 && <Separator />}
       <div className="detail-section-content flex min-w-0 flex-col gap-4">{section.content}</div>
     </section>)}
   </div>;

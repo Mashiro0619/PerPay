@@ -53,13 +53,13 @@ export function RecordTools({
                 ref={trigger}
                 variant="ghost"
                 size="sm"
-                className={overlay && technical ? "w-fit self-end" : undefined}
+                className={cn(overlay && "h-auto min-h-8 max-w-full whitespace-normal", overlay && technical && "w-fit self-end")}
                 aria-label={label === "更多操作" ? label : `更多操作，${label}`}
               />
             }
           >
             <MoreHorizontal data-icon="inline-start" />
-            更多操作
+            {overlay ? label : "更多操作"}
           </DropdownMenuTrigger>} /><TooltipContent>{label}</TooltipContent></Tooltip>
           <DropdownMenuContent align="end">
             {actions.length > 0 && (
@@ -94,7 +94,7 @@ export function RecordTools({
             </DropdownMenuGroup>
           </DropdownMenuContent>
         </DropdownMenu>}
-        {technical && overlay && <TechnicalDetails data={data} identifiers={identifiers} />}
+        {technical && overlay && <TechnicalDetails title={label.replace(/操作$/, "") + "技术信息"} data={data} identifiers={identifiers} />}
       </div>
       {technical && !overlay && <TechnicalDetailsDialog
         open={open}

@@ -273,16 +273,16 @@ describe("audit event details", () => {
     expect(screen.queryByText("耗时")).not.toBeInTheDocument();
     expect(screen.queryByText(/客户端名称根据 User-Agent/)).not.toBeInTheDocument();
     const user = userEvent.setup();
-    const trigger = screen.getByRole("button", { name: "技术信息" });
+    const trigger = screen.getByRole("button", { name: "审计日志技术信息" });
     await user.click(trigger);
-    const technical = await screen.findByRole("dialog", { name: "技术信息" });
-    const data = within(technical).getByLabelText("技术信息", { selector: "pre" });
+    const technical = await screen.findByRole("dialog", { name: "审计日志技术信息" });
+    const data = within(technical).getByLabelText("审计日志技术信息", { selector: "pre" });
     expect(data).toHaveTextContent(subjectId);
     expect(data).toHaveTextContent('"duration_ms": null');
     expect(data).toHaveTextContent('"http_method": null');
     expect(within(technical).getByText(/客户端名称根据 User-Agent/)).toBeVisible();
     await user.keyboard("{Escape}");
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "技术信息" })).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "审计日志技术信息" })).not.toBeInTheDocument());
     await waitFor(() => expect(trigger).toHaveFocus());
     expect(screen.getByRole("group", { name: "日志概况" })).toBe(summary);
   });
@@ -320,13 +320,13 @@ describe("audit event details", () => {
     expect(within(changes).queryByRole("separator")).not.toBeInTheDocument();
     expect(screen.getByText(/关联活动当前不可用/)).toBeVisible();
     const user = userEvent.setup();
-    const trigger = screen.getByRole("button", { name: "技术信息" });
+    const trigger = screen.getByRole("button", { name: "审计日志技术信息" });
     await user.click(trigger);
-    const technical = await screen.findByRole("dialog", { name: "技术信息" });
-    expect(within(technical).getByLabelText("技术信息", { selector: "pre" })).toBeVisible();
+    const technical = await screen.findByRole("dialog", { name: "审计日志技术信息" });
+    expect(within(technical).getByLabelText("审计日志技术信息", { selector: "pre" })).toBeVisible();
     expect(screen.queryByText(/suppressed-before|suppressed-after/)).not.toBeInTheDocument();
     await user.click(within(technical).getByRole("button", { name: "关闭" }));
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "技术信息" })).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "审计日志技术信息" })).not.toBeInTheDocument());
     await waitFor(() => expect(trigger).toHaveFocus());
     expect(screen.getByRole("group", { name: "配置变更" })).toBe(changes);
   });
@@ -355,8 +355,8 @@ describe("audit event details", () => {
     const summary = screen.getByRole("group", { name: "日志概况" });
     expect(within(summary).getByText("排序时间")).toBeVisible();
     expect(within(summary).getByText("2026/11/01 10:03:05")).toBeVisible();
-    await userEvent.click(screen.getByRole("button", { name: "技术信息" }));
-    const technical = await screen.findByRole("dialog", { name: "技术信息" });
+    await userEvent.click(screen.getByRole("button", { name: "审计日志技术信息" }));
+    const technical = await screen.findByRole("dialog", { name: "审计日志技术信息" });
     expect(within(technical).getByText(/分钟汇总，不对应单次请求/)).toBeVisible();
     expect(within(technical).getByText("汇总组编号")).toBeVisible();
     expect(within(technical).getByText("aggregate-group-identifier")).toBeVisible();
@@ -369,9 +369,9 @@ describe("audit event details", () => {
     expect(within(source).getByText("192.0.2.25")).toBeVisible();
     expect(within(source).getByText("Chrome · Windows")).toBeVisible();
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "技术信息" }));
-    const technical = await screen.findByRole("dialog", { name: "技术信息" });
-    expect(within(technical).getByLabelText("技术信息", { selector: "pre" })).toHaveTextContent(auditEvent.user_agent!);
+    await user.click(screen.getByRole("button", { name: "审计日志技术信息" }));
+    const technical = await screen.findByRole("dialog", { name: "审计日志技术信息" });
+    expect(within(technical).getByLabelText("审计日志技术信息", { selector: "pre" })).toHaveTextContent(auditEvent.user_agent!);
   });
 
   it.each([
