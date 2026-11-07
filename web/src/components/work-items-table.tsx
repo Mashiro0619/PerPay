@@ -257,11 +257,14 @@ export function WorkItemsTable({
       columnsMenu={!!control}
       renderSummary={(item, context) => (
         <ListSummary
-          layout={control ? "record" : undefined}
+          layout={control ? "activity" : undefined}
           identity={columns[0]!.cell(item, context)}
-          source={control && !clientId && <SiteIdentity clientId={item.order_summary?.api_client_id} name={item.order_summary?.site_name} />}
           aside={control ? <ReminderStatus item={item} /> : columns.find((column) => column.id === "actions")!.cell(item, context)}
           actions={control && actions?.(item)}
+          metadata={control && <dl className="activity-summary-context">
+            {!clientId && <div><dt className="sr-only">网站</dt><dd><SiteIdentity clientId={item.order_summary?.api_client_id} name={item.order_summary?.site_name} /></dd></div>}
+            <div><dt>提醒时间</dt><dd><ListDateTime value={item.actionable_at} inline /></dd></div>
+          </dl>}
           details={columns.filter((column) =>
             context.isColumnVisible(column.id) && !context.isSummaryPrimary(column.id),
           ).map((column) => (
@@ -273,10 +276,11 @@ export function WorkItemsTable({
           {columns.filter((column) =>
             column.id !== "identity" &&
             column.id !== "actions" &&
+            (!control || (column.id !== "actionable_at" && (column.id !== "payable_amount_cents" || !!item.order_summary))) &&
             context.isSummaryPrimary(column.id),
           ).map((column) => (
             column.id === "related_record" ? (
-              <div key={column.id} className="business-summary-field col-span-full" data-full-width>
+              <div key={column.id} className="business-summary-field activity-summary-related">
                 <dt className="sr-only">{column.label}</dt>
                 <dd className="w-full">{column.cell(item, context)}</dd>
               </div>

@@ -60,7 +60,7 @@ const lists = [
     element: <WorkItems />,
     data: [reminder],
     hiddenColumn: "创建时间",
-    summaryFields: ["关联记录", "应付金额", "提醒时间"],
+    summaryFields: ["关联记录"],
     summaryStatuses: [],
     centeredColumns: ["actionable_at", "created_at", "actions"],
     rightAlignedColumns: ["payable_amount_cents"],
@@ -81,7 +81,7 @@ const lists = [
     data: [notification],
     hiddenColumn: "商户订单号",
     summaryFields: ["尝试次数", "下次尝试"],
-    summaryStatuses: ["等待重试", "收款已确认"],
+    summaryStatuses: ["等待重试"],
     centeredColumns: ["status", "attempt_count", "created_at", "next_attempt_at"],
   },
 ];

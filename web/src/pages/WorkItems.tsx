@@ -595,6 +595,7 @@ function RestoreReminder({
 }) {
   const readAgain = needsReminderRefresh(state);
   const pending = state?.status === "pending";
+  if (item.ended && !pending && !state?.error) return null;
   return (
     <div className="flex flex-col items-end gap-2">
       <Button

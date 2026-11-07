@@ -1857,6 +1857,31 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 }
 /* End console lists. */
 
+/* Activity rows keep the subject, outcome and supporting context together. */
+[data-summary-layout="activity"] .list-summary-heading { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 0.75rem; }
+[data-summary-layout="activity"] .list-summary-aside { min-width: 0; max-width: none; }
+[data-business-table] [data-summary-layout="activity"] .list-identity-title { width: 100%; white-space: normal; overflow: visible; }
+[data-business-table][data-embedded="false"] [data-summary-layout="activity"] .business-summary-fields { display: flex; align-items: center; justify-content: space-between; gap: 0.375rem 1rem; }
+[data-summary-layout="activity"] .business-summary-field { flex-wrap: wrap; }
+[data-summary-layout="activity"] .business-summary-field dd { flex: none; }
+[data-business-table][data-embedded="false"] [data-summary-layout="activity"] .activity-summary-related { flex: 1 1 10rem; }
+[data-business-table][data-embedded="false"] [data-summary-layout="activity"] .activity-summary-related dd { width: 100%; max-width: 100%; white-space: normal; }
+[data-summary-layout="activity"] .activity-summary-related .record-list-meta { display: flex; min-width: 0; gap: 0.25rem; }
+[data-summary-layout="activity"] .activity-summary-related .list-code { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+[data-summary-layout="activity"] :is(.activity-summary-context, [data-summary-message]) { font-size: 0.75rem; line-height: 1.5; color: var(--muted-foreground); }
+[data-summary-layout="activity"] .activity-summary-context { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.25rem 0.75rem; margin: 0; }
+[data-summary-layout="activity"] .activity-summary-context > div { display: flex; min-width: 0; max-width: 100%; flex-wrap: wrap; align-items: baseline; gap: 0.375rem; }
+[data-summary-layout="activity"] .activity-summary-context dd { min-width: 0; margin: 0; }
+[data-summary-layout="activity"] .activity-summary-context .list-time { white-space: normal; }
+[data-summary-layout="activity"] [data-summary-actions] { justify-content: flex-end; }
+[data-summary-layout="activity"] [data-summary-actions]:empty { display: none; }
+@container summary (max-width: 17rem) {
+  [data-summary-layout="activity"] .list-summary-heading { grid-template-columns: minmax(0, 1fr); gap: 0.375rem; }
+  [data-summary-layout="activity"] .list-summary-aside { align-items: flex-start; }
+  [data-business-table][data-embedded="false"] [data-summary-layout="activity"] .business-summary-field dd { white-space: normal; }
+  [data-summary-layout="activity"] .list-money { white-space: normal; overflow-wrap: anywhere; }
+}
+
 /* Order summaries group identity on the left and the payment outcome on the right. */
 [data-summary-layout="order"] .list-summary-heading { display: grid; grid-template-columns: minmax(0, 1fr) max-content; align-items: start; gap: 1rem; }
 [data-summary-layout="order"] .list-summary-identity { display: flex; flex-direction: column; gap: 0.25rem; }

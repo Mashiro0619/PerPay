@@ -308,9 +308,8 @@ describe("reminder dismissal", () => {
     renderPage("?type=FINANCIAL_EXCEPTION");
     await screen.findByRole("link", { name: "收入尚未匹配订单" });
     await user.click(screen.getByRole("button", { name: "已忽略" }));
-    expect(
-      await screen.findByRole("button", { name: "已结束" }),
-    ).toBeDisabled();
+    expect(await screen.findByText("已结束", { exact: true })).toBeVisible();
+    expect(screen.queryByRole("button", { name: "已结束" })).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "忽略全部筛选结果（跨页）" }),
     ).not.toBeInTheDocument();

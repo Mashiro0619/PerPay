@@ -210,7 +210,7 @@ describe("work item business context", () => {
       expect(screen.getByRole("list", { name: "待处理提醒列表" })).toBeVisible();
       expect(screen.queryByRole("button", { name: "展开信息" })).not.toBeInTheDocument();
       for (const row of rows()) {
-        expect(row.querySelectorAll(".business-summary-field")).toHaveLength(3);
+        expect(row.querySelectorAll(".business-summary-field")).toHaveLength(2);
         expect(within(row).getByText("提醒时间", { selector: "dt" }).nextElementSibling).toHaveTextContent("2026/10/30 11:00");
       }
     }
@@ -242,7 +242,7 @@ describe("work item business context", () => {
     expect(identity.parentElement).toHaveTextContent(label + " " + reference);
     expect(screen.getByRole("link", { name: title })).toHaveAttribute("href", path + item.resource_id);
     expect(screen.queryByRole("link", { name: /^查看订单/ })).not.toBeInTheDocument();
-    expect(screen.getByRole("group", { name: "应付金额 —" })).toBeVisible();
+    expect(screen.queryByRole("group", { name: "应付金额 —" })).not.toBeInTheDocument();
     expect(screen.queryByText("订阅网站")).not.toBeInTheDocument();
     if (item.type === "LEDGER_CONFLICT") expect(screen.queryByTitle(ledgerId)).not.toBeInTheDocument();
   });

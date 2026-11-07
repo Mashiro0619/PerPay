@@ -336,24 +336,28 @@ function DeliveryPage({
                   columns={columns}
                   renderSummary={(delivery, context) => (
                     <ListSummary
-                      layout="record"
+                      layout="activity"
                       identity={columns[0]!.cell(delivery, context)}
-                      source={!clientId && <SiteIdentity clientId={delivery.order_summary?.api_client_id} name={delivery.order_summary?.site_name} />}
-                      status={<><StatusBadge value={delivery.status} /><span>通知类型：<span>{label(delivery.event.event_type)}</span></span></>}
+                      aside={<div data-summary-status><StatusBadge value={delivery.status} /></div>}
+                      context={<div className="activity-summary-context">
+                        {!clientId && <SiteIdentity clientId={delivery.order_summary?.api_client_id} name={delivery.order_summary?.site_name} />}
+                        <span>通知类型：<span>{label(delivery.event.event_type)}</span></span>
+                      </div>}
                       message={delivery.last_error_code ? notificationErrorName(delivery.last_error_code) : undefined}
                       details={columns.filter((column) =>
                         context.isColumnVisible(column.id) && !context.isSummaryPrimary(column.id),
                       ).map((column) => (
                         <ListSummaryField key={column.id} label={column.label}>
-                          {column.cell(delivery, context)}
+                          {column.id === "next_attempt_at" ? <ListDateTime value={delivery.next_attempt_at} inline /> : column.cell(delivery, context)}
                         </ListSummaryField>
                       ))}
                     >
                       {columns.filter((column) =>
-                        !["identity", "status", "event_type"].includes(column.id) && context.isSummaryPrimary(column.id),
+                        !["identity", "status", "event_type"].includes(column.id) &&
+                        (column.id !== "next_attempt_at" || !!delivery.next_attempt_at) && context.isSummaryPrimary(column.id),
                       ).map((column) => (
-                        <ListSummaryField key={column.id} label={column.label} visibleLabel={column.id === "attempt_count" || column.id === "next_attempt_at"} fullWidth={column.id === "next_attempt_at"}>
-                          {column.cell(delivery, context)}
+                        <ListSummaryField key={column.id} label={column.label} visibleLabel={column.id === "attempt_count" || column.id === "next_attempt_at"}>
+                          {column.id === "next_attempt_at" ? <ListDateTime value={delivery.next_attempt_at} inline /> : column.cell(delivery, context)}
                         </ListSummaryField>
                       ))}
                     </ListSummary>

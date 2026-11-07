@@ -90,6 +90,7 @@ export function ListDateTime({
 export function ListSummary({
   identity,
   aside,
+  context,
   source,
   layout,
   status,
@@ -101,10 +102,11 @@ export function ListSummary({
 }: {
   identity: ReactNode;
   aside?: ReactNode;
+  context?: ReactNode;
   /** Cross-site context stays visible alongside the record's primary fields. */
   source?: ReactNode;
   /** Stable title, status and metadata rows for standalone record lists. */
-  layout?: "record" | "order";
+  layout?: "record" | "order" | "activity";
   status?: ReactNode;
   message?: ReactNode;
   metadata?: ReactNode;
@@ -121,6 +123,7 @@ export function ListSummary({
         <div className="list-summary-identity">{identity}</div>
         {aside && <ItemActions className="list-summary-aside">{aside}</ItemActions>}
       </ItemHeader>
+      {context}
       {status && <div data-summary-status>{status}</div>}
       {compact && source && <div className="list-summary-source flex min-w-0 items-baseline gap-1.5"><span className="shrink-0">网站</span>{source}</div>}
       {message && <div data-summary-message>{message}</div>}

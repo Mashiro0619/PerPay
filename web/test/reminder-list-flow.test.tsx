@@ -638,7 +638,7 @@ describe("reminder restore list continuity", () => {
     ).toBeVisible();
     expect(view.writes).toHaveLength(1);
   });
-  it("refreshes an ended item into a disabled state instead of offering an endless failing retry", async () => {
+  it("refreshes an ended item into a read-only status without offering another restore", async () => {
     let ended = false;
     const view = mount({
       get: () =>
@@ -654,8 +654,8 @@ describe("reminder restore list continuity", () => {
     await screen.findByText("提醒已结束，无需恢复提醒。");
     await waitFor(() =>
       expect(
-        within(row(1)).getByRole("button", { name: "已结束" }),
-      ).toBeDisabled(),
+        within(row(1)).getByText("已结束", { exact: true }),
+      ).toBeVisible(),
     );
     expect(view.writes).toHaveLength(1);
     expect(
