@@ -48,6 +48,7 @@ function mount(options: { dirty?: boolean; currentSite?: Site; failExport?: bool
       saved = { ...saved, revision: saved.revision + 1 };
       return json({ data: { configuration: saved, secret: "rotated-secret-not-cached" } });
     }
+    if (body.revision !== saved.revision) return json({ error: { code: "epay_revision_conflict", message: "接入配置已变化，请重新读取。" } }, 409);
     saved = { ...saved, ...body, revision: saved.revision + 1 };
     return json({ data: saved });
   });
@@ -58,6 +59,7 @@ function mount(options: { dirty?: boolean; currentSite?: Site; failExport?: bool
   }], { initialEntries: ["/sites/site_alpha/settings/integration"] });
   const view = render(<QueryClientProvider client={queryClient}><RouterProvider router={router} /></QueryClientProvider>);
   return { ...view, writes, reload, fetchMock,
+    replaceConfiguration(next: SiteEpayConfiguration) { saved = { ...next }; },
     deferSecret() {
       let resolve!: (response: Response) => void;
       secretResponse = () => new Promise(done => { resolve = done; });
@@ -249,5 +251,58 @@ describe("website integration assistant", () => {
     expect(screen.getByRole("button", { name: "下载完整配置" })).toBeEnabled();
     await userEvent.click(screen.getByRole("button", { name: "下载完整配置" }));
     await waitFor(() => expect(URL.createObjectURL).toHaveBeenCalledTimes(1));
+  });
+
+  for (const remoteV2 of [true, false]) it(`rebases a rejected switch edit without overwriting remote V2=${remoteV2}`, async () => {
+    const fixture = mount();
+    await screen.findByText("网站接入助手");
+    await userEvent.click(screen.getByRole("button", { name: "易支付 V1" }));
+    await userEvent.click(screen.getByRole("switch"));
+    fixture.replaceConfiguration({ ...configuration, revision: 5, v2_enabled: remoteV2, v1_key_version: 2 });
+    // A background cache refresh must not silently change the edit baseline.
+    act(() => queryClient.setQueryData(siteEpayKey(site.client_id), { ...configuration, revision: 5, v2_enabled: remoteV2, v1_key_version: 2 }));
+    await userEvent.click(screen.getByRole("button", { name: "保存易支付设置" }));
+    await screen.findByRole("button", { name: "重新读取配置" });
+    expect(fixture.writes[0]?.body).toEqual({ revision: 4, v1_enabled: false, v2_enabled: true });
+    expect(screen.getByRole("button", { name: "保存易支付设置" })).toBeDisabled();
+    await userEvent.click(screen.getByRole("button", { name: "重新读取配置" }));
+    await screen.findByText("配置已重新读取，已保留你的修改，请核对后保存。");
+    expect(fixture.writes).toHaveLength(1);
+    await userEvent.click(screen.getByRole("button", { name: "保存易支付设置" }));
+    await waitFor(() => expect(fixture.writes[1]?.body).toEqual({ revision: 5, v1_enabled: false, v2_enabled: remoteV2 }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "保存易支付设置" })).not.toBeInTheDocument());
+  });
+
+  it("clears the draft if a concurrent change already applied the same switch value", async () => {
+    const fixture = mount();
+    await screen.findByText("网站接入助手");
+    await userEvent.click(screen.getByRole("button", { name: "易支付 V1" }));
+    await userEvent.click(screen.getByRole("switch"));
+    fixture.replaceConfiguration({ ...configuration, revision: 5, v1_enabled: false });
+    await userEvent.click(screen.getByRole("button", { name: "保存易支付设置" }));
+    await userEvent.click(await screen.findByRole("button", { name: "重新读取配置" }));
+    await screen.findByText("配置已重新读取，当前修改已与服务器一致。");
+    expect(screen.queryByRole("button", { name: "保存易支付设置" })).not.toBeInTheDocument();
+    expect(screen.getByRole("switch")).not.toBeChecked();
+    expect(fixture.writes).toHaveLength(1);
+  });
+
+  it("retains the draft and the explicit reload action when conflict recovery cannot read", async () => {
+    const fixture = mount();
+    await screen.findByText("网站接入助手");
+    await userEvent.click(screen.getByRole("button", { name: "易支付 V1" }));
+    await userEvent.click(screen.getByRole("switch"));
+    fixture.replaceConfiguration({ ...configuration, revision: 5, v2_enabled: false });
+    await userEvent.click(screen.getByRole("button", { name: "保存易支付设置" }));
+    await screen.findByRole("button", { name: "重新读取配置" });
+    fixture.fetchMock.mockImplementationOnce(() => json({ error: { code: "internal_error", message: "暂时读取失败" } }, 503));
+    await userEvent.click(screen.getByRole("button", { name: "重新读取配置" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "重新读取配置" })).toBeEnabled());
+    expect(screen.getByRole("switch")).not.toBeChecked();
+    expect(screen.getByRole("button", { name: "保存易支付设置" })).toBeDisabled();
+    await userEvent.click(screen.getByRole("button", { name: "重新读取配置" }));
+    await screen.findByText("配置已重新读取，已保留你的修改，请核对后保存。");
+    await userEvent.click(screen.getByRole("button", { name: "保存易支付设置" }));
+    await waitFor(() => expect(fixture.writes[1]?.body).toEqual({ revision: 5, v1_enabled: false, v2_enabled: false }));
   });
 });

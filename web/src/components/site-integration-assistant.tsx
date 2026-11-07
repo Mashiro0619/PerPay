@@ -81,24 +81,28 @@ export function SiteIntegrationAssistant(props: AssistantProps) {
         reading={query.isFetching} onReload={async () => {
           const refreshed = await query.refetch();
           if (refreshed.error) throw refreshed.error;
+          if (!refreshed.data) throw new Error("接入配置读取不完整，请重新读取。");
           props.onReloadSite();
+          return refreshed.data;
         }} />}
   </>;
 }
 
 function IntegrationContent({ site, siteDirty = false, disabled = false, showClientId = true,
   configuration, reading, onReload }: AssistantProps & {
-    configuration: SiteEpayConfiguration; reading: boolean; onReload: () => Promise<void>;
+    configuration: SiteEpayConfiguration; reading: boolean; onReload: () => Promise<SiteEpayConfiguration>;
   }) {
   const id = useId();
   const [protocol, setProtocol] = useState<IntegrationProtocol>("native");
-  const [draft, setDraft] = useState<Pick<SiteEpayConfiguration, "revision" | "v1_enabled" | "v2_enabled"> | null>(null);
-  const values = draft ?? configuration;
-  const dirty = !!draft && (draft.v1_enabled !== configuration.v1_enabled || draft.v2_enabled !== configuration.v2_enabled);
+  type Switches = Pick<SiteEpayConfiguration, "revision" | "v1_enabled" | "v2_enabled">;
+  const [draft, setDraft] = useState<{ base: Switches; values: Switches } | null>(null);
+  const values = draft?.values ?? configuration;
+  const dirty = draft !== null;
   const clearDraft = useDirtyDraft(dirty);
   const [notifyUrl, setNotifyUrl] = useState(() => site.configuration.notification_origin ? site.configuration.notification_origin + "/webhooks/perpay" : "");
   const [returnUrl, setReturnUrl] = useState(() => site.configuration.return_origin ? site.configuration.return_origin + "/return" : "");
   const [error, setError] = useState<Error | null>(null);
+  const [refreshRequired, setRefreshRequired] = useState(false);
   const [feedback, setFeedback] = useState("");
   const [pendingRead, setPendingRead] = useState(false);
   const [revealed, setRevealed] = useState<{ purpose: EpaySecret; secret: string; public_key?: string | null } | null>(null);
@@ -156,9 +160,13 @@ function IntegrationContent({ site, siteDirty = false, disabled = false, showCli
       setDraft(null);
       clearDraft();
       setError(null);
+      setRefreshRequired(false);
       setFeedback(purpose ? "密钥已更新，请下载最新配置并更新业务网站。" : "易支付设置已保存。");
     },
-    onError: reason => setError(reason instanceof Error ? reason : new Error("保存失败，请重新读取并核对。")),
+    onError: reason => {
+      setError(reason instanceof Error ? reason : new Error("保存失败，请重新读取并核对。"));
+      if (reason instanceof ApiError && reason.status === 409) setRefreshRequired(true);
+    },
   });
   const busy = disabled || reading || pendingRead || persist.isPending;
   const blocked = busy || siteDirty || dirty;
@@ -170,9 +178,37 @@ function IntegrationContent({ site, siteDirty = false, disabled = false, showCli
   const notifyError = urlError(notifyUrl, site.configuration.notification_origin, true);
   const returnError = urlError(returnUrl, site.configuration.return_origin, false);
   const fieldErrors = error instanceof ApiError ? error.fields : {};
-  const needsRefresh = error instanceof ApiError && error.status === 409;
+  const needsRefresh = refreshRequired || error instanceof ApiError && error.status === 409;
   const sitePath = "/sites/" + encodeURIComponent(site.client_id);
   const endpoint = protocol === "native" ? "/api/v1/orders" : protocol === "epay_v1" ? "/submit.php" : "/api/pay/submit";
+
+  async function reloadConfiguration() {
+    setRefreshRequired(true);
+    try {
+      const remote = await onReload();
+      if (draft) {
+        // With boolean fields, concurrent edits either agree or affect different
+        // switches. Preserve only our edits and take untouched fields remotely.
+        const merged: Switches = {
+          revision: remote.revision,
+          v1_enabled: draft.values.v1_enabled === draft.base.v1_enabled ? remote.v1_enabled : draft.values.v1_enabled,
+          v2_enabled: draft.values.v2_enabled === draft.base.v2_enabled ? remote.v2_enabled : draft.values.v2_enabled,
+        };
+        if (merged.v1_enabled === remote.v1_enabled && merged.v2_enabled === remote.v2_enabled) {
+          setDraft(null);
+          clearDraft();
+          setFeedback("配置已重新读取，当前修改已与服务器一致。");
+        } else {
+          setDraft({ base: remote, values: merged });
+          setFeedback("配置已重新读取，已保留你的修改，请核对后保存。");
+        }
+      }
+      setError(null);
+      setRefreshRequired(false);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason : new Error("读取失败，请重试。"));
+    }
+  }
 
   async function read(purpose?: EpaySecret) {
     if (document.hidden || blocked || activeRead.current || writePending.current) return;
@@ -210,6 +246,7 @@ function IntegrationContent({ site, siteDirty = false, disabled = false, showCli
     } catch (reason) {
       if (current === generation.current && !controller.signal.aborted) {
         setError(reason instanceof Error ? reason : new Error("请求失败，请重试。"));
+        if (reason instanceof ApiError && reason.status === 409) setRefreshRequired(true);
       }
     } finally {
       if (activeRead.current === controller) { activeRead.current = null; setPendingRead(false); }
@@ -232,7 +269,7 @@ function IntegrationContent({ site, siteDirty = false, disabled = false, showCli
       {Object.entries(fieldErrors).filter(([field]) => field !== "notify_url" && field !== "return_url").map(([field, message]) =>
         <p key={field} className="text-sm text-destructive">{message}</p>)}
       {needsRefresh && <Button type="button" variant="outline" className="self-start" disabled={busy} onClick={() => {
-        void onReload().then(() => setError(null), reason => setError(reason instanceof Error ? reason : new Error("读取失败，请重试。")));
+        void reloadConfiguration();
       }}>重新读取配置</Button>}
       {siteDirty && <Alert><AlertDescription>网站配置有未保存的修改，请先保存或撤销，再管理密钥或下载配置。</AlertDescription></Alert>}
       <FieldGroup>
@@ -249,15 +286,17 @@ function IntegrationContent({ site, siteDirty = false, disabled = false, showCli
         {protocol !== "native" && <Field orientation="horizontal">
           <FieldLabel htmlFor={id + "-enabled"}>允许{selected.label}新订单</FieldLabel>
           <Switch id={id + "-enabled"} checked={protocol === "epay_v1" ? values.v1_enabled : values.v2_enabled}
-            disabled={busy || siteDirty} onCheckedChange={enabled => setDraft({
-              revision: draft?.revision ?? configuration.revision,
-              v1_enabled: protocol === "epay_v1" ? enabled : values.v1_enabled,
-              v2_enabled: protocol === "epay_v2" ? enabled : values.v2_enabled,
-            })} />
+            disabled={busy || siteDirty} onCheckedChange={enabled => {
+              const base = draft?.base ?? configuration;
+              const changed = { revision: base.revision,
+                v1_enabled: protocol === "epay_v1" ? enabled : values.v1_enabled,
+                v2_enabled: protocol === "epay_v2" ? enabled : values.v2_enabled };
+              setDraft(changed.v1_enabled === base.v1_enabled && changed.v2_enabled === base.v2_enabled ? null : { base, values: changed });
+            }} />
         </Field>}
       </FieldGroup>
       {dirty && <div className="flex flex-wrap gap-2">
-        <Button type="button" disabled={busy || siteDirty} onClick={() => persist.mutate(null)}>保存易支付设置</Button>
+        <Button type="button" disabled={busy || siteDirty || needsRefresh} onClick={() => persist.mutate(null)}>保存易支付设置</Button>
         <Button type="button" variant="outline" disabled={busy} onClick={() => { setDraft(null); clearDraft(); }}>撤销易支付修改</Button>
       </div>}
       {protocol !== "native" && <div className="flex flex-wrap gap-2">
