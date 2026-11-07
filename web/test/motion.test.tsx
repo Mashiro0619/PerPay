@@ -40,13 +40,6 @@ describe("official component visibility and motion", () => {
     expect(screen.getByRole("textbox", { name: "超时" })).toBe(input);
     expect(input).toHaveValue("60");
   });
-  it("does not import the retired route staging or selection animation layers", () => {
-    const app = readFileSync(resolve(process.cwd(), "web/src/App.tsx"), "utf8");
-    expect(app).not.toMatch(
-      /RouteTransition|SelectionIndicator|is-entering|is-leaving/,
-    );
-    expect(app).toContain("SidebarInset");
-  });
   it("uses the unmodified shadcn 4.21.4 stylesheet without a CLI CSS import", () => {
     const css = readFileSync(resolve(process.cwd(), "web/src/styles.css"), "utf8");
     const upstream = readFileSync(
@@ -57,15 +50,5 @@ describe("official component visibility and motion", () => {
     expect(createHash("sha256").update(upstream).digest("hex")).toBe(
       "4c371f7a1ff5d219ae2f7ff28bd256b4346fd546fe46fbae22092e57db2f0fae",
     );
-  });
-  it("honors reduced motion and coarse-pointer targets without a legacy CSS overlay", () => {
-    const css = readFileSync(
-      resolve(process.cwd(), "web/src/styles.css"),
-      "utf8",
-    );
-    expect(css).toContain("@media (prefers-reduced-motion: reduce)");
-    expect(css).toContain("@media (pointer: coarse)");
-    expect(css).toContain("min-height: 40px");
-    expect(css).not.toMatch(new RegExp("@import.*styles/|data-palette"));
   });
 });

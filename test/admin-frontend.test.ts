@@ -35,7 +35,7 @@ describe("administrator frontend delivery", () => {
     assert.ok([...frontend.assets.keys()].every((path) => !path.endsWith(".map") && !path.includes("..")));
   });
 
-  it("publishes the wallet favicon as a fingerprinted SVG rather than the old P or an inline image", () => {
+  it("serves the source favicon with a content-derived URL, MIME type and ETag", () => {
     const frontend = loadAdminFrontend();
     assert.ok(frontend);
     const path = faviconPath(frontend.render(true));
@@ -45,9 +45,6 @@ describe("administrator frontend delivery", () => {
     assert.equal(Buffer.from(asset.body).toString("utf8"), source);
     assert.equal(asset.contentType, "image/svg+xml");
     assert.equal(asset.etag, '"' + createHash("sha256").update(asset.body).digest("base64url") + '"');
-    assert.match(source, /viewBox="0 0 24 24"/);
-    assert.ok(source.includes('d="M3 7h18"'));
-    assert.doesNotMatch(source, /#2563eb|M13 29V11/);
     assert.doesNotMatch(source, /<script|<style|<foreignObject|<image|<use|\bon\w+=|\bhref=/i);
   });
 

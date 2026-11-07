@@ -32,6 +32,7 @@ function luminance(color: string) {
 const pairs = [
   ["foreground", "background"],
   ["card-foreground", "card"],
+  ["foreground", "card"],
   ["popover-foreground", "popover"],
   ["primary-foreground", "primary"],
   ["secondary-foreground", "secondary"],
@@ -52,7 +53,7 @@ describe("official Neutral theme", () => {
         expect(contrast(luminance(tokens.ring!), luminance(tokens[surface]!))).toBeGreaterThanOrEqual(3);
       }
     });
-  for (const mode of [":root", ".dark"])
+  for (const mode of [":root", ".dark", ":root:not([data-theme])"])
     it.each(pairs)(
       mode + " keeps %s readable on %s",
       (foreground, background) => {
@@ -90,6 +91,12 @@ function contrast(first: number, second: number): number {
 }
 
 describe("neutral chart colors", () => {
+  for (const mode of [":root", ".dark", ":root:not([data-theme])"])
+    it.each(["muted", "card"])(mode + " keeps the amount bar distinct on %s", (surface) => {
+      const tokens = variables(mode);
+      expect(contrast(luminance(tokens["chart-1"]!), luminance(tokens[surface]!))).toBeGreaterThanOrEqual(3);
+    });
+
   for (const mode of [":root", ".dark", ":root:not([data-theme])"])
     it.each([
       ["chart-1", "primary"],
