@@ -56,6 +56,7 @@ import {
   FieldDescription,
   FieldGroup,
   FieldLabel,
+  FieldLegend,
   FieldSet,
 } from "@/components/ui/field";
 import {
@@ -746,35 +747,47 @@ function SiteEditor({
           <CardHeader>
             <CardTitle>业务网站密钥</CardTitle>
           </CardHeader>
-          <CardContent className="flex flex-wrap gap-2">
-            <Button
-              variant="outline"
-              disabled={busy}
-              onClick={() => action.mutate("view-api")}
-            >
-              查看 API 密钥
-            </Button>
-            <Button
-              variant="outline"
-              disabled={busy || requiresReview}
-              onClick={() => setConfirmation("api")}
-            >
-              生成／轮换 API 密钥
-            </Button>
-            <Button
-              variant="outline"
-              disabled={busy}
-              onClick={() => action.mutate("view-webhook")}
-            >
-              查看通知密钥
-            </Button>
-            <Button
-              variant="outline"
-              disabled={busy || requiresReview}
-              onClick={() => setConfirmation("webhook")}
-            >
-              生成／轮换通知密钥
-            </Button>
+          <CardContent>
+            <FieldGroup>
+              <FieldSet className="gap-2">
+                <FieldLegend variant="label">API 密钥</FieldLegend>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() => action.mutate("view-api")}
+                  >
+                    查看 API 密钥
+                  </Button>
+                  <Button
+                    variant="outline"
+                    disabled={busy || requiresReview}
+                    onClick={() => setConfirmation("api")}
+                  >
+                    生成／轮换 API 密钥
+                  </Button>
+                </div>
+              </FieldSet>
+              <FieldSet className="gap-2">
+                <FieldLegend variant="label">通知密钥</FieldLegend>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() => action.mutate("view-webhook")}
+                  >
+                    查看通知密钥
+                  </Button>
+                  <Button
+                    variant="outline"
+                    disabled={busy || requiresReview}
+                    onClick={() => setConfirmation("webhook")}
+                  >
+                    生成／轮换通知密钥
+                  </Button>
+                </div>
+              </FieldSet>
+            </FieldGroup>
           </CardContent>
         </Card>
       )}

@@ -26,11 +26,13 @@ export function SitePolicyFields({
   onChange,
   errors = {},
   section,
+  expandedNotificationPolicy = false,
   disabled = false,
   secondsDraft,
   onSecondsDraftChange,
 }: {
   section?: string | undefined;
+  expandedNotificationPolicy?: boolean;
   disabled?: boolean;
   value: SitePolicy;
   onChange: (value: SitePolicy) => void;
@@ -45,6 +47,7 @@ export function SitePolicyFields({
     errors["configuration.policy.notification_delivery.timeout_milliseconds"] ??
     errors["policy.notification_delivery.timeout_milliseconds"];
   const [advanced, setAdvanced] = useState(false);
+  const notificationPolicyOpen = expandedNotificationPolicy || advanced;
   const content = useRef<HTMLDivElement>(null);
   const failedAdvanced = Object.keys(errors).some((key) =>
     key.includes("notification_delivery."),
@@ -53,11 +56,11 @@ export function SitePolicyFields({
     if (failedAdvanced) setAdvanced(true);
   }, [errors, failedAdvanced]);
   useEffect(() => {
-    if (advanced && failedAdvanced)
+    if (notificationPolicyOpen && failedAdvanced)
       content.current
         ?.querySelector<HTMLElement>('[aria-invalid="true"]')
         ?.focus();
-  }, [advanced, failedAdvanced, errors]);
+  }, [notificationPolicyOpen, failedAdvanced, errors]);
   const error = (path: string) =>
     errors["configuration.policy." + path] ?? errors["policy." + path];
   const change = (edit: (next: SitePolicy) => void) => {
@@ -184,7 +187,7 @@ export function SitePolicyFields({
       )}
       {(!section || section === "integration") && (
         <Collapsible
-          open={advanced}
+          open={notificationPolicyOpen}
           onOpenChange={setAdvanced}
           onInvalidCapture={(event) => {
             const target = event.target as HTMLInputElement;
@@ -193,13 +196,15 @@ export function SitePolicyFields({
             requestAnimationFrame(() => target.focus());
           }}
         >
-          <CollapsibleTrigger
-            render={<Button type="button" variant="outline" />}
-          >
-            高级设置
-          </CollapsibleTrigger>
+          {!expandedNotificationPolicy && (
+            <CollapsibleTrigger
+              render={<Button type="button" variant="outline" />}
+            >
+              高级设置
+            </CollapsibleTrigger>
+          )}
           <CollapsibleContent ref={content} keepMounted>
-            <FieldSet className="settings-fields pt-4" disabled={disabled}>
+            <FieldSet className={cn("settings-fields", !expandedNotificationPolicy && "pt-4")} disabled={disabled}>
               <FieldLegend className="sr-only">通知投递策略</FieldLegend>
               <Field data-invalid={!!timeoutError}>
                 <FieldLabel htmlFor={timeoutId}>通知超时（秒）</FieldLabel>

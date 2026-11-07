@@ -921,13 +921,15 @@ export function SettingsEditor({
             )
           ) : (
             <Card>
-              <CardHeader
-                className={section === "display" ? "sr-only" : undefined}
-              >
-                <CardTitle role="heading" aria-level={2}>
-                  {sections.find(([value]) => value === section)?.[1] ?? "设置"}
-                </CardTitle>
-              </CardHeader>
+              {!overlay && (
+                <CardHeader
+                  className={section === "display" ? "sr-only" : undefined}
+                >
+                  <CardTitle role="heading" aria-level={2}>
+                    {sections.find(([value]) => value === section)?.[1] ?? "设置"}
+                  </CardTitle>
+                </CardHeader>
+              )}
               <CardContent>
                 <FieldGroup
                   className={cn(

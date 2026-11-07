@@ -220,6 +220,7 @@ function DefaultsEditor({ initial }: { initial: DefaultsSnapshot }) {
         <FieldSet disabled={busy || requiresReview}>
           <SitePolicyFields
             section={section}
+            expandedNotificationPolicy
             disabled={busy || requiresReview}
             value={draft}
             secondsDraft={timeoutRaw}

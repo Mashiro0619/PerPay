@@ -10,7 +10,7 @@ test("template seconds drafts survive tabs, reject excess precision and save exa
     await page.context().addCookies(fixture.cookies);
     await page.goto(fixture.origin + "/admin/sites/defaults");
     await page.getByRole("tab", { name: "通知策略" }).click();
-    await page.getByRole("button", { name: "高级设置" }).click();
+    await expect(page.getByRole("button", { name: "高级设置" })).toHaveCount(0);
     const timeout = page.getByLabel("通知超时（秒）", { exact: true });
     const save = page.getByRole("button", { name: "保存默认模板" });
     await timeout.fill("5.0004");

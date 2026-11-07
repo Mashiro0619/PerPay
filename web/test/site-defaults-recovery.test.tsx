@@ -124,10 +124,6 @@ function mountDefaults() {
 
 async function group(user: User, name: "订单设置" | "收银台展示" | "通知策略") {
   await user.click(await screen.findByRole("tab", { name }));
-  if (name === "通知策略") {
-    const advanced = screen.getByRole("button", { name: "高级设置" });
-    if (advanced.getAttribute("aria-expanded") !== "true") await user.click(advanced);
-  }
 }
 function edit(label: string, value: string) {
   fireEvent.change(screen.getByLabelText(label), { target: { value } });

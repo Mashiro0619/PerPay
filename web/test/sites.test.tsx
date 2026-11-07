@@ -1,5 +1,5 @@
 import { Toaster } from "../src/components/ui/toast";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClientProvider, onlineManager } from "@tanstack/react-query";
 import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
@@ -112,6 +112,30 @@ function mount(path = "/sites/site_test/settings/basic", failSave = false, field
 afterEach(() => onlineManager.setOnline(true));
 
 describe("business website management", () => {
+  it("shows all default notification policy fields immediately when selecting its tab", async () => {
+    const view = mount("/sites/defaults"), user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "通知策略" }));
+    for (const label of ["通知超时（秒）", "最多发送次数", "首次重试间隔（秒）", "最大重试间隔（秒）"]) {
+      expect(screen.getByLabelText(label)).toBeVisible();
+    }
+    expect(screen.queryByRole("button", { name: "高级设置" })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("最多发送次数"), { target: { value: "15" } });
+    await user.click(screen.getByRole("tab", { name: "订单设置" }));
+    await user.click(screen.getByRole("tab", { name: "通知策略" }));
+    expect(screen.getByLabelText("最多发送次数")).toBeVisible();
+    expect(screen.getByLabelText("最多发送次数")).toHaveValue(15);
+    expect(view.writes).toHaveLength(0);
+  });
+  it("groups each website key with its own view and rotation actions", async () => {
+    const view = mount("/sites/site_test/settings/integration");
+    const apiKeys = await screen.findByRole("group", { name: "API 密钥" });
+    const notificationKeys = screen.getByRole("group", { name: "通知密钥" });
+    expect(within(apiKeys).getByRole("button", { name: "查看 API 密钥" })).toBeVisible();
+    expect(within(apiKeys).getByRole("button", { name: "生成／轮换 API 密钥" })).toBeVisible();
+    expect(within(notificationKeys).getByRole("button", { name: "查看通知密钥" })).toBeVisible();
+    expect(within(notificationKeys).getByRole("button", { name: "生成／轮换通知密钥" })).toBeVisible();
+    expect(view.writes).toHaveLength(0);
+  });
   it("rejects a whitespace-only name before sending a website update", async () => {
     const view = mount(), user = userEvent.setup();
     const input = await screen.findByLabelText("业务网站名称");

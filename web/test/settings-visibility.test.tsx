@@ -8,6 +8,7 @@ import { describe, expect, it, vi } from "vitest";
 import { queryClient } from "../src/api/client";
 import { SettingsEditor } from "../src/components/SettingsForms";
 import { configuredThrough } from "./onboarding-fixture";
+import { OverlayContext } from "../src/lib/overlay-context";
 
 const sections = [
   {
@@ -35,6 +36,29 @@ const sections = [
     fields: ["备份间隔", "保留备份数量"],
   },
 ] as const;
+
+describe("settings overlay headings", () => {
+  it.each([
+    ["collection-policy", "查账设置", "PerPay 查账设置"],
+    ["backup", "自动备份", "自动备份"],
+    ["display", "界面显示", "界面显示"],
+    ["advanced", "高级设置", "高级设置"],
+  ] as const)("keeps the %s field group named without repeating the dialog heading", (section, title, group) => {
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <OverlayContext.Provider value={{ target: { pathname: "/settings/" + section + "/edit", search: "", hash: "", key: "test", state: null }, resourceScope: { clientId: null, base: "" }, size: "lg", requestClose: vi.fn() }}>
+            <h1>编辑{title}</h1>
+            <SettingsEditor section={section} settings={configuredThrough(4)} onSaved={vi.fn()} />
+          </OverlayContext.Provider>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    expect(screen.getByRole("heading", { name: "编辑" + title })).toBeVisible();
+    expect(screen.queryByRole("heading", { name: title })).not.toBeInTheDocument();
+    expect(screen.getByRole("group", { name: group })).toBeVisible();
+  });
+});
 
 describe.each([false, true])("directly visible settings (guided: %s)", (guided) => {
   it.each(sections)("shows $section parameters without a disclosure or implicit save", ({ section, fields }) => {
