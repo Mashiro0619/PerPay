@@ -1,6 +1,7 @@
 import type { DatabaseSync, SQLInputValue } from "node:sqlite";
 import { listSearch } from "../database/list-query.ts";
 import { siteClientIdSchema } from "../sites/model.ts";
+import { settledPaymentIdentitySql } from "./payment-identity.ts";
 import {
   ListQueryError,
   normalizeKeyword,
@@ -110,7 +111,7 @@ export function readManualCandidates(
       "l.direction = 'CREDIT'",
       "l.currency = o.currency",
       "l.state IN ('UNALLOCATED', 'CANDIDATE', 'CONFLICT')",
-      "NOT EXISTS (SELECT 1 FROM payment_matches m WHERE m.ledger_entry_id = l.ledger_entry_id AND m.status = 'SETTLED')",
+      "NOT " + settledPaymentIdentitySql(connection, "l"),
       "EXISTS (SELECT 1 FROM collection_profile_provider_accounts p WHERE p.profile_id = o.collection_profile_id AND p.provider_account_key = l.provider_account_key)",
     );
     if (query.view === "recommended")

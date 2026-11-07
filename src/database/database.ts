@@ -19,6 +19,7 @@ import { DatabaseSync, backup as sqliteBackup } from "node:sqlite";
 import { migrations, migrationChecksum, type Migration } from "./migrations.ts";
 import { inspectAuditChain } from "./audit-chain.ts";
 import { countAdminOperationViolations } from "./admin-operation-integrity.ts";
+import { settledPaymentIdentitySql } from "../reconciliation/payment-identity.ts";
 import { migrateSiteData } from "../sites/migrations/data.ts";
 import { countSiteDomainViolations } from "../sites/integrity.ts";
 import { countEpayDomainViolations } from "../epay/integrity.ts";
@@ -2012,6 +2013,7 @@ function countReconciliationDomainViolations(connection: DatabaseSync): number {
          OR (
            payment_match.status = 'SETTLED' AND (
              (entry.state != 'ALLOCATED' AND NOT ${legacyProviderConflictState}) OR
+             ${settledPaymentIdentitySql(connection, "entry", "payment_match.payment_match_id")} OR
              orders.payment_status != 'CONFIRMED' OR
              orders.payment_basis NOT IN ('INFERRED', 'MANUAL') OR
              orders.received_amount_cents != entry.amount_cents OR

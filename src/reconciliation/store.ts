@@ -1,5 +1,6 @@
 import { assertSiteOrder, assertSiteLedger } from "../sites/admin-scope.ts";
 import { readManualCandidates, type ManualCandidateQuery, type ManualCandidatePage } from "./manual-candidates.ts";
+import { hasSettledPaymentIdentity, settledPaymentIdentitySql } from "./payment-identity.ts";
 import { normalizeListQuery, MATCH_SORT_FIELDS, EXCEPTION_SORT_FIELDS, type MatchSort, type ExceptionSort, type ListQuery, type ListPosition } from "../shared/list-query.ts";
 import { listKeyset, listSearch } from "../database/list-query.ts";
 import { randomUUID } from "node:crypto";
@@ -389,6 +390,9 @@ export class ReconciliationStore {
       if (entry.state === "ALLOCATED") {
         throw new ReconciliationError("match_state_conflict", "allocated ledger entry has no active match");
       }
+      // A different source copy already represents this payment. Keep its
+      // immutable evidence, but never create a second settlement or candidate.
+      if (hasSettledPaymentIdentity(connection, ledgerEntryId)) return { kind: "ignored", ledgerEntryId };
 
       const settledOrderOverlap = readSettledOrderOverlap(connection, entry);
       const facts = readCandidateFacts(connection, entry);
@@ -481,6 +485,7 @@ export class ReconciliationStore {
         `SELECT ledger_entry_id, occurred_at
           FROM ledger_entries
           WHERE state IN ('UNALLOCATED', 'CANDIDATE') AND direction = 'CREDIT'
+            AND NOT ${settledPaymentIdentitySql(connection, "ledger_entries")}
             AND NOT EXISTS (
               SELECT 1 FROM provider_account_bindings AS source
                WHERE source.provider_account_key = ledger_entries.provider_account_key
@@ -545,6 +550,7 @@ export class ReconciliationStore {
               AND (slot.released_at IS NULL OR entry.occurred_at < slot.released_at)
             WHERE orders.order_id = ?
               AND entry.state IN ('UNALLOCATED', 'CANDIDATE')
+              AND NOT ${settledPaymentIdentitySql(connection, "entry")}
               AND NOT EXISTS (
                 SELECT 1 FROM provider_account_bindings AS source
                  WHERE source.provider_account_key = entry.provider_account_key
@@ -625,7 +631,7 @@ export class ReconciliationStore {
         !["UNALLOCATED", "CANDIDATE", "CONFLICT"].includes(entry.state) ||
         order.payment_status !== "UNPAID" ||
         order.payment_basis !== "NONE" ||
-        readActiveMatchForEntry(connection, entry.ledger_entry_id) !== null ||
+        hasSettledPaymentIdentity(connection, entry.ledger_entry_id) ||
         !orderUsesProviderAccount(connection, order.order_id, entry.provider_account_key)
       ) {
         throw new ReconciliationError("match_state_conflict", "manual settlement facts are not eligible");
@@ -1624,7 +1630,7 @@ function autoSettleCandidate(
     order.payment_status !== "UNPAID" ||
     order.payment_basis !== "NONE" ||
     order.received_amount_cents !== null ||
-    readActiveMatchForEntry(connection, entry.ledger_entry_id) !== null ||
+    hasSettledPaymentIdentity(connection, entry.ledger_entry_id) ||
     readActiveMatchForOrder(connection, order.order_id) !== null
   ) {
     throw new ReconciliationError("match_state_conflict", "automatic settlement facts have changed");
