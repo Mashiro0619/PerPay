@@ -36,6 +36,22 @@ const exportSchema = z.object({
   notify_url: z.string().min(1).max(4096), return_url: z.string().max(4096).optional(),
 }).strict();
 
+type EpayReadAction = "query" | "info" | "orders";
+const v2CommonParameters = ["pid", "timestamp", "sign", "sign_type"];
+const v2ReadParameters: Record<EpayReadAction, ReadonlySet<string>> = {
+  query: new Set([...v2CommonParameters, "trade_no", "out_trade_no"]),
+  info: new Set(v2CommonParameters),
+  orders: new Set([...v2CommonParameters, "offset", "limit", "status"]),
+};
+
+function assertV2ReadParameters(action: EpayReadAction, parameters: EpayParameters): void {
+  // Page-payment signatures are visible to the customer and do not bind a URL
+  // path. Their signed payment fields must not grant merchant-wide read access.
+  if (Object.keys(parameters).some(name => !v2ReadParameters[action].has(name))) {
+    throw new EpayProtocolError("invalid_parameters", "该查询接口包含不支持的参数，请使用查询参数重新签名。");
+  }
+}
+
 export function serializeEpay(configuration: EpaySiteSnapshot, publicOrigin: string) {
   return {
     client_id: configuration.siteId, pid: configuration.pid, revision: configuration.revision,
@@ -143,6 +159,9 @@ export function registerEpayRoutes(app: Hono<AppEnvironment>, dependencies: AppD
       const selected = action === "legacy" ? ({ query: "info", order: "query", orders: "orders" } as const)[parameters.act as "query" | "order" | "orders"] : action;
       let result: Record<string, unknown>;
       authenticated = true;
+      if (protocol === "epay_v2" && (selected === "query" || selected === "info" || selected === "orders")) {
+        assertV2ReadParameters(selected, parameters);
+      }
       const success = protocol === "epay_v1" ? 1 : 0;
       if (selected === "create" || selected === "submit") {
         options.requireReady();

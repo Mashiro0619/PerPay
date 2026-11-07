@@ -166,6 +166,50 @@ test("invalid signatures, stale timestamps, duplicate fields and conflicting nat
   } finally { f.close(); }
 });
 
+test("browser-visible V2 payment signatures cannot authorize merchant reads", async () => {
+  const f = await fixture();
+  try {
+    const privateOrder = await (await f.create("epay_v2", "other-customer-order", f.first.credentials,
+      { name: "Other customer's purchase", param: "private-business-metadata" })).json() as Record<string, unknown>;
+    assert.equal(privateOrder.code, 0);
+    for (const method of ["GET", "POST"]) {
+      const visible = f.parameters(f.first.credentials, "epay_v2", { type: "alipay",
+        out_trade_no: `browser-${method}`, name: "Public checkout item", money: "10.00",
+        notify_url: merchantOrigin + "/notify", return_url: merchantOrigin + "/return",
+        clientip: "203.0.113.9", device: "pc", custom_extension: "accepted" });
+      const submitted = await f.send("/api/pay/submit", visible, method);
+      assert.equal(submitted.status, 302);
+      // The customer can copy either the signed URL or the browser's hidden form.
+      // Replaying those exact bytes must not expose other orders or merchant totals.
+      for (const path of ["/api/pay/query", "/api/merchant/info", "/api/merchant/orders"]) {
+        const rejected = await (await f.send(path, visible)).json() as Record<string, unknown>;
+        assert.equal(rejected.code, -1, `${method} payment replay to ${path}`);
+        assert.equal(rejected.data, undefined);
+        assert.equal(rejected.order_num, undefined);
+        assert.equal(rejected.out_trade_no, undefined);
+        assert.equal(verifyEpayV2(rejected, f.first.credentials.platformPublicKey!), true);
+      }
+      const stripped = { pid: visible.pid, timestamp: visible.timestamp!, sign_type: visible.sign_type, sign: visible.sign };
+      const invalid = await (await f.send("/api/merchant/orders", stripped)).json() as Record<string, unknown>;
+      assert.equal(invalid.code, -1);
+      assert.equal(invalid.sign, undefined, "removing the payment fields invalidates its original signature");
+    }
+    const own = await (await f.send("/api/pay/query", f.parameters(f.first.credentials, "epay_v2",
+      { trade_no: String(privateOrder.trade_no) }))).json() as Record<string, unknown>;
+    assert.equal(own.code, 0);
+    assert.equal(own.out_trade_no, "other-customer-order");
+    const info = await (await f.send("/api/merchant/info", f.parameters(f.first.credentials, "epay_v2", {}))).json() as Record<string, unknown>;
+    assert.equal(info.code, 0);
+    assert.equal(info.order_num, 3);
+    const listed = await (await f.send("/api/merchant/orders", f.parameters(f.first.credentials, "epay_v2",
+      { offset: "0", limit: "50", status: "0" }))).json() as { code: number; data: { out_trade_no: string; param: string }[] };
+    assert.equal(listed.code, 0);
+    assert.equal(listed.data.find(order => order.out_trade_no === "other-customer-order")?.param, "private-business-metadata");
+    assert.equal(f.epay.orders(f.first.site.clientId).length, 3);
+    assert.equal(f.database.integrityCheck().ok, true);
+  } finally { f.close(); }
+});
+
 test("paid synchronous return signs the complete merchant query and uses the original order amount", async () => {
   const f = await fixture();
   try {

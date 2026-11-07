@@ -40,6 +40,8 @@ V1 API 下单成功返回 `code=1`、`trade_no`、`payurl`。V2 成功返回 `co
 
 V1 查询使用 `pid` 和 `key`。V2 请求使用商户私钥签名，并携带 Unix 秒时间戳 `timestamp`，允许前后 300 秒。单笔查询可使用 `trade_no` 或 `out_trade_no`，两者同时存在时优先使用 `trade_no`。
 
+V2 查询由商户后端单独签名。三个查询接口均接收 `pid`、`timestamp`、`sign`、`sign_type`；单笔查单另接收 `trade_no`、`out_trade_no`，订单列表另接收 `offset`、`limit`、`status`，商户信息无其他参数。查询接口拒绝其他字段，防止顾客把浏览器可见的页面下单签名用于读取商户数据。页面下单和 API 下单继续接收已签名的扩展字段。
+
 订单列表的 `limit` 默认 20，最大 50。V1 使用从 1 开始的 `page`，V2 使用从 0 开始的 `offset`。可用 `status=0/1` 筛选未付款或已付款订单，筛选发生在分页之前。查询和统计覆盖当前网站的易支付订单，单号以字符串传递。
 
 ## 签名与编码
