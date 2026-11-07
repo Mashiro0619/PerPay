@@ -85,7 +85,9 @@ import {
 } from "../infrastructure/storage/permissions.ts";
 import {
   assertBackupStorageHeadroom,
+  BACKUP_WRITE_RESERVE_BYTES,
   inspectDatabaseStorageHeadroom,
+  inspectStorageHeadroom,
 } from "../infrastructure/storage/capacity.ts";
 import { StartupLeaseHeartbeat } from "./startup-lease-heartbeat.ts";
 import { configureTemporaryStorage, openIntegrityDatabase } from "./connection.ts";
@@ -4001,21 +4003,18 @@ export async function createVerifiedDatabaseBackup(
   const directory = ensurePrivateDirectory(dirname(target));
   assertBackupStorageHeadroom(source, directory);
   const tempPath = resolve(directory, `.backup-${randomUUID()}.tmp`);
+  const compactPath = resolve(directory, `.backup-${randomUUID()}.tmp`);
   const reservation = openSync(tempPath, "wx", 0o600); closeSync(reservation);
   try {
-    const pages = await sqliteBackup(sourceConnection, tempPath, {
+    await sqliteBackup(sourceConnection, tempPath, {
       rate: 100,
       progress: () => signal?.throwIfAborted(),
     });
     signal?.throwIfAborted();
     hardenExistingPrivateFile(tempPath);
-    const verification = openIntegrityDatabase(tempPath, { readOnly: true, enableForeignKeyConstraints: true, timeout: SQLITE_TIMEOUT_MS, readBigInts: true, defensive: true });
-    try {
-      assertDatabaseIntegrity(verification, "backup verification failed");
-    } finally { verification.close(); }
     // The lease is process identity, not application data. A copied live lease
     // would make a restored database reject its first legitimate owner, so
-    // clear it before publishing the artifact and verify the final bytes too.
+    // clear it before verifying and publishing the final snapshot.
     const writable = new DatabaseSync(tempPath, {
       enableForeignKeyConstraints: true,
       timeout: SQLITE_TIMEOUT_MS,
@@ -4036,10 +4035,28 @@ export async function createVerifiedDatabaseBackup(
       if (journal?.journal_mode.toLowerCase() !== "delete") {
         throw new Error("backup could not switch to a self-contained journal mode");
       }
+      const freePages = Number(writable.prepare("PRAGMA freelist_count").get()!.freelist_count);
+      if (freePages > 0) {
+        const pageCount = (writable.prepare("PRAGMA page_count").get() as { page_count: bigint }).page_count;
+        const pageSize = (writable.prepare("PRAGMA page_size").get() as { page_size: bigint }).page_size;
+        const headroom = inspectStorageHeadroom(directory,
+          (pageCount - BigInt(freePages)) * pageSize + BACKUP_WRITE_RESERVE_BYTES);
+        if (headroom.sufficient) {
+          signal?.throwIfAborted();
+          try {
+            writable.prepare("VACUUM INTO ?").run(compactPath);
+          } catch (error) {
+            removeSqliteArtifacts(compactPath);
+            // A full backup already exists. Keep it if compaction alone runs out of space.
+            if (!(error instanceof Error && "errcode" in error && error.errcode === 13)) throw error;
+          }
+        }
+      }
     } finally {
       writable.close();
     }
     removeSqliteSidecars(tempPath);
+    if (existsSync(compactPath)) renameSync(compactPath, tempPath);
     const finalVerification = openIntegrityDatabase(tempPath, {
       readOnly: true,
       enableForeignKeyConstraints: true,
@@ -4047,8 +4064,10 @@ export async function createVerifiedDatabaseBackup(
       readBigInts: true,
       defensive: true,
     });
+    let pages: number;
     try {
-      assertDatabaseIntegrity(finalVerification, "final backup verification failed");
+      assertDatabaseIntegrity(finalVerification, "backup verification failed");
+      pages = Number(finalVerification.prepare("PRAGMA page_count").get()!.page_count);
     } finally { finalVerification.close(); }
     removeSqliteSidecars(tempPath);
     signal?.throwIfAborted();
@@ -4060,6 +4079,7 @@ export async function createVerifiedDatabaseBackup(
     syncDirectory(directory);
     return { pages, targetPath: target, sha256: hash };
   } catch (error) { removeSqliteArtifacts(tempPath); throw error; }
+  finally { removeSqliteArtifacts(compactPath); }
 }
 
 function replaceFileAtomically(source: string, target: string): void {

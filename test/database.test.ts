@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { describe, it } from "node:test";
 
-import { AppDatabase } from "../src/database/database.ts";
+import { AppDatabase, sha256FileSync } from "../src/database/database.ts";
 
 describe("AppDatabase", () => {
   it("migrates once and preserves the instance identity", async () => {
@@ -81,6 +81,41 @@ describe("AppDatabase", () => {
       assert.deepEqual(restored.health(), { ok: true, result: "ok" });
       restored.close();
     } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("compacts reclaimed pages in a restorable backup without rewriting the live database", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "perpay-compact-backup-"));
+    const databasePath = join(directory, "database.sqlite3");
+    const backupPath = join(directory, "backup", "database.sqlite3");
+    const source = await AppDatabase.open(databasePath);
+    try {
+      const instanceId = source.instanceId();
+      source.write(connection => {
+        connection.exec("CREATE TABLE backup_padding(value BLOB); INSERT INTO backup_padding VALUES (zeroblob(12582912)); DROP TABLE backup_padding");
+      });
+      const sourcePages = source.read(connection => Number(connection.prepare("PRAGMA page_count").get()!.page_count));
+      const sourceFreePages = source.read(connection => Number(connection.prepare("PRAGMA freelist_count").get()!.freelist_count));
+      assert.ok(sourceFreePages > sourcePages / 2);
+
+      const backup = await source.backupDetailed(backupPath);
+      assert.ok(backup.pages < sourcePages / 2);
+      assert.equal(backup.sha256, sha256FileSync(backupPath));
+      assert.equal(source.read(connection => Number(connection.prepare("PRAGMA page_count").get()!.page_count)), sourcePages);
+      assert.equal(source.read(connection => Number(connection.prepare("PRAGMA freelist_count").get()!.freelist_count)), sourceFreePages);
+      assert.deepEqual(readdirSync(join(directory, "backup")), ["database.sqlite3"]);
+
+      const restored = await AppDatabase.open(backupPath);
+      try {
+        assert.equal(restored.instanceId(), instanceId);
+        assert.equal(restored.integrityCheck().ok, true);
+        assert.equal(restored.read(connection => Number(connection.prepare("PRAGMA freelist_count").get()!.freelist_count)), 0);
+        const pageSize = restored.read(connection => Number(connection.prepare("PRAGMA page_size").get()!.page_size));
+        assert.equal(statSync(backupPath).size, backup.pages * pageSize);
+      } finally { restored.close(); }
+    } finally {
+      source.close();
       rmSync(directory, { recursive: true, force: true });
     }
   });

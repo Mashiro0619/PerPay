@@ -4,6 +4,7 @@ import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
+import { DatabaseSync } from "node:sqlite";
 
 import { AppDatabase } from "../src/database/database.ts";
 import { createOperationalBackup } from "../src/database/maintenance.ts";
@@ -96,4 +97,48 @@ describe("storage capacity policy", () => {
       rmSync(directory, { recursive: true, force: true });
     }
   });
+
+  for (const shortage of ["headroom", "sqlite-full"] as const) {
+    it(`publishes the existing valid snapshot when compaction lacks space (${shortage})`, async context => {
+      const directory = mkdtempSync(join(tmpdir(), "perpay-backup-space-"));
+      const backupDirectory = join(directory, "backups");
+      const database = await AppDatabase.open(join(directory, "perpay.sqlite3"));
+      database.write(connection => connection.exec("CREATE TABLE padding(value BLOB); INSERT INTO padding VALUES (zeroblob(4194304)); DROP TABLE padding"));
+      const instanceId = database.instanceId();
+      const originalStatfs = fs.statfsSync;
+      let capacityReads = 0;
+      if (shortage === "headroom") {
+        context.mock.method(fs, "statfsSync", (...args: Parameters<typeof fs.statfsSync>) => {
+          const stats = Reflect.apply(originalStatfs, fs, args);
+          return ++capacityReads === 1 ? stats : { ...stats, bavail: typeof stats.bavail === "bigint" ? 0n : 0 };
+        });
+        syncBuiltinESMExports();
+      } else {
+        const originalPrepare = DatabaseSync.prototype.prepare;
+        context.mock.method(DatabaseSync.prototype, "prepare", function(this: DatabaseSync, sql: string) {
+          if (sql === "VACUUM INTO ?") return { run: (path: string) => {
+            writeFileSync(path, "partial compaction");
+            throw Object.assign(new Error("database or disk is full"), { errcode: 13 });
+          } } as unknown as ReturnType<typeof originalPrepare>;
+          return originalPrepare.call(this, sql);
+        });
+      }
+      try {
+        const backup = await database.backupDetailed(join(backupDirectory, "snapshot.sqlite3"));
+        context.mock.restoreAll();
+        syncBuiltinESMExports();
+        assert.deepEqual(readdirSync(backupDirectory), ["snapshot.sqlite3"]);
+        const restored = await AppDatabase.open(backup.targetPath);
+        try {
+          assert.equal(restored.instanceId(), instanceId);
+          assert.equal(restored.integrityCheck().ok, true);
+        } finally { restored.close(); }
+      } finally {
+        context.mock.restoreAll();
+        syncBuiltinESMExports();
+        database.close();
+        rmSync(directory, { recursive: true, force: true });
+      }
+    });
+  }
 });
