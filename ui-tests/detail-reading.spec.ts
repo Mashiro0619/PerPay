@@ -649,7 +649,7 @@ test("failed attempt reads retain an accurate unknown history and recover on exp
   await readDetailSection(page, "投递记录");
   const main = detailBody(page);
   const history = page.getByRole("group", { name: "投递历史", exact: true });
-  await expect(history.getByText("发送记录读取失败，请重试；这不代表没有发送过。", { exact: true })).toBeVisible();
+  await expect(history.getByText("发送记录读取失败，请重试。", { exact: true })).toBeVisible();
   await expect(history.locator('[data-slot="card-description"]')).toHaveText("发送记录读取失败");
   await expect(main.getByText("暂无尝试明细", { exact: true })).toHaveCount(0);
   await expect(main.getByRole("table", { name: /^投递尝试/ })).toHaveCount(0);
@@ -660,7 +660,7 @@ test("failed attempt reads retain an accurate unknown history and recover on exp
   await alert.getByRole("button", { name: "重试", exact: true }).click();
   await expect(main.getByRole("table", { name: "投递尝试（1）", exact: true })).toBeVisible();
   await expect(history.getByText(/HTTP 503/)).toBeVisible();
-  await expect(history.getByText("发送记录读取失败，请重试；这不代表没有发送过。", { exact: true })).toHaveCount(0);
+  await expect(history.getByText("发送记录读取失败，请重试。", { exact: true })).toHaveCount(0);
   await expect(history.locator('[data-slot="card-description"]')).toHaveText("投递尝试按时间倒序显示 · 每页 10 条");
   await expect(alert).toHaveCount(0);
   expect(reads).toBeGreaterThan(beforeRetry);

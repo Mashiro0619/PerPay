@@ -64,7 +64,6 @@ export function AuditCaptureNotice({ capture, compact = false }: Pick<AuditMetad
   return <Alert variant={capture.state === "healthy" ? "default" : "destructive"} data-audit-capture>
     <AlertTitle>{gaps ? "部分活动日志未完整记录" : capture.state === "unavailable" ? "采集状态暂不可用" : capture.state === "degraded" ? "日志采集异常" : "日志采集曾出现异常"}</AlertTitle>
     <AlertDescription>
-      <p>仍可查看已保存的日志；没有新记录不代表这段时间没有系统活动。</p>
       <div className="flex flex-wrap gap-x-4 gap-y-1">
         {capture.dropped_events > 0 && <span>未记录活动：{capture.dropped_events.toLocaleString("zh-CN")} 条</span>}
         {capture.write_failures > 0 && <span>写入失败：{capture.write_failures.toLocaleString("zh-CN")} 次</span>}

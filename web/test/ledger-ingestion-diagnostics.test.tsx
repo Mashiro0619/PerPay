@@ -19,21 +19,19 @@ describe("ingestion failure presentation", () => {
     expect(screen.getByText("pagination_invalid")).not.toBeVisible();
     expect(screen.getByText(/账单流水时间超出/)).toBeVisible();
     fireEvent.click(screen.getByRole("button",{name:"失败详情"}));
-    expect(screen.getByText(/当前查账来源连续失败 3 次/)).toBeVisible();
+    expect(screen.getByText(/连续查账失败 3 次/)).toBeVisible();
     expect(screen.getByText("pagination_invalid")).toBeVisible();
-    expect(screen.getByText(/当前来源的正常与历史查账失败/)).toBeVisible();
     expect(screen.getByText(/账单流水时间超出/)).toBeVisible();
     expect(screen.getByText(/^失败窗口：/)).toBeVisible();
     expect(screen.getByText(/计划下次尝试：.*12:00:08/)).toBeVisible();
-    expect(screen.getByRole("link", { name: "安全恢复指引" })).toHaveAttribute("rel", "noopener noreferrer");
+    expect(screen.getByRole("link", { name: "排查步骤" })).toHaveAttribute("rel", "noopener noreferrer");
     expect(screen.queryByRole("button", {name:/重试|恢复/})).not.toBeInTheDocument();
   });
   it("distinguishes compensation failures from the normal lane", () => {
     const data = diagnostic(); data.latest_failure!.scan_kind = "COMPENSATION_1H";
     render(<LedgerIngestionDiagnostics diagnostics={data} />);
-    fireEvent.click(screen.getByRole("button",{name:"失败详情"}));
-    expect(screen.getByText(/历史流水核对可能延迟，正常查账可能仍在运行/)).toBeVisible();
-    expect(screen.queryByText(/本次正常查账未完成/)).not.toBeInTheDocument();
+    expect(screen.getByText(/^历史查账：/)).toBeVisible();
+    expect(screen.queryByText(/^正常查账：/)).not.toBeInTheDocument();
   });
   it("does not show a scheduled time while running, or invent one when unknown", () => {
     const data = diagnostic(); data.in_flight = true;
@@ -62,7 +60,7 @@ describe("ingestion failure presentation", () => {
     status.ledger.consecutive_failures = 0; status.ledger.last_error_code = null;
     mountOnboarding({ stage: 4, path: "/system", status: () => status });
     expect(await screen.findByText("查账持续失败")).toBeVisible();
-    expect(screen.getByText(/当前查账来源连续失败 3 次/)).toBeVisible();
+    expect(screen.getByText(/连续查账失败 3 次/)).toBeVisible();
   });
   it("retains runtime storage errors even when no provider failure was persisted", async () => {
     const status = systemStatus();

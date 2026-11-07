@@ -101,7 +101,7 @@ describe("readable standalone notification detail", () => {
     const orderCard = await screen.findByRole("group", { name: "关联订单" });
     expect(await within(orderCard).findByRole("link", { name: paidOrder.product_name })).toBeVisible();
     expect(within(screen.getByRole("group", { name: "通知信息" })).getByText(delivery.target.target_url)).toBeVisible();
-    expect(await screen.findByText("发送记录读取失败，请重试；这不代表没有发送过。")).toBeVisible();
+    expect(await screen.findByText("发送记录读取失败，请重试。")).toBeVisible();
     expect(screen.queryByText("暂无尝试明细")).not.toBeInTheDocument();
     const history = screen.getByRole("group", { name: "投递历史" });
     expect(within(history).getByRole("alert")).toHaveTextContent("尝试记录读取失败");
@@ -224,12 +224,12 @@ describe("readable delivery history", () => {
     expect(within(information).getByText(delivery.target.target_url)).toBeVisible();
     expect(await within(orderCard).findByRole("link", { name: paidOrder.product_name })).toBeVisible();
     const history = screen.getByRole("group", { name: "投递历史" });
-    await within(history).findByText("发送记录读取失败，请重试；这不代表没有发送过。");
+    await within(history).findByText("发送记录读取失败，请重试。");
     unavailable = false;
     await userEvent.setup().click(within(history).getByRole("button", { name: "重试" }));
     expect(await within(history).findByRole("table", { name: "投递尝试（1）" })).toBeVisible();
     expect(within(history).queryByRole("alert")).not.toBeInTheDocument();
-    expect(within(history).queryByText("发送记录读取失败，请重试；这不代表没有发送过。")).not.toBeInTheDocument();
+    expect(within(history).queryByText("发送记录读取失败，请重试。")).not.toBeInTheDocument();
     expect(requests.filter(request => new URL(request.url).pathname.includes("/orders/"))).toHaveLength(1);
     expect(requests.filter(request => new URL(request.url).pathname.endsWith("/attempts"))).toHaveLength(2);
   });

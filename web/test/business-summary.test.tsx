@@ -304,7 +304,6 @@ describe("business summaries", () => {
     expect(document.querySelectorAll("[data-list-columns-slot]")).toHaveLength(1);
     expect(within(sheet).queryByRole("checkbox")).not.toBeInTheDocument();
     expect(within(sheet).queryByRole("button", { name: "恢复默认列" })).not.toBeInTheDocument();
-    expect(within(sheet).getByText("手机列表展示关键摘要，完整信息可打开详情查看。")).toBeVisible();
     expect(JSON.parse(localStorage.getItem(storageKey)!)).toEqual({
       status: false,
       reference: true,

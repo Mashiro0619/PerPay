@@ -268,6 +268,40 @@ describe("mobile list query hierarchy", () => {
     expect(screen.getByRole("button", { name: "筛选与排序" })).toBeVisible();
   });
 
+  it.each([390, 1440])("clears unsent keywords and validation with applied filters at %ipx", async (width) => {
+    mobileMedia(width);
+    mount({}, "/orders?payment=UNPAID&source=overview&cursor=next&page=3");
+    const user = userEvent.setup();
+    const input = screen.getByRole("searchbox");
+    await user.type(input, "😀".repeat(101));
+    await user.click(screen.getByRole("button", { name: "搜索" }));
+    expect(input).toHaveAttribute("aria-invalid", "true");
+    await user.click(screen.getByRole("button", { name: "清除搜索和筛选" }));
+    expect(input).toHaveValue("");
+    expect(input).toHaveAttribute("aria-invalid", "false");
+    expect(input).toHaveFocus();
+    expect(Object.fromEntries(address())).toEqual({ source: "overview" });
+  });
+
+  it("clears a mobile keyword while keeping the selected filters", async () => {
+    mount({}, "/orders?q=商品&payment=UNPAID&source=overview&cursor=next&page=3");
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "清除搜索" }));
+    expect(screen.getByRole("searchbox")).toHaveValue("");
+    expect(screen.getByRole("searchbox")).toHaveFocus();
+    expect(Object.fromEntries(address())).toEqual({ payment: "UNPAID", source: "overview" });
+  });
+
+  it("clears an unsubmitted keyword without changing the current list page", async () => {
+    mount({}, "/orders?payment=UNPAID&source=overview&cursor=next&page=3");
+    const before = address().toString();
+    const user = userEvent.setup();
+    await user.type(screen.getByRole("searchbox"), "未提交");
+    await user.click(screen.getByRole("button", { name: "清除搜索" }));
+    expect(screen.getByRole("searchbox")).toHaveValue("");
+    expect(address().toString()).toBe(before);
+  });
+
   it("keeps protected operations from changing queries while disabled", () => {
     mount({ disabled: true });
     expect(screen.getByRole("searchbox")).toBeDisabled();

@@ -85,7 +85,6 @@ test.describe("mobile consecutive record rows", () => {
       const display = page.getByRole("dialog", { name: "列表显示", exact: true });
       await expect(display.getByRole("checkbox")).toHaveCount(0);
       await expect(display.getByRole("group", { name: "列表密度", exact: true })).toBeVisible();
-      await expect(display).toContainText("完整信息可打开详情查看");
       await display.getByRole("button", { name: "完成", exact: true }).tap();
       await expect(display).toHaveCount(0);
       await expect(order.getByRole("button", { name: "展开信息", exact: true })).toHaveCount(0);

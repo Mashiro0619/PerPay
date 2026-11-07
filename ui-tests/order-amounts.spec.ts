@@ -29,7 +29,7 @@ test("mobile summaries and details retain accurate amounts across desktop column
   const display = page.getByRole("dialog", { name: "列表显示", exact: true });
   await expect(display).toBeVisible();
   await expect(display.getByRole("checkbox")).toHaveCount(0);
-  await expect(display).toContainText("手机列表展示关键摘要，完整信息可打开详情查看。");
+  await expect(display.getByRole("group", { name: "列表密度", exact: true })).toBeVisible();
   await display.getByRole("button", { name: "完成", exact: true }).click();
   await expect(display).toHaveCount(0);
 

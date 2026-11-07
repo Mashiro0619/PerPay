@@ -32,7 +32,7 @@ export function LedgerIngestionDiagnostics({
         <CircleAlert />
         <AlertTitle>查账诊断暂不可用</AlertTitle>
         <AlertDescription>
-          失败记录暂不可读，请刷新。查账是否恢复尚未确认。
+          读取失败，请刷新重试。
         </AlertDescription>
       </Alert>
     );
@@ -47,7 +47,7 @@ export function LedgerIngestionDiagnostics({
       </AlertTitle>
       <AlertDescription>
         <div className="flex flex-col gap-2">
-          <p>当前查账来源连续失败 {failures} 次。</p>
+          <p>连续查账失败 {failures} 次。</p>
           {latest && (
             <>
               <p>
@@ -61,13 +61,7 @@ export function LedgerIngestionDiagnostics({
                   失败详情
                 </CollapsibleTrigger>
                 <CollapsibleContent keepMounted className="flex flex-col gap-2">
-                  <p>次数包含当前来源的正常与历史查账失败，并非同一账单页的重试次数。</p>
                   <p>原始错误码：<code className="wrap-anywhere">{latest.error_code}</code></p>
-                  <p>
-                    {latest.scan_kind === "NORMAL"
-                      ? "本次正常查账未完成。是否暂停新订单请查看就绪状态。"
-                      : "历史流水核对可能延迟，正常查账可能仍在运行。"}
-                  </p>
                   <p>
                     失败窗口：{timestamp(latest.window_start)} 至{" "}
                     {timestamp(latest.window_end)}
@@ -85,16 +79,16 @@ export function LedgerIngestionDiagnostics({
                 : "重试时间未定，请检查查账任务。"}
           </p>
           <p>
-            检查网络与支付宝配置。持续失败时，请保留失败窗口和错误记录，按
+            检查网络与支付宝配置，或查看
             <a
               data-external-link
               href="https://github.com/Mashiro0619/PerPay/blob/main/docs/maintenance.md#采集持续失败"
               target="_blank"
               rel="noopener noreferrer"
             >
-              安全恢复指引
+              排查步骤
             </a>
-            处理。
+            。
           </p>
         </div>
       </AlertDescription>

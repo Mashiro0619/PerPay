@@ -114,7 +114,6 @@ test.describe("mobile overlay regression with synthetic visible viewport", () =>
       expect(await page.evaluate(() => localStorage.getItem("perpay:list-density"))).toBe("comfortable");
 
       await expect(display.getByRole("checkbox")).toHaveCount(0);
-      await expect(display).toContainText("手机列表展示关键摘要，完整信息可打开详情查看。");
 
       const done = display.getByRole("button", { name: "完成", exact: true });
       const doneGeometry = await scrollControl(done);

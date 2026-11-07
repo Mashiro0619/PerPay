@@ -11,7 +11,6 @@ import { ListActionsMenu, ListActionsProvider } from "@/components/list-actions-
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ErrorNotice } from "@/components/request-state";
 import { Field, FieldGroup, FieldError } from "@/components/ui/field";
 import {
@@ -137,11 +136,29 @@ export function ListQueryToolbar({
   const primaryCount = date ? 1 : 2;
   const primaryControls = [...(date ? [date] : []), ...controls.slice(0, primaryCount)];
   const advancedControls = [...controls.slice(primaryCount), ...extras.filter(child => child !== date)];
-  const clearFilters = () => control.update({
-    q: null,
-    ...mobileFilterReset,
-    ...Object.fromEntries(filters.map(filter => [filter.key, filter.defaultValue ?? null])),
-  });
+  const clearSearch = () => {
+    setError("");
+    if (selectedMode) {
+      setLookupDraft("");
+      lookup?.onReset?.();
+    } else {
+      setDraft("");
+      if (control.query.q) control.setKeyword("");
+    }
+    searchInput.current?.focus({ preventScroll: true });
+  };
+  const clearFilters = () => {
+    setDraft("");
+    setLookupDraft("");
+    setError("");
+    lookup?.onReset?.();
+    control.update({
+      q: null,
+      ...mobileFilterReset,
+      ...Object.fromEntries(filters.map(filter => [filter.key, filter.defaultValue ?? null])),
+    });
+    searchInput.current?.focus({ preventScroll: true });
+  };
   return (
     <div
       className="list-query-toolbar min-w-0"
@@ -180,9 +197,9 @@ export function ListQueryToolbar({
             }
           }}
         >
-          <FieldGroup className="flex-row items-center gap-2">
+          <FieldGroup className="flex-row flex-wrap items-start justify-end gap-2">
             <Field
-              className="min-w-0 flex-1"
+              className="min-w-[min(100%,11rem)] flex-1"
               data-invalid={!!error}
               data-disabled={busy}
             >
@@ -190,6 +207,7 @@ export function ListQueryToolbar({
                 <InputGroupInput
                   ref={searchInput}
                   type="search"
+                  className="[&::-webkit-search-cancel-button]:appearance-none"
                   aria-label={selectedMode ? lookup!.inputLabel : label}
                   name={selectedMode ? lookup!.inputName : "q"}
                   placeholder={
@@ -262,6 +280,19 @@ export function ListQueryToolbar({
                     <Search />
                   )}
                 </InputGroupAddon>
+                {(selectedMode ? lookupDraft : draft || control.query.q) && (
+                  <InputGroupAddon align="inline-end">
+                    <InputGroupButton
+                      size="icon-xs"
+                      aria-label={selectedMode ? "清除查询编号" : "清除搜索"}
+                      title={selectedMode ? "清除查询编号" : "清除搜索"}
+                      disabled={busy}
+                      onClick={clearSearch}
+                    >
+                      <X />
+                    </InputGroupButton>
+                  </InputGroupAddon>
+                )}
               </InputGroup>
               {error && <FieldError>{error}</FieldError>}
             </Field>
@@ -284,26 +315,6 @@ export function ListQueryToolbar({
               >
                 {primaryControls}
               </div>
-            )}
-            {control.query.q && (
-              <Tooltip>
-                <TooltipTrigger render={
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    aria-label="清除搜索"
-                    disabled={disabled}
-                    onClick={() => {
-                      control.setKeyword("");
-                      searchInput.current?.focus({ preventScroll: true });
-                    }}
-                  />
-                }>
-                  <X aria-hidden="true" />
-                </TooltipTrigger>
-                <TooltipContent>清除搜索</TooltipContent>
-              </Tooltip>
             )}
             {desktopActions && (
               <div
@@ -370,7 +381,6 @@ export function ListQueryToolbar({
                   <ListDensityOptions />
                   {!summary && <Separator />}
                   <ListColumnsSlot display />
-                  {summary && <p className="text-sm text-muted-foreground">手机列表展示关键摘要，完整信息可打开详情查看。</p>}
                 </div>
                 <SheetFooter className="shrink-0 pb-[max(1rem,env(safe-area-inset-bottom))]">
                   <SheetClose render={<Button type="button" />}>完成</SheetClose>

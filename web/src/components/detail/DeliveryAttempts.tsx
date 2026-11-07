@@ -204,8 +204,8 @@ function DeliveryAttemptsContent({
       ) : (
         <p className="text-sm text-muted-foreground">
           {readState === "loading" ? "正在读取发送记录…"
-            : readState === "failed" ? "发送记录读取失败，请重试；这不代表没有发送过。"
-            : "发送记录尚未读取；这不代表没有发送过。"}
+            : readState === "failed" ? "发送记录读取失败，请重试。"
+            : "发送记录尚未读取。"}
         </p>
       )}
     </section>

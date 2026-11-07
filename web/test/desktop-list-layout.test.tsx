@@ -279,7 +279,6 @@ describe("desktop business list composition", () => {
       await user.click(await screen.findByRole("menuitem", { name: "列表显示" }));
       const display = await screen.findByRole("dialog", { name: "列表显示" });
       expect(within(display).queryByRole("checkbox")).not.toBeInTheDocument();
-      expect(within(display).getByText("手机列表展示关键摘要，完整信息可打开详情查看。")).toBeVisible();
       expect(within(display).getByText("紧凑")).toBeVisible();
       await user.click(within(display).getByRole("button", { name: "完成" }));
       await waitFor(() => expect(screen.queryByRole("dialog", { name: "列表显示" })).not.toBeInTheDocument());
