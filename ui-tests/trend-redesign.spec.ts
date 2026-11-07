@@ -117,7 +117,8 @@ test("one cent across New Year stays readable in each chart and presentation cha
   await page.setViewportSize({ width: 320, height: 900 });
   await card.getByRole("tab", { name: "图表", exact: true }).click();
   for (const [type, label] of TYPES) {
-    await types.getByRole("button", { name: label, exact: true }).click();
+    await card.getByRole("button", { name: /^图表类型：/ }).click();
+    await page.getByRole("menuitemradio", { name: label, exact: true }).click();
     await expect(plot).toHaveAttribute("data-chart-type", type);
     await expect(card.locator("[data-trend-sparse]")).toContainText("¥0.01");
     await record(page, info, { scenario: "one-cent-cross-year-mobile", type, width: 320 });
@@ -178,10 +179,12 @@ test.describe("narrow trend reading", () => {
       await page.evaluate(font => { document.documentElement.style.fontSize = font + "%"; }, font);
       await page.clock.runFor(200);
       const card = trendCard(page);
-      const types = card.getByRole("group", { name: "图表类型", exact: true });
+      const types = card.getByRole("button", { name: /^图表类型：/ });
       const controls = [];
       for (const [value, name] of TYPES) {
-        const button = types.getByRole("button", { name, exact: true });
+        await types.scrollIntoViewIfNeeded();
+        await types.tap();
+        const button = page.getByRole("menuitemradio", { name, exact: true });
         await button.evaluate(element => element.scrollIntoView({ block: "center", inline: "nearest" }));
         await page.clock.runFor(50);
         // The group's outer buttons have rounded corners. Measure their full
@@ -193,7 +196,8 @@ test.describe("narrow trend reading", () => {
         await button.tap();
         await expect(card.locator('[data-slot="chart"]')).toHaveAttribute("data-chart-type", value);
       }
-      await types.getByRole("button", { name: label, exact: true }).tap();
+      await types.tap();
+      await page.getByRole("menuitemradio", { name: label, exact: true }).tap();
       const plot = card.locator('[data-slot="chart"]');
       await expect(plot).toHaveAttribute("data-chart-type", type);
       const application = plot.locator('svg[role="application"]');

@@ -14,6 +14,7 @@ import { ChartAreaInteractive } from "../src/components/chart-area-interactive";
 import { DailyAnalytics } from "../src/components/daily-analytics";
 import { SectionCards as SummaryCards } from "../src/components/section-cards";
 import { CHART_TYPE_STORAGE_KEY } from "../src/hooks/use-chart-type";
+import { mobileMedia } from "./mobile-media";
 
 beforeEach(() => localStorage.removeItem(CHART_TYPE_STORAGE_KEY));
 
@@ -52,6 +53,27 @@ function analytics(days: 7 | 30 | 90 = 7): SystemAnalytics {
 }
 
 describe("official shadcn interactive chart", () => {
+  it("changes chart type from the compact mobile menu and retains the selection across metrics and desktop controls", async () => {
+    const media = mobileMedia(390);
+    const { container } = render(<ChartAreaInteractive analytics={analytics()} range={7} onRangeChange={vi.fn()} pending={false} />);
+    const user = userEvent.setup();
+    expect(screen.queryByRole("group", { name: "图表类型" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "图表类型：面积图" }));
+    expect(await screen.findByRole("menuitemradio", { name: "面积图" })).toHaveAttribute("aria-checked", "true");
+    await user.click(screen.getByRole("menuitemradio", { name: "柱状图" }));
+    await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
+    expect(container.querySelector("[data-slot=chart]")).toHaveAttribute("data-chart-type", "BAR");
+    expect(screen.getByRole("button", { name: "图表类型：柱状图" })).toBeVisible();
+    expect(localStorage.getItem(CHART_TYPE_STORAGE_KEY)).toBe("BAR");
+    await user.click(screen.getByRole("button", { name: "金额与订单" }));
+    expect(screen.queryByRole("button", { name: /^图表类型：/ })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "确认金额" }));
+    expect(screen.getByRole("button", { name: "图表类型：柱状图" })).toBeVisible();
+    media.resize(1440);
+    expect(screen.queryByRole("button", { name: /^图表类型：/ })).not.toBeInTheDocument();
+    expect(within(screen.getByRole("group", { name: "图表类型" })).getByRole("button", { name: "柱状图" })).toHaveAttribute("aria-pressed", "true");
+  });
+
   it("shows only the selected period total with compact metric switches", async () => {
     const data = analytics();
     data.confirmations.amount_cents = 4270937;

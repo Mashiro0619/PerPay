@@ -123,11 +123,16 @@ async function exerciseControls(page: Page, card: Locator, touch: boolean) {
     await ready(page, card);
   }
   for (const [type, name] of chartTypes) {
-    const choice = card.getByRole("group", { name: "图表类型", exact: true }).getByRole("button", { name, exact: true });
-    await expect(choice.locator("svg")).toBeVisible();
-    await expect(choice).not.toContainText(name);
+    const menu = card.getByRole("button", { name: /^图表类型：/ });
+    const mobile = await menu.count() > 0;
+    if (mobile) await activate(menu, page, touch);
+    const choice = mobile ? page.getByRole("menuitemradio", { name, exact: true })
+      : card.getByRole("group", { name: "图表类型", exact: true }).getByRole("button", { name, exact: true });
+    await expect(choice.locator("svg").last()).toBeVisible();
+    if (!mobile) await expect(choice).not.toContainText(name);
     await activate(choice, page, touch);
-    await expect(choice).toHaveAttribute("aria-pressed", "true");
+    if (mobile) await expect(menu).toHaveAccessibleName("图表类型：" + name);
+    else await expect(choice).toHaveAttribute("aria-pressed", "true");
     await expect(plot).toHaveAttribute("data-chart-type", type);
   }
   const metrics = card.getByRole("group", { name: "趋势指标", exact: true });
@@ -141,6 +146,7 @@ async function exerciseControls(page: Page, card: Locator, touch: boolean) {
   await expect(card.getByRole("region", { name: "每日数据", exact: true })).toBeVisible();
   await expect(card.getByRole("group", { name: "趋势指标", exact: true })).toHaveCount(0);
   await expect(card.getByRole("group", { name: "图表类型", exact: true })).toHaveCount(0);
+  await expect(card.getByRole("button", { name: /^图表类型：/ })).toHaveCount(0);
   await activate(card.getByRole("tab", { name: "图表", exact: true }), page, touch);
   await expect(plot).toHaveAttribute("data-chart-type", "LINE");
 }

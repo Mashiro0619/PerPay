@@ -2,6 +2,7 @@ import { useId, useState } from "react";
 import { ChartArea, ChartColumn, ChartLine, Info } from "lucide-react";
 import type { DashboardChartType, SystemAnalytics } from "@/api/client";
 import { useChartType } from "@/hooks/use-chart-type";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { money, count } from "@/lib/format";
 import { buildTrendReport, type TrendView } from "@/lib/trend-analytics";
 import { dailyDateLabel } from "@/lib/daily-analytics";
@@ -29,6 +30,15 @@ import {
 } from "@/components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Popover,
@@ -73,6 +83,9 @@ export function ChartAreaInteractive({
   const [view, setView] = useState("chart");
   const [dailyVisited, setDailyVisited] = useState(false);
   const [effectiveType, setSelectedType] = useChartType(chartType);
+  const mobile = useIsMobile();
+  const selectedChartType = chartTypes.find(type => type.value === effectiveType) ?? chartTypes[0];
+  const ChartTypeIcon = selectedChartType.icon;
   const summaryId = useId();
   const report = analytics && !pending ? buildTrendReport(analytics) : null;
   const singleMetric = metric === "combined" ? null : metric;
@@ -209,7 +222,23 @@ export function ChartAreaInteractive({
                   ))}
                 </ToggleGroup>
               </SelectionMotionGroup>
-              {metric !== "combined" && <SelectionMotionGroup>
+              {metric !== "combined" && (mobile ? <DropdownMenu>
+                <DropdownMenuTrigger render={<Button variant="outline" size="icon" aria-label={"图表类型：" + selectedChartType.label} />}>
+                  <ChartTypeIcon />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuGroup>
+                    <DropdownMenuLabel>图表类型</DropdownMenuLabel>
+                    <DropdownMenuRadioGroup value={effectiveType} onValueChange={value => {
+                      if (value === "AREA" || value === "BAR" || value === "LINE") setSelectedType(value);
+                    }}>
+                      {chartTypes.map(({ value, label, icon: Icon }) => <DropdownMenuRadioItem key={value} value={value} closeOnClick>
+                        <Icon />{label}
+                      </DropdownMenuRadioItem>)}
+                    </DropdownMenuRadioGroup>
+                  </DropdownMenuGroup>
+                </DropdownMenuContent>
+              </DropdownMenu> : <SelectionMotionGroup>
                 <ToggleGroup
                   value={[effectiveType]}
                   onValueChange={(value) => {
@@ -240,7 +269,7 @@ export function ChartAreaInteractive({
                     </Tooltip>
                   ))}
                 </ToggleGroup>
-              </SelectionMotionGroup>}
+              </SelectionMotionGroup>)}
             </div>
           )}
         </CardHeader>

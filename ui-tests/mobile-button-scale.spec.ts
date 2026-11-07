@@ -167,21 +167,21 @@ test.describe("compact mobile button visuals and separate touch targets", () => 
     });
   }
 
-  test("overview chart choices keep their touch regions inside each horizontal slot", async ({ page, manifest }, info) => {
+  test("overview chart type menu keeps its trigger and choices independently tappable", async ({ page, manifest }, info) => {
     await login(page, manifest);
-    const group = page.getByRole("group", { name: "图表类型", exact: true });
-    await expect(group).toBeVisible();
+    const trigger = page.getByRole("button", { name: /^图表类型：/ });
+    await expect(trigger).toBeVisible();
     // The controls precede their analytics and metric cards. Finish that
     // shared layout before scrolling them into the viewport for hit testing.
     await expect(page.locator(".trend-card")).toHaveAttribute("aria-busy", "false");
     await page.evaluate(() => document.fonts.ready);
-    await group.scrollIntoViewIfNeeded();
+    await trigger.scrollIntoViewIfNeeded();
     await page.clock.runFor(100);
-    const choices = ["面积图", "柱状图", "折线图"].map(name => group.getByRole("button", { name, exact: true }));
+    const triggerGeometry = await expectTouchTarget(trigger);
     const geometry = [];
-    for (const choice of choices) {
-      // Group ends have transparent rounded corners; verify their full target
-      // size and the center/edge midpoints on the actual control surface.
+    for (const name of ["面积图", "柱状图", "折线图"]) {
+      await trigger.tap();
+      const choice = page.getByRole("menuitemradio", { name, exact: true });
       const target = await expectTouchTarget(choice, { hitTest: false });
       expect([1, 3, 4, 5, 7].every(index => target.points[index]!.hit), "the button center and four edge midpoints belong to that control").toBe(true);
       expect(target.x).toBeGreaterThanOrEqual(target.slot.x - .5);
@@ -193,13 +193,14 @@ test.describe("compact mobile button visuals and separate touch targets", () => 
         }, { x, y: target.visual.y + target.visual.height / 2 })).toBe(true);
       }
       geometry.push(target);
+      await choice.tap();
+      await expect(trigger).toHaveAccessibleName("图表类型：" + name);
     }
-    await choices[1]!.tap();
-    await expect(choices[1]!).toHaveAttribute("aria-pressed", "true");
-    await expect(choices[0]!).toHaveAttribute("aria-pressed", "false");
-    await choices[0]!.tap();
-    await expect(choices[0]!).toHaveAttribute("aria-pressed", "true");
-    await record(page, info, { evidence: "browser touch viewport", joinedChoices: geometry });
+    await trigger.tap();
+    await expect(page.getByRole("menuitemradio", { name: "折线图", exact: true })).toHaveAttribute("aria-checked", "true");
+    await expect(page.getByRole("menuitemradio", { name: "面积图", exact: true })).toHaveAttribute("aria-checked", "false");
+    await page.getByRole("menuitemradio", { name: "面积图", exact: true }).tap();
+    await record(page, info, { evidence: "browser touch viewport", triggerGeometry, menuChoices: geometry });
   });
 
   test("the first technical copy action retains its full touch target in the independent reader", async ({ page, manifest }, info) => {
@@ -283,18 +284,17 @@ test.describe("compact mobile button visuals and separate touch targets", () => 
       await tabs.getByRole("tab", { name: "每日数据", exact: true }).tap();
       await expect(card.getByRole("region", { name: "每日数据", exact: true })).toBeVisible();
       await tabs.getByRole("tab", { name: "图表", exact: true }).tap();
-      const types = card.getByRole("group", { name: "图表类型", exact: true });
+      const types = card.getByRole("button", { name: /^图表类型：/ });
       const typeGeometry = [];
       for (const [name, value] of [["面积图", "AREA"], ["柱状图", "BAR"], ["折线图", "LINE"]] as const) {
-        const target = types.getByRole("button", { name, exact: true });
-        const geometry = await centered(target, page);
+        const geometry = await centered(types, page);
         expect(geometry.visual.width).toBeCloseTo(32, 1);
         expect(geometry.visual.height).toBeCloseTo(32, 1);
         typeGeometry.push(geometry);
-        await tapOutsideVisible(page, target, "top");
+        await tapOutsideVisible(page, types, "top");
+        await page.getByRole("menuitemradio", { name, exact: true }).tap();
         await expect(card.locator('[data-slot="chart"]')).toHaveAttribute("data-chart-type", value);
       }
-      await expectTouchGap(types.getByRole("button", { name: "面积图", exact: true }), types.getByRole("button", { name: "柱状图", exact: true }), "horizontal");
       await record(page, info, { compactChoices: "trend", width, tabsBox, typeGeometry });
       if (width === 320) {
         await page.evaluate(() => document.documentElement.style.fontSize = "200%");

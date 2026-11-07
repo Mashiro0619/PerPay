@@ -202,10 +202,13 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
       }));
 
       const trend = page.locator('[data-slot="card"]').filter({ has: page.getByRole("heading", { name: "收款趋势", exact: true }) });
-      await trend.getByRole("group", { name: "图表类型", exact: true }).scrollIntoViewIfNeeded();
+      await trend.locator(".trend-toolbar").scrollIntoViewIfNeeded();
       observations.push(await observe(page, "chart-and-metric-switching", async () => {
         for (const [type, label] of [["BAR", "柱状图"], ["LINE", "折线图"], ["AREA", "面积图"]] as const) {
-          await trend.getByRole("button", { name: label, exact: true }).click();
+          if (mobile) {
+            await trend.getByRole("button", { name: /^图表类型：/ }).click();
+            await page.getByRole("menuitemradio", { name: label, exact: true }).click();
+          } else await trend.getByRole("button", { name: label, exact: true }).click();
           await expect(trend.locator('[data-slot="chart"]')).toHaveAttribute("data-chart-type", type!);
           await page.waitForTimeout(200);
         }

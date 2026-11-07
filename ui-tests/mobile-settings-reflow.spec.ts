@@ -160,48 +160,44 @@ test.describe("narrow settings and overview controls remain usable", () => {
   for (const font of [100, 200]) {
     test(`overview chart choices preserve accessible touch targets and keyboard selection at ${font}% text`, async ({ page, manifest }, info) => {
       await login(page, manifest);
-      const group = page.getByRole("group", { name: "图表类型", exact: true });
-      await expect(group).toBeVisible();
+      const trigger = page.getByRole("button", { name: /^图表类型：/ });
+      await expect(trigger).toBeVisible();
       await page.evaluate(font => document.documentElement.style.fontSize = font + "%", font);
       const values = [];
       for (const [name, value] of [["面积图", "AREA"], ["柱状图", "BAR"], ["折线图", "LINE"]] as const) {
-        const choice = group.getByRole("button", { name, exact: true });
+        await trigger.scrollIntoViewIfNeeded();
+        await page.clock.runFor(100);
+        await expectTouchTarget(trigger);
+        await trigger.tap();
+        const choice = page.getByRole("menuitemradio", { name, exact: true });
         await expect(choice).toHaveAccessibleName(name);
-        await expect(choice).not.toContainText(name);
         await choice.scrollIntoViewIfNeeded();
         await page.clock.runFor(100);
-        // The outer rounded corners are transparent; target size, edge
-        // midpoints and the real tap below still verify usable touch areas.
         const geometry = await expectTouchTarget(choice, { hitTest: false });
         expect([1, 3, 4, 5, 7].every(index => geometry.points[index]!.hit), "the button center and four edge midpoints belong to that control").toBe(true);
-        await expect(choice.locator("svg")).toBeVisible();
+        await expect(choice.locator("svg").last()).toBeVisible();
         await choice.tap();
-        await expect(choice).toHaveAttribute("aria-pressed", "true");
+        await expect(trigger).toHaveAccessibleName("图表类型：" + name);
         await expect(page.locator(".trend-plot[data-chart-type]")).toHaveAttribute("data-chart-type", value);
         values.push({ name, value, geometry });
       }
-      const layout = await group.evaluate(element => {
+      const layout = await trigger.evaluate(element => {
         const bounds = element.getBoundingClientRect();
-        return { width: bounds.width, scrollWidth: element.scrollWidth,
-          choices: [...element.querySelectorAll('button')].map(choice => {
-            const rect = choice.getBoundingClientRect();
-            return { left: rect.left - bounds.left, right: rect.right - bounds.left, top: rect.top - bounds.top, bottom: rect.bottom - bounds.top };
-          }) };
+        const icon = element.querySelector("svg")!.getBoundingClientRect();
+        return { width: bounds.width, iconFits: icon.left >= bounds.left && icon.right <= bounds.right && icon.top >= bounds.top && icon.bottom <= bounds.bottom };
       });
-      expect(layout.scrollWidth).toBeLessThanOrEqual(layout.width + 1);
-      expect(layout.choices.every(choice => choice.left >= -1 && choice.right <= layout.width + 1)).toBe(true);
-      expect(new Set(layout.choices.map(choice => Math.round(choice.top))).size, "the chart choices keep a horizontal row").toBe(1);
-      await expect(group).toHaveAttribute("data-orientation", "horizontal");
-      const first = group.getByRole("button", { name: "面积图", exact: true });
+      expect(layout.iconFits, "the current chart icon remains complete inside the visible trigger").toBe(true);
+      await trigger.tap();
+      const first = page.getByRole("menuitemradio", { name: "面积图", exact: true });
       await first.tap();
+      await trigger.focus();
+      await page.keyboard.press("Enter");
       await first.focus();
-      await page.keyboard.press("ArrowRight");
-      const next = group.getByRole("button", { name: "柱状图", exact: true });
+      await page.keyboard.press("ArrowDown");
+      const next = page.getByRole("menuitemradio", { name: "柱状图", exact: true });
       await expect(next).toBeFocused();
-      await page.clock.runFor(100);
-      await expect(page.getByRole("tooltip")).toContainText("柱状图");
-      await page.keyboard.press("Space");
-      await expect(next).toHaveAttribute("aria-pressed", "true");
+      await page.keyboard.press("Enter");
+      await expect(trigger).toHaveAccessibleName("图表类型：柱状图");
       await expect(page.locator(".trend-plot[data-chart-type]")).toHaveAttribute("data-chart-type", "BAR");
       await record(page, info, { evidence: "desktop browser touch emulation", rootFont: font, overviewChartChoices: values, layout });
     });
