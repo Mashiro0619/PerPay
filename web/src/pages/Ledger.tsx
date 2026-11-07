@@ -17,7 +17,7 @@ import { ListActionsMenu } from "@/components/list-actions-menu";
 import { ListColumnsProvider } from "@/components/list-columns";
 import { ListLayout, ListToolbarPart } from "@/components/list-layout";
 import { ListQueryToolbar, type ListFilter } from "@/components/list-query-toolbar";
-import { ListDateTime, ListIdentity, ListMeta, ListSummary, ListSummaryField } from "@/components/list-primitives";
+import { ListDateTime, ListIdentity, ListMeta, ListSummary } from "@/components/list-primitives";
 import { CreatedDateFilter } from "@/components/created-date-filter";
 import { LedgerAmountFilter } from "@/components/ledger-amount-filter";
 import { LedgerFreshness } from "@/components/ledger-freshness";
@@ -145,15 +145,22 @@ export function LedgerList({ onManual }: { onManual?: (trigger: HTMLButtonElemen
     {filterError ? <ErrorNotice error={filterError} /> : <QueryView query={query}>{page => <>
       <div className="min-w-0" aria-busy={query.isFetching || query.isPlaceholderData}>
         {page.data.length ? <BusinessTable id="administrator-ledger" aria-label="支付宝流水" tableClassName="ledger-table" items={page.data} columns={columns} rowId={entry => entry.ledger_entry_id} control={control}
-          renderSummary={(entry, context) => <ListSummary
-            layout="record"
-            identity={columns[0]!.cell(entry, context)}
-            aside={context.isSummaryPrimary("amount_cents") && <LedgerMoney entry={entry} />}
-            status={columns.filter(column => ["direction", "association", "state"].includes(column.id) && context.isSummaryPrimary(column.id)).map(column => <div key={column.id} role="group" aria-label={column.label}>{column.cell(entry, context)}</div>)}
-            details={columns.filter(column => context.isColumnVisible(column.id) && !context.isSummaryPrimary(column.id)).map(column => <ListSummaryField key={column.id} label={column.label}>{column.cell(entry, context)}</ListSummaryField>)}
-          >
-            {columns.filter(column => !["identity", "amount_cents", "direction", "association", "state"].includes(column.id) && context.isSummaryPrimary(column.id)).map(column => <ListSummaryField key={column.id} label={column.label} visibleLabel fullWidth>{column.cell(entry, context)}</ListSummaryField>)}
-          </ListSummary>} /> : <Empty kind={activeFilters ? "filtered" : "page"}><EmptyHeader><EmptyTitle role="heading" aria-level={2}>{activeFilters ? "暂无符合条件的流水" : "暂无支付宝流水"}</EmptyTitle>{activeFilters && <EmptyDescription>调整筛选条件后重试。</EmptyDescription>}</EmptyHeader></Empty>}
+          renderSummary={entry => <ListSummary
+            layout="activity"
+            identity={<ListIdentity><Link global data-row-link className="list-primary-link" title={entry.external_event_id} to={"/reconciliation/transactions/" + entry.ledger_entry_id}>
+              {entry.other_account || entry.memo || (entry.content_consistent ? "支付宝流水" : "账单内容存在差异")}
+            </Link></ListIdentity>}
+            aside={<div className="ledger-summary-amount"><LedgerMoney entry={entry} /><div role="group" aria-label="收支"><LedgerDirection value={entry.direction} disputed={!entry.content_consistent} /></div></div>}
+            status={<><div role="group" aria-label="关联状态"><LedgerAssociationStatus entry={entry} /></div><div role="group" aria-label="PerPay 处理状态"><LedgerStates entry={entry} showAnomaly={false} /></div></>}
+            context={<dl className="ledger-summary-links">
+              {(entry.active_match || entry.active_match_count > 1) && <div><dt aria-label="当前关联订单">订单</dt><dd><LedgerActiveOrder entry={entry} /></dd></div>}
+              <div><dt aria-label="收款账号">账号</dt><dd><AlipayAccountIdentity id={entry.alipay_account_id} name={entry.alipay_account_name} /></dd></div>
+            </dl>}
+            metadata={<dl className="activity-summary-context ledger-summary-metadata">
+              <div><dt className="sr-only">交易时间</dt><dd>{entry.occurred_at ? <ListDateTime value={entry.occurred_at} inline /> : entry.content_consistent ? "—" : "时间有争议"}</dd></div>
+              <div><dt className="sr-only">支付宝流水号</dt><dd className="list-code" title={entry.external_event_id}>{entry.external_event_id}</dd></div>
+            </dl>}
+          />} /> : <Empty kind={activeFilters ? "filtered" : "page"}><EmptyHeader><EmptyTitle role="heading" aria-level={2}>{activeFilters ? "暂无符合条件的流水" : "暂无支付宝流水"}</EmptyTitle>{activeFilters && <EmptyDescription>调整筛选条件后重试。</EmptyDescription>}</EmptyHeader></Empty>}
       </div>
       <CursorPagination page={pagination.page} count={page.data.length} hasNext={!!page.page.next_cursor} pending={query.isFetching || query.isPlaceholderData} previousLabel={pagination.previousLabel} onPrevious={pagination.previous} onNext={() => pagination.next(page.page.next_cursor)} />
     </>}</QueryView>}

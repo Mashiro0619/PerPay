@@ -11,7 +11,7 @@ test("mobile reconciliation keeps the associated order and collection account id
     await page.setViewportSize({ width, height: 844 });
     await page.evaluate(font => { document.documentElement.style.fontSize = font + "%"; }, font);
     await page.clock.runFor(100);
-    for (const name of ["当前关联订单", "收款账号"]) {
+    for (const name of ["订单", "账号"]) {
       const term = row.getByText(name, { exact: true });
       await expect(term).toBeVisible();
       expect(await term.evaluate(element => getComputedStyle(element).clipPath)).toBe("none");

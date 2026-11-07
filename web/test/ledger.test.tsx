@@ -104,21 +104,22 @@ describe("administrator ledger pages", () => {
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
     const summary = await screen.findByRole("listitem");
     expect(within(summary).getByRole("group", { name: "关联状态" })).toHaveTextContent("已关联");
-    expect(within(summary).getByRole("link", { name: externalEventId })).toHaveTextContent(externalEventId);
+    expect(within(summary).getByRole("link", { name: "付款用户" })).toHaveAttribute("href", "/reconciliation/transactions/" + ledgerId);
+    expect(within(summary).getByText(externalEventId)).toBeVisible();
     expect(within(summary).getByText("交易时间")).toBeVisible();
     expect(within(summary).getByRole("group", { name: "收支" })).toHaveTextContent("收入");
     const relatedOrder = within(summary).getByRole("link", { name: "查看订单：real-order" });
     expect(relatedOrder).toHaveTextContent(match.product_name);
     expect(relatedOrder).toHaveAttribute("href", "/orders/" + orderId);
-    expect(relatedOrder.closest(".business-summary-field")).toHaveAttribute("data-visible-label", "true");
+    expect(relatedOrder.closest(".ledger-summary-links")).not.toBeNull();
     const account = within(summary).getByRole("link", { name: alipayAccount.name });
     expect(account).toHaveAttribute("href", "/settings/accounts/" + alipayAccount.id);
-    expect(account.closest(".business-summary-field")).toHaveAttribute("data-visible-label", "true");
+    expect(account.closest(".ledger-summary-links")).not.toBeNull();
     expect(within(summary).getByRole("group", { name: "PerPay 处理状态" })).toHaveTextContent("已分配");
     expect(within(summary).queryByText("本地流水备注")).not.toBeInTheDocument();
     expect(within(summary).queryByRole("button", { name: "展开信息" })).not.toBeInTheDocument();
-    expect(Array.from(summary.querySelectorAll(".business-summary-field > dt"), field => field.textContent)).toEqual([
-      "交易时间", "当前关联订单", "收款账号",
+    expect(Array.from(summary.querySelectorAll("dt"), field => field.textContent)).toEqual([
+      "订单", "账号", "交易时间", "支付宝流水号",
     ]);
     expect(JSON.parse(localStorage.getItem("perpay.table-columns.v2.administrator-ledger")!)).toEqual({ memo: true });
     expect(screen.getByLabelText("位置")).toHaveTextContent(/^\/reconciliation$/);

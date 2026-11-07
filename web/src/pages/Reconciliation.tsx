@@ -18,7 +18,6 @@ import {
   ListIdentity,
   ListMeta,
   ListSummary,
-  ListSummaryField,
 } from "@/components/list-primitives";
 import { useRef, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -96,7 +95,7 @@ function readableRawAmount(value: string | null): string | null {
 }
 
 /** Identifies both the related order and the individual payment behind an issue. */
-function RelatedRecord({ item }: { item: ReconciliationRow }) {
+function RelatedRecord({ item, compact = false }: { item: ReconciliationRow; compact?: boolean }) {
   const order = item.context?.order_summary;
   const ledger = item.context?.ledger_entry_summary;
   if (order) {
@@ -112,7 +111,7 @@ function RelatedRecord({ item }: { item: ReconciliationRow }) {
         >
           <span className="reconciliation-related-title" title={order.product_name}>{order.product_name}</span>
           <span className="reconciliation-related-meta">
-            <span className="list-code" title={order.merchant_order_no}>{order.merchant_order_no}</span>
+            <span className={compact ? "sr-only" : "list-code"} title={order.merchant_order_no}>{order.merchant_order_no}</span>
             {site && <span className="reconciliation-related-detail" title={site}>{site}</span>}
           </span>
         </Link>
@@ -174,7 +173,7 @@ function RelatedRecord({ item }: { item: ReconciliationRow }) {
       <div className="reconciliation-related-record">
         <span className="reconciliation-related-title" title={summary}>{summary}</span>
         <span className="reconciliation-related-meta">
-          <span title={raw.occurred_at_text ?? undefined}>{raw.occurred_at_text || "时间未知"}</span>
+          <span title={raw.occurred_at_text ?? undefined}>{compact && <span>原始时间 </span>}{raw.occurred_at_text || "时间未知"}</span>
           <span className="reconciliation-related-detail" title={reference ?? rawReference}>{reference ?? rawReference}</span>
         </span>
       </div>
@@ -643,24 +642,16 @@ function ReconciliationList({
                   columns={columns}
                   renderSummary={(item, context) => (
                     <ListSummary
+                      layout="activity"
                       identity={columns[0]!.cell(item, context)}
-                      details={columns.filter((column) =>
-                        context.isColumnVisible(column.id) && !context.isSummaryPrimary(column.id),
-                      ).map((column) => (
-                        <ListSummaryField key={column.id} label={column.label}>
-                          {column.cell(item, context)}
-                        </ListSummaryField>
-                      ))}
-                    >
-                      {columns.filter((column) =>
-                        column.id !== "identity" &&
-                        context.isSummaryPrimary(column.id),
-                      ).map((column) => (
-                        <ListSummaryField key={column.id} label={column.label}>
-                          {column.cell(item, context)}
-                        </ListSummaryField>
-                      ))}
-                    </ListSummary>
+                      aside={<div data-summary-status><StatusBadge value={item.status} label={item.status === "OPEN" ? "待处理" : undefined} /></div>}
+                      context={<div className="issue-summary-related"><RelatedRecord item={item} compact /></div>}
+                      metadata={<dl className="activity-summary-context issue-summary-metadata">
+                        <div><dt>发现</dt><dd><ListDateTime value={item.createdAt} inline /></dd></div>
+                        {section === "conflicts" && item.externalEventId && <div><dt className="sr-only">支付宝流水号</dt><dd className="list-code" title={item.externalEventId}>{item.externalEventId}</dd></div>}
+                        {item.reminderIgnored && <div><dt className="sr-only">提醒状态</dt><dd>提醒已忽略</dd></div>}
+                      </dl>}
+                    />
                   )}
                 />
               ) : (

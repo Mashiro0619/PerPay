@@ -1966,3 +1966,32 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   .overview-record-panel > .overview-records-header > [data-slot="card-action"] { grid-column: 1; grid-row: auto; justify-self: start; }
   .overview-record-panel > .overview-records-header > [data-slot="card-title"] { flex-wrap: wrap; }
 }
+
+/* Reconciliation summaries: transaction context and processing outcome stay grouped. */
+[data-business-table="administrator-ledger"] [data-summary-layout="activity"] [data-summary-status] { display: flex; min-width: 0; flex-wrap: wrap; align-items: flex-start; gap: 0.375rem 0.75rem; }
+.ledger-summary-amount { display: flex; min-width: 0; flex-wrap: wrap; align-items: baseline; justify-content: flex-end; gap: 0.375rem; }
+.ledger-summary-amount > .list-money { font-size: 1.125rem; line-height: 1.4; font-weight: 600; }
+.ledger-summary-links { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 0.7fr); align-items: center; gap: 0.25rem 0.75rem; margin: 0; font-size: 0.75rem; line-height: 1.5; color: var(--muted-foreground); }
+.ledger-summary-links > div, .ledger-summary-links dd { min-width: 0; margin: 0; }
+.ledger-summary-links > div { display: flex; align-items: center; gap: 0.375rem; }
+.ledger-summary-links dt { flex: none; }
+.ledger-summary-links > div:last-child { justify-content: flex-end; }
+.ledger-summary-links > div:only-child { justify-content: flex-start; }
+.ledger-summary-links a { display: inline-flex; min-width: 40px; max-width: 100%; min-height: 40px; align-items: center; overflow-wrap: anywhere; }
+.ledger-summary-links .ledger-order-line { white-space: normal; }
+.ledger-summary-links > div:last-child { text-align: right; }
+.ledger-summary-links > div:only-child { grid-column: 1 / -1; text-align: left; }
+.ledger-summary-metadata .list-code, .issue-summary-metadata .list-code { max-width: 100%; overflow-wrap: anywhere; }
+[data-business-table="administrator-ledger"] .list-summary-heading:has(.list-money[data-wide="true"]) { grid-template-columns: minmax(0, 1fr); }
+.issue-summary-related { min-width: 0; font-size: 0.8125rem; }
+.issue-summary-related .reconciliation-related-record { align-items: stretch; text-align: left; }
+.issue-summary-related .reconciliation-related-link { justify-content: center; min-height: 40px; }
+.issue-summary-related .reconciliation-related-title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; white-space: normal; overflow-wrap: anywhere; }
+.issue-summary-related .reconciliation-related-meta { flex-wrap: wrap; overflow-wrap: anywhere; }
+.issue-summary-related .reconciliation-related-meta > span { min-width: 0; max-width: 100%; }
+@container summary (max-width: 17rem) {
+  .ledger-summary-links { grid-template-columns: minmax(0, 1fr); }
+  .ledger-summary-links > div:last-child { text-align: left; }
+  .ledger-summary-links > div:last-child { justify-content: flex-start; }
+  .ledger-summary-amount { justify-content: flex-start; }
+}
