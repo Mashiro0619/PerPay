@@ -1082,6 +1082,9 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 
 /* Runtime status uses a flat, aligned service table rather than nested surfaces. */
 .trend-plot { height: 14rem; min-height: 14rem; flex: none; }
+/* SVG layers can receive pointer focus; reserve the visible outline for keyboard navigation. */
+[data-slot="chart"] [tabindex]:focus:not(:focus-visible) { outline: none; }
+[data-slot="chart"] .recharts-surface:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
 @container main (max-width: 19rem) {
   [data-overview-kpis] { grid-template-columns: minmax(0, 1fr); }
 }
