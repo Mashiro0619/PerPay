@@ -10,10 +10,10 @@ export function renderReleaseCompose(source, version) {
   const policy = releasePolicy(version);
   const expectedImage = "ghcr.io/mashiro0619/perpay:latest";
   if (inspectComposeContract(source).image !== expectedImage) {
-    throw new Error("root Compose app.image must use the latest channel");
+    throw new Error("root Compose x-perpay-image must use the latest channel");
   }
   if (!policy.prerelease) return source;
-  return "# 预发布版本：固定镜像版本，不跟随稳定版 latest；升级需显式修改三个服务的版本。\n" +
+  return "# 预发布版本：固定镜像版本；升级时修改 x-perpay-image，再拉取并重启。\n" +
     replaceComposeImage(source, "ghcr.io/mashiro0619/perpay:" + policy.composeImageTag);
 }
 

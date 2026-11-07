@@ -42,7 +42,8 @@ test("Compose contract accepts the default services and profile-gated maintenanc
   const rendered = replaceComposeImage(validCompose, `${contract.image}@${digest}`);
   const renderedContract = inspectComposeContract(rendered);
   assert.equal(renderedContract.image, `${contract.image}@${digest}`);
-  assert.equal(rendered.match(/perpay:latest@sha256:a{64}/gu)?.length, 3);
+  assert.deepEqual(Object.values(parse(rendered).services).map(service => service.image),
+    Array(3).fill(`${contract.image}@${digest}`));
 
   const parsed = parse(validCompose);
   assert.equal(parsed.services.app.environment.PERPAY_PUBLIC_URL, "https://pay.example.com");
@@ -69,6 +70,20 @@ test("Compose contract accepts the default services and profile-gated maintenanc
     "perpay-backups:/backups",
     "perpay-secrets:/run/perpay-secrets:ro",
   ]);
+});
+
+test("Compose keeps every service on the shared image when changing a tag or digest", () => {
+  for (const image of ["ghcr.io/mashiro0619/perpay:1.0.0-rc.2", "ghcr.io/mashiro0619/perpay:latest"]) {
+    const rendered = replaceComposeImage(validCompose, image);
+    const parsed = parse(rendered);
+    assert.equal(parsed["x-perpay-image"], image);
+    assert.deepEqual([parsed.services.app.image, parsed.services.backup.image, parsed.services.maintenance.image], [image, image, image]);
+  }
+  for (const service of ["app", "backup", "maintenance"]) {
+    const contract = inspectComposeContract(validCompose);
+    contract.document.setIn(["services", service, "image"], "ghcr.io/mashiro0619/perpay:0.3.2");
+    assert.throws(() => inspectComposeContract(contract.document.toString()), /must reference the perpay-image anchor/);
+  }
 });
 
 test("Compose contract rejects duplicate keys, unexpected services, and renamed projects", () => {

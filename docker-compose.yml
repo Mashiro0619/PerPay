@@ -1,5 +1,7 @@
 name: perpay
 
+# 统一镜像版本：默认跟随稳定版 latest；固定版本时只修改这一处。
+x-perpay-image: &perpay-image ghcr.io/mashiro0619/perpay:latest
 # 按需修改：宿主机 IP:宿主机端口:容器端口；默认仅宿主机可访问。
 # 端口冲突时只改中间的 6190，容器端口保持 6190。
 x-perpay-host-port: &perpay-host-port "127.0.0.1:6190:6190"
@@ -20,8 +22,7 @@ services:
       PERPAY_PUBLIC_URL: *perpay-public-url
       PERPAY_TRUSTED_PROXY_CIDRS: *perpay-trusted-proxy-cidrs
       PERPAY_SETUP_TOKEN_ENABLED: *perpay-setup-token-enabled
-    # 可选：固定版本时，将 app、backup、maintenance 三处镜像统一改为同一版本。
-    image: ghcr.io/mashiro0619/perpay:latest
+    image: *perpay-image
     volumes:
       - perpay-data:/data
       - perpay-backups:/backups:ro
@@ -54,7 +55,7 @@ services:
         max-file: "3"
 
   backup:
-    image: ghcr.io/mashiro0619/perpay:latest
+    image: *perpay-image
     environment:
       PERPAY_DATA_DIR: "/data"
       PERPAY_BACKUP_DIR: "/backups"
@@ -97,7 +98,7 @@ services:
         max-file: "3"
 
   maintenance:
-    image: ghcr.io/mashiro0619/perpay:latest
+    image: *perpay-image
     profiles:
       - maintenance
     environment:

@@ -3,6 +3,7 @@ import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSy
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { test } from "node:test";
+import { parse } from "yaml";
 import { inspectVersionFiles } from "../scripts/check-version.mjs";
 import { readReleaseMetadata } from "../scripts/release-metadata.mjs";
 import { renderReleaseCompose } from "../scripts/render-release-compose.mjs";
@@ -46,7 +47,8 @@ for (const version of ["0.3.0-alpha.1", "0.3.0-beta.2", "0.3.0-rc.10", "0.3.0"])
       const rendered = renderReleaseCompose(compose, version);
       const expectedTag = pre ? version : "latest";
       assert.equal(inspectComposeContract(rendered).image, "ghcr.io/mashiro0619/perpay:" + expectedTag);
-      assert.equal(rendered.split("image: ghcr.io/mashiro0619/perpay:" + expectedTag).length - 1, 3);
+      assert.deepEqual(Object.values(parse(rendered).services).map(service => service.image),
+        Array(3).fill("ghcr.io/mashiro0619/perpay:" + expectedTag));
       assert.equal(releasePolicy(version).promoteLatest, !pre);
       if (!pre) assert.equal(rendered, compose);
       else assert.match(rendered, /固定镜像版本/u);

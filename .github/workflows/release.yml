@@ -563,7 +563,7 @@ jobs:
 
           if [ "$RELEASE_PRERELEASE" = true ]; then
             release_flags=(--prerelease --latest=false)
-            release_channel_note="这是预发布版本，不会覆盖稳定版 latest。附件固定当前版本，后续升级需显式修改 app、backup、maintenance 三处镜像版本。"
+            release_channel_note="这是预发布版本，不会覆盖稳定版 latest。附件固定当前版本，后续升级时修改 x-perpay-image，再拉取并重启。"
           elif [ "$RELEASE_PRERELEASE" = false ]; then
             release_flags=(--latest)
             release_channel_note="这是正式版本，附件跟随稳定版 latest 更新通道。"

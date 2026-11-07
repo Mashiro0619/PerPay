@@ -6,7 +6,7 @@ const TEMPLATE_EXTENSIONS = Object.freeze({
   "x-perpay-trusted-proxy-cidrs": ["perpay-trusted-proxy-cidrs", ""],
   "x-perpay-setup-token-enabled": ["perpay-setup-token-enabled", "false"],
 });
-const TOP_LEVEL_KEYS = new Set(["name", ...Object.keys(TEMPLATE_EXTENSIONS), "services", "volumes"]);
+const TOP_LEVEL_KEYS = new Set(["name", "x-perpay-image", ...Object.keys(TEMPLATE_EXTENSIONS), "services", "volumes"]);
 const APP_KEYS = new Set(["image", "environment", "ports", "volumes", "user", "restart", "stop_grace_period", "read_only", "tmpfs", "security_opt", "cap_drop", "init", "healthcheck", "logging"]);
 const BACKUP_KEYS = new Set(["image", "environment", "volumes", "user", "command", "depends_on", "restart", "stop_grace_period", "read_only", "tmpfs", "security_opt", "cap_drop", "init", "network_mode", "healthcheck", "logging"]);
 const MAINTENANCE_KEYS = new Set(["image", "profiles", "environment", "volumes", "user", "entrypoint", "read_only", "tmpfs", "security_opt", "cap_drop", "init", "network_mode"]);
@@ -16,9 +16,6 @@ const LOGGING_OPTION_KEYS = new Set(["max-size", "max-file"]);
 function exactKeys(value, allowed, label) {
   if (value === null || typeof value !== "object" || Array.isArray(value)) throw new Error(`${label} must be a mapping`);
   for (const key of Object.keys(value)) if (!allowed.has(key)) throw new Error(`${label} has unsupported key: ${key}`);
-}
-function string(value, label) {
-  if (typeof value !== "string" || value.length === 0) throw new Error(`${label} must be a non-empty string`);
 }
 function array(value, expected, label) {
   if (!Array.isArray(value) || value.length !== expected.length || value.some((item, index) => item !== expected[index])) throw new Error(`${label} does not match the release contract`);
@@ -99,19 +96,19 @@ export function inspectComposeContract(source) {
   array(maintenance.entrypoint, ["node", "dist/backup/runner.js"], "Compose maintenance.entrypoint");
   checkCommon(maintenance, "maintenance", "none");
 
-  const imageNodes = ["app", "backup", "maintenance"].map((service) => {
-    const node = document.getIn(["services", service, "image"], true);
-    if (!isScalar(node) || typeof node.value !== "string" || node.value.length === 0) throw new Error(`Compose ${service}.image must be a non-empty scalar string`);
-    return node;
-  });
-  if (imageNodes.some((node) => node.value !== imageNodes[0].value)) throw new Error("Compose app, backup, and maintenance must use the same image reference");
-  return Object.freeze({ document, imageNodes: Object.freeze(imageNodes), image: imageNodes[0].value });
+  const imageNode = document.getIn(["x-perpay-image"], true);
+  if (!isScalar(imageNode) || imageNode.anchor !== "perpay-image" || typeof imageNode.value !== "string" || imageNode.value.length === 0) {
+    throw new Error("Compose x-perpay-image must define the perpay-image string anchor");
+  }
+  for (const service of ["app", "backup", "maintenance"]) {
+    alias(document, ["services", service, "image"], "perpay-image", `${service}.image`);
+  }
+  return Object.freeze({ document, imageNode, image: imageNode.value });
 }
 
 export function replaceComposeImage(source, image) {
   if (typeof image !== "string" || image.length === 0) throw new TypeError("replacement image must be a non-empty string");
   const contract = inspectComposeContract(source);
-  let rendered = source;
-  for (const [start, end] of contract.imageNodes.map((node) => node.range).sort((left, right) => right[0] - left[0])) rendered = `${rendered.slice(0, start)}${image}${rendered.slice(end)}`;
-  return rendered;
+  const [start, end] = contract.imageNode.range;
+  return `${source.slice(0, start)}${image}${source.slice(end)}`;
 }
