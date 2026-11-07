@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import type { UseQueryResult } from "@tanstack/react-query";
 import { AlertCircle, WifiOff } from "lucide-react";
 import { ApiError } from "@/api/client";
-import { usePageRequestNotice } from "@/lib/request-notices";
+import { usePageRequestNotice, type RequestRetryRenderer } from "@/lib/request-notices";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -19,12 +19,14 @@ export function ErrorNotice({
   showDiagnostics = true,
   retainedData = false,
   scope = "local",
+  renderRetry,
 }: {
   error: unknown;
   retry?: (() => void) | undefined;
   showDiagnostics?: boolean;
   retainedData?: boolean;
   scope?: "local" | "page";
+  renderRetry?: RequestRetryRenderer;
 }) {
   const shared = usePageRequestNotice(scope === "page" ? { error, retry, retainedData, showDiagnostics } : null);
   if (!error || shared) return null;
@@ -56,11 +58,11 @@ export function ErrorNotice({
             )}
           </>
         )}
-        {retry && (
+        {retry && (renderRetry ? renderRetry({ disabled: false, onClick: retry, children: "重试" }) : (
           <Button variant="outline" size="sm" onClick={retry}>
             重试
           </Button>
-        )}
+        ))}
       </AlertDescription>
     </Alert>
   );

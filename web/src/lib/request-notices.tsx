@@ -20,6 +20,12 @@ type RequestNoticeInput = {
   showDiagnostics?: boolean;
 };
 
+export type RequestRetryRenderer = (props: {
+  disabled: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) => ReactNode;
+
 export type RequestNotice = {
   error: unknown;
   paused: boolean;

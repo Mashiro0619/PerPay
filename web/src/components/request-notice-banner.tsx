@@ -3,13 +3,16 @@ import { useIsFetching } from "@tanstack/react-query";
 import { AlertCircle, WifiOff } from "lucide-react";
 import { ApiError } from "@/api/client";
 import { Link } from "@/navigation";
-import { useRequestConnectionOnline, useRequestNotices, type RequestNotice } from "@/lib/request-notices";
+import { useRequestConnectionOnline, useRequestNotices, type RequestNotice, type RequestRetryRenderer } from "@/lib/request-notices";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Spinner } from "@/components/ui/spinner";
 
-export function RequestNoticeBanner({ showRuntimeLink = true }: { showRuntimeLink?: boolean }) {
+export function RequestNoticeBanner({ showRuntimeLink = true, renderRetry }: {
+  showRuntimeLink?: boolean;
+  renderRetry?: RequestRetryRenderer;
+}) {
   const notices = useRequestNotices();
   const online = useRequestConnectionOnline();
   const unique = new Map<unknown, RequestNotice>();
@@ -52,6 +55,11 @@ export function RequestNoticeBanner({ showRuntimeLink = true }: { showRuntimeLin
     // Shared query errors are the same object, so sibling consumers retry it once.
     for (const notice of failures) notice.retry?.();
   };
+  const retryProps = {
+    disabled: paused || fetching || remaining > 0,
+    onClick: retry,
+    children: <>{fetching && <Spinner data-icon="inline-start" aria-hidden="true" />}重试</>,
+  };
 
   return <Alert variant={paused ? "default" : "destructive"}
     role={paused ? "status" : "alert"} aria-label="服务连接提示" data-request-notice>
@@ -76,11 +84,9 @@ export function RequestNoticeBanner({ showRuntimeLink = true }: { showRuntimeLin
         </Collapsible>}
       </div>
       <div className="flex max-w-full flex-wrap items-center gap-2">
-        {failures.some(notice => notice.retry) && <Button variant="outline" size="sm"
-          disabled={paused || fetching || remaining > 0} onClick={retry}>
-          {fetching && <Spinner data-icon="inline-start" aria-hidden="true" />}
-          重试
-        </Button>}
+        {failures.some(notice => notice.retry) && (renderRetry
+          ? renderRetry(retryProps)
+          : <Button variant="outline" size="sm" {...retryProps} />)}
         {showRuntimeLink && <Link global to="/system" className={buttonVariants({ variant: "ghost", size: "sm" })}>运行状态</Link>}
       </div>
     </AlertDescription>

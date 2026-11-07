@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { json } from "./fixtures";
 import { configuredThrough, mountOnboarding } from "./onboarding-fixture";
+import { matchesTestMedia } from "./media-query";
 
 function mediaWidth(initial: number) {
   let width = initial;
@@ -11,8 +12,7 @@ function mediaWidth(initial: number) {
   vi.stubGlobal("matchMedia", vi.fn((media: string) => ({
     media,
     get matches() {
-      const max = /max-width:\s*(\d+)px/.exec(media);
-      return max ? width <= Number(max[1]) : false;
+      return matchesTestMedia(media, width);
     },
     addEventListener: (_event: string, listener: () => void) => listeners.add(listener),
     removeEventListener: (_event: string, listener: () => void) => listeners.delete(listener),

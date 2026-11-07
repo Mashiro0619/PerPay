@@ -24,6 +24,8 @@ import { useMeasuredHeight } from "@/components/list-layout";
 import { MoreHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { HeaderWorkspaceSwitcher } from "@/components/header-workspace-switcher";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 export function SiteHeader({
   title,
@@ -35,6 +37,7 @@ export function SiteHeader({
   busy?: boolean;
 }) {
   const scope = useWorkspace();
+  const isMobile = useIsMobile();
   const [header, setHeader] = useState<HTMLElement | null>(null);
   useMeasuredHeight(header, "--admin-header-height");
   const { pathname } = useLocation();
@@ -74,7 +77,9 @@ export function SiteHeader({
             </>
           )}
           <BreadcrumbItem className="min-w-0 max-w-[45%] lg:max-w-64">
-            <span className="truncate" title={workspaceName}>{workspaceName}</span>
+            {scope.clientId && !isMobile
+              ? <HeaderWorkspaceSwitcher name={workspaceName} />
+              : <span className="truncate" title={workspaceName}>{workspaceName}</span>}
           </BreadcrumbItem>
           <BreadcrumbSeparator />
           <BreadcrumbItem className="min-w-0">

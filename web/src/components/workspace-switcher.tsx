@@ -1,16 +1,8 @@
 import { siteChoiceLabel } from "@/lib/site-choice-label";
-import { useEffect, useId, useMemo, useState } from "react";
-import { useInfiniteQuery } from "@tanstack/react-query";
-import { parsePath, useLocation } from "react-router";
+import { useEffect, useId, useState } from "react";
 import { BellOff, Check, ChevronRight, CirclePause, Globe } from "lucide-react";
-import { api, result } from "@/api/client";
-import { useNavigationWorkspace, useWorkspaceNavigation } from "@/workspace";
+import { useWorkspaceSwitcher } from "@/hooks/use-workspace-switcher";
 import { Link } from "@/navigation";
-import {
-  actualPageAddress,
-  isGlobalNavigationPage,
-  switchWorkspaceHref,
-} from "@/lib/navigation-selection";
 import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -34,25 +26,6 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 
-type SiteMenuEntry = {
-  client_id: string;
-  configuration: {
-    name: string;
-    accepting_orders?: boolean;
-    notifications_enabled?: boolean;
-  };
-};
-
-function workspaceSwitchState(location: ReturnType<typeof useLocation>, href: string | null) {
-  if (href === null) return location.state;
-  const destination = parsePath(href);
-  const samePage = actualPageAddress(location) === actualPageAddress({
-    pathname: destination.pathname ?? location.pathname,
-    search: destination.search ?? "",
-  });
-  return samePage ? location.state : null;
-}
-
 export function WorkspaceSwitcher({
   open,
   onOpenChange,
@@ -60,56 +33,14 @@ export function WorkspaceSwitcher({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const selection = useNavigationWorkspace();
-  const pending = useWorkspaceNavigation();
-  const { clientId, site } = selection;
-  const location = useLocation();
-  const { pathname } = location;
   const currentNameId = useId();
   const sidebar = useSidebar();
   const icon = !sidebar.isMobile && sidebar.state === "collapsed";
   const [popoverOpen, setPopoverOpen] = useState(false);
-  useEffect(() => { setPopoverOpen(false); }, [location.key, icon]);
   const visible = sidebar.isMobile ? sidebar.openMobile : sidebar.open;
-  const sites = useInfiniteQuery({
-    queryKey: ["sites", "switcher"],
-    enabled: icon ? popoverOpen : open && visible,
-    initialPageParam: null as string | null,
-    queryFn: ({ pageParam, signal }) =>
-      result(
-        api.listSites({
-          query: {
-            limit: 30,
-            ...(pageParam ? { after: pageParam } : {}),
-          },
-          signal,
-        }),
-      ),
-    getNextPageParam: (page) => page.page.next_cursor ?? undefined,
-  });
-  const currentSite = site?.data?.data;
-  const entries = useMemo(() => {
-    const loaded = new Map<string, SiteMenuEntry>();
-    for (const page of sites.data?.pages ?? []) {
-      for (const value of page.data) {
-        if (!loaded.has(value.client_id)) loaded.set(value.client_id, value);
-      }
-    }
-    if (clientId && currentSite && loaded.has(clientId)) loaded.set(clientId, currentSite);
-    const values = [...loaded.values()];
-    if (clientId && !loaded.has(clientId)) {
-      values.unshift(currentSite ?? { client_id: clientId, configuration: { name: clientId } });
-    }
-    return values;
-  }, [sites.data, clientId, currentSite]);
-  const selectedEntry = entries.find(value => value.client_id === clientId);
-  const selectedName = selectedEntry ? siteChoiceLabel(selectedEntry, entries) : "全部网站";
-  const switching = pending.switching && pending.selectedClientId !== clientId;
-  const pendingEntry = entries.find(value => value.client_id === pending.selectedClientId);
-  const pendingName = pendingEntry ? siteChoiceLabel(pendingEntry, entries) : pending.selectedClientId ?? "全部网站";
-  const currentHref = location.pathname + location.search + location.hash;
-  const allSitesHref = switchWorkspaceHref(location, null);
-  const metadataError = clientId && isGlobalNavigationPage(pathname) ? site?.error : null;
+  const { clientId, site, pending, location, sites, entries, selectedName, switching, pendingName, metadataError, linkProps, retrySites } =
+    useWorkspaceSwitcher(icon ? popoverOpen : open && visible);
+  useEffect(() => { setPopoverOpen(false); }, [location.key, icon]);
 
   const menu = (
         <SidebarMenuSub className="mx-0 translate-x-0 border-0 px-0 py-1" aria-label="业务网站列表">
@@ -119,17 +50,7 @@ export function WorkspaceSwitcher({
               aria-busy={switching && pending.selectedClientId === null}
               aria-current={!clientId ? "location" : undefined}
               className="workspace-site-choice h-8 translate-x-0"
-              render={
-                <Link
-                  global
-                  preserveSelectedSite={false}
-                  state={workspaceSwitchState(location, allSitesHref)}
-                  to={allSitesHref ?? currentHref}
-                  onClick={event => {
-                    if (allSitesHref === null && !pending.switching) event.preventDefault();
-                  }}
-                />
-              }
+              render={<Link {...linkProps(null)} />}
             >
               {switching && pending.selectedClientId === null
                 ? <Spinner aria-hidden="true" />
@@ -141,7 +62,6 @@ export function WorkspaceSwitcher({
             const label = siteChoiceLabel(value, entries);
             const selected = value.client_id === clientId;
             const loading = switching && value.client_id === pending.selectedClientId;
-            const href = switchWorkspaceHref(location, value.client_id);
             const paused = value.configuration.accepting_orders === false;
             const notificationsOff = value.configuration.notifications_enabled === false;
             const status = [paused && "暂停接单", notificationsOff && "通知关闭"].filter(Boolean).join(" · ");
@@ -157,17 +77,7 @@ export function WorkspaceSwitcher({
                   aria-describedby={statusId}
                   aria-current={selected ? "location" : undefined}
                   className="workspace-site-choice h-8 translate-x-0"
-                  render={
-                    <Link
-                      global
-                      preserveSelectedSite={false}
-                      state={workspaceSwitchState(location, href)}
-                      to={href ?? currentHref}
-                      onClick={event => {
-                        if (href === null && !pending.switching) event.preventDefault();
-                      }}
-                    />
-                  }
+                  render={<Link {...linkProps(value.client_id)} />}
                 >
                   {loading
                     ? <Spinner aria-hidden="true" />
@@ -208,10 +118,7 @@ export function WorkspaceSwitcher({
               <ErrorNotice
                 scope="page"
                 error={sites.error}
-                retry={() => {
-                  if (sites.isFetchNextPageError) void sites.fetchNextPage({ cancelRefetch: false });
-                  else void sites.refetch({ cancelRefetch: false });
-                }}
+                retry={retrySites}
               />
             </SidebarMenuSubItem>
           )}
