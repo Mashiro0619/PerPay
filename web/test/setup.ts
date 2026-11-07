@@ -43,6 +43,7 @@ Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
 
 beforeEach(() => {
   sessionStorage.removeItem("perpay:sidebar-sites");
+  vi.stubGlobal("scrollTo", vi.fn());
   // Default to a desktop media environment; mobile tests override width and media queries.
   vi.stubGlobal(
     "matchMedia",
