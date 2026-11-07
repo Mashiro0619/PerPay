@@ -1,6 +1,6 @@
 import { defineConfig } from "@playwright/test";
 const stamp = process.env.PERPAY_UI_RUN ??= new Date().toISOString().replaceAll(/[:.]/g, "-");
-const output = `.ui-audit/runs/${stamp}`;
+const output = process.env.PERPAY_UI_OUTPUT_DIR ?? `.ui-audit/runs/${stamp}`;
 export default defineConfig({
   testDir: "./ui-tests",
   timeout: 120_000,
