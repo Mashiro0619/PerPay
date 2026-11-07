@@ -37,7 +37,7 @@
 
 技术栈：**Node.js 24 · TypeScript · Hono · SQLite · React · Vite · shadcn/ui**。
 
-当前源码对应 `1.0.0-rc.5`，包含支付宝官方 SDK、易支付 V1/V2 和网站接入助手。[待发布变更](docs/releases/unreleased.md) · [易支付接入](docs/epay-integration.md)
+当前源码对应 `1.0.0-rc.4`，包含支付宝官方 SDK、易支付 V1/V2 和网站接入助手。[待发布变更](docs/releases/unreleased.md) · [易支付接入](docs/epay-integration.md)
 
 ## 界面预览
 
