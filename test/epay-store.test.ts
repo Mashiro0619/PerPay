@@ -6,6 +6,9 @@ import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
 import { assertDatabaseIntegrity } from "../src/database/database.ts";
 import { EpayStore, insertEpayOrder } from "../src/epay/store.ts";
+import { LedgerStore } from "../src/ledger/store.ts";
+import { ReconciliationStore } from "../src/reconciliation/store.ts";
+import { recordLedgerEntry } from "./reconciliation-http-fixture.ts";
 import { createSitePaymentFixture } from "./site-payment-fixture.ts";
 
 const audit = { actorId: "admin" };
@@ -151,5 +154,69 @@ test("compatibility metadata commits with the core order and is preserved in ver
       assert.equal(backup.prepare("SELECT param FROM epay_orders WHERE order_id = ?").get(created.order.orderId)!.param, "0");
       assert.equal(backup.prepare("SELECT count(*) AS count FROM epay_credentials WHERE site_id = ?").get(site.clientId)!.count, 3n);
     } finally { backup.close(); }
+  } finally { f.close(); }
+});
+
+test("payment confirmation time follows the active settlement through checkout closure and reassignment", async () => {
+  const f = await createSitePaymentFixture();
+  try {
+    const store = f.settings.epayStore()!;
+    const site = f.createSite("确认时间网站");
+    const configuration = store.get(site.clientId);
+    const orders = f.orders.forSite(site.clientId);
+    const reconciliation = new ReconciliationStore(f.database);
+    const ledger = new LedgerStore(f.database);
+    const providerTime = (time: number) => new Date(time + 8 * 3_600_000).toISOString().slice(0, 19).replace("T", " ");
+    const createOrder = (suffix: string) => orders.create({
+      idempotency_key: suffix, merchant_order_no: suffix, amount_cents: 1000, product_name: "确认时间商品",
+    }, undefined, {
+      siteId: site.clientId, protocol: "epay_v1", configurationRevision: configuration.revision,
+      requestFingerprint: "a".repeat(64), param: null, returnUrl: null,
+    }).order;
+    assert.equal(store.paymentConfirmedAt(randomUUID()), null);
+    for (const mode of ["automatic", "manual"] as const) {
+      const order = createOrder(`confirmation-${mode}`);
+      assert.equal(store.paymentConfirmedAt(order.orderId), null);
+      const recordedAt = order.createdAt + 2000;
+      const entry = recordLedgerEntry(ledger, {
+        start: providerTime(order.createdAt - 60000), end: providerTime(order.createdAt + 60000),
+      }, `confirmation-${mode}`, order.payableAmountCents, order.createdAt + 1000, recordedAt,
+      "CREDIT", f.snapshot.activeProviderAccountKey!);
+      const confirmedAt = recordedAt + 1000;
+      let paymentMatchId: string;
+      if (mode === "automatic") {
+        const result = reconciliation.reconcileEntry(entry.ledgerEntryId, confirmedAt);
+        assert.equal(result.kind, "auto_settled");
+        if (result.kind !== "auto_settled") throw new Error("fixture payment was not settled");
+        paymentMatchId = result.paymentMatchId;
+      } else {
+        const result = reconciliation.settleManually({
+          financialOperationId: randomUUID(), orderId: order.orderId, ledgerEntryId: entry.ledgerEntryId,
+          actorId: "admin", now: confirmedAt,
+        });
+        paymentMatchId = result.paymentMatch.paymentMatchId;
+      }
+      assert.equal(store.paymentConfirmedAt(order.orderId), confirmedAt);
+      f.setNow(confirmedAt + 5000);
+      const closed = orders.close(order.orderId);
+      assert.ok(closed.updatedAt > confirmedAt);
+      assert.equal(new EpayStore(f.database, f.config.masterKey).paymentConfirmedAt(order.orderId), confirmedAt);
+      reconciliation.reverseSettlement({
+        financialOperationId: randomUUID(), paymentMatchId, actorId: "admin", reason: "更正款项归属",
+        now: f.now() + 1000,
+      });
+      assert.equal(store.paymentConfirmedAt(order.orderId), null);
+      f.setNow(f.now() + 2000);
+      const corrected = createOrder(`confirmation-${mode}-corrected`);
+      const correctedAt = f.now() + 1000;
+      reconciliation.settleManually({
+        financialOperationId: randomUUID(), orderId: corrected.orderId, ledgerEntryId: entry.ledgerEntryId,
+        actorId: "admin", reason: "确认至正确订单", now: correctedAt,
+      });
+      assert.equal(store.paymentConfirmedAt(order.orderId), null);
+      assert.equal(store.paymentConfirmedAt(corrected.orderId), correctedAt);
+      f.setNow(correctedAt + 1000);
+    }
+    assert.equal(f.database.integrityCheck().ok, true);
   } finally { f.close(); }
 });

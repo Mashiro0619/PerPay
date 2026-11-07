@@ -211,6 +211,36 @@ test("unpaid returns preserve encoded query values in Unicode merchant URLs", as
   } finally { f.close(); }
 });
 
+for (const protocol of ["epay_v1", "epay_v2"] as const) test(protocol + " queries keep payment completion time after checkout expiry", async () => {
+  const f = await fixture();
+  try {
+      const outTradeNo = protocol + "-completion-time";
+      const created = await (await f.create(protocol, outTradeNo)).json() as { code: number };
+      assert.equal(created.code, protocol === "epay_v1" ? 1 : 0, JSON.stringify(created));
+      const metadata = f.epay.findOrder(f.first.site.clientId, { outTradeNo })!;
+      const order = f.orders.forSite(metadata.siteId).get(metadata.orderId);
+      const query = async () => (await (protocol === "epay_v1"
+        ? f.send("/api.php", { act: "order", pid: metadata.pid, key: f.first.credentials.v1Key!, trade_no: metadata.tradeNo })
+        : f.send("/api/pay/query", f.parameters(f.first.credentials, protocol, { trade_no: metadata.tradeNo })))).json() as Promise<Record<string, unknown>>;
+      assert.equal((await query()).endtime, "");
+      f.settle(order);
+      const confirmedAt = f.now();
+      const expected = new Date(confirmedAt + 8 * 3600_000).toISOString().slice(0, 19).replace("T", " ");
+      assert.equal((await query()).endtime, expected);
+      f.setNow(order.checkout.expiresAt + 1000);
+      const expired = await query();
+      assert.equal(expired.status, 1);
+      assert.equal(expired.endtime, expected);
+      if (protocol === "epay_v2") assert.equal(verifyEpayV2(expired, f.first.credentials.platformPublicKey!), true);
+      const list = await (protocol === "epay_v1"
+        ? f.send("/api.php", { act: "orders", pid: metadata.pid, key: f.first.credentials.v1Key! })
+        : f.send("/api/merchant/orders", f.parameters(f.first.credentials, protocol, {})));
+      const catalog = await list.json() as { data: { trade_no: string; endtime: string }[] };
+      assert.equal(catalog.data.find(item => item.trade_no === metadata.tradeNo)?.endtime, expected);
+      assert.ok(f.orders.forSite(metadata.siteId).get(metadata.orderId).updatedAt > confirmedAt);
+  } finally { f.close(); }
+});
+
 test("V2 order lists filter payment status before applying offset and limit", async () => {
   const f = await fixture();
   try {

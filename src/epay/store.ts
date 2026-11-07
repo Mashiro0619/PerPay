@@ -215,6 +215,21 @@ export class EpayStore {
     return this.#database.read(connection => readEpayOrder(connection, orderId));
   }
 
+  /** The active settlement time stays fixed when checkout or refund state changes. */
+  paymentConfirmedAt(orderId: string): number | null {
+    return this.#database.read(connection => {
+      const row = connection.prepare(`SELECT operation.created_at
+        FROM payment_matches AS match
+        JOIN financial_operations AS operation ON operation.financial_operation_id = match.created_by_operation_id
+        JOIN payment_orders AS orders ON orders.order_id = match.order_id
+        WHERE match.order_id = ? AND match.match_role = 'PRIMARY_SETTLEMENT' AND match.status = 'SETTLED'
+          AND orders.payment_status = 'CONFIRMED'
+          AND operation.operation_type IN ('AUTO_SETTLEMENT', 'MANUAL_SETTLEMENT')`)
+        .get(orderId) as { created_at: number | bigint } | undefined;
+      return row ? safeInteger(row.created_at) : null;
+    });
+  }
+
   findOrder(siteId: string, query: { tradeNo?: string; outTradeNo?: string }): EpayOrderMetadata | null {
     return this.#database.read(connection => findEpayOrder(connection, siteId, query));
   }

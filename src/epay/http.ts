@@ -157,14 +157,14 @@ export function registerEpayRoutes(app: Hono<AppEnvironment>, dependencies: AppD
           ...(parameters.trade_no ? { tradeNo: parameters.trade_no } : { outTradeNo: parameters.out_trade_no ?? "" }),
         });
         if (!metadata) throw new EpayProtocolError("order_not_found", "订单不存在。");
-        result = { code: success, msg: "success", ...orderResponse(dependencies, metadata) };
+        result = { code: success, msg: "success", ...orderResponse(dependencies, epay, metadata) };
       } else if (selected === "orders") {
         const limit = integerParameter(parameters.limit, 20, 1, 50);
         const offset = protocol === "epay_v1" ? (integerParameter(parameters.page, 1, 1, 1_000_000) - 1) * limit : integerParameter(parameters.offset, 0, 0, 50_000_000);
         const status = parameters.status === undefined || parameters.status === "" ? undefined : integerParameter(parameters.status, 0, 0, 1) as 0 | 1;
         result = { code: success, msg: "success", data: epay.orders(credentials.siteId, {
           limit, offset, ...(status === undefined ? {} : { status }),
-        }).map(metadata => orderResponse(dependencies, metadata)) };
+        }).map(metadata => orderResponse(dependencies, epay, metadata)) };
       } else if (selected === "info") {
         const stats = epay.stats(credentials.siteId, now());
         const protocolEnabled = protocol === "epay_v1" ? credentials.v1Enabled : credentials.v2Enabled;
@@ -267,10 +267,12 @@ function createEpayOrder(dependencies: AppDependencies, epay: EpayStore, credent
   return result.order;
 }
 
-function orderResponse(dependencies: AppDependencies, metadata: EpayOrderMetadata): Record<string, unknown> {
+function orderResponse(dependencies: AppDependencies, epay: EpayStore, metadata: EpayOrderMetadata): Record<string, unknown> {
   const order = dependencies.orders.forSite(metadata.siteId).get(metadata.orderId);
+  const confirmedAt = order.payment.status === "CONFIRMED" ? epay.paymentConfirmedAt(metadata.orderId) : null;
+  if (order.payment.status === "CONFIRMED" && confirmedAt === null) throw new Error("Confirmed compatibility order has no active settlement");
   return { trade_no: metadata.tradeNo, out_trade_no: order.merchantOrderNo, api_trade_no: "", type: "alipay", pid: metadata.pid,
-    addtime: providerTime(order.createdAt), endtime: order.payment.status === "CONFIRMED" ? providerTime(order.updatedAt) : "",
+    addtime: providerTime(order.createdAt), endtime: confirmedAt === null ? "" : providerTime(confirmedAt),
     name: order.productName, money: moneyFromCents(order.requestedAmountCents), status: order.payment.status === "CONFIRMED" ? 1 : 0,
     param: metadata.param ?? "", buyer: "", clientip: "" };
 }
