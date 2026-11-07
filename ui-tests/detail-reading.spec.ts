@@ -323,6 +323,8 @@ test("summaries and credentials retain reading order in stable responsive column
     try {
       for (const textPercent of [100, 200]) {
         await page.evaluate(percent => document.documentElement.style.fontSize = percent + "%", textPercent);
+        // Root-font changes animate rem-sized copy buttons before their final geometry settles.
+        for (const button of await container.getByRole("button").all()) await waitForControlAnimations(button);
         const samples: Awaited<ReturnType<typeof expectDetailFields>> = [];
         for (const requestedWidth of [320, 480, 720, 960]) {
           await container.evaluate((element, width) => { (element as HTMLElement).style.width = width + "px"; }, requestedWidth);
