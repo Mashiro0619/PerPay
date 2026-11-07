@@ -73,6 +73,7 @@ beforeEach(() => {
   vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
 });
 afterEach(async () => {
+  vi.useRealTimers();
   await queryClient.cancelQueries();
   queryClient.clear();
   vi.restoreAllMocks();
@@ -182,5 +183,71 @@ describe("website integration assistant", () => {
     expect(fixture.writes[0]?.body).toEqual({ revision: 4 });
     const cache = JSON.stringify({ queries: queryClient.getQueryCache().getAll().map(query => query.state.data), mutations: queryClient.getMutationCache().getAll().map(mutation => mutation.state.data) });
     expect(cache).not.toContain("rotated-secret");
+  });
+
+  for (const event of ["visibilitychange", "pagehide"] as const) it(`clears shown and in-flight keys on ${event}, then allows an explicit fresh read`, async () => {
+    const fixture = mount();
+    await screen.findByText("网站接入助手");
+    await userEvent.click(screen.getByRole("button", { name: "易支付 V2" }));
+    await userEvent.click(screen.getByRole("button", { name: "查看V2 商户私钥" }));
+    expect(await screen.findByDisplayValue("synthetic-private-key")).toBeInTheDocument();
+    const hidden = vi.spyOn(document, "hidden", "get").mockReturnValue(event === "visibilitychange");
+    const hide = () => act(() => { (event === "pagehide" ? window : document).dispatchEvent(new Event(event)); });
+    hide();
+    expect(screen.queryByDisplayValue("synthetic-private-key")).not.toBeInTheDocument();
+    hidden.mockReturnValue(false);
+    const release = fixture.deferSecret();
+    await userEvent.click(screen.getByRole("button", { name: "查看V2 商户私钥" }));
+    await waitFor(() => expect(fixture.writes.filter(write => write.path.endsWith("/actions/view"))).toHaveLength(2));
+    const request = fixture.fetchMock.mock.calls.map(([request]) => request).at(-1)!;
+    hidden.mockReturnValue(event === "visibilitychange");
+    hide();
+    expect(request.signal.aborted).toBe(true);
+    hidden.mockReturnValue(false);
+    await act(async () => release());
+    expect(screen.queryByDisplayValue("late-secret")).not.toBeInTheDocument();
+    const releaseFresh = fixture.deferSecret();
+    await userEvent.click(screen.getByRole("button", { name: "查看V2 商户私钥" }));
+    await waitFor(() => expect(fixture.writes.filter(write => write.path.endsWith("/actions/view"))).toHaveLength(3));
+    await act(async () => releaseFresh());
+    expect(await screen.findByDisplayValue("late-secret")).toBeInTheDocument();
+  });
+
+  it("expires a revealed key after 60 seconds and clears keys on revision changes", async () => {
+    mount();
+    await screen.findByText("网站接入助手");
+    await userEvent.click(screen.getByRole("button", { name: "易支付 V1" }));
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    fireEvent.click(screen.getByRole("button", { name: "查看V1 密钥" }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(screen.getByDisplayValue("synthetic-private-key")).toBeInTheDocument();
+    await act(async () => { await vi.advanceTimersByTimeAsync(59_999); });
+    expect(screen.getByDisplayValue("synthetic-private-key")).toBeInTheDocument();
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    expect(screen.queryByDisplayValue("synthetic-private-key")).not.toBeInTheDocument();
+    vi.useRealTimers();
+    await userEvent.click(screen.getByRole("button", { name: "查看V1 密钥" }));
+    expect(await screen.findByDisplayValue("synthetic-private-key")).toBeInTheDocument();
+    act(() => queryClient.setQueryData(siteEpayKey(site.client_id), { ...configuration, revision: 5 }));
+    await waitFor(() => expect(screen.queryByDisplayValue("synthetic-private-key")).not.toBeInTheDocument());
+  });
+
+  it("aborts a hidden configuration export and requires an explicit new download", async () => {
+    const fixture = mount();
+    await screen.findByText("网站接入助手");
+    let release!: (response: Response) => void;
+    fixture.fetchMock.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+    await userEvent.click(screen.getByRole("button", { name: "下载完整配置" }));
+    await waitFor(() => expect(fixture.fetchMock.mock.calls.some(([request]) => request.url.endsWith("/integration/export"))).toBe(true));
+    const request = fixture.fetchMock.mock.calls.map(([request]) => request).at(-1)!;
+    const hidden = vi.spyOn(document, "hidden", "get").mockReturnValue(true);
+    act(() => document.dispatchEvent(new Event("visibilitychange")));
+    expect(request.signal.aborted).toBe(true);
+    hidden.mockReturnValue(false);
+    await act(async () => release(new Response("SYNTHETIC_KEY=late-export", { headers: { "content-type": "text/plain" } })));
+    expect(URL.createObjectURL).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "下载完整配置" })).toBeEnabled();
+    await userEvent.click(screen.getByRole("button", { name: "下载完整配置" }));
+    await waitFor(() => expect(URL.createObjectURL).toHaveBeenCalledTimes(1));
   });
 });

@@ -1,4 +1,4 @@
-import { useId, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Download } from "lucide-react";
 import { ApiError, queryClient, type Site } from "@/api/client";
@@ -108,18 +108,36 @@ function IntegrationContent({ site, siteDirty = false, disabled = false, showCli
   const downloadUrl = useRef<string | null>(null);
   const writePending = useRef(false);
 
-  useLayoutEffect(() => {
+  const hideSecret = useCallback(() => {
     generation.current++;
-    setRevealed(null);
+    activeRead.current?.abort();
+    activeRead.current = null;
+    if (downloadUrl.current) URL.revokeObjectURL(downloadUrl.current);
+    downloadUrl.current = null;
     setPendingRead(false);
+    setRevealed(null);
+  }, []);
+
+  useLayoutEffect(() => {
+    hideSecret();
+    const onHidden = () => { if (document.hidden) hideSecret(); };
+    document.addEventListener("visibilitychange", onHidden);
+    window.addEventListener("pagehide", hideSecret);
     return () => {
+      document.removeEventListener("visibilitychange", onHidden);
+      window.removeEventListener("pagehide", hideSecret);
       generation.current++;
       activeRead.current?.abort();
       activeRead.current = null;
       if (downloadUrl.current) URL.revokeObjectURL(downloadUrl.current);
       downloadUrl.current = null;
     };
-  }, [site.client_id, site.revision, configuration.revision, protocol]);
+  }, [site.client_id, site.revision, configuration.revision, protocol, hideSecret]);
+  useEffect(() => {
+    if (!revealed) return;
+    const timer = window.setTimeout(hideSecret, 60_000);
+    return () => window.clearTimeout(timer);
+  }, [revealed, hideSecret]);
   useOverlayCloseGuard(() => writePending.current);
 
   const persist = useMutation({
@@ -157,7 +175,7 @@ function IntegrationContent({ site, siteDirty = false, disabled = false, showCli
   const endpoint = protocol === "native" ? "/api/v1/orders" : protocol === "epay_v1" ? "/submit.php" : "/api/pay/submit";
 
   async function read(purpose?: EpaySecret) {
-    if (blocked || activeRead.current || writePending.current) return;
+    if (document.hidden || blocked || activeRead.current || writePending.current) return;
     const controller = new AbortController();
     activeRead.current = controller;
     const current = ++generation.current;
@@ -168,13 +186,13 @@ function IntegrationContent({ site, siteDirty = false, disabled = false, showCli
     try {
       if (purpose) {
         const secret = await viewEpaySecret(site.client_id, purpose, controller.signal);
-        if (current === generation.current && !controller.signal.aborted) setRevealed({ purpose, ...secret });
+        if (current === generation.current && !controller.signal.aborted && !document.hidden) setRevealed({ purpose, ...secret });
       } else {
         const blob = await exportSiteIntegration(site.client_id, {
           protocol, site_revision: site.revision, epay_revision: configuration.revision,
           notify_url: notifyUrl.trim(), ...(returnUrl.trim() ? { return_url: returnUrl.trim() } : {}),
         }, controller.signal);
-        if (current !== generation.current || controller.signal.aborted) return;
+        if (current !== generation.current || controller.signal.aborted || document.hidden) return;
         const url = URL.createObjectURL(blob);
         downloadUrl.current = url;
         const anchor = document.createElement("a");
@@ -196,14 +214,6 @@ function IntegrationContent({ site, siteDirty = false, disabled = false, showCli
     } finally {
       if (activeRead.current === controller) { activeRead.current = null; setPendingRead(false); }
     }
-  }
-
-  function hideSecret() {
-    generation.current++;
-    activeRead.current?.abort();
-    activeRead.current = null;
-    setPendingRead(false);
-    setRevealed(null);
   }
 
   const purposes: EpaySecret[] = protocol === "epay_v1" ? ["epay_v1"] : ["epay_merchant", "epay_platform"];
