@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import fs, { mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { describe, it } from "node:test";
 import { DatabaseSync } from "node:sqlite";
 
@@ -13,17 +13,51 @@ import {
   databaseStorageFootprintBytes,
   inspectStorageHeadroom,
   MINIMUM_RUNTIME_FREE_BYTES,
-  requiredRuntimeFreeBytes,
+  StorageCapacityError,
 } from "../src/infrastructure/storage/capacity.ts";
 
 describe("storage capacity policy", () => {
-  it("reserves enough space for one database-sized backup and runtime writes", () => {
-    assert.equal(requiredRuntimeFreeBytes(0n), MINIMUM_RUNTIME_FREE_BYTES);
-    assert.equal(
-      requiredRuntimeFreeBytes(MINIMUM_RUNTIME_FREE_BYTES),
-      MINIMUM_RUNTIME_FREE_BYTES + BACKUP_WRITE_RESERVE_BYTES,
-    );
-    assert.throws(() => requiredRuntimeFreeBytes(-1n), /must not be negative/);
+  it("keeps a large database healthy with runtime write reserve while checking backup capacity independently", async context => {
+    const directory = mkdtempSync(join(tmpdir(), "perpay-capacity-large-"));
+    const databasePath = join(directory, "perpay.sqlite3"), backupDirectory = join(directory, "backups");
+    const database = await AppDatabase.open(databasePath);
+    const mib = 1024n * 1024n;
+    let runtimeFreeBytes = 200n * mib;
+    const backupFreeBytes = 100n * mib, reportedDatabaseBytes = 500n * mib;
+    const originalLstat = fs.lstatSync, originalStatfs = fs.statfsSync;
+    context.mock.method(fs, "lstatSync", (...args: Parameters<typeof fs.lstatSync>) => {
+      const stat = Reflect.apply(originalLstat, fs, args);
+      if (!stat || resolve(String(args[0])) !== resolve(databasePath)) return stat;
+      return Object.assign(Object.create(Object.getPrototypeOf(stat)), stat, {
+        size: typeof stat.size === "bigint" ? reportedDatabaseBytes : Number(reportedDatabaseBytes),
+      });
+    });
+    context.mock.method(fs, "statfsSync", (...args: Parameters<typeof fs.statfsSync>) => {
+      const stat = Reflect.apply(originalStatfs, fs, args);
+      const available = resolve(String(args[0])) === resolve(backupDirectory) ? backupFreeBytes : runtimeFreeBytes;
+      return { ...stat, bavail: typeof stat.bsize === "bigint" ? available / stat.bsize : Number(available) / stat.bsize };
+    });
+    syncBuiltinESMExports();
+    try {
+      assert.ok(databaseStorageFootprintBytes(databasePath) >= reportedDatabaseBytes);
+      assert.deepEqual(database.health(), { ok: true, result: "ok" });
+      runtimeFreeBytes = MINIMUM_RUNTIME_FREE_BYTES;
+      assert.deepEqual(database.health(), { ok: true, result: "ok" });
+      runtimeFreeBytes -= 1n;
+      assert.deepEqual(database.health(), { ok: false, result: "database_storage_low" });
+      runtimeFreeBytes = 200n * mib;
+      await assert.rejects(database.backupDetailed(join(backupDirectory, "snapshot.sqlite3")), error => {
+        assert.ok(error instanceof StorageCapacityError);
+        assert.equal(error.availableBytes, backupFreeBytes);
+        assert.ok(error.requiredBytes >= reportedDatabaseBytes + BACKUP_WRITE_RESERVE_BYTES);
+        return true;
+      });
+      assert.deepEqual(database.health(), { ok: true, result: "ok" });
+      assert.deepEqual(readdirSync(backupDirectory), []);
+    } finally {
+      context.mock.restoreAll(); syncBuiltinESMExports();
+      database.close(); rmSync(directory, { recursive: true, force: true });
+    }
   });
 
   it("reports real filesystem capacity with exact bigint arithmetic", () => {

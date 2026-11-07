@@ -25,14 +25,6 @@ export class StorageCapacityError extends Error {
   }
 }
 
-export function requiredRuntimeFreeBytes(databaseBytes: bigint): bigint {
-  requireNonNegative(databaseBytes, "database size");
-  const backupHeadroom = databaseBytes + BACKUP_WRITE_RESERVE_BYTES;
-  return backupHeadroom > MINIMUM_RUNTIME_FREE_BYTES
-    ? backupHeadroom
-    : MINIMUM_RUNTIME_FREE_BYTES;
-}
-
 export function databaseStorageFootprintBytes(databasePath: string): bigint {
   const path = resolve(databasePath);
   return ordinaryFileSize(path, "database") +
@@ -42,8 +34,9 @@ export function databaseStorageFootprintBytes(databasePath: string): bigint {
 
 export function inspectDatabaseStorageHeadroom(databasePath: string): StorageHeadroom {
   const path = resolve(databasePath);
-  const databaseBytes = databaseStorageFootprintBytes(path);
-  return inspectStorageHeadroom(dirname(path), requiredRuntimeFreeBytes(databaseBytes));
+  // Keep file and sidecar validation separate from the space needed for ongoing writes.
+  databaseStorageFootprintBytes(path);
+  return inspectStorageHeadroom(dirname(path), MINIMUM_RUNTIME_FREE_BYTES);
 }
 
 export function assertBackupStorageHeadroom(sourcePath: string, targetDirectory: string): void {
