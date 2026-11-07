@@ -47,6 +47,52 @@ const PROVIDER_IDENTITY = {
 } as const;
 
 describe("automatic reconciliation settlement", () => {
+  it("preserves settled orders and accounting evidence while retiring overlapping duplicate ingestion", async () => {
+    await withStores(async ({ database, databasePath, orders, reconciliation, recordCredit }) => {
+      const order = createOrder(orders, "retained-settlement", 999);
+      const entry = recordCredit("retained-settlement", order.order.payableAmountCents, EVENT_TIME);
+      assert.equal(reconciliation.reconcileEntry(entry.ledgerEntryId, BASE_TIME + 120_000).kind, "auto_settled");
+      const ledger = new LedgerStore(database);
+      const amount = (order.order.payableAmountCents / 100).toFixed(2);
+      const occurredAt = formatProviderTimestamp(EVENT_TIME);
+      const duplicateRun = ledger.startIngestRun({
+        start: WINDOW.start, end: formatProviderTimestamp(BASE_TIME + 61 * 60_000), pageSize: 1, now: BASE_TIME + 121_000,
+      });
+      const duplicate = ledger.recordPage({ ingestRunId: duplicateRun.ingestRunId, now: BASE_TIME + 121_001,
+        page: { pageNo: 1, pageSize: 1, totalSize: 1, hasMore: false, details: [{
+          accountLogId: "retained-settlement", occurredAt, amount, direction: "CREDIT",
+          alipayOrderNo: "platform-retained-settlement", merchantOrderNo: null, transMemo: null, otherAccount: null,
+          raw: { account_log_id: "retained-settlement", occurred_at: occurredAt, amount, direction: "CREDIT" },
+        }] },
+        evidence: { httpStatus: 200, headers: {}, body: JSON.stringify({ amount }), traceId: null, signatureVerified: true },
+      });
+      assert.equal(duplicate.normalized[0]?.kind, "duplicate");
+      const now = BASE_TIME + 10 * 24 * 60 * 60_000;
+      const latest = ledger.startIngestRun({ start: WINDOW.start, end: formatProviderTimestamp(BASE_TIME + 62 * 60_000), pageSize: 1, now });
+      ledger.recordPage({ ingestRunId: latest.ingestRunId, now: now + 1,
+        page: { pageNo: 1, pageSize: 1, totalSize: 0, hasMore: false, details: [] },
+        evidence: { httpStatus: 200, headers: {}, body: "{}", traceId: null, signatureVerified: true },
+      });
+      const tables = ["payment_orders", "order_events", "ledger_entries", "payment_matches", "match_candidates",
+        "financial_operations", "ledger_transactions", "ledger_postings", "outbox_events"];
+      const financialSnapshot = (owner: AppDatabase) => owner.read(connection =>
+        Object.fromEntries(tables.map(table => [table, connection.prepare(`SELECT * FROM ${table}`).all()])));
+      const before = financialSnapshot(database);
+
+      assert.equal(ledger.pruneIngestHistory(now + 1).deletedEvents, 1);
+      assert.equal(ledger.getRun(duplicateRun.ingestRunId), null);
+      assert.deepEqual(financialSnapshot(database), before);
+      assert.equal(database.integrityCheck().ok, true);
+      const backupPath = `${databasePath}.retained-backup`;
+      await database.backup(backupPath);
+      const restored = await AppDatabase.open(backupPath);
+      try {
+        assert.deepEqual(financialSnapshot(restored), before);
+        assert.equal(restored.integrityCheck().ok, true);
+      } finally { restored.close(); }
+    });
+  });
+
   it("settles one safe amount match atomically and emits one notification", async () => {
     await withStores(async ({ database, orders, reconciliation, recordCredit }) => {
       const order = createOrder(orders, "automatic", 999);

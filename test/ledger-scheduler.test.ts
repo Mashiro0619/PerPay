@@ -95,6 +95,7 @@ describe("adaptive ledger scheduler", () => {
     ["non-retryable cooldown", result({ status: "FAILED", errorCode: "forbidden" }), 900_000],
     ["durable cooldown", result({ status: "FAILED", retryable: true, cooldownActive: true, retryAfterSeconds: 12 }), 12_000],
     ["pagination variant retry", result({ status: "FAILED", retryable: true, errorCode: "pagination_variant", retryAfterSeconds: 7 }), 7_000],
+    ["retired page reconfirmation retry", result({ status: "FAILED", retryable: true, errorCode: "pagination_reconfirmation_required", retryAfterSeconds: 5 }), 5_000],
     ["unexpected failure", new Error("scan failed outside provider handling"), 30_000],
   ] as const) {
     it("keeps the " + name + " deadline when orders arrive", async () => {

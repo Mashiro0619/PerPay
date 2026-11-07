@@ -1543,14 +1543,23 @@ function countLedgerDomainViolations(connection: DatabaseSync): number {
                 grouped.maximum_attempt != grouped.attempt_count OR
                 grouped.distinct_attempts != grouped.attempt_count`
     : "";
+  const hasIngestRetention = tableExists(connection, "ledger_retention_state");
+  const retiredObservationCount = hasIngestRetention
+    ? " + COALESCE((SELECT deleted_observations FROM ledger_retention_state WHERE singleton_key = 1), 0)"
+    : "";
+  const retentionStateIntegrity = hasIngestRetention
+    ? `UNION ALL SELECT 'ledger_retention_state' AS subject
+         WHERE (SELECT COUNT(*) FROM ledger_retention_state WHERE singleton_key = 1 AND pruning = 0) != 1`
+    : "";
   const observationSequenceIntegrity = hasPageStability
     ? `
          UNION ALL
 
          SELECT 'ingest_page_observation_sequence' AS subject
-          WHERE (SELECT COUNT(*) FROM ingest_run_page_observations) !=
+          WHERE (SELECT COUNT(*) FROM ingest_run_page_observations)${retiredObservationCount} !=
                 (SELECT COALESCE(MAX(observation_sequence), 0)
-                   FROM ingest_run_page_observations)`
+                   FROM ingest_run_page_observations)
+         ${retentionStateIntegrity}`
     : "";
   const observationTransitionIntegrity = hasPageStability
     ? `

@@ -17,6 +17,9 @@ export function runtimeErrorMessage(task: RuntimeTask, code: string): string {
         return "支付宝查询连接失败或超时，请检查网络并等待下次查账。";
       case "ledger_schedule_storage_error":
         return "查账进度暂时无法读取或保存，请检查数据库和运行诊断。";
+      case "pagination_variant":
+      case "pagination_reconfirmation_required":
+        return "账单响应有变化，正在重新确认。";
       case "pagination_invalid":
       case "response_invalid_shape":
         return "支付宝账单未通过校验，请保留失败记录并查看运行诊断。";

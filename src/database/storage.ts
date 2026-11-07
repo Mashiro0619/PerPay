@@ -4,7 +4,8 @@ import { DatabaseSync } from "node:sqlite";
 
 const STORAGE_TABLES = [
   "payment_orders", "ledger_entries", "audit_events", "activity_events",
-  "provider_raw_pages", "ingest_run_page_observations", "ingest_runs", "ingest_segments", "ingest_errors",
+  "provider_raw_pages", "provider_raw_events", "ingest_run_page_observations", "ingest_runs", "ingest_segments", "ingest_errors",
+  "ledger_request_checkpoints", "ledger_retention_state",
 ] as const;
 
 export interface DatabaseStoragePages {

@@ -458,8 +458,8 @@ export class LedgerIngestScheduler {
           Math.max(interval,
             (result.retryAfterSeconds ?? LedgerIngestScheduler.#nonRetryableDelayMilliseconds / 1_000) * 1_000),
         );
-      } else if (result?.errorCode === "pagination_variant") {
-        // The durable store already owns the bounded retry deadline for page variants.
+      } else if (result?.errorCode === "pagination_variant" || result?.errorCode === "pagination_reconfirmation_required") {
+        // The durable store already owns the bounded retry deadline for page confirmation.
         delay = Math.min(
           LedgerIngestScheduler.#maximumRetryDelayMilliseconds,
           Math.max(1_000, (result.retryAfterSeconds ?? 1) * 1_000),

@@ -164,6 +164,15 @@ export interface RawErrorEvidence extends Omit<RawPageEvidence, "signatureVerifi
   readonly signatureVerified: boolean | null;
 }
 
+export class LedgerPageReconfirmationRequiredError extends Error {
+  readonly code = "pagination_reconfirmation_required";
+
+  constructor() {
+    super("retired provider request changed; another matching signed response is required");
+    this.name = "LedgerPageReconfirmationRequiredError";
+  }
+}
+
 export interface RecordLedgerPageInput {
   readonly ingestRunId: string;
   readonly page: AccountLogPage | AccountLogPageInput;

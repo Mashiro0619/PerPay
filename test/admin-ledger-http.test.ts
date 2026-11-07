@@ -30,7 +30,12 @@ function financialSnapshot(database: AppDatabase) {
   return database.read(db => JSON.stringify(
     (db.prepare("SELECT name FROM sqlite_schema WHERE type = 'table' ORDER BY name").all() as { name: string }[])
       .filter(({ name }) => /ledger|payment|provider|webhook|audit|admin_operation|order/.test(name))
-      .map(({ name }) => [name, db.prepare('SELECT * FROM "' + name.replaceAll('"', '""') + '" ORDER BY rowid').all()]),
+      .map(({ name }) => {
+        const quote = (identifier: string) => '"' + identifier.replaceAll('"', '""') + '"';
+        const keys = db.prepare("SELECT name FROM pragma_table_info(?) WHERE pk > 0 ORDER BY pk").all(name) as { name: string }[];
+        const order = keys.length ? keys.map(key => quote(key.name)).join(", ") : "rowid";
+        return [name, db.prepare(`SELECT * FROM ${quote(name)} ORDER BY ${order}`).all()];
+      }),
     (_key, value: unknown) => typeof value === "bigint" ? value.toString() : value,
   ));
 }

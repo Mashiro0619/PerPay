@@ -4,6 +4,8 @@ import { randomUUID } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 
 import type { AppDatabase } from "../database/database.ts";
+import { pruneIngestHistory, type IngestRetentionResult } from "./retention.ts";
+import { reconsiderRetiredResponse } from "./request-checkpoints.ts";
 import { appendAuditEvent } from "../database/identity-store.ts";
 import type { AccountLogDetail } from "../infrastructure/alipay/types.ts";
 import {
@@ -11,6 +13,7 @@ import {
   LEDGER_MAX_RAW_EVENT_BYTES,
   LEDGER_MAX_RAW_PAGE_BYTES,
   LedgerNormalizationError,
+  LedgerPageReconfirmationRequiredError,
   conflictFingerprint,
   ledgerConflictOperationEvidence,
   ledgerConflictOperationFingerprint,
@@ -306,6 +309,12 @@ interface RetainedSegmentPage {
   readonly previousVariantRawPageId: string | null;
 }
 
+interface RetiredRequestReconfirmation {
+  readonly observation: "reconfirmation_required";
+  readonly requestFingerprint: string;
+  readonly previousResponseFingerprint: string;
+}
+
 type PageObservationDisposition = "PROCESSED" | "REJECTED_VARIANT";
 
 interface LatestPageObservation {
@@ -327,6 +336,10 @@ export class LedgerStore {
 
   constructor(database: DatabaseOwner) {
     this.#database = database;
+  }
+
+  pruneIngestHistory(now = Date.now()): IngestRetentionResult {
+    return pruneIngestHistory(this.#database, now);
   }
 
   /** Permanently binds and activates one immutable ledger source generation. */
@@ -530,7 +543,7 @@ export class LedgerStore {
     const retryIntervalMilliseconds = validateRetryIntervalMilliseconds(
       input.retryIntervalMilliseconds ?? DEFAULT_RETRY_INTERVAL_MILLISECONDS,
     );
-    return this.#database.write((connection) => {
+    const result = this.#database.write<RecordSegmentPageResult | null>((connection) => {
       const run = requireRun(connection, input.ingestRunId);
       if (run.status !== "RUNNING") throw new Error("ingest run is already terminal");
       const segment = requireSegment(connection, input.ingestSegmentId);
@@ -566,6 +579,10 @@ export class LedgerStore {
         prepared,
         observationKind,
       );
+      if (retained.observation === "reconfirmation_required") {
+        recordRetiredRequestReconfirmation(connection, run, segment, retained, prepared, retryIntervalMilliseconds);
+        return null;
+      }
       if (!retained.newlyObserved) {
         throw new Error("pending ingest segment already observed this provider page");
       }
@@ -696,6 +713,9 @@ export class LedgerStore {
         rootCompleted,
       };
     });
+    // The checkpoint and retry evidence must commit before reporting the retry.
+    if (result === null) throw new LedgerPageReconfirmationRequiredError();
+    return result;
   }
 
   getNextPendingSegment(ingestRunId: string): IngestSegment | null {
@@ -2438,7 +2458,7 @@ function retainSegmentPage(
   page: RecordSegmentPageInput["page"],
   prepared: PreparedSegmentPage,
   observationKind: SegmentObservationKind,
-): RetainedSegmentPage {
+): RetainedSegmentPage | RetiredRequestReconfirmation {
   const requestHash = requestFingerprint(
     run.providerAccountKey,
     segment.windowStart,
@@ -2453,6 +2473,14 @@ function retainSegmentPage(
     requestHash,
     prepared.responseHash,
   );
+  if (latest === null && existingExact === null) {
+    const previousResponseFingerprint = reconsiderRetiredResponse(
+      connection, run.providerAccountKey, requestHash, prepared.responseHash, prepared.now,
+    );
+    if (previousResponseFingerprint !== null) {
+      return { observation: "reconfirmation_required", requestFingerprint: requestHash, previousResponseFingerprint };
+    }
+  }
   if (existingExact !== null) {
     if (
       existingExact.windowStart !== segment.windowStart ||
@@ -2711,6 +2739,38 @@ function hasPendingSegments(connection: DatabaseSync, ingestRunId: string): bool
     )
     .get(ingestRunId) as { pending: bigint | number };
   return Number(row.pending) === 1;
+}
+
+function recordRetiredRequestReconfirmation(
+  connection: DatabaseSync,
+  run: IngestRun,
+  segment: IngestSegment,
+  request: RetiredRequestReconfirmation,
+  prepared: PreparedSegmentPage,
+  retryIntervalMilliseconds: number,
+): void {
+  connection.prepare(`INSERT INTO ingest_errors(
+    ingest_error_id, ingest_run_id, provider_account_key, page_no, error_kind, error_code, retryable,
+    http_status, headers_json, raw_body, response_fingerprint, trace_id, signature_verified, details_json, occurred_at
+  ) VALUES (?, ?, ?, 1, 'pagination', 'pagination_reconfirmation_required', 1, ?, ?, ?, ?, ?, 1, ?, ?)`).run(
+    randomUUID(), run.ingestRunId, run.providerAccountKey, prepared.evidence.httpStatus,
+    prepared.headersJson, prepared.rawBody, prepared.responseHash, prepared.evidence.traceId,
+    JSON.stringify({ ingest_segment_id: segment.ingestSegmentId, window_start: segment.windowStart,
+      window_end: segment.windowEnd, request_fingerprint: request.requestFingerprint,
+      previous_response_fingerprint: request.previousResponseFingerprint,
+      incoming_response_fingerprint: prepared.responseHash }), prepared.now,
+  );
+  recordIngestScheduleFailure(connection, {
+    providerAccountKey: run.providerAccountKey, errorCode: "pagination_reconfirmation_required", retryable: true,
+    intervalMilliseconds: Math.min(retryIntervalMilliseconds, PAGINATION_VARIANT_RETRY_MAXIMUM_MILLISECONDS),
+    retryAfterSeconds: null, now: prepared.now,
+  });
+  const cursor = requireCursor(connection, run.providerAccountKey, scanLaneForKind(run.scanKind));
+  const yielded = connection.prepare(`UPDATE ledger_cursors SET updated_at = ?, version = version + 1
+    WHERE provider_account_key = ? AND scan_lane = ? AND version = ? AND complete = 0`).run(
+      Math.max(prepared.now, cursor.updatedAt), cursor.providerAccountKey, cursor.scanLane, cursor.version,
+    );
+  assertChangedOnce(yielded.changes, "ledger cursor yield for retired request confirmation");
 }
 
 function failPaginationVariant(

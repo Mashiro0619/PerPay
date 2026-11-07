@@ -10,6 +10,7 @@ import { createApp } from "./http/app.ts";
 import { IdentityService } from "./identity/service.ts";
 import { hardenProcessFileCreation } from "./infrastructure/storage/permissions.ts";
 import { LedgerStore } from "./ledger/index.ts";
+import { LedgerRetentionScheduler } from "./ledger/retention-scheduler.ts";
 import { WebhookStore } from "./notifications/index.ts";
 import { OrderService } from "./orders/service.ts";
 import { ReconciliationStore } from "./reconciliation/index.ts";
@@ -32,6 +33,11 @@ const activity = new ActivityRecorder({ database });
 const activityImporter = new ActivitySpoolImporter({ database, recorder: activity, backupDirectory: config.backupDir });
 const identity = new IdentityService(database, config);
 const ledger = new LedgerStore(database);
+const ledgerRetention = new LedgerRetentionScheduler({
+  prune: () => ledger.pruneIngestHistory(),
+  onPruned: result => console.log(JSON.stringify({ level: "info", event: "ingest_history_pruned", ...result })),
+  onError: error => logError("ingest_history_prune_failed", error),
+});
 const reconciliation = new ReconciliationStore(database);
 const webhooks = new WebhookStore(database);
 const settingsStore = new RuntimeSettingsStore(database, config.masterKey);
@@ -79,6 +85,7 @@ try {
   activity.prune();
   activity.start();
   activityImporter.start();
+  ledgerRetention.start();
 } catch (error) {
   activity.record({ action: "system.start_failed", sourceType: "INTERNAL", actorType: "SYSTEM", outcome: "FAILURE" });
   activity.stop();
@@ -207,6 +214,7 @@ function closeDatabase(): void {
 }
 
 async function stopBackground(): Promise<void> {
+  ledgerRetention.stop();
   const stopped = await Promise.allSettled([runtime.stop(), activityImporter.stop()]);
   const failure = stopped.find(result => result.status === "rejected");
   if (failure?.status === "rejected") { backgroundShutdownFailed = true; logError("background_shutdown_failed", failure.reason); process.exitCode = 1; }

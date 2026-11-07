@@ -9,6 +9,7 @@ import {
 } from "../infrastructure/alipay/index.ts";
 import {
   LEDGER_CURSOR_DEFAULT_OVERLAP_MILLISECONDS,
+  LedgerPageReconfirmationRequiredError,
   parseOccurredAt,
   rewindProviderWindowStart,
   type IngestRun,
@@ -384,6 +385,17 @@ export class LedgerIngestService {
         cooldownActive: false,
       };
     } catch (error) {
+      if (error instanceof LedgerPageReconfirmationRequiredError) {
+        return {
+          status: "FAILED", reason, ingestRunId: run.ingestRunId, pages, details,
+          createdEntries, duplicateEntries, isolatedDetails, conflicts,
+          errorCode: error.code,
+          retryAfterSeconds: retryAfterSeconds(
+            this.#store.getIngestScheduleState(this.#providerAccountKey), safeNow(this.#clock()),
+          ),
+          retryable: true, normalCompleted: false, cooldownActive: false,
+        };
+      }
       const aborted = signal.aborted;
       const providerError = error instanceof AlipayProviderError ? error : null;
       const code = aborted ? "scan_aborted" : providerError?.code ?? errorCode(error);
