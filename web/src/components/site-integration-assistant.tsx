@@ -101,6 +101,9 @@ function IntegrationContent({ site, siteDirty = false, disabled = false, showCli
   const clearDraft = useDirtyDraft(dirty);
   const [notifyUrl, setNotifyUrl] = useState(() => site.configuration.notification_origin ? site.configuration.notification_origin + "/webhooks/perpay" : "");
   const [returnUrl, setReturnUrl] = useState(() => site.configuration.return_origin ? site.configuration.return_origin + "/return" : "");
+  const [validateUrls, setValidateUrls] = useState(false);
+  const notifyInput = useRef<HTMLInputElement>(null);
+  const returnInput = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<Error | null>(null);
   const [refreshRequired, setRefreshRequired] = useState(false);
   const [feedback, setFeedback] = useState("");
@@ -178,6 +181,8 @@ function IntegrationContent({ site, siteDirty = false, disabled = false, showCli
   const notifyError = urlError(notifyUrl, site.configuration.notification_origin, true);
   const returnError = urlError(returnUrl, site.configuration.return_origin, false);
   const fieldErrors = error instanceof ApiError ? error.fields : {};
+  const notifyMessage = fieldErrors.notify_url ?? (validateUrls ? notifyError : null);
+  const returnMessage = fieldErrors.return_url ?? (validateUrls ? returnError : null);
   const needsRefresh = refreshRequired || error instanceof ApiError && error.status === 409;
   const sitePath = "/sites/" + encodeURIComponent(site.client_id);
   const endpoint = protocol === "native" ? "/api/v1/orders" : protocol === "epay_v1" ? "/submit.php" : "/api/pay/submit";
@@ -212,6 +217,15 @@ function IntegrationContent({ site, siteDirty = false, disabled = false, showCli
 
   async function read(purpose?: EpaySecret) {
     if (document.hidden || blocked || activeRead.current || writePending.current) return;
+    if (!purpose) {
+      setValidateUrls(true);
+      setError(null);
+      setFeedback("");
+      if (notifyError || returnError) {
+        (notifyError ? notifyInput : returnInput).current?.focus();
+        return;
+      }
+    }
     const controller = new AbortController();
     activeRead.current = controller;
     const current = ++generation.current;
@@ -261,7 +275,10 @@ function IntegrationContent({ site, siteDirty = false, disabled = false, showCli
     </CardHeader>
     <CardContent className="flex min-w-0 flex-col gap-5">
       <ToggleGroup aria-label="接入协议" value={[protocol]} variant="outline" className="max-w-full flex-wrap"
-        disabled={busy} onValueChange={value => { if (value[0]) { setProtocol(value[0] as IntegrationProtocol); setFeedback(""); } }}>
+        disabled={busy} onValueChange={value => { if (value[0]) {
+          setProtocol(value[0] as IntegrationProtocol); setFeedback("");
+          if (fieldErrors.notify_url || fieldErrors.return_url) setError(null);
+        } }}>
         {protocols.map(item => <ToggleGroupItem key={item.value} value={item.value}>{item.label}</ToggleGroupItem>)}
       </ToggleGroup>
       <p className="text-sm text-muted-foreground">{selected.description}</p>
@@ -311,17 +328,24 @@ function IntegrationContent({ site, siteDirty = false, disabled = false, showCli
         <Button type="button" variant="outline" className="self-start" onClick={hideSecret}>隐藏密钥</Button>
       </FieldGroup>}
       <FieldGroup>
-        <Field data-invalid={!!(notifyError || fieldErrors.notify_url)}>
+        <FieldDescription>以下地址临时填写，随下载写入 Demo 配置文件。</FieldDescription>
+        <Field data-invalid={!!notifyMessage}>
           <FieldLabel htmlFor={id + "-notify"}>Demo 通知地址</FieldLabel>
-          <Input id={id + "-notify"} type="url" value={notifyUrl} disabled={busy} placeholder="https://demo.example.com/webhooks/perpay"
-            aria-invalid={!!(notifyError || fieldErrors.notify_url)} onChange={event => setNotifyUrl(event.target.value)} />
-          <FieldDescription>{fieldErrors.notify_url ?? notifyError ?? "接收付款通知的完整 HTTPS 地址。"}</FieldDescription>
+          <Input ref={notifyInput} id={id + "-notify"} type="url" value={notifyUrl} disabled={busy} placeholder="https://demo.example.com/webhooks/perpay"
+            aria-invalid={!!notifyMessage} aria-describedby={id + "-notify-description"} onChange={event => {
+              setNotifyUrl(event.target.value);
+              if (fieldErrors.notify_url || fieldErrors.return_url) setError(null);
+            }} />
+          <FieldDescription id={id + "-notify-description"}>{notifyMessage ?? "接收付款通知的完整 HTTPS 地址。"}</FieldDescription>
         </Field>
-        <Field data-invalid={!!(returnError || fieldErrors.return_url)}>
+        <Field data-invalid={!!returnMessage}>
           <FieldLabel htmlFor={id + "-return"}>Demo 返回地址（可选）</FieldLabel>
-          <Input id={id + "-return"} type="url" value={returnUrl} disabled={busy} placeholder="https://demo.example.com/return"
-            aria-invalid={!!(returnError || fieldErrors.return_url)} onChange={event => setReturnUrl(event.target.value)} />
-          <FieldDescription>{fieldErrors.return_url ?? returnError ?? "付款后返回 Demo 的完整 HTTPS 地址。"}</FieldDescription>
+          <Input ref={returnInput} id={id + "-return"} type="url" value={returnUrl} disabled={busy} placeholder="https://demo.example.com/return"
+            aria-invalid={!!returnMessage} aria-describedby={id + "-return-description"} onChange={event => {
+              setReturnUrl(event.target.value);
+              if (fieldErrors.notify_url || fieldErrors.return_url) setError(null);
+            }} />
+          <FieldDescription id={id + "-return-description"}>{returnMessage ?? "付款后返回 Demo 的完整 HTTPS 地址。"}</FieldDescription>
         </Field>
       </FieldGroup>
       {!protocolEnabled && <p className="text-sm text-muted-foreground">此协议已暂停新订单。</p>}
@@ -330,7 +354,7 @@ function IntegrationContent({ site, siteDirty = false, disabled = false, showCli
       {(!site.configuration.notification_origin || !site.configuration.notifications_enabled) &&
         <Link to={sitePath + "/edit?section=integration"} className="self-start">完善网站通知设置</Link>}
       <div className="flex flex-col gap-2">
-        <Button type="button" className="self-start" disabled={blocked || needsRefresh || !keysReady || !configuration.public_origin || !!notifyError || !!returnError}
+        <Button type="button" className="self-start" disabled={blocked || needsRefresh || !keysReady || !configuration.public_origin}
           onClick={() => { void read(); }}>{pendingRead ? <Spinner data-icon="inline-start" /> : <Download data-icon="inline-start" />}下载完整配置</Button>
         <p className="text-sm text-muted-foreground">文件包含当前网站密钥，请存放在服务端并避免提交到公开仓库。</p>
       </div>

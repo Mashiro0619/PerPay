@@ -137,14 +137,71 @@ describe("website integration assistant", () => {
     expect(screen.getByText("此协议已暂停新订单。")).toBeInTheDocument();
   });
 
-  it("points missing and mismatched callback URLs at the relevant fields", async () => {
-    mount({ currentSite: { ...site, configuration: { ...site.configuration, notification_origin: null } } });
+  it("keeps temporary callback inputs neutral until a download needs them", async () => {
+    const fixture = mount({ currentSite: { ...site, configuration: { ...site.configuration, notification_origin: null } } });
     await screen.findByText("网站接入助手");
-    expect(screen.getByRole("button", { name: "下载完整配置" })).toBeDisabled();
+    expect(screen.getByLabelText("Demo 通知地址")).toHaveAttribute("aria-invalid", "false");
+    expect(screen.queryByText("请填写完整的通知地址。")).not.toBeInTheDocument();
+    const download = screen.getByRole("button", { name: "下载完整配置" });
+    expect(download).toBeEnabled();
+    download.focus();
+    await userEvent.keyboard("{Enter}");
+    expect(screen.getByLabelText("Demo 通知地址")).toHaveFocus();
+    expect(screen.getByLabelText("Demo 通知地址")).toHaveAccessibleDescription("请填写完整的通知地址。");
+    expect(screen.getByLabelText("Demo 通知地址")).toHaveAttribute("aria-invalid", "true");
+    expect(fixture.writes).toHaveLength(0);
     fireEvent.change(screen.getByLabelText("Demo 通知地址"), { target: { value: "https://evil.example.com/notify" } });
     expect(screen.getByText("请先保存对应的地址前缀。")).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Demo 返回地址（可选）"), { target: { value: "https://evil.example.com/return" } });
     expect(screen.getByLabelText("Demo 返回地址（可选）")).toHaveAttribute("aria-invalid", "true");
+    await userEvent.click(screen.getByRole("button", { name: "易支付 V1" }));
+    await userEvent.click(screen.getByRole("switch"));
+    await userEvent.click(screen.getByRole("button", { name: "保存易支付设置" }));
+    await waitFor(() => expect(fixture.writes[0]?.body).toEqual({ revision: 4, v1_enabled: false, v2_enabled: true }));
+  });
+
+  it("validates corrected callback inputs and permits an empty optional return URL", async () => {
+    const fixture = mount();
+    await screen.findByText("网站接入助手");
+    const notify = screen.getByLabelText("Demo 通知地址");
+    const returning = screen.getByLabelText("Demo 返回地址（可选）");
+    fireEvent.change(notify, { target: { value: "http://demo.example.com/notify" } });
+    expect(notify).toHaveAttribute("aria-invalid", "false");
+    await userEvent.click(screen.getByRole("button", { name: "下载完整配置" }));
+    expect(notify).toHaveAttribute("aria-invalid", "true");
+    expect(fixture.writes).toHaveLength(0);
+    fireEvent.change(notify, { target: { value: "https://demo.example.com/notify" } });
+    fireEvent.change(returning, { target: { value: "https://another.example.com/return" } });
+    await userEvent.click(screen.getByRole("button", { name: "下载完整配置" }));
+    expect(returning).toHaveFocus();
+    expect(fixture.writes).toHaveLength(0);
+    fireEvent.change(returning, { target: { value: "" } });
+    expect(notify).toHaveAttribute("aria-invalid", "false");
+    expect(returning).toHaveAttribute("aria-invalid", "false");
+    await userEvent.click(screen.getByRole("button", { name: "下载完整配置" }));
+    await waitFor(() => expect(URL.createObjectURL).toHaveBeenCalledTimes(1));
+    expect(fixture.writes[0]?.body).toEqual({ protocol: "native", site_revision: 7, epay_revision: 4,
+      notify_url: "https://demo.example.com/notify" });
+  });
+
+  it("clears rejected callback errors when the address or protocol changes", async () => {
+    const fixture = mount();
+    await screen.findByText("网站接入助手");
+    const reject = () => fixture.fetchMock.mockImplementationOnce(async () => json({ error: {
+      code: "settings_invalid", message: "请检查填写的内容。", fields: { notify_url: "通知地址不能包含重复参数。" },
+    } }, 422));
+    reject();
+    await userEvent.click(screen.getByRole("button", { name: "下载完整配置" }));
+    await screen.findByText("通知地址不能包含重复参数。");
+    fireEvent.change(screen.getByLabelText("Demo 通知地址"), { target: { value: "https://demo.example.com/updated" } });
+    expect(screen.queryByText("通知地址不能包含重复参数。")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Demo 通知地址")).toHaveAttribute("aria-invalid", "false");
+    reject();
+    await userEvent.click(screen.getByRole("button", { name: "下载完整配置" }));
+    await screen.findByText("通知地址不能包含重复参数。");
+    await userEvent.click(screen.getByRole("button", { name: "易支付 V2" }));
+    expect(screen.queryByText("通知地址不能包含重复参数。")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Demo 通知地址")).toHaveAttribute("aria-invalid", "false");
   });
 
   it("requires a refresh after a concurrent revision conflict", async () => {
