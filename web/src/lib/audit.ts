@@ -45,6 +45,7 @@ const fieldLabels: Readonly<Record<string, string>> = {
   app_id: "应用编号（App ID）", environment: "支付宝环境", code_payload: "收款码", collection_code_payload: "收款码",
   private_key: "应用私钥", provider_private_key: "应用私钥", public_key: "支付宝公钥", provider_public_key: "支付宝公钥", pending_private_key: "待启用应用私钥",
   api_secret: "API 密钥", webhook_secret: "通知签名密钥", cidrs: "管理员 IP 白名单", admin_access_enabled: "管理员 IP 白名单开关",
+  v1_key: "易支付 V1 密钥", v2_merchant: "易支付 V2 商户私钥", v2_platform: "易支付 V2 平台私钥",
   timeout_milliseconds: "请求超时（毫秒）", provider_timeout_milliseconds: "查账请求超时（毫秒）", maximum_attempts: "最多发送次数",
   retry_base_seconds: "首次重试间隔（秒）", retry_maximum_seconds: "最大重试间隔（秒）",
   provider_scan_interval_milliseconds: "常规查账间隔（毫秒）", provider_active_scan_interval_milliseconds: "活跃查账间隔（毫秒）",
@@ -61,7 +62,7 @@ export function auditFieldLabel(field: string): string {
   return fieldLabels[field] ?? fieldLabels[field.split(".").at(-1)!] ?? field;
 }
 const subjectLabels: Readonly<Record<string, string>> = {
-  settings: "系统设置", runtime_configuration: "系统设置", site: "业务网站", site_defaults: "网站默认模板", alipay_account: "收款账号",
+  settings: "系统设置", runtime_configuration: "系统设置", site: "业务网站", website: "业务网站", site_defaults: "网站默认模板", alipay_account: "收款账号",
   admin: "管理员", administrator: "管理员", administrator_session: "登录会话", admin_session: "登录会话", api_client: "调用凭据",
   order: "订单", payment_order: "订单", ledger_entry: "支付宝流水", payment_match: "收款关联", financial_exception: "账务异常",
   webhook_delivery: "付款通知", notification: "付款通知", audit_export: "审计导出",
@@ -78,6 +79,8 @@ const actions: Readonly<Record<string, string>> = {
   "site.created": "创建业务网站", "site.updated": "更新业务网站", "site.deleted": "删除业务网站",
   "site.client_id_changed": "更换客户端 ID",
   "site.secret_rotated": "轮换网站密钥", "site.secret_viewed": "查看网站密钥", "site_defaults.updated": "更新网站默认设置",
+  "epay.configuration_updated": "更新易支付设置", "epay.secret_viewed": "查看易支付密钥",
+  "epay.configuration_exported": "导出网站接入配置", "epay.secret_rotated": "轮换易支付密钥",
   "alipay_account.created": "添加收款账号", "alipay_account.updated": "更新收款账号", "alipay_account.deleted": "删除收款账号",
   "alipay_account.checked": "检查收款账号",
   "alipay_account.application_key_generated": "生成账号应用密钥", "alipay_account.application_key_regenerated": "重新生成账号应用密钥",
