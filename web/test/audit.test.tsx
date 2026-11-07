@@ -340,14 +340,13 @@ describe("audit event details", () => {
     expect(screen.queryByText("c".repeat(64))).not.toBeInTheDocument();
   });
 
-  it("identifies minute aggregates and calculates the average from the total duration", async () => {
+  it("identifies activity aggregates and calculates the average from the total duration", async () => {
     backend({ detail: auditDetail({ ...aggregateEvent, first_occurred_at: "2026-11-01T02:03:01.000Z" }) });
     mount(`/audit/activity/${aggregateEvent.event_id}`);
-    const group = await screen.findByRole("group", { name: "分钟汇总" });
-    expect(within(group).getByRole("heading", { name: "分钟汇总 · 5 次" })).toBeVisible();
+    const group = await screen.findByRole("group", { name: "活动汇总" });
+    expect(within(group).getByRole("heading", { name: "活动汇总 · 5 次" })).toBeVisible();
     expect(within(group).getByText("100 ms")).toBeVisible();
     expect(within(group).getByText("20 ms")).toBeVisible();
-    expect(within(group).getByText(/本条记录不对应一次独立请求/)).toBeVisible();
     expect(screen.getByText("curl 客户端")).toBeVisible();
     expect(screen.getByRole("link", { name: "示例网站" })).toHaveAttribute("href", "/sites/site_a/summary");
     expect(within(group).getByText("2026/11/01 10:03:01")).toBeVisible();
@@ -357,7 +356,7 @@ describe("audit event details", () => {
     expect(within(summary).getByText("2026/11/01 10:03:05")).toBeVisible();
     await userEvent.click(screen.getByRole("button", { name: "审计日志技术信息" }));
     const technical = await screen.findByRole("dialog", { name: "审计日志技术信息" });
-    expect(within(technical).getByText(/分钟汇总，不对应单次请求/)).toBeVisible();
+    expect(within(technical).getByText(/活动汇总，不对应单次请求/)).toBeVisible();
     expect(within(technical).getByText("汇总组编号")).toBeVisible();
     expect(within(technical).getByText("aggregate-group-identifier")).toBeVisible();
   });

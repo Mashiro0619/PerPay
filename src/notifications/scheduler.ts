@@ -107,7 +107,7 @@ export class WebhookScheduler {
     const runSignal = this.#abortController.signal;
     const execution = this.#activity
       ? this.#activity.runTask("webhook.dispatch", { details: { reason } }, () => this.#run(reason, runSignal), result => ({
-        outcome: result.failed > 0 ? "FAILURE" : "SUCCESS", aggregate: result.processed === 0 && result.failed === 0,
+        outcome: result.failed > 0 ? "FAILURE" : "SUCCESS", aggregate: result.processed === 0 && result.failed === 0 ? "hour" : false,
         details: { processed: result.processed, acknowledged: result.acknowledged, failed: result.failed, pending: result.pending },
       }))
       : this.#run(reason, runSignal);

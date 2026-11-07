@@ -7,7 +7,8 @@ import { parseProviderKeys, type InstanceRuntimeSettingsSnapshot, type RuntimeSe
 import { LedgerIngestScheduler } from "../src/ledger/scheduler.ts";
 import { ReconciliationScheduler } from "../src/reconciliation/scheduler.ts";
 import { WebhookScheduler } from "../src/notifications/scheduler.ts";
-import type { LedgerScanResult } from "../src/ledger/service.ts";
+import { LedgerIngestService, type LedgerScanResult } from "../src/ledger/service.ts";
+import { LedgerScanCadencePolicy } from "../src/ledger/cadence.ts";
 import { privatePem, platformPem } from "./application-key-fixture.ts";
 
 const unconfiguredSettings: RuntimeSettingsSnapshot = Object.freeze({
@@ -37,6 +38,64 @@ const unconfiguredSettings: RuntimeSettingsSnapshot = Object.freeze({
 });
 
 describe("runtime settings controller", () => {
+  it("logs meaningful scan and reconciliation changes while keeping every scheduling callback", async t => {
+    const provider = parseProviderKeys({ environment: "PRODUCTION", appId: "runtime-logging",
+      privateKey: privatePem, publicKey: platformPem, timeoutMilliseconds: 8000, scanIntervalMilliseconds: 60000,
+      activeScanIntervalMilliseconds: 8000, safetyLagMilliseconds: 10000, maximumSuccessAgeMilliseconds: 120000 });
+    const snapshot: RuntimeSettingsSnapshot = { ...unconfiguredSettings, revision: 1, paymentRevision: 1, provider,
+      activeProviderAccountKey: "primary", collection: { codePayload: "https://qr.alipay.com/runtime-logging", orderTtlSeconds: 300,
+        amountOffsetMaximumCents: 99, amountReuseCooldownSeconds: 600 } };
+    let now = 2_000_000_000_000, ledger!: LedgerIngestScheduler, reconciliation!: ReconciliationScheduler;
+    let wakeReconciliation = 0, refreshCadence = 0, failReconciliation = false;
+    const completed: LedgerScanResult = { status: "COMPLETED", reason: "scheduled", ingestRunId: "test-run", pages: 1, details: 0,
+      createdEntries: 0, duplicateEntries: 0, isolatedDetails: 0, conflicts: 0, errorCode: null,
+      retryAfterSeconds: null, retryable: false, normalCompleted: true, cooldownActive: false };
+    let outcome = completed;
+    const logs: Array<{ event: string; status?: string; failures?: number }> = [];
+    t.mock.method(console, "log", (line: string) => { logs.push(JSON.parse(line)); });
+    t.mock.method(console, "error", () => {});
+    t.mock.method(LedgerIngestService.prototype, "run", async (reason: string) => ({ ...outcome, reason }));
+    t.mock.method(LedgerScanCadencePolicy.prototype, "current", () => ({ mode: "normal", intervalMilliseconds: 60000 }));
+    const startLedger = LedgerIngestScheduler.prototype.start;
+    t.mock.method(LedgerIngestScheduler.prototype, "start", function(this: LedgerIngestScheduler) { ledger = this; startLedger.call(this); });
+    const startReconciliation = ReconciliationScheduler.prototype.start;
+    t.mock.method(ReconciliationScheduler.prototype, "start", function(this: ReconciliationScheduler) { reconciliation = this; return startReconciliation.call(this); });
+    t.mock.method(LedgerIngestScheduler.prototype, "refreshSchedule", () => { refreshCadence++; });
+    const database = { read: (operation: (db: unknown) => unknown) => operation({ prepare: () => ({ get: () => undefined }) }),
+      write: (operation: (db: unknown) => unknown) => operation({ prepare: () => ({ run() {} }) }) };
+    const runtime = new RuntimeController({ database: database as never, clock: () => now, orders: { initialize() {} } as never,
+      ledger: { activeProviderIdentity: () => ({ providerAccountKey: "primary", activatedAt: 1 }) } as never,
+      reconciliation: {
+        pendingLedgerPage: () => ({ ledgerEntryIds: failReconciliation ? ["failed-entry"] : [], nextCursor: null, hasMore: false }),
+        reconcileEntry: () => { throw new Error("reconciliation failed"); },
+      } as never, webhooks: {} as never,
+    });
+    t.mock.method(runtime, "triggerReconciliation", async () => { wakeReconciliation++; });
+    const scan = async (next: Partial<LedgerScanResult> = {}) => {
+      now += 61_000; outcome = { ...completed, ...next }; await ledger.trigger("scheduled");
+    };
+    try {
+      await runtime.start(snapshot);
+      await new Promise(resolve => setImmediate(resolve));
+      await reconciliation.triggerSweep("startup");
+      logs.length = 0; wakeReconciliation = 0; refreshCadence = 0;
+      await scan(); await reconciliation.triggerSweep("scheduled");
+      assert.equal(logs.length, 0);
+      await scan({ createdEntries: 1, details: 1 });
+      await scan({ status: "FAILED", errorCode: "transport_network", retryable: true });
+      await scan(); await scan();
+      assert.deepEqual(logs.filter(log => log.event === "ledger_scan_finished").map(log => log.status), ["COMPLETED", "FAILED", "COMPLETED"]);
+      assert.equal(wakeReconciliation, 5);
+      assert.equal(runtime.ledgerHealth().lastSuccessAt, now);
+      failReconciliation = true; await reconciliation.triggerSweep("scheduled");
+      failReconciliation = false; await reconciliation.triggerSweep("scheduled");
+      await reconciliation.triggerSweep("scheduled");
+      assert.deepEqual(logs.filter(log => log.event === "reconciliation_finished").map(log => log.failures), [1, 0]);
+      assert.equal(refreshCadence, 4);
+      assert.equal(runtime.reconciliationHealth().lastSuccessAt, now);
+    } finally { await runtime.stop(); }
+  });
+
   it("keeps a historical sandbox singleton offline without preventing startup",async t=>{
     const provider=parseProviderKeys({environment:"SANDBOX",appId:"historical-runtime",privateKey:privatePem,publicKey:platformPem,
       timeoutMilliseconds:8000,scanIntervalMilliseconds:30000,activeScanIntervalMilliseconds:8000,safetyLagMilliseconds:10000,maximumSuccessAgeMilliseconds:120000});

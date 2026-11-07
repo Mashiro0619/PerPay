@@ -36,7 +36,7 @@ describe("audit CSV export", () => {
   it("exports applied filters with CSRF and restores the UTF-8 BOM in read-only demo mode", async () => {
     const { create, click } = downloads();
     const calls: Request[] = [];
-    vi.stubGlobal("fetch", vi.fn(async (request: Request) => { calls.push(request); return new Response('"记录类型","次数"\r\n"分钟汇总","5"\r\n', { headers: { "content-type": "text/csv;charset=utf-8" } }); }));
+    vi.stubGlobal("fetch", vi.fn(async (request: Request) => { calls.push(request); return new Response('"记录类型","次数"\r\n"活动汇总","5"\r\n', { headers: { "content-type": "text/csv;charset=utf-8" } }); }));
     document.cookie = "perpay_csrf=audit-export-test";
     document.documentElement.dataset.perpayDemo = "readonly";
     try {

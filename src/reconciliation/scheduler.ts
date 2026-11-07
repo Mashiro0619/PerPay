@@ -1,5 +1,6 @@
 import { MAX_RECONCILIATION_BATCH_SIZE } from "./model.ts";
 import type { ActivityRecorder } from "../audit/activity.ts";
+import { currentAuditContext } from "../audit/context.ts";
 import {
   ReconciliationStore,
   type ReconciliationSweepCursor,
@@ -231,12 +232,17 @@ export class ReconciliationScheduler {
 
   #ensureRun(reason: string): Promise<ReconciliationRunResult> {
     if (this.#inFlight) return this.#inFlight;
+    const previousState = this.#state;
     const operation = Promise.resolve().then(() => this.#activity
-      ? this.#activity.runTask("reconciliation.sweep", { details: { reason } }, () => this.#run(reason), result => ({
-        outcome: result.failures > 0 ? "FAILURE" : "SUCCESS", aggregate: result.failures === 0 && result.processedEntries === 0 && result.processedOrders === 0,
-        details: { processed_entries: result.processedEntries, processed_orders: result.processedOrders, auto_settled: result.autoSettled,
-          failures: result.failures, continuation_pending: result.continuationPending },
-      }))
+      ? this.#activity.runTask("reconciliation.sweep", {}, () => this.#run(reason), result => {
+        const unchanged = previousState === "healthy" && this.#state === "healthy" &&
+          ["scheduled", "ledger_scan", "coalesced"].includes(reason) && result.failures === 0 && result.autoSettled === 0 &&
+          result.processedOrders === 0 && !result.continuationPending && !currentAuditContext()?.coreEventIds.length;
+        return { outcome: result.failures > 0 ? "FAILURE" : "SUCCESS", aggregate: unchanged ? "hour" : false,
+          details: unchanged ? {} : { reason, processed_entries: result.processedEntries, processed_orders: result.processedOrders,
+            auto_settled: result.autoSettled, failures: result.failures, continuation_pending: result.continuationPending },
+        };
+      })
       : this.#run(reason));
     this.#inFlight = operation.finally(() => {
       this.#inFlight = null;

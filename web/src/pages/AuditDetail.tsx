@@ -83,7 +83,7 @@ function AuditDetailView({ source, eventId }: { source: string; eventId: string 
             changes: data.changes.map(change => change.kind === "redacted_change" ? { field: change.field, kind: change.kind, configured_before: change.configured_before, configured_after: change.configured_after } : change) }}
           identifiers={[["日志编号", data.event_id], ["对象编号", data.subject_id], ["请求编号", data.request_id], [data.is_aggregate ? "汇总组编号" : "关联活动编号", data.activity_id], ["事件哈希", data.event_hash], ["前一事件哈希", data.previous_hash], ["请求上下文指纹", data.context_fingerprint], ["历史来源哈希", data.remote_address_hash]]}>
           <div className="flex flex-col gap-2 text-xs text-muted-foreground">
-            {data.is_aggregate && <p>分钟汇总，不对应单次请求。</p>}
+            {data.is_aggregate && <p>活动汇总，不对应单次请求。</p>}
             <p>客户端名称根据 User-Agent 识别，原文保留于下方请求信息。</p>
             {data.related_events.length > 0 && <p>同一请求可能产生不同类别的日志；关联记录不表示操作执行了多次。</p>}
           </div>

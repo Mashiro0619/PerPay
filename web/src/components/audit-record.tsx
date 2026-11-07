@@ -25,7 +25,7 @@ export function AuditResult({ outcome, source_type, http_status, is_aggregate, a
 export function AuditRecordType({ event }: { event: AuditEventItem }) {
   return <div className="flex min-w-0 flex-wrap items-center gap-1.5">
     <Badge variant="outline">{AUDIT_RECORD_LABELS[event.source_type] ?? event.source_type}</Badge>
-    {event.is_aggregate && <Badge variant="secondary">分钟汇总 · {event.event_count.toLocaleString("zh-CN")} 次</Badge>}
+    {event.is_aggregate && <Badge variant="secondary">活动汇总 · {event.event_count.toLocaleString("zh-CN")} 次</Badge>}
   </div>;
 }
 
@@ -50,7 +50,7 @@ export function AuditSourceInfo({ event }: { event: AuditEventItem }) {
 }
 
 export function AuditRetention() {
-  return <p className="text-xs text-muted-foreground" data-audit-retention>核心审计持续保留；活动记录保留 30 天。成功查询按分钟汇总。</p>;
+  return <p className="text-xs text-muted-foreground" data-audit-retention>核心审计持续保留；活动记录保留 30 天。成功查询按活动汇总。</p>;
 }
 
 export function AuditCaptureNotice({ capture, compact = false }: Pick<AuditMetadata, "capture"> & { compact?: boolean }) {
@@ -80,10 +80,10 @@ export function AuditCaptureNotice({ capture, compact = false }: Pick<AuditMetad
 
 export function AuditAggregation({ event }: { event: AuditEventItem }) {
   if (!event.is_aggregate) return null;
-  return <Card aria-label="分钟汇总" className="detail-section">
+  return <Card aria-label="活动汇总" className="detail-section">
     <CardHeader>
-      <CardTitle role="heading" aria-level={2}>分钟汇总 · {event.event_count.toLocaleString("zh-CN")} 次</CardTitle>
-      <CardDescription>同类成功活动的分钟统计；本条记录不对应一次独立请求。</CardDescription>
+      <CardTitle role="heading" aria-level={2}>活动汇总 · {event.event_count.toLocaleString("zh-CN")} 次</CardTitle>
+      <CardDescription>同类成功活动的次数、时间与耗时统计。</CardDescription>
     </CardHeader>
     <CardContent>
       <DetailFields density="comfortable" items={[

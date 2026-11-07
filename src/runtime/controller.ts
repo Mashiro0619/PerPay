@@ -17,6 +17,7 @@ import {
   LedgerIngestService,
   LedgerScanCadencePolicy,
   normalLedgerOverlapMilliseconds,
+  isUnchangedLedgerScan,
   parseOccurredAt,
   type LedgerSchedulerHealth,
   type LedgerStore,
@@ -39,7 +40,7 @@ type PaymentRuntimeSnapshot = RuntimeSettingsSnapshot | InstanceRuntimeSettingsS
 import { SettingsError } from "../settings/store.ts";
 import { collectionCodeError } from "../shared/collection-code.ts";
 import type { ActivityRecorder } from "../audit/activity.ts";
-import { createAuditContext, runWithAuditContext } from "../audit/context.ts";
+import { createAuditContext, currentAuditContext, runWithAuditContext } from "../audit/context.ts";
 
 export interface RevisionedLedgerHealth extends LedgerSchedulerHealth {
   readonly enabled: boolean;
@@ -713,6 +714,8 @@ export class RuntimeController {
       initialWindowStartMilliseconds: "activatedAt" in activation ? activation.activatedAt as number : activation.boundAt,
       clock: this.#clock,
     });
+    let lastScanState: LedgerSchedulerHealth["state"] | null = null;
+    let lastScanMode: string | null = null;
     return new LedgerIngestScheduler({
       activity: this.#activity,
       providerAccountKey,
@@ -724,7 +727,11 @@ export class RuntimeController {
       clock: this.#clock,
       onResult: (result, health) => {
         const currentCadence = cadence.current();
-        console.log(JSON.stringify({
+        const stateChanged = health.state !== lastScanState || currentCadence.mode !== lastScanMode;
+        lastScanState = health.state;
+        lastScanMode = currentCadence.mode;
+        if (stateChanged || result.reason !== "scheduled" || result.errorCode !== null ||
+            (!isUnchangedLedgerScan(result) && result.status !== "SKIPPED")) console.log(JSON.stringify({
           level: result.status === "FAILED" ? "warn" : "info",
           event: "ledger_scan_finished",
           scan_mode: currentCadence.mode,
@@ -748,11 +755,15 @@ export class RuntimeController {
           });
         }
       },
-      onUnexpectedError: (error) => this.#logError("ledger_scheduler_failed", error),
+      onUnexpectedError: (error, health) => {
+        lastScanState = health.state;
+        this.#logError("ledger_scheduler_failed", error);
+      },
     });
   }
 
   #createReconciliationScheduler(paymentRevision: number): ReconciliationScheduler {
+    let lastState: ReconciliationSchedulerHealth["state"] | null = null;
     return new ReconciliationScheduler({
       activity: this.#activity,
       store: this.#reconciliation,
@@ -761,7 +772,12 @@ export class RuntimeController {
       maximumEntriesPerRun: 1_024,
       clock: this.#clock,
       onResult: (result, health) => {
-        console.log(JSON.stringify({
+        const stateChanged = health.state !== lastState;
+        lastState = health.state;
+        const changed = result.autoSettled > 0 || result.failures > 0 || result.continuationPending ||
+          result.processedOrders > 0 || (currentAuditContext()?.coreEventIds.length ?? 0) > 0 ||
+          (!this.#activity && result.processedEntries > 0);
+        if (stateChanged || changed || !["scheduled", "ledger_scan", "coalesced"].includes(result.reason)) console.log(JSON.stringify({
           level: result.failures === 0 ? "info" : "warn",
           event: "reconciliation_finished",
           payment_revision: paymentRevision,

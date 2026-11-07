@@ -41,7 +41,7 @@ export default function AuditStatus() {
         <CardContent className="flex flex-col gap-2 text-sm text-muted-foreground">
           <AuditRetention />
           <p>列表按发生时间倒序显示，日期与时间均为北京时间。刷新列表可读取最新记录。</p>
-          <p>CSV 导出当前筛选的全部匹配记录，最多 10,000 行；每组分钟汇总占一行。请选择最多 366 天的发生日期范围。</p>
+          <p>CSV 导出当前筛选的全部匹配记录，最多 10,000 行；每组活动汇总占一行。请选择最多 366 天的发生日期范围。</p>
         </CardContent>
       </Card>
     </>}</QueryView>

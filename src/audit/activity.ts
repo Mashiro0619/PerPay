@@ -37,7 +37,7 @@ export interface ActivityEventInput {
   readonly httpStatus?: number | null | undefined;
   readonly durationMs?: number | undefined;
   readonly count?: number | undefined;
-  readonly aggregate?: boolean | undefined;
+  readonly aggregate?: boolean | "hour" | undefined;
   readonly details?: Readonly<Record<string, unknown>> | undefined;
   readonly coreEventIds?: readonly string[] | undefined;
   readonly externalEventId?: string | null | undefined;
@@ -89,7 +89,7 @@ export interface ActivityCaptureStatus {
 
 export interface ActivityTaskResult {
   readonly outcome?: ActivityOutcome;
-  readonly aggregate?: boolean;
+  readonly aggregate?: boolean | "hour";
   readonly details?: Readonly<Record<string, unknown>>;
 }
 
@@ -292,12 +292,13 @@ export function createActivityEvent(input: ActivityEventInput, now = Date.now())
   const httpStatus = input.httpStatus ?? null;
   if (httpStatus !== null && (!Number.isInteger(httpStatus) || httpStatus < 100 || httpStatus > 599)) throw new TypeError("invalid activity HTTP status");
   const coreEventIds = (input.coreEventIds ?? scope?.coreEventIds ?? []).filter(id => typeof id === "string" && id.length <= 128).slice(0, 256);
-  const aggregate = input.aggregate === true && outcome === "SUCCESS" && coreEventIds.length === 0;
+  const aggregate = (input.aggregate === true || input.aggregate === "hour") && outcome === "SUCCESS" && coreEventIds.length === 0;
   const httpAggregate = aggregate && sourceType === "HTTP";
   // A request group represents the registered method/route, not its first order or website resource.
   const subjectType = httpAggregate ? null : text(input.subjectType, 128);
   const subjectId = httpAggregate ? null : text(input.subjectId, 256);
-  const aggregationKey = aggregate ? createHash("sha256").update(JSON.stringify([Math.floor(occurredAt / 60_000), sourceType,
+  const bucket = input.aggregate === "hour" ? "hour:" + Math.floor(occurredAt / HOUR) : Math.floor(occurredAt / 60_000);
+  const aggregationKey = aggregate ? createHash("sha256").update(JSON.stringify([bucket, sourceType,
     actorType, actorId, input.action, outcome, subjectType, subjectId, siteId, sourceAddress, userAgent, httpMethod, route, httpStatus])).digest("hex") : null;
   const detailsJson = JSON.stringify(sanitizeActivityDetails(input.details ?? {}));
   if (Buffer.byteLength(detailsJson, "utf8") > MAX_DETAILS_BYTES) throw new TypeError("activity details too large");

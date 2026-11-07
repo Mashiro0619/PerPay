@@ -7,6 +7,10 @@ import { ACTIVITY_SCHEMA_SQL } from "../src/audit/activity-schema.ts";
 import { createAuditContext, currentAuditContext, runWithAuditContext } from "../src/audit/context.ts";
 import { WebhookScheduler } from "../src/notifications/scheduler.ts";
 import type { WebhookProcessResult } from "../src/notifications/service.ts";
+import { LedgerIngestScheduler } from "../src/ledger/scheduler.ts";
+import type { LedgerIngestService, LedgerScanResult } from "../src/ledger/service.ts";
+import { ReconciliationScheduler } from "../src/reconciliation/scheduler.ts";
+import type { ReconciliationStore } from "../src/reconciliation/store.ts";
 
 function fixture(now = 180_007) {
   const connection = new DatabaseSync(":memory:");
@@ -25,6 +29,98 @@ function fixture(now = 180_007) {
 }
 
 describe("bounded operational activity recorder", () => {
+  it("merges hourly tasks across minutes and flushes while keeping minute buckets and later hours separate", () => {
+    const { connection, database, state } = fixture(3_600_010);
+    const recorder = new ActivityRecorder({ database, clock: () => state.now });
+    const input = { action: "ledger.scan", sourceType: "BACKGROUND" as const, subjectId: "primary", aggregate: "hour" as const, durationMs: 12 };
+    try {
+      recorder.record(input); recorder.flush();
+      state.now += 60_000;
+      recorder.record(input); recorder.flush();
+      recorder.record({ ...input, aggregate: true });
+      state.now = 7_200_010;
+      recorder.record(input); recorder.flush();
+      const rows = connection.prepare("SELECT first_occurred_at, last_occurred_at, event_count, duration_ms FROM activity_events ORDER BY sequence").all();
+      assert.deepEqual(rows.map(row => ({ ...row })), [
+        { first_occurred_at: 3_600_010, last_occurred_at: 3_660_010, event_count: 2, duration_ms: 24 },
+        { first_occurred_at: 3_660_010, last_occurred_at: 3_660_010, event_count: 1, duration_ms: 12 },
+        { first_occurred_at: 7_200_010, last_occurred_at: 7_200_010, event_count: 1, duration_ms: 12 },
+      ]);
+    } finally { recorder.stop(); connection.close(); }
+  });
+
+  it("groups unchanged scheduled scans without losing first success, failures, recovery, manual work or new evidence", async () => {
+    const { connection, database, state } = fixture(3_600_000);
+    const recorder = new ActivityRecorder({ database, clock: () => state.now });
+    const completed: LedgerScanResult = { status: "COMPLETED", reason: "scheduled", ingestRunId: "run-1", pages: 1, details: 0,
+      createdEntries: 0, duplicateEntries: 0, isolatedDetails: 0, conflicts: 0, errorCode: null,
+      retryAfterSeconds: null, retryable: false, normalCompleted: true, cooldownActive: false };
+    let outcome = completed, callbacks = 0, scans = 0;
+    const scheduler = new LedgerIngestScheduler({ activity: recorder, providerAccountKey: "primary", clock: () => state.now,
+      intervalMilliseconds: 60_000,
+      service: { async run(reason: string) { scans++; return { ...outcome, reason }; }, stop() {}, async waitForIdle() {} } as unknown as LedgerIngestService,
+      onResult: () => { callbacks++; },
+    });
+    const run = async (overrides: Partial<LedgerScanResult> = {}, reason = "scheduled") => {
+      state.now += 61_000; outcome = { ...completed, ...overrides }; await scheduler.trigger(reason); recorder.flush();
+    };
+    try {
+      scheduler.start(); await scheduler.trigger("startup"); recorder.flush();
+      await run({ details: 1, duplicateEntries: 1 });
+      await run();
+      await run({ status: "FAILED", errorCode: "transport_network", retryable: true });
+      await run();
+      await run();
+      await run({ details: 1, createdEntries: 1 });
+      await run({ isolatedDetails: 1 });
+      await run({ conflicts: 1 });
+      await run({ status: "PARTIAL" });
+      await run();
+      await run({}, "admin_manual");
+      state.now = 7_200_000; await run();
+      const groups = connection.prepare("SELECT event_count, details_json FROM activity_events WHERE is_aggregate = 1 ORDER BY sequence").all();
+      assert.deepEqual(groups.map(row => Number(row.event_count)), [3, 1]);
+      assert.ok(groups.every(row => row.details_json === '{"reason":"scheduled","status":"COMPLETED"}'));
+      assert.equal(connection.prepare("SELECT COUNT(*) AS n FROM activity_events WHERE is_aggregate = 0").get()!.n, 9);
+      assert.equal(connection.prepare("SELECT SUM(event_count) AS n FROM activity_events").get()!.n, scans);
+      assert.equal(callbacks, scans);
+      assert.equal(scans, 13);
+      assert.equal(scheduler.health().lastSuccessAt, state.now);
+      assert.equal(scheduler.health().consecutiveFailures, 0);
+    } finally { await scheduler.stop(); recorder.stop(); connection.close(); }
+  });
+
+  it("summarizes unchanged reconciliation while keeping failures, recovery and core changes individual", async () => {
+    const { connection, database, state } = fixture(3_600_000);
+    const recorder = new ActivityRecorder({ database, clock: () => state.now });
+    let fail = false, change = false, callbacks = 0;
+    const scheduler = new ReconciliationScheduler({ activity: recorder, clock: () => state.now,
+      store: {
+        pendingLedgerPage: () => ({ ledgerEntryIds: ["old-entry"], nextCursor: null, hasMore: false }),
+        reconcileEntry: () => {
+          if (fail) throw new Error("reconciliation failed");
+          if (change) currentAuditContext()!.coreEventIds.push("new-core-event");
+          return { kind: "unmatched", ledgerEntryId: "old-entry", exceptionId: "existing-exception" };
+        },
+      } as unknown as ReconciliationStore,
+      onResult: () => { callbacks++; },
+    });
+    const run = async () => { state.now += 61_000; await scheduler.triggerSweep("scheduled"); recorder.flush(); };
+    try {
+      await scheduler.start(); recorder.flush();
+      await run(); await run();
+      fail = true; await run();
+      fail = false; await run();
+      await run();
+      change = true; await run();
+      assert.deepEqual(connection.prepare("SELECT event_count FROM activity_events WHERE is_aggregate = 1").all().map(row => row.event_count), [3]);
+      assert.equal(connection.prepare("SELECT COUNT(*) AS n FROM activity_events WHERE is_aggregate = 0").get()!.n, 4);
+      assert.equal(connection.prepare("SELECT SUM(event_count) AS n FROM activity_events").get()!.n, callbacks);
+      assert.equal(callbacks, 7);
+      assert.equal(scheduler.health().lastSuccessAt, state.now);
+    } finally { await scheduler.stop(); recorder.stop(); connection.close(); }
+  });
+
   it("groups HTTP reads by route and actor/source dimensions instead of individual resources or website names", () => {
     const { connection, database, state } = fixture();
     const recorder = new ActivityRecorder({ database, clock: () => state.now });
@@ -205,6 +301,26 @@ describe("bounded operational activity recorder", () => {
       const row = connection.prepare("SELECT actor_type, source_address, outcome FROM activity_events").get() as Record<string, unknown>;
       assert.deepEqual({ ...row }, { actor_type: "SYSTEM", source_address: null, outcome: "FAILURE" });
     } finally { recorder.stop(); connection.close(); }
+  });
+
+  it("coalesces empty webhook rounds across minutes while preserving real deliveries separately", async () => {
+    const { connection, database, state } = fixture(3_600_010);
+    const recorder = new ActivityRecorder({ database, clock: () => state.now });
+    let processed = false;
+    const scheduler = new WebhookScheduler({ activity: recorder, maximumDeliveriesPerRun: 1,
+      service: { processOne: async () => processed
+        ? { processed: true, deliveryId: "delivery-1", status: "ACKNOWLEDGED", outcome: "ACKNOWLEDGED", errorCode: null }
+        : { processed: false, deliveryId: null, status: null, outcome: null, errorCode: null } },
+      store: { counts: () => ({ pending: 0, dead: 0 }) } });
+    try {
+      await scheduler.trigger("interval"); recorder.flush();
+      state.now += 120_000;
+      await scheduler.trigger("interval"); recorder.flush();
+      processed = true;
+      await scheduler.trigger("interval"); recorder.flush();
+      const rows=connection.prepare("SELECT event_count,is_aggregate FROM activity_events ORDER BY sequence").all();
+      assert.deepEqual(rows.map(row=>({...row})),[{event_count:2,is_aggregate:1},{event_count:1,is_aggregate:0}]);
+    } finally { await scheduler.stop(); recorder.stop(); connection.close(); }
   });
 
   it("records a coalesced webhook run once and isolates an unavailable activity store", async t => {

@@ -1,5 +1,6 @@
 import type { LedgerScanGate } from "./scan-gate.ts";
 import type { ActivityRecorder } from "../audit/activity.ts";
+import { currentAuditContext } from "../audit/context.ts";
 import { LedgerIngestService, type LedgerScanResult } from "./service.ts";
 
 export type LedgerSchedulerState =
@@ -76,6 +77,7 @@ export class LedgerIngestScheduler {
   #lastSuccessAt: number | null = null;
   #lastErrorCode: string | null = null;
   #consecutiveFailures = 0;
+  #recordRecovery = false;
 
   // Keep the provider quiet after a failure. Transient failures use the
   // largest of the normal interval, exponential backoff, and the provider's
@@ -173,9 +175,16 @@ export class LedgerIngestScheduler {
     const scan = () => this.#service.run(reason);
     const execution = this.#activity
       ? this.#activity.runTask("ledger.scan", { subjectType: "provider_account", subjectId: this.#providerAccountKey, details: { reason } }, scan,
-        result => ({ outcome: result.status === "FAILED" ? "FAILURE" : "SUCCESS", aggregate: result.status === "SKIPPED",
-          details: { status: result.status, ingest_run_id: result.ingestRunId, pages: result.pages, created_entries: result.createdEntries,
-            duplicate_entries: result.duplicateEntries, isolated_details: result.isolatedDetails, conflicts: result.conflicts, error_code: result.errorCode } }))
+        result => {
+          const unchanged = reason === "scheduled" && previousState === "healthy" && !this.#recordRecovery &&
+            isUnchangedLedgerScan(result) && !currentAuditContext()?.coreEventIds.length;
+          return { outcome: result.status === "FAILED" ? "FAILURE" : "SUCCESS",
+            aggregate: unchanged ? "hour" : result.status === "SKIPPED",
+            details: unchanged ? { status: result.status } : {
+              status: result.status, ingest_run_id: result.ingestRunId, pages: result.pages, created_entries: result.createdEntries,
+              duplicate_entries: result.duplicateEntries, isolated_details: result.isolatedDetails, conflicts: result.conflicts, error_code: result.errorCode,
+            } };
+        })
       : scan();
     const operation = execution
       .then((result) => {
@@ -187,6 +196,7 @@ export class LedgerIngestScheduler {
           this.#lastSuccessAt = attemptStartedAt;
           this.#lastErrorCode = null;
           this.#consecutiveFailures = 0;
+          this.#recordRecovery = false;
         } else if (result.status === "PARTIAL") {
           this.#state = "catching_up";
           this.#lastErrorCode = result.errorCode;
@@ -292,6 +302,7 @@ export class LedgerIngestScheduler {
   }
 
   #storageFailed(error: unknown): void {
+    this.#recordRecovery = true;
     this.#beforeStorageFailure ??= { state: this.#state, errorCode: this.#lastErrorCode };
     this.#state = "degraded";
     this.#lastErrorCode = "scan_schedule_unavailable";
@@ -473,6 +484,11 @@ export class LedgerIngestScheduler {
       nextRunAt: this.#lastCompletedAt + delay, interval, kind,
     });
   }
+}
+
+export function isUnchangedLedgerScan(result: LedgerScanResult): boolean {
+  return result.status === "COMPLETED" && result.createdEntries === 0 && result.isolatedDetails === 0 &&
+    result.conflicts === 0 && result.errorCode === null;
 }
 
 function safeNow(value: number): number {
