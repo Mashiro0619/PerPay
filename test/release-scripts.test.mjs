@@ -179,7 +179,21 @@ test("the application image contains only the pinned Node runtime and applicatio
 
 test("release builds, scans, verifies, and publishes fixed and latest images", () => {
   const workflow = parse(releaseWorkflowText);
-  assert.deepEqual(Object.keys(workflow.jobs), ["verify", "publish"]);
+  assert.deepEqual(Object.keys(workflow.jobs), ["verify", "ui", "publish"]);
+  assert.deepEqual(workflow.jobs.publish.needs, ["verify", "ui"]);
+  assert.equal(workflow.jobs.publish.if, undefined, "publication requires every dependency to pass");
+  const ui = workflow.jobs.ui;
+  assert.equal(ui.needs, "verify");
+  assert.equal(ui["timeout-minutes"], 35);
+  assert.equal(ui.strategy["fail-fast"], false);
+  assert.deepEqual(ui.strategy.matrix.shard, [1, 2, 3]);
+  assert.equal(ui.steps.find(step => step.uses?.startsWith("actions/checkout@"))?.with.ref,
+    "${{ needs.verify.outputs.release_commit }}", "browser checks use the same verified commit as publication");
+  assert.ok(ui.steps.some(step => step.run === "npm run build"));
+  const browserChecks = ui.steps.find(step => step.run?.startsWith("npm run test:ui"));
+  assert.equal(browserChecks?.run, "npm run test:ui -- --project core --workers=2 --shard=${{ matrix.shard }}/3");
+  assert.equal(browserChecks?.["continue-on-error"], undefined);
+  assert.equal(ui["continue-on-error"], undefined);
   assert.equal(workflow.jobs.verify["timeout-minutes"], 30);
   assert.equal(workflow.jobs.publish["timeout-minutes"], 60);
   assert.equal(workflow.permissions.contents, "read");

@@ -75,8 +75,41 @@ jobs:
           npm run build
           npm audit --audit-level=high
 
-  publish:
+  ui:
+    name: Release UI ${{ matrix.shard }}/3
     needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    steps:
+      - name: Check out the verified release commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          ref: ${{ needs.verify.outputs.release_commit }}
+      - name: Use the pinned Node.js release
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.22.1
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npx playwright install --with-deps chromium
+      - run: npm run build
+      - run: npm run test:ui -- --project core --workers=2 --shard=${{ matrix.shard }}/3
+      - name: Preserve failed browser checks
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: failure() || cancelled()
+        with:
+          name: release-ui-evidence-${{ matrix.shard }}-${{ github.run_attempt }}
+          path: .ui-audit/runs/
+          include-hidden-files: true
+          retention-days: 7
+
+  publish:
+    needs: [verify, ui]
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     permissions:
