@@ -6,7 +6,6 @@ import '../examples/node-client/test/webhook-rotation.test.mjs';
 import '../examples/node-client/test/epay.test.mjs';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { once } from 'node:events';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
@@ -17,6 +16,7 @@ import { signApiRequest } from '../src/security/api-signature.ts';
 import { PerPayClient, orderSnapshot, signRequest } from '../examples/node-client/perpay.mjs';
 import { createDemoServer, openDemoStore, orderPayload } from '../examples/node-client/server.mjs';
 import { DemoStore } from '../examples/node-client/store.mjs';
+import { listenForFetch } from '../examples/node-client/test/http-server.mjs';
 import { createConfiguredHttpServices } from './http-fixture.ts';
 
 const secret = Buffer.alloc(32, 0x54);
@@ -129,7 +129,7 @@ describe('caller demo compatibility with PerPay', () => {
     store.prepare(orderPayload(input, config));
     store.apply(orderSnapshot(created, origin), 'api');
     const { server } = createDemoServer({ config: demoConfig, client, store });
-    server.listen(0, '127.0.0.1'); await once(server, 'listening');
+    await listenForFetch(server);
     t.after(async () => { await new Promise(done => server.close(done)); store.close(); });
     const eventId = randomUUID();
     const body = Buffer.from(JSON.stringify({

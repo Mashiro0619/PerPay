@@ -2,7 +2,6 @@
 // Synthetic keys and orders below are test vectors, never live credentials.
 import assert from 'node:assert/strict';
 import { createHmac, createHash, randomUUID } from 'node:crypto';
-import { once } from 'node:events';
 import { request as httpRequest } from 'node:http';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -11,6 +10,7 @@ import { describe, it } from 'node:test';
 import { DemoError, PerPayClient, decodeKey, orderSnapshot, perpayOrigin, signRequest, verifyWebhook } from '../perpay.mjs';
 import { DemoStore } from '../store.mjs';
 import { createDemoServer, openDemoStore, orderPayload, readConfig } from '../server.mjs';
+import { listenForFetch } from './http-server.mjs';
 
 const secret = Buffer.alloc(32, 0x51);
 const origin = 'http://127.0.0.1:6190';
@@ -34,9 +34,8 @@ async function serverFixture(t, overrides = {}) {
   const store = new DemoStore(':memory:', origin, config.clientId);
   const client = overrides.client ?? { createOrder: async () => { throw new DemoError(502, 'synthetic network failure'); } };
   const app = createDemoServer({ config: { ...config, ...overrides }, store, client });
-  app.server.listen(0, '127.0.0.1'); await once(app.server, 'listening');
+  const base = await listenForFetch(app.server);
   t.after(async () => { await new Promise(resolveClose => app.server.close(resolveClose)); store.close(); });
-  const base = 'http://127.0.0.1:' + app.server.address().port;
   const state = await fetch(base + '/demo/state').then(response => response.json());
   return { ...app, base, csrf: state.csrf, headers: { origin: base, 'content-type': 'application/json', 'x-demo-csrf': state.csrf } };
 }

@@ -11,7 +11,7 @@ export const DEMO_FILES = Object.freeze([
   '.env.example', '.gitignore', 'LICENSE', 'README.md', 'package.json',
   'perpay.mjs', 'epay.mjs', 'server.mjs', 'store.mjs',
   'public/app.js', 'public/index.html', 'public/style.css',
-  'test/demo.test.mjs', 'test/epay.test.mjs', 'test/webhook-rotation.test.mjs',
+  'test/demo.test.mjs', 'test/epay.test.mjs', 'test/http-server.mjs', 'test/webhook-rotation.test.mjs',
 ].sort());
 const crcTable = Uint32Array.from({ length: 256 }, (_, byte) => {
   let crc = byte;

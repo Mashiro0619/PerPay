@@ -22,7 +22,7 @@
     "test": "npm run test:node && npm run test:admin",
     "pretest": "npm run build:admin && npm run build:checkout",
     "test:admin": "vitest run --config web/vite.config.ts",
-    "test:node": "node --experimental-strip-types --test --test-isolation=process test/**/*.test.ts test/**/*.test.mjs",
+    "test:node": "node --experimental-strip-types --test --test-isolation=process --test-concurrency=4 test/**/*.test.ts test/**/*.test.mjs",
     "typecheck": "npm run typecheck:server && npm run typecheck:admin && npm run typecheck:ui",
     "typecheck:ui": "tsc --project tsconfig.ui.json",
     "typecheck:admin": "tsc --project web/tsconfig.json",

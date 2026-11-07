@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 import assert from 'node:assert/strict';
 import { generateKeyPairSync, sign } from 'node:crypto';
-import { once } from 'node:events';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
@@ -9,6 +8,7 @@ import { test } from 'node:test';
 import { EpayClient, epayContent, readEpayConfig, signEpay, verifyEpay, verifyEpayNotification } from '../epay.mjs';
 import { readConfig, createDemoServer } from '../server.mjs';
 import { DemoStore } from '../store.mjs';
+import { listenForFetch } from './http-server.mjs';
 
 const merchant = generateKeyPairSync('rsa', { modulusLength: 2048 });
 const platform = generateKeyPairSync('rsa', { modulusLength: 2048 });
@@ -55,8 +55,7 @@ async function orderServerFixture(t, protocol, persistent = false) {
   const start = async () => {
     store = new DemoStore(directory ? join(directory, 'demo.sqlite3') : ':memory:', config.url, config.pid, protocol);
     ({ server } = createDemoServer({ config, client, store }));
-    server.listen(0, '127.0.0.1'); await once(server, 'listening');
-    base = 'http://127.0.0.1:' + server.address().port;
+    base = await listenForFetch(server);
     csrf = (await (await fetch(base + '/demo/state')).json()).csrf;
   };
   const stop = async () => { await new Promise(resolve => server.close(resolve)); store.close(); };
@@ -311,9 +310,8 @@ for (const protocol of ['epay_v1', 'epay_v2']) {
     const client = new EpayClient(config);
     client.getOrder = async () => client.snapshot({ pid: '1001', trade_no: '202611070001', out_trade_no: 'SHOP-1', status: 1, money: '10.00' });
     const { server } = createDemoServer({ config, client, store });
-    server.listen(0, '127.0.0.1'); await once(server, 'listening');
+    const base = await listenForFetch(server);
     t.after(async () => { await new Promise(resolve => server.close(resolve)); store.close(); });
-    const base = 'http://127.0.0.1:' + server.address().port;
     const fields = platformSigned({ source: 'demo+=%26', pid: '1001', trade_no: '202611070001', out_trade_no: 'SHOP-1', name: payload.product_name, money: '10.00', type: 'alipay', trade_status: 'TRADE_SUCCESS' }, config);
     const query = new URLSearchParams(fields);
     const receiveReturn = async () => assert.match(await (await fetch(base + '/proxy/complete?' + query)).text(), /付款已确认/);

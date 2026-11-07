@@ -3,11 +3,12 @@ import { fork } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { once } from "node:events";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { createServer } from "node:net";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { it } from "node:test";
 import { listAdminAssets, runAdminSmoke } from "../scripts/admin-smoke.mjs";
+import { listenForFetch } from "../examples/node-client/test/http-server.mjs";
 
 for (const setupTokenEnabled of [undefined, true]) {
 it(`runs first setup through the real process with token ${setupTokenEnabled ? "enabled" : "disabled by default"} and closes setup across restarts`, { timeout: 90_000 }, async () => {
@@ -35,12 +36,10 @@ it(`runs first setup through the real process with token ${setupTokenEnabled ? "
     } finally { clearTimeout(deadline); }
   }
   async function start() {
-    const reservation = createServer();
-    reservation.listen(0, "127.0.0.1");
-    await once(reservation, "listening");
+    const reservation = createServer((_request, response) => { response.writeHead(204); response.end(); });
+    const baseUrl = await listenForFetch(reservation);
     const port = reservation.address().port;
     await new Promise((done, reject) => reservation.close(error => error ? reject(error) : done()));
-    const baseUrl = `http://127.0.0.1:${port}`;
     const tokens = [];
     child = fork(harness, [], {
       cwd: resolve(import.meta.dirname, ".."),
