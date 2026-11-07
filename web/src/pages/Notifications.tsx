@@ -182,7 +182,7 @@ function DeliveryPage({
       id: "order",
       label: "商户订单号",
       layout: "text",
-      summaryDefault: false,
+      summaryDefault: true,
       defaultVisible: false,
       responsive: { minWidthRem: 75, basis: "container" },
       cell: (delivery) => (
@@ -232,7 +232,7 @@ function DeliveryPage({
       label: "创建时间",
       align: "center",
       layout: "datetime",
-      summaryDefault: false,
+      summaryDefault: true,
       responsive: { minWidthRem: 68, basis: "container" },
       cell: (delivery) => <ListDateTime value={delivery.created_at} />,
     },
@@ -254,7 +254,7 @@ function DeliveryPage({
     { id: "event_type", label: "通知类型", layout: "text", hideable: false, summaryDefault: true, cell: delivery => label(delivery.event.event_type) },
   );
   columns.push(
-    { id: "payable_amount_cents", label: "应付金额", layout: "amount", defaultVisible: false, cell: delivery => delivery.order_summary ? money(delivery.order_summary.payable_amount_cents) : "未记录" },
+    { id: "payable_amount_cents", label: "应付金额", layout: "amount", defaultVisible: false, summaryDefault: true, cell: delivery => delivery.order_summary ? money(delivery.order_summary.payable_amount_cents) : "未记录" },
   );
   return (
     <ListColumnsProvider>
@@ -356,8 +356,8 @@ function DeliveryPage({
                         !["identity", "status", "event_type"].includes(column.id) &&
                         (column.id !== "next_attempt_at" || !!delivery.next_attempt_at) && context.isSummaryPrimary(column.id),
                       ).map((column) => (
-                        <ListSummaryField key={column.id} label={column.label} visibleLabel={column.id === "attempt_count" || column.id === "next_attempt_at"}>
-                          {column.id === "next_attempt_at" ? <ListDateTime value={delivery.next_attempt_at} inline /> : column.cell(delivery, context)}
+                        <ListSummaryField key={column.id} label={column.label} visibleLabel fullWidth={column.id === "order" || column.id === "created_at"}>
+                          {column.id === "next_attempt_at" || column.id === "created_at" ? <ListDateTime value={delivery[column.id]} inline /> : column.cell(delivery, context)}
                         </ListSummaryField>
                       ))}
                     </ListSummary>

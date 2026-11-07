@@ -24,7 +24,7 @@ function mount(children: ReactNode, path = "/", scoped = false) {
 describe("order and notification copy follows its actual source", () => {
   beforeEach(() => localStorage.clear());
 
-  it.each([false, true])("shows retry scheduling and its associated order once while honoring explicit mobile field choices (hidden: %s)", async hidden => {
+  it.each([false, true])("keeps mobile order identity and retry scheduling independent of desktop hidden columns (hidden: %s)", async hidden => {
     mobileMedia(360);
     const overrides = hidden ? { order: false, attempt_count: false, next_attempt_at: false } : {};
     localStorage.setItem("perpay.table-columns.v2.notifications", JSON.stringify(overrides));
@@ -44,8 +44,9 @@ describe("order and notification copy follows its actual source", () => {
     expect(attempts).toHaveTextContent("尝试次数1");
     expect(within(row).getByText("等待重试")).toBeVisible();
     expect(within(row).getAllByTitle("2026/09/06 08:02（北京时间）")).toHaveLength(1);
-    expect(within(row).queryByText(paidOrder.merchant_order_no)).not.toBeInTheDocument();
-    expect(within(row).queryByText("创建时间")).not.toBeInTheDocument();
+    expect(within(row).getByText(paidOrder.merchant_order_no)).toBeVisible();
+    expect(within(row).getByText("创建时间")).toBeVisible();
+    expect(within(row).getByText("应付金额")).toBeVisible();
     expect(JSON.parse(localStorage.getItem("perpay.table-columns.v2.notifications")!)).toEqual(overrides);
   });
 
@@ -88,7 +89,8 @@ describe("order and notification copy follows its actual source", () => {
         expect(within(row).getByText(merchant)).toBeVisible();
         expect(within(row).getByText("¥1.01")).toBeVisible();
       } else {
-        expect(within(row).queryByText(merchant)).not.toBeInTheDocument();
+        expect(within(row).getByText(merchant)).toBeVisible();
+        expect(within(row).getByText("¥1.01")).toBeVisible();
         expect(within(row).getByText("等待重试")).toBeVisible();
       }
       expect(within(row).queryByText(/¥3\.45/)).not.toBeInTheDocument();
