@@ -1,0 +1,65 @@
+<!-- SPDX-License-Identifier: MIT -->
+
+# 易支付接入
+
+在「网站设置 → 接入与通知」中选择易支付 V1 或 V2，保存开关并下载完整配置。下载文件含商户密钥，可直接配置本项目的 Node Demo。商户号 PID 固定绑定网站，修改公开客户端 ID 后继续使用原 PID。
+
+## 配置网站
+
+1. 配置可用的支付宝账号和收款码。
+2. 保存网站通知来源，例如 `https://shop.example.com`。需要同步返回时，另保存返回来源。
+3. 开启要接入的易支付版本。首次开启会生成该协议的密钥。
+4. 填写完整通知地址和可选返回地址，下载 `.env`，放到 Node Demo 目录。
+5. 使用 Node.js 24 启动 `node --env-file=.env server.mjs`，创建订单并核对付款与通知记录。
+
+V1 使用商户号与 MD5 密钥。V2 使用商户私钥签请求，使用平台公钥验证响应与通知。V2 两套密钥分别轮换，已有商户私钥加密保存，可重复下载。轮换后，客户端须更新对应配置。
+
+关闭协议接单开关后，历史订单仍可查询、接收通知和返回商家。暂停网站通知会暂停投递，恢复后继续处理。暂停期间仍可下载已有凭据。下载使用已保存的网站和易支付版本，修改未保存或配置版本过期时，页面会要求保存或刷新。
+
+## 接口
+
+| 用途 | V1 | V2 |
+| --- | --- | --- |
+| 页面下单 | GET/POST `/submit.php` | GET/POST `/api/pay/submit` |
+| API 下单 | POST `/mapi.php` | POST `/api/pay/create` |
+| 单笔查单 | GET/POST `/api.php?act=order` | POST `/api/pay/query` |
+| 商户信息 | GET/POST `/api.php?act=query` | POST `/api/merchant/info` |
+| 订单列表 | GET/POST `/api.php?act=orders` | POST `/api/merchant/orders` |
+
+请求使用 UTF-8 表单。下单必需 `pid`、`out_trade_no`、`name`、`money`、`notify_url` 和签名。API 下单还需 `type=alipay`，V2 API 下单需 `method=web` 或 `method=jump`。页面下单可省略 `type`，V1 页面下单需提供 `return_url`。
+
+V1 API 下单成功返回 `code=1`、`trade_no`、`payurl`。V2 成功返回 `code=0`、`trade_no`、`pay_type=jump`、`pay_info`，其中 `pay_info` 是 PerPay 收银台地址。页面下单直接跳转收银台。错误返回负数 `code` 与可读的 `msg`。
+
+V1 查询使用 `pid` 和 `key`。V2 请求使用商户私钥签名，并携带 Unix 秒时间戳 `timestamp`，允许前后 300 秒。单笔查询可使用 `trade_no` 或 `out_trade_no`，两者同时存在时优先使用 `trade_no`。
+
+订单列表的 `limit` 默认 20，最大 50。V1 使用从 1 开始的 `page`，V2 使用从 0 开始的 `offset`。可用 `status=0/1` 筛选未付款或已付款订单，筛选发生在分页之前。查询和统计覆盖当前网站的易支付订单，单号以字符串传递。
+
+## 签名与编码
+
+V1 按参数名排序，拼接 `key=value`，末尾追加商户密钥，计算小写 MD5。V2 按参数名排序后使用 RSA-SHA256 与 PKCS#1 v1.5 签名，结果使用 Base64。请求签名字段分别为 `sign_type=MD5` 和 `sign_type=RSA`。
+
+签名排除 `sign`、`sign_type` 和协议规定的空值，字符串 `0` 参与签名。V1 的纯空格值参与签名，V2 的纯空格值跳过。服务端先使用原始参数验签，再转换金额及业务字段。V2 列表响应的 `data` 数组按 PHP SDK 约定排除签名，其他标量字段参与签名。
+
+同名参数重复、数组参数、GET 与 POST 同名字段冲突会被拒绝。参数名不能含 `&` 或 `=`，参数值不能含字面量 `&`，避免未编码签名串产生字段歧义。中文、空格、`+`、值中的 `=` 和字面量 `%26` 可正常传输，表单中的 `+` 应编码为 `%2B`。
+
+商品名最多保存 127 个 UTF-8 字节，按完整字符截断。重复下单仍比较截断前的商品名。相同网站、商户单号与业务内容重复提交返回同一订单，修改金额、商品名、通知地址、返回地址、透传参数或协议会产生冲突。
+
+## 付款通知与返回
+
+确认付款后发送成功通知，参数包含 `pid`、`trade_no`、`out_trade_no`、`type=alipay`、`trade_status=TRADE_SUCCESS`、`name`、`money`、可选 `param` 和签名。V2 另带每次发送时生成的秒级时间戳。
+
+`money` 始终使用商品原价。例如商品为 10 元、收银台要求支付 10.03 元，查单与通知返回 `10.00`，对账按实际应付的 10.03 元匹配。
+
+通知使用 GET。商家应先验签、核对订单号和金额，再幂等履约，最终返回 HTTP 2xx 和文本 `success`。服务端会去除响应首尾空白。其他响应按现有通知策略重试，后台保留每次发送地址、指纹、密钥版本和回执证据，并支持人工重发。
+
+返回商家的入口位于 PerPay 收银台，由收银台令牌授权。确认付款后生成带签名的返回参数，其他状态返回原商家地址。通知与同步返回可能任意先到，商家需要共用同一份履约去重记录。
+
+通知和返回地址可带静态查询参数。这些参数会与实际发送的协议参数一起签名，PHP SDK 可直接验签。静态参数名须唯一，且不能占用支付协议字段。撤销原付款确认后，该确认事件的待发通知终止。
+
+当前支持支付宝网页收款，商户余额固定为 `0.00`，结算关闭。退款、代付和结算操作返回不支持错误。
+
+## Demo 与验证
+
+Node Demo 支持 `PAYMENT_PROTOCOL=native/epay_v1/epay_v2`。`DEMO_NOTIFY_URL` 和 `DEMO_RETURN_URL` 决定接收路径，静态查询参数需与配置一致。不同网站和协议使用独立数据目录，同一网站换钥后继续使用原记录。[Demo 说明](../examples/node-client/README.md)
+
+协议规则已使用 PHP V1.3、V2.0 原始 SDK 和 `go-epay v0.0.5` 实际交叉验证。固定版本、下载校验值和复跑命令见验证记录。[SDK 互操作验证](../scripts/validation/epay/README.md)

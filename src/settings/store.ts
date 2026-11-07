@@ -1,6 +1,7 @@
 import type { InstanceRuntimeSettingsSnapshot } from "./model.ts";
 import { AlipayAccountStore } from "../alipay-accounts/store.ts";
 import { SiteStore } from "../sites/store.ts";
+import { EpayStore, hasEpaySchema } from "../epay/store.ts";
 import { collectionPolicyInputSchema, type CollectionPolicyInput } from "./collection-policy.ts";
 import { collectionCodeInputSchema, type CollectionCodeInput } from "./model.ts";
 import { readAdminAccess, type AdminAccessInput, type AdminAccess } from "./admin-access.ts";
@@ -172,12 +173,14 @@ export class RuntimeSettingsStore {
   readonly #cipher: RuntimeSecretCipher;
   readonly #sites: SiteStore;
   readonly #accounts: AlipayAccountStore;
+  readonly #epay: EpayStore;
 
   constructor(database: AppDatabase, masterKey: Uint8Array) {
     this.#database = database;
     this.#cipher = new RuntimeSecretCipher(masterKey, database.instanceId());
     this.#sites = new SiteStore(database, masterKey);
     this.#accounts = new AlipayAccountStore(database, masterKey);
+    this.#epay = new EpayStore(database, masterKey);
   }
 
   siteStore(): SiteStore | null {
@@ -186,6 +189,10 @@ export class RuntimeSettingsStore {
 
   accountStore(): AlipayAccountStore | null {
     return this.#accounts.available() ? this.#accounts : null;
+  }
+
+  epayStore(): EpayStore | null {
+    return this.#epay.available() ? this.#epay : null;
   }
 
   #write<T>(operation: (connection: DatabaseSync) => T): T {
@@ -203,6 +210,7 @@ export class RuntimeSettingsStore {
         `SELECT 1 AS present FROM runtime_secrets
          UNION ALL SELECT 1 FROM provider_application_key_changes WHERE state = 'PENDING'
          ${hasSiteSchema(connection) ? "UNION ALL SELECT 1 FROM site_secrets" : ""}
+         ${hasEpaySchema(connection) ? "UNION ALL SELECT 1 FROM epay_credentials" : ""}
          ${connection.prepare("SELECT 1 FROM sqlite_schema WHERE name='alipay_accounts' AND type='table'").get()
            ? "UNION ALL SELECT 1 FROM alipay_account_secrets UNION ALL SELECT 1 FROM alipay_application_key_changes WHERE state = 'PENDING'" : ""} LIMIT 1`,
       ).get() as { present: number } | undefined;

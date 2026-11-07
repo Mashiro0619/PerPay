@@ -21,6 +21,9 @@ import { inspectAuditChain } from "./audit-chain.ts";
 import { countAdminOperationViolations } from "./admin-operation-integrity.ts";
 import { migrateSiteData } from "../sites/migrations/data.ts";
 import { countSiteDomainViolations } from "../sites/integrity.ts";
+import { countEpayDomainViolations } from "../epay/integrity.ts";
+import { epayRequestFingerprint, EMPTY_WEBHOOK_BODY_FINGERPRINT } from "../notifications/epay.ts";
+import type { WebhookTargetFormat } from "../notifications/model.ts";
 import { migrateAlipayAccounts } from "../alipay-accounts/migration.ts";
 import { countAlipayAccountDomainViolations } from "../alipay-accounts/integrity.ts";
 import {
@@ -1138,7 +1141,7 @@ function countDomainViolations(connection: DatabaseSync): number {
     countLedgerDomainViolations(connection) +
     countReconciliationDomainViolations(connection) +
     countWebhookDomainViolations(connection) +
-    countAdminOperationViolations(connection) + countSiteDomainViolations(connection) + countAlipayAccountDomainViolations(connection);
+    countAdminOperationViolations(connection) + countSiteDomainViolations(connection) + countAlipayAccountDomainViolations(connection) + countEpayDomainViolations(connection);
 }
 
 function countRuntimeSettingsDomainViolations(connection: DatabaseSync): number {
@@ -2581,6 +2584,7 @@ function countWebhookDomainViolations(connection: DatabaseSync): number {
       WHERE outbox.outbox_event_id IS NULL
          OR target.target_id IS NULL
          OR outbox.aggregate_id != target.order_id
+         OR (target.target_format IN ('EPAY_V1', 'EPAY_V2') AND outbox.event_type != 'PAYMENT_CONFIRMED')
          OR (
            delivery.generation = 1 AND (
              delivery.requested_by_type != 'SYSTEM' OR
@@ -2640,6 +2644,7 @@ function countWebhookDomainViolations(connection: DatabaseSync): number {
          )`,
     "webhook delivery",
   );
+  const epayAttempts = columnExists(connection, "webhook_attempts", "protocol");
   const attemptViolations = readViolationCount(
     connection,
     `SELECT COUNT(*) AS violations
@@ -2650,10 +2655,11 @@ function countWebhookDomainViolations(connection: DatabaseSync): number {
          ON signing_key.key_version = attempt.key_version
        LEFT JOIN outbox_events AS outbox
          ON outbox.outbox_event_id = delivery.outbox_event_id
+       ${epayAttempts ? "LEFT JOIN epay_credentials AS epay_key ON epay_key.credential_id = attempt.epay_key_id" : ""}
       WHERE delivery.delivery_id IS NULL
-         OR signing_key.key_version IS NULL
+         OR ${epayAttempts ? "(attempt.protocol = 'native' AND signing_key.key_version IS NULL) OR (attempt.protocol != 'native' AND epay_key.credential_id IS NULL)" : "signing_key.key_version IS NULL"}
          OR outbox.outbox_event_id IS NULL
-         OR attempt.request_body_fingerprint != outbox.payload_fingerprint
+         OR attempt.request_body_fingerprint != ${epayAttempts ? `CASE WHEN attempt.protocol = 'native' THEN outbox.payload_fingerprint ELSE '${EMPTY_WEBHOOK_BODY_FINGERPRINT}' END` : "outbox.payload_fingerprint"}
          OR attempt.attempt_number > delivery.attempt_count
          OR (
            attempt.outcome = 'STARTED' AND (
@@ -3770,6 +3776,23 @@ function countWebhookCryptographicDomainViolations(connection: DatabaseSync): nu
     return 0;
   }
   let violations = 0;
+  if (columnExists(connection, "webhook_attempts", "protocol")) {
+    const attempts = connection.prepare(`SELECT attempt.request_url, attempt.request_fingerprint, attempt.epay_key_id,
+      attempt.protocol, credential.purpose, credential.site_id, target.api_client_id, target.target_format
+      FROM webhook_attempts AS attempt
+      JOIN webhook_deliveries AS delivery ON delivery.delivery_id = attempt.delivery_id
+      JOIN webhook_targets AS target ON target.target_id = delivery.target_id
+      LEFT JOIN epay_credentials AS credential ON credential.credential_id = attempt.epay_key_id
+      WHERE attempt.protocol != 'native'`).iterate() as Iterable<{
+        request_url: string; request_fingerprint: string; epay_key_id: string; protocol: string;
+        purpose: string | null; site_id: string | null; api_client_id: string; target_format: string;
+      }>;
+    for (const attempt of attempts) {
+      if (attempt.request_fingerprint !== epayRequestFingerprint(attempt.request_url, attempt.epay_key_id) ||
+          attempt.site_id !== attempt.api_client_id || attempt.target_format !== attempt.protocol.toUpperCase() ||
+          attempt.purpose !== (attempt.protocol === "epay_v1" ? "v1_key" : "v2_platform")) violations += 1;
+    }
+  }
   for (const row of connection
     .prepare(
       `SELECT target_url, allowed_origin, target_format, url_fingerprint,
@@ -3785,7 +3808,7 @@ function countWebhookCryptographicDomainViolations(connection: DatabaseSync): nu
       request_fingerprint_version: bigint | number;
     }>) {
     try {
-      const expected = prepareWebhookTarget(row.target_url, row.allowed_origin);
+      const expected = prepareWebhookTarget(row.target_url, row.allowed_origin, row.target_format as WebhookTargetFormat);
       if (
         row.target_format !== expected.format ||
         row.url_fingerprint !== expected.urlFingerprint ||

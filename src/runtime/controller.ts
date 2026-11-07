@@ -1,3 +1,4 @@
+import type { EpayStore } from "../epay/store.ts";
 import { SiteWebhookProcessor } from "../notifications/site-processor.ts";
 import type { AlipayAccountSnapshot } from "../alipay-accounts/model.ts";
 import type { SiteStore } from "../sites/store.ts";
@@ -59,6 +60,7 @@ export interface PaymentRuntimeStatus {
 }
 
 interface RuntimeControllerOptions {
+  readonly epay?: EpayStore;
   readonly activity?: ActivityRecorder | undefined;
   readonly database: AppDatabase;
   readonly orders: OrderService;
@@ -109,6 +111,7 @@ const disabledReconciliationHealth: RevisionedReconciliationHealth = Object.free
 
 /** Owns every background worker that depends on mutable business settings. */
 export class RuntimeController {
+  readonly #epay: EpayStore | undefined;
   readonly #activity: ActivityRecorder | undefined;
   readonly #database: AppDatabase;
   readonly #orders: OrderService;
@@ -137,6 +140,7 @@ export class RuntimeController {
   #mutation: Promise<void> = Promise.resolve();
 
   constructor(options: RuntimeControllerOptions) {
+    this.#epay = options.epay;
     this.#activity = options.activity;
     this.#database = options.database;
     this.#orders = options.orders;
@@ -773,7 +777,7 @@ export class RuntimeController {
   #createWebhookScheduler(snapshot: PaymentRuntimeSnapshot): WebhookScheduler {
     let service: WebhookDeliveryService | SiteWebhookProcessor;
     if (this.#sites) {
-      service = new SiteWebhookProcessor({ sites: this.#sites, webhooks: this.#webhooks, clock: this.#clock, activity: this.#activity });
+      service = new SiteWebhookProcessor({ sites: this.#sites, webhooks: this.#webhooks, epay: this.#epay, clock: this.#clock, activity: this.#activity });
     } else {
     if (!isWebhookConfigured(snapshot)) {
       throw new Error("webhook runtime was started without complete settings");

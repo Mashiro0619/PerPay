@@ -132,12 +132,16 @@ it("preserves historical notification attempts and signature references before r
     f.webhooks.completeAttempt({ deliveryId: claim.delivery.deliveryId, attemptId: claim.attempt.attemptId,
       leaseToken: claim.attempt.leaseToken, outcome: "RETRYABLE_FAILURE", now: Date.now(), maximumAttempts: 2,
       retryBaseMilliseconds: 1000, retryMaximumMilliseconds: 60_000, errorCode: "transport_timeout" });
-    const history = (db: Pick<AppDatabase, "read">) => db.read(connection => ({
+    const history = (db: Pick<AppDatabase, "read">): Record<string, Record<string, unknown>[]> => db.read(connection => ({
       keys: connection.prepare("SELECT key_version, key_id, secret_fingerprint, activated_at, retired_at FROM webhook_signing_keys ORDER BY key_version").all(),
       ...Object.fromEntries(["outbox_events", "webhook_targets", "webhook_deliveries", "webhook_attempts", "payment_orders", "audit_events"].map(table =>
         [table, legacyFinancialRows(connection.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all())])),
     }));
     const before = history(f.database), secret = f.services.settings.snapshot().webhook.secret;
+    // Schema 42 adds explicit native defaults while preserving every historical evidence column.
+    before.webhook_attempts = (before.webhook_attempts as Record<string, unknown>[]).map(attempt => ({
+      ...attempt, protocol: "native", epay_key_id: null, request_method: "POST", request_url: null, request_fingerprint: null,
+    }));
     f.database.close();
     for (let restart = 0; restart < 2; restart++) {
       const database = await AppDatabase.open(f.services.config.databasePath, { masterKey: f.services.config.masterKey });

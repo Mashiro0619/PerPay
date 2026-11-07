@@ -18,7 +18,7 @@ const uuidV4Pattern =
 const fingerprintPattern = /^[0-9a-f]{64}$/;
 const controlCharacterPattern = /\p{Cc}/u;
 
-export type WebhookTargetFormat = "NATIVE_JSON_V1";
+export type WebhookTargetFormat = "NATIVE_JSON_V1" | "EPAY_V1" | "EPAY_V2";
 export type WebhookDeliveryStatus =
   | "PENDING"
   | "LEASED"
@@ -73,6 +73,10 @@ export interface WebhookDelivery {
 }
 
 export interface WebhookAttempt {
+  readonly protocol?: "native" | "epay_v1" | "epay_v2";
+  readonly requestMethod?: "POST" | "GET";
+  readonly requestUrl?: string | null;
+  readonly requestFingerprint?: string | null;
   readonly attemptId: string;
   readonly deliveryId: string;
   readonly attemptNumber: number;
@@ -131,7 +135,11 @@ export function isValidWebhookReason(value: string): boolean {
 export function prepareWebhookTarget(
   value: string,
   allowedOrigin: string,
+  format: WebhookTargetFormat = "NATIVE_JSON_V1",
 ): PreparedWebhookTarget {
+  if (!["NATIVE_JSON_V1", "EPAY_V1", "EPAY_V2"].includes(format)) {
+    throw new WebhookTargetError("webhook_target_invalid");
+  }
   if (
     value !== value.trim() ||
     Buffer.byteLength(value, "utf8") > MAX_NOTIFY_URL_BYTES ||
@@ -170,12 +178,12 @@ export function prepareWebhookTarget(
   const requestFingerprint = fingerprintTuple([
     "perpay:webhook-target-request",
     WEBHOOK_TARGET_FINGERPRINT_VERSION,
-    "NATIVE_JSON_V1",
+    format,
     allowedOrigin,
     normalized,
   ]);
   return Object.freeze({
-    format: "NATIVE_JSON_V1",
+    format,
     url: normalized,
     allowedOrigin,
     urlFingerprint,

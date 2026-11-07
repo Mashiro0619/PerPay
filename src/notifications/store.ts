@@ -1,4 +1,6 @@
 import { assertSiteResource } from "../sites/admin-scope.ts";
+import type { EpayCredentials } from "../epay/model.ts";
+import { EMPTY_WEBHOOK_BODY_FINGERPRINT, epayConfirmationActive, prepareEpayAttempt } from "./epay.ts";
 import { readSite } from "../sites/store.ts";
 import { siteClientIdSchema } from "../sites/model.ts";
 import { normalizeListQuery, DELIVERY_SORT_FIELDS, type DeliverySort, type ListQuery, type ListPosition } from "../shared/list-query.ts";
@@ -139,6 +141,10 @@ export class WebhookStore {
     this.#database = database;
   }
 
+  isPaymentConfirmationActive(eventId: string): boolean {
+    return this.#database.read(connection => epayConfirmationActive(connection, eventId));
+  }
+
   syncSigningKey(input: {
     readonly secretFingerprint: string;
     readonly now: number;
@@ -250,6 +256,7 @@ export class WebhookStore {
              FROM outbox_events AS outbox
              JOIN webhook_targets AS target ON target.order_id = outbox.aggregate_id
             WHERE (? IS NULL OR target.api_client_id = ?) AND ${LIVE_NOTIFICATION_TARGET}
+              AND (target.target_format = 'NATIVE_JSON_V1' OR outbox.event_type = 'PAYMENT_CONFIRMED')
               AND NOT EXISTS (
                     SELECT 1 FROM webhook_deliveries AS delivery
                      WHERE delivery.outbox_event_id = outbox.outbox_event_id
@@ -306,6 +313,7 @@ export class WebhookStore {
   }
 
   claimNext(input: {
+    readonly epayCredentials?: EpayCredentials | null;
     readonly clientId?: string;
     readonly siteRevision?: number;
     readonly secretFingerprint?: string;
@@ -329,8 +337,7 @@ export class WebhookStore {
         const site = readSite(connection, input.clientId);
         if (!site || !site.configuration.notifications_enabled || site.revision !== input.siteRevision) return null;
       }
-      const key = readActiveSigningKey(connection, input.clientId);
-      if (!key || (input.secretFingerprint !== undefined && key.secretFingerprint !== input.secretFingerprint)) return null;
+      const nativeKey = readActiveSigningKey(connection, input.clientId);
       deadLetterExhaustedDeliveries(connection, input.maximumAttempts, input.now, input.clientId);
       const row = connection
         .prepare(
@@ -360,6 +367,13 @@ export class WebhookStore {
         )
         .get(input.clientId ?? null, input.clientId ?? null, input.now, input.maximumAttempts) as ClaimRow | undefined;
       if (!row) return null;
+      const compatible = row.target_format !== "NATIVE_JSON_V1";
+      const epay = compatible && input.epayCredentials
+        ? prepareEpayAttempt(connection, { orderId: row.order_id, targetUrl: row.target_url, credentials: input.epayCredentials, now: input.now })
+        : null;
+      if (compatible && !epay) return null;
+      const key = epay?.key ?? nativeKey;
+      if (!key || (!compatible && input.secretFingerprint !== undefined && key.secretFingerprint !== input.secretFingerprint)) return null;
       const attemptNumber = toSafeInteger(row.attempt_count, "webhook attempt count") + 1;
       const leaseToken = randomUUID();
       const leaseExpiresAt = input.now + input.leaseMilliseconds;
@@ -374,6 +388,7 @@ export class WebhookStore {
         .run(attemptNumber, leaseToken, leaseExpiresAt, input.now, row.delivery_id);
       assertChangedOnce(claimed.changes, "webhook delivery lease");
       const attemptId = randomUUID();
+      const epaySchema = hasEpayAttemptSchema(connection);
       const attemptInsert = connection
         .prepare(
           `INSERT INTO webhook_attempts(
@@ -381,19 +396,21 @@ export class WebhookStore {
              request_timestamp, request_body_fingerprint, outcome,
              resolved_addresses_fingerprint, connected_address, http_status,
              response_bytes, response_fingerprint, ack_code, error_code,
-             started_at, finished_at
+             started_at, finished_at${epaySchema ? ", protocol, epay_key_id, request_method, request_url, request_fingerprint" : ""}
            ) VALUES (?, ?, ?, ?, ?, ?, ?, 'STARTED', NULL, NULL, NULL,
-                     NULL, NULL, NULL, NULL, ?, NULL)`,
+                     NULL, NULL, NULL, NULL, ?, NULL${epaySchema ? ", ?, ?, ?, ?, ?" : ""})`,
         )
         .run(
           attemptId,
           row.delivery_id,
           attemptNumber,
           leaseToken,
-          key.keyVersion,
+          epay ? null : key.keyVersion,
           input.now,
-          row.payload_fingerprint,
+          epay ? EMPTY_WEBHOOK_BODY_FINGERPRINT : row.payload_fingerprint,
           input.now,
+          ...(epaySchema ? [epay?.protocol ?? "native", epay ? key.keyId : null, epay ? "GET" : "POST",
+            epay?.requestUrl ?? null, epay?.requestFingerprint ?? null] : []),
         );
       assertChangedOnce(attemptInsert.changes, "webhook attempt start");
       const delivery = mapDelivery({
@@ -414,7 +431,8 @@ export class WebhookStore {
         keyVersion: key.keyVersion,
         keyId: key.keyId,
         requestTimestamp: input.now,
-        requestBodyFingerprint: row.payload_fingerprint,
+        requestBodyFingerprint: epay ? EMPTY_WEBHOOK_BODY_FINGERPRINT : row.payload_fingerprint,
+        ...(epay ? { protocol: epay.protocol, requestMethod: "GET" as const, requestUrl: epay.requestUrl, requestFingerprint: epay.requestFingerprint } : {}),
         outcome: "STARTED",
         resolvedAddressesFingerprint: null,
         connectedAddress: null,
@@ -439,7 +457,6 @@ export class WebhookStore {
     if (!isTerminalAttemptOutcome(input.outcome)) {
       throw new RangeError("webhook attempt outcome is invalid");
     }
-    const evidence = validateCompleteAttemptEvidence(input);
     return this.#database.write((connection) => {
       const current = connection
         .prepare(
@@ -466,11 +483,11 @@ export class WebhookStore {
       const attemptNumber = toSafeInteger(current.attempt_count, "webhook attempt count");
       const attempt = connection
         .prepare(
-          `SELECT attempt_id, started_at FROM webhook_attempts
+          `SELECT attempt_id, started_at, ${hasEpayAttemptSchema(connection) ? "protocol" : "'native' AS protocol"} FROM webhook_attempts
             WHERE delivery_id = ? AND attempt_number = ? AND lease_token = ? AND outcome = 'STARTED'`,
         )
         .get(input.deliveryId, attemptNumber, input.leaseToken) as
-        | { attempt_id: string; started_at: bigint | number }
+        | { attempt_id: string; started_at: bigint | number; protocol: "native" | "epay_v1" | "epay_v2" }
         | undefined;
       if (!attempt || attempt.attempt_id !== input.attemptId) {
         throw new WebhookStoreError(
@@ -483,6 +500,7 @@ export class WebhookStore {
         toSafeInteger(current.updated_at, "webhook delivery update time"),
         toSafeInteger(attempt.started_at, "webhook attempt start time"),
       );
+      const evidence = validateCompleteAttemptEvidence(input, attempt.protocol);
 
       const {
         resolvedAddressesFingerprint,
@@ -778,9 +796,9 @@ export class WebhookStore {
       if (!row) return null;
       const attempts = connection
         .prepare(
-          `SELECT attempt_id, delivery_id, attempt_number, key_version,
-                  (SELECT key_id FROM webhook_signing_keys WHERE key_version = attempt.key_version) AS key_id,
-                  lease_token, request_timestamp, request_body_fingerprint, outcome,
+          `SELECT attempt_id, delivery_id, attempt_number,
+              ${attemptEvidenceColumns(connection)},
+                      lease_token, request_timestamp, request_body_fingerprint, outcome,
                   resolved_addresses_fingerprint, connected_address, http_status,
                   response_bytes, response_fingerprint, ack_code, error_code,
                   started_at, finished_at
@@ -1032,6 +1050,10 @@ type DetailRow = DeliveryRow & EventRow & {
 };
 
 interface AttemptRow {
+  readonly protocol: "native" | "epay_v1" | "epay_v2";
+  readonly request_method: "GET" | "POST";
+  readonly request_url: string | null;
+  readonly request_fingerprint: string | null;
   readonly attempt_id: string;
   readonly delivery_id: string;
   readonly attempt_number: bigint | number;
@@ -1067,8 +1089,8 @@ function readAttemptsByDelivery(
   if (deliveryIds.length === 0) return new Map();
   const rows = connection
     .prepare(
-      `SELECT attempt_id, delivery_id, attempt_number, key_version,
-              (SELECT key_id FROM webhook_signing_keys WHERE key_version = attempt.key_version) AS key_id,
+      `SELECT attempt_id, delivery_id, attempt_number,
+              ${attemptEvidenceColumns(connection)},
               lease_token, request_timestamp, request_body_fingerprint, outcome,
               resolved_addresses_fingerprint, connected_address, http_status,
               response_bytes, response_fingerprint, ack_code, error_code,
@@ -1233,6 +1255,8 @@ function mapTarget(row: {
 function mapAttempt(row: AttemptRow): WebhookAttempt {
   if (row.key_id === null) throw new Error("webhook attempt signing key is missing");
   return {
+    ...(row.protocol !== "native" ? { protocol: row.protocol, requestMethod: row.request_method,
+      requestUrl: row.request_url, requestFingerprint: row.request_fingerprint } : {}),
     attemptId: row.attempt_id,
     deliveryId: row.delivery_id,
     attemptNumber: toSafeInteger(row.attempt_number, "webhook attempt number"),
@@ -1270,6 +1294,7 @@ interface CompleteAttemptEvidence {
 
 function validateCompleteAttemptEvidence(
   input: CompleteWebhookAttemptInput,
+  protocol: "native" | "epay_v1" | "epay_v2" = "native",
 ): CompleteAttemptEvidence {
   const evidence: CompleteAttemptEvidence = {
     resolvedAddressesFingerprint: input.resolvedAddressesFingerprint ?? null,
@@ -1343,7 +1368,7 @@ function validateCompleteAttemptEvidence(
   }
   if (input.outcome === "ACKNOWLEDGED") {
     if (
-      evidence.httpStatus !== 200 ||
+      (protocol === "native" ? evidence.httpStatus !== 200 : evidence.httpStatus === null || evidence.httpStatus < 200 || evidence.httpStatus >= 300) ||
       evidence.ackCode !== "acknowledged" ||
       evidence.errorCode !== null ||
       evidence.resolvedAddressesFingerprint === null ||
@@ -1414,4 +1439,18 @@ function toSafeInteger(value: bigint | number, label: string): number {
   const result = Number(value);
   if (!Number.isSafeInteger(result)) throw new Error(`${label} is outside the safe integer range`);
   return result;
+}
+
+function hasEpayAttemptSchema(connection: DatabaseSync): boolean {
+  return !!connection.prepare("SELECT 1 FROM pragma_table_info('webhook_attempts') WHERE name = 'protocol'").get();
+}
+
+function attemptEvidenceColumns(connection: DatabaseSync): string {
+  if (!hasEpayAttemptSchema(connection)) {
+    return "key_version, (SELECT key_id FROM webhook_signing_keys WHERE key_version = attempt.key_version) AS key_id, " +
+      "'native' AS protocol, 'POST' AS request_method, NULL AS request_url, NULL AS request_fingerprint";
+  }
+  return "COALESCE(key_version, (SELECT key_version FROM epay_credentials WHERE credential_id = attempt.epay_key_id)) AS key_version, " +
+    "COALESCE((SELECT key_id FROM webhook_signing_keys WHERE key_version = attempt.key_version), attempt.epay_key_id) AS key_id, " +
+    "protocol, request_method, request_url, request_fingerprint";
 }

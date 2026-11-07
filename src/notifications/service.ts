@@ -13,6 +13,7 @@ import {
   type WebhookTransportErrorCode,
 } from "./transport.ts";
 import type { ActivityRecorder } from "../audit/activity.ts";
+import { isEpaySuccessAck } from "../epay/protocol.ts";
 
 export interface WebhookDeliveryConfig {
   readonly secret: string;
@@ -42,6 +43,7 @@ export interface WebhookDeliveryServiceOptions {
 }
 
 export interface WebhookDeliveryStore {
+  canDeliver?(eventId: string): boolean;
   materialize(limit: number, now: number): number;
   claimNext(input: {
     readonly now: number;
@@ -104,36 +106,9 @@ export class WebhookDeliveryService {
     claimed: ClaimedWebhookAttempt,
     signal: AbortSignal | undefined,
   ): Promise<WebhookProcessResult> {
-    const body = Buffer.from(claimed.event.payloadJson, "utf8");
-    const timestamp = claimed.attempt.requestTimestamp;
-    const signature = webhookSignature({
-      secret: this.#config.secret,
-      keyId: claimed.key.keyId,
-      timestamp,
-      deliveryId: claimed.delivery.deliveryId,
-      eventId: claimed.event.eventId,
-      attemptNumber: claimed.attempt.attemptNumber,
-      body,
-    });
-    const headers = {
-      "x-perpay-webhook-version": "1",
-      "x-perpay-webhook-key-id": claimed.key.keyId,
-      "x-perpay-webhook-timestamp": String(timestamp),
-      "x-perpay-webhook-delivery-id": claimed.delivery.deliveryId,
-      "x-perpay-webhook-event-id": claimed.event.eventId,
-      "x-perpay-webhook-attempt": String(claimed.attempt.attemptNumber),
-      "x-perpay-webhook-signature": signature,
-    } as const;
-
     let response: Awaited<ReturnType<WebhookTransport["post"]>>;
     try {
-      response = await this.#transport.post({
-        targetUrl: claimed.target.targetUrl,
-        body,
-        headers,
-        timeoutMilliseconds: this.#config.timeoutMilliseconds,
-        signal,
-      });
+      response = await this.#send(claimed, signal);
     } catch (error) {
       const transportError = error instanceof WebhookTransportError
         ? error
@@ -164,7 +139,8 @@ export class WebhookDeliveryService {
       return resultFrom(delivery, outcome, transportError.code);
     }
 
-    const ack = assessWebhookAck({
+    const compatible = claimed.attempt.protocol !== undefined && claimed.attempt.protocol !== "native";
+    const ack = compatible ? assessEpayAck(response) : assessWebhookAck({
       status: response.status,
       contentType: response.contentType,
       contentEncoding: response.contentEncoding,
@@ -192,7 +168,7 @@ export class WebhookDeliveryService {
       });
       return resultFrom(delivery, "ACKNOWLEDGED", null);
     }
-    const retryable = isRetryableAckFailure(response.status, ack.code);
+    const retryable = isRetryableAckFailure(response.status, ack.code, compatible);
     const outcome = retryable ? "RETRYABLE_FAILURE" : "PERMANENT_FAILURE";
     const delivery = this.#store.completeAttempt({
       deliveryId: claimed.delivery.deliveryId,
@@ -213,6 +189,46 @@ export class WebhookDeliveryService {
     });
     return resultFrom(delivery, outcome, ack.code);
   }
+  async #send(claimed: ClaimedWebhookAttempt, signal: AbortSignal | undefined) {
+    if (claimed.attempt.protocol && claimed.attempt.protocol !== "native") {
+      const beforeSend = () => {
+        if (!this.#store.canDeliver?.(claimed.event.eventId)) {
+          throw new WebhookTransportError({ code: "payment_confirmation_revoked", message: "原付款确认已撤销，停止投递成功通知", retryable: false });
+        }
+      };
+      beforeSend();
+      if (!this.#transport.get || !claimed.attempt.requestUrl) {
+        throw new WebhookTransportError({ code: "webhook_target_invalid", message: "易支付通知传输未配置", retryable: false });
+      }
+      return this.#transport.get({ targetUrl: claimed.attempt.requestUrl,
+        timeoutMilliseconds: this.#config.timeoutMilliseconds, signal, beforeSend });
+    }
+    const body = Buffer.from(claimed.event.payloadJson, "utf8");
+    const timestamp = claimed.attempt.requestTimestamp;
+    const signature = webhookSignature({
+      secret: this.#config.secret,
+      keyId: claimed.key.keyId,
+      timestamp,
+      deliveryId: claimed.delivery.deliveryId,
+      eventId: claimed.event.eventId,
+      attemptNumber: claimed.attempt.attemptNumber,
+      body,
+    });
+    const headers = {
+      "x-perpay-webhook-version": "1",
+      "x-perpay-webhook-key-id": claimed.key.keyId,
+      "x-perpay-webhook-timestamp": String(timestamp),
+      "x-perpay-webhook-delivery-id": claimed.delivery.deliveryId,
+      "x-perpay-webhook-event-id": claimed.event.eventId,
+      "x-perpay-webhook-attempt": String(claimed.attempt.attemptNumber),
+      "x-perpay-webhook-signature": signature,
+    } as const;
+
+
+    return this.#transport.post({ targetUrl: claimed.target.targetUrl, body, headers,
+      timeoutMilliseconds: this.#config.timeoutMilliseconds, signal });
+  }
+
 }
 
 function isUncertainTransportOutcome(code: WebhookTransportErrorCode): boolean {
@@ -221,7 +237,8 @@ function isUncertainTransportOutcome(code: WebhookTransportErrorCode): boolean {
     code === "transport_network";
 }
 
-function isRetryableAckFailure(status: number, code: string): boolean {
+function isRetryableAckFailure(status: number, code: string, compatible = false): boolean {
+  if (compatible && status >= 200 && status < 300) return code !== "ack_content_encoding_invalid";
   if ((status >= 201 && status <= 204) || (status >= 300 && status < 400) || status >= 500) return true;
   if ([401, 403, 404, 408, 409, 419, 422, 425, 429].includes(status)) return true;
   return status === 200 && code !== "ack_content_encoding_invalid";
@@ -244,4 +261,12 @@ function resultFrom(
 function safeNow(value: number): number {
   if (!Number.isSafeInteger(value) || value < 0) throw new RangeError("webhook clock is invalid");
   return value;
+}
+
+function assessEpayAck(response: Awaited<ReturnType<WebhookTransport["post"]>>) {
+  if (response.contentEncoding !== null && response.contentEncoding.toLowerCase() !== "identity") {
+    return { acknowledged: false, code: "ack_content_encoding_invalid" };
+  }
+  const acknowledged = isEpaySuccessAck(response.status, response.body);
+  return { acknowledged, code: acknowledged ? "acknowledged" : "ack_text_invalid" };
 }

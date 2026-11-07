@@ -1,7 +1,7 @@
 openapi: 3.1.1
 info:
   title: PerPay Native API
-  version: 1.0.0-rc.3
+  version: 1.0.0-rc.4
   summary: Self-hosted collection-code payment and reconciliation API
   license:
     name: MIT
@@ -4128,6 +4128,511 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/UpdateSiteDefaultsRequest"
+  /api/admin/v1/sites/{clientId}/epay:
+    get:
+      tags:
+        - Admin Settings
+      operationId: getSiteEpay
+      summary: Read website EasyPay configuration
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: clientId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$
+      responses:
+        "200":
+          description: Read website EasyPay configuration
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SiteEpayEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "404":
+          description: Website does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          $ref: "#/components/responses/SettingsUnavailable"
+    put:
+      tags:
+        - Admin Settings
+      operationId: updateSiteEpay
+      summary: Update website EasyPay configuration
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/AdminOrigin"
+        - name: clientId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$
+      x-perpay-requires-same-origin: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSiteEpayRequest"
+      responses:
+        "200":
+          description: Update website EasyPay configuration
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SiteEpayEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "403":
+          $ref: "#/components/responses/FinancialWriteForbidden"
+        "404":
+          description: Website does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          $ref: "#/components/responses/SettingsConflict"
+        "413":
+          $ref: "#/components/responses/TooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/SettingsValidationFailed"
+        "503":
+          $ref: "#/components/responses/SettingsUnavailable"
+  /api/admin/v1/sites/{clientId}/secrets/epay_v1/actions/view:
+    post:
+      tags:
+        - Admin Settings
+      operationId: viewSiteEpayV1Secret
+      summary: Reveal an EasyPay credential
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/AdminOrigin"
+        - name: clientId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$
+      x-perpay-requires-same-origin: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmptyObjectRequest"
+      responses:
+        "200":
+          description: Reveal an EasyPay credential
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EpaySecretEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "403":
+          $ref: "#/components/responses/FinancialWriteForbidden"
+        "404":
+          description: Website does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          $ref: "#/components/responses/SettingsConflict"
+        "413":
+          $ref: "#/components/responses/TooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/SettingsValidationFailed"
+        "503":
+          $ref: "#/components/responses/SettingsUnavailable"
+  /api/admin/v1/sites/{clientId}/secrets/epay_v1/actions/rotate:
+    post:
+      tags:
+        - Admin Settings
+      operationId: rotateSiteEpayV1Secret
+      summary: Generate or rotate an EasyPay credential
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/AdminOrigin"
+        - name: clientId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$
+      x-perpay-requires-same-origin: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SettingsRevisionRequest"
+      responses:
+        "200":
+          description: Generate or rotate an EasyPay credential
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EpaySecretRotationEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "403":
+          $ref: "#/components/responses/FinancialWriteForbidden"
+        "404":
+          description: Website does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          $ref: "#/components/responses/SettingsConflict"
+        "413":
+          $ref: "#/components/responses/TooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/SettingsValidationFailed"
+        "503":
+          $ref: "#/components/responses/SettingsUnavailable"
+  /api/admin/v1/sites/{clientId}/secrets/epay_merchant/actions/view:
+    post:
+      tags:
+        - Admin Settings
+      operationId: viewSiteEpayMerchantSecret
+      summary: Reveal an EasyPay credential
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/AdminOrigin"
+        - name: clientId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$
+      x-perpay-requires-same-origin: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmptyObjectRequest"
+      responses:
+        "200":
+          description: Reveal an EasyPay credential
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EpaySecretEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "403":
+          $ref: "#/components/responses/FinancialWriteForbidden"
+        "404":
+          description: Website does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          $ref: "#/components/responses/SettingsConflict"
+        "413":
+          $ref: "#/components/responses/TooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/SettingsValidationFailed"
+        "503":
+          $ref: "#/components/responses/SettingsUnavailable"
+  /api/admin/v1/sites/{clientId}/secrets/epay_merchant/actions/rotate:
+    post:
+      tags:
+        - Admin Settings
+      operationId: rotateSiteEpayMerchantSecret
+      summary: Generate or rotate an EasyPay credential
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/AdminOrigin"
+        - name: clientId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$
+      x-perpay-requires-same-origin: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SettingsRevisionRequest"
+      responses:
+        "200":
+          description: Generate or rotate an EasyPay credential
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EpaySecretRotationEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "403":
+          $ref: "#/components/responses/FinancialWriteForbidden"
+        "404":
+          description: Website does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          $ref: "#/components/responses/SettingsConflict"
+        "413":
+          $ref: "#/components/responses/TooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/SettingsValidationFailed"
+        "503":
+          $ref: "#/components/responses/SettingsUnavailable"
+  /api/admin/v1/sites/{clientId}/secrets/epay_platform/actions/view:
+    post:
+      tags:
+        - Admin Settings
+      operationId: viewSiteEpayPlatformSecret
+      summary: Reveal an EasyPay credential
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/AdminOrigin"
+        - name: clientId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$
+      x-perpay-requires-same-origin: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmptyObjectRequest"
+      responses:
+        "200":
+          description: Reveal an EasyPay credential
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EpaySecretEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "403":
+          $ref: "#/components/responses/FinancialWriteForbidden"
+        "404":
+          description: Website does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          $ref: "#/components/responses/SettingsConflict"
+        "413":
+          $ref: "#/components/responses/TooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/SettingsValidationFailed"
+        "503":
+          $ref: "#/components/responses/SettingsUnavailable"
+  /api/admin/v1/sites/{clientId}/secrets/epay_platform/actions/rotate:
+    post:
+      tags:
+        - Admin Settings
+      operationId: rotateSiteEpayPlatformSecret
+      summary: Generate or rotate an EasyPay credential
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/AdminOrigin"
+        - name: clientId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$
+      x-perpay-requires-same-origin: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SettingsRevisionRequest"
+      responses:
+        "200":
+          description: Generate or rotate an EasyPay credential
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EpaySecretRotationEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "403":
+          $ref: "#/components/responses/FinancialWriteForbidden"
+        "404":
+          description: Website does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          $ref: "#/components/responses/SettingsConflict"
+        "413":
+          $ref: "#/components/responses/TooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/SettingsValidationFailed"
+        "503":
+          $ref: "#/components/responses/SettingsUnavailable"
+  /api/admin/v1/sites/{clientId}/integration/export:
+    post:
+      tags:
+        - Admin Settings
+      operationId: exportSiteIntegration
+      summary: Download complete website integration configuration
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/AdminOrigin"
+        - name: clientId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$
+      x-perpay-requires-same-origin: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IntegrationExportRequest"
+      responses:
+        "200":
+          description: A complete UTF-8 .env file for the selected Demo protocol, including current credentials.
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+            Content-Disposition:
+              schema:
+                type: string
+              description: Attachment with a website and protocol-specific .env filename.
+          content:
+            text/plain:
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "403":
+          $ref: "#/components/responses/FinancialWriteForbidden"
+        "404":
+          description: Website does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          $ref: "#/components/responses/SettingsConflict"
+        "413":
+          $ref: "#/components/responses/TooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/SettingsValidationFailed"
+        "503":
+          $ref: "#/components/responses/SettingsUnavailable"
   /api/admin/v1/sites/{clientId}/secrets/api_secret/actions/rotate:
     post:
       tags:
@@ -7471,6 +7976,10 @@ components:
         - backup
         - work_items
       properties:
+        public_origin:
+          type: string
+          format: uri
+          description: Configured public origin, included only in administrator status responses.
         status:
           type: string
           enum:
@@ -10816,7 +11325,7 @@ components:
               additionalProperties: false
               required: [format, url_fingerprint]
               properties:
-                format: { const: NATIVE_JSON_V1 }
+                format: { type: string, enum: [NATIVE_JSON_V1, EPAY_V1, EPAY_V2] }
                 url_fingerprint: { $ref: '#/components/schemas/Sha256Fingerprint' }
       unevaluatedProperties: false
     WebhookDeliveryPageEnvelope:
@@ -10858,7 +11367,7 @@ components:
           maxLength: 64
           pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$'
         site_name: { type: [string, 'null'], description: "Current owning site name; administrator responses only." }
-        format: { const: NATIVE_JSON_V1 }
+        format: { type: string, enum: [NATIVE_JSON_V1, EPAY_V1, EPAY_V2] }
         target_url: { $ref: '#/components/schemas/NotifyUrl' }
         allowed_origin:
           type: string
@@ -10939,6 +11448,28 @@ components:
         - started_at
         - finished_at
       properties:
+        protocol:
+          type: string
+          enum:
+            - native
+            - epay_v1
+            - epay_v2
+          description: Delivery wire protocol. Omitted for historical native responses.
+        request_method:
+          type: string
+          enum:
+            - GET
+            - POST
+        request_url:
+          type:
+            - string
+            - "null"
+          description: Persisted final notification URL including signed EasyPay parameters.
+        request_fingerprint:
+          oneOf:
+            - $ref: "#/components/schemas/Sha256Fingerprint"
+            - type: "null"
+          description: Fingerprint of the actual encoded wire request for EasyPay deliveries.
         attempt_id: { $ref: '#/components/schemas/ResourceId' }
         delivery_id: { $ref: '#/components/schemas/ResourceId' }
         attempt_number: { type: integer, minimum: 1 }
@@ -10947,7 +11478,7 @@ components:
         request_timestamp:
           type: integer
           minimum: 0
-          description: Unix epoch milliseconds included in the signed delivery headers.
+          description: Attempt time in Unix milliseconds. EasyPay V2 signs the corresponding Unix seconds.
         request_body_fingerprint: { $ref: '#/components/schemas/Sha256Fingerprint' }
         outcome: { $ref: '#/components/schemas/WebhookAttemptOutcome' }
         resolved_addresses_fingerprint:
@@ -11026,6 +11557,10 @@ components:
     ErrorCode:
       type: string
       enum:
+        - epay_revision_conflict
+        - epay_secret_missing
+        - epay_not_configured
+        - epay_order_conflict
         - audit_event_not_found
         - audit_query_unavailable
         - alipay_account_not_found
@@ -11368,6 +11903,153 @@ components:
         - safety_lag_seconds
         - maximum_success_age_seconds
       additionalProperties: false
+    SiteEpayConfiguration:
+      type: object
+      additionalProperties: false
+      required:
+        - client_id
+        - pid
+        - revision
+        - v1_enabled
+        - v2_enabled
+        - v1_key_version
+        - merchant_key_version
+        - platform_key_version
+        - public_origin
+      properties:
+        client_id:
+          type: string
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$
+          description: Stable website identity.
+        pid:
+          type: string
+          pattern: ^[1-9][0-9]*$
+          description: Permanently reserved numeric EasyPay merchant identity.
+        revision:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+        v1_enabled:
+          type: boolean
+        v2_enabled:
+          type: boolean
+        v1_key_version:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+        merchant_key_version:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+        platform_key_version:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+        public_origin:
+          type: string
+          format: uri
+    SiteEpayEnvelope:
+      type: object
+      additionalProperties: false
+      required:
+        - data
+      properties:
+        data:
+          $ref: "#/components/schemas/SiteEpayConfiguration"
+    UpdateSiteEpayRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - revision
+        - v1_enabled
+        - v2_enabled
+      properties:
+        revision:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+        v1_enabled:
+          type: boolean
+        v2_enabled:
+          type: boolean
+    EpaySecretEnvelope:
+      type: object
+      additionalProperties: false
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required:
+            - secret
+            - public_key
+          properties:
+            secret:
+              type: string
+              description: V1 shared secret or a PEM private key for the selected RSA credential.
+            public_key:
+              type:
+                - string
+                - "null"
+              description: Matching PEM public key, null for V1.
+    EpaySecretRotationEnvelope:
+      type: object
+      additionalProperties: false
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required:
+            - configuration
+            - secret
+            - public_key
+          properties:
+            configuration:
+              $ref: "#/components/schemas/SiteEpayConfiguration"
+            secret:
+              type: string
+              description: V1 shared secret or a PEM private key for the selected RSA credential.
+            public_key:
+              type:
+                - string
+                - "null"
+              description: Matching PEM public key, null for V1.
+    IntegrationExportRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - protocol
+        - site_revision
+        - epay_revision
+        - notify_url
+      properties:
+        protocol:
+          type: string
+          enum:
+            - native
+            - epay_v1
+            - epay_v2
+        site_revision:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+        epay_revision:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+        notify_url:
+          type: string
+          format: uri
+          minLength: 1
+          maxLength: 4096
+          description: Demo notification URL under the saved HTTPS notification origin.
+        return_url:
+          type: string
+          maxLength: 4096
+          description: Optional Demo return URL under the saved HTTPS return origin; an empty value omits it.
     Site:
       type: object
       additionalProperties: false

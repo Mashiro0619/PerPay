@@ -252,6 +252,7 @@ export type SystemStatusEnvelope = {
     data: SystemStatus;
 };
 export type SystemStatus = {
+    public_origin?: string;
     status: 'ready' | 'degraded' | 'not_ready';
     version: string;
     instance_id: string;
@@ -1490,7 +1491,7 @@ export type WebhookDeliverySummary = WebhookDeliveryFields & {
         order_id: ResourceId;
     };
     target: {
-        format: 'NATIVE_JSON_V1';
+        format: 'NATIVE_JSON_V1' | 'EPAY_V1' | 'EPAY_V2';
         url_fingerprint: Sha256Fingerprint;
     };
 };
@@ -1505,7 +1506,7 @@ export type WebhookTarget = {
     order_id: ResourceId;
     api_client_id: string;
     site_name?: string | null;
-    format: 'NATIVE_JSON_V1';
+    format: 'NATIVE_JSON_V1' | 'EPAY_V1' | 'EPAY_V2';
     target_url: NotifyUrl;
     allowed_origin: string;
     url_fingerprint: Sha256Fingerprint;
@@ -1534,6 +1535,10 @@ export type OrderWebhookDeliveryPageEnvelope = {
     };
 };
 export type WebhookAttempt = {
+    protocol?: 'native' | 'epay_v1' | 'epay_v2';
+    request_method?: 'GET' | 'POST';
+    request_url?: string | null;
+    request_fingerprint?: Sha256Fingerprint | null;
     attempt_id: ResourceId;
     delivery_id: ResourceId;
     attempt_number: number;
@@ -1566,7 +1571,7 @@ export type WebhookRedeliveryEnvelope = {
     };
 };
 export type Sha256Fingerprint = string;
-export type ErrorCode = 'audit_event_not_found' | 'audit_query_unavailable' | 'alipay_account_not_found' | 'alipay_accounts_unavailable' | 'alipay_account_revision_conflict' | 'alipay_account_in_use' | 'alipay_account_app_conflict' | 'alipay_account_not_configured' | 'alipay_settings_moved' | 'site_collection_required' | 'site_collection_invalid' | 'admin_ip_not_allowed' | 'admin_operation_conflict' | 'refund_mark_version_conflict' | 'refund_mark_not_allowed' | 'refund_recording_retired' | 'work_item_not_found' | 'work_item_ended' | 'amount_slots_exhausted' | 'api_authentication_failed' | 'api_client_invalid' | 'api_nonce_replayed' | 'asset_not_found' | 'auth_rate_limited' | 'candidate_not_found' | 'candidate_set_changed' | 'checkout_code_generation_failed' | 'checkout_code_not_found' | 'checkout_not_found' | 'csrf_invalid' | 'duplicate_json_key' | 'event_not_found' | 'financial_clock_unavailable' | 'financial_exception_not_found' | 'forwarded_header_invalid' | 'idempotency_conflict' | 'identity_already_initialized' | 'identity_not_initialized' | 'setup_token_invalid' | 'internal_error' | 'invalid_content_length' | 'invalid_credentials' | 'invalid_json' | 'ledger_conflict_action_not_allowed' | 'ledger_conflict_not_found' | 'ledger_conflict_operation_conflict' | 'ledger_conflict_state_conflict' | 'ledger_entry_not_found' | 'ledger_unavailable' | 'ledger_scan_unavailable' | 'match_not_found' | 'match_state_conflict' | 'merchant_order_no_conflict' | 'operation_conflict' | 'order_clock_unavailable' | 'order_not_found' | 'origin_not_allowed' | 'password_unchanged' | 'password_work_busy' | 'provider_application_key_missing' | 'provider_application_key_rotation_not_supported' | 'provider_application_key_change_pending' | 'provider_application_key_change_conflict' | 'provider_application_key_verification_failed' | 'provider_switch_blocked' | 'public_checkout_rate_limited' | 'reconciliation_not_ready' | 'reconciliation_unavailable' | 'request_body_too_large' | 'request_body_unreadable' | 'return_url_invalid' | 'return_url_not_allowed' | 'route_not_found' | 'secret_not_found' | 'session_invalid' | 'settings_not_configured' | 'settings_revision_conflict' | 'settings_unavailable' | 'settings_validation_failed' | 'system_not_configured' | 'system_not_ready' | 'unsupported_media_type' | 'update_check_rate_limited' | 'update_check_unavailable' | 'validation_failed' | 'webhook_delivery_not_found' | 'webhook_delivery_state_conflict' | 'webhook_disabled' | 'webhook_event_not_found' | 'webhook_operation_conflict' | 'webhook_signing_key_rollback' | 'webhook_signing_key_unavailable' | 'webhook_target_inactive' | 'webhook_target_invalid' | 'webhook_target_not_allowed' | 'webhook_unavailable' | 'site_not_found' | 'site_scope_conflict' | 'site_revision_conflict' | 'site_operation_conflict' | 'site_client_id_conflict' | 'site_has_history' | 'site_paused' | 'site_order_limit_exceeded' | 'site_secret_missing' | 'demo_read_only' | 'site_settings_moved';
+export type ErrorCode = 'epay_revision_conflict' | 'epay_secret_missing' | 'epay_not_configured' | 'epay_order_conflict' | 'audit_event_not_found' | 'audit_query_unavailable' | 'alipay_account_not_found' | 'alipay_accounts_unavailable' | 'alipay_account_revision_conflict' | 'alipay_account_in_use' | 'alipay_account_app_conflict' | 'alipay_account_not_configured' | 'alipay_settings_moved' | 'site_collection_required' | 'site_collection_invalid' | 'admin_ip_not_allowed' | 'admin_operation_conflict' | 'refund_mark_version_conflict' | 'refund_mark_not_allowed' | 'refund_recording_retired' | 'work_item_not_found' | 'work_item_ended' | 'amount_slots_exhausted' | 'api_authentication_failed' | 'api_client_invalid' | 'api_nonce_replayed' | 'asset_not_found' | 'auth_rate_limited' | 'candidate_not_found' | 'candidate_set_changed' | 'checkout_code_generation_failed' | 'checkout_code_not_found' | 'checkout_not_found' | 'csrf_invalid' | 'duplicate_json_key' | 'event_not_found' | 'financial_clock_unavailable' | 'financial_exception_not_found' | 'forwarded_header_invalid' | 'idempotency_conflict' | 'identity_already_initialized' | 'identity_not_initialized' | 'setup_token_invalid' | 'internal_error' | 'invalid_content_length' | 'invalid_credentials' | 'invalid_json' | 'ledger_conflict_action_not_allowed' | 'ledger_conflict_not_found' | 'ledger_conflict_operation_conflict' | 'ledger_conflict_state_conflict' | 'ledger_entry_not_found' | 'ledger_unavailable' | 'ledger_scan_unavailable' | 'match_not_found' | 'match_state_conflict' | 'merchant_order_no_conflict' | 'operation_conflict' | 'order_clock_unavailable' | 'order_not_found' | 'origin_not_allowed' | 'password_unchanged' | 'password_work_busy' | 'provider_application_key_missing' | 'provider_application_key_rotation_not_supported' | 'provider_application_key_change_pending' | 'provider_application_key_change_conflict' | 'provider_application_key_verification_failed' | 'provider_switch_blocked' | 'public_checkout_rate_limited' | 'reconciliation_not_ready' | 'reconciliation_unavailable' | 'request_body_too_large' | 'request_body_unreadable' | 'return_url_invalid' | 'return_url_not_allowed' | 'route_not_found' | 'secret_not_found' | 'session_invalid' | 'settings_not_configured' | 'settings_revision_conflict' | 'settings_unavailable' | 'settings_validation_failed' | 'system_not_configured' | 'system_not_ready' | 'unsupported_media_type' | 'update_check_rate_limited' | 'update_check_unavailable' | 'validation_failed' | 'webhook_delivery_not_found' | 'webhook_delivery_state_conflict' | 'webhook_disabled' | 'webhook_event_not_found' | 'webhook_operation_conflict' | 'webhook_signing_key_rollback' | 'webhook_signing_key_unavailable' | 'webhook_target_inactive' | 'webhook_target_invalid' | 'webhook_target_not_allowed' | 'webhook_unavailable' | 'site_not_found' | 'site_scope_conflict' | 'site_revision_conflict' | 'site_operation_conflict' | 'site_client_id_conflict' | 'site_has_history' | 'site_paused' | 'site_order_limit_exceeded' | 'site_secret_missing' | 'demo_read_only' | 'site_settings_moved';
 export type ErrorEnvelope = {
     error: {
         code: ErrorCode;
@@ -1631,6 +1636,45 @@ export type CollectionPolicyRequest = {
     minimum_scan_interval_seconds: number;
     safety_lag_seconds: number;
     maximum_success_age_seconds: number;
+};
+export type SiteEpayConfiguration = {
+    client_id: string;
+    pid: string;
+    revision: number;
+    v1_enabled: boolean;
+    v2_enabled: boolean;
+    v1_key_version: number;
+    merchant_key_version: number;
+    platform_key_version: number;
+    public_origin: string;
+};
+export type SiteEpayEnvelope = {
+    data: SiteEpayConfiguration;
+};
+export type UpdateSiteEpayRequest = {
+    revision: number;
+    v1_enabled: boolean;
+    v2_enabled: boolean;
+};
+export type EpaySecretEnvelope = {
+    data: {
+        secret: string;
+        public_key: string | null;
+    };
+};
+export type EpaySecretRotationEnvelope = {
+    data: {
+        configuration: SiteEpayConfiguration;
+        secret: string;
+        public_key: string | null;
+    };
+};
+export type IntegrationExportRequest = {
+    protocol: 'native' | 'epay_v1' | 'epay_v2';
+    site_revision: number;
+    epay_revision: number;
+    notify_url: string;
+    return_url?: string;
 };
 export type Site = {
     client_id: string;
@@ -3811,6 +3855,252 @@ export type UpdateSiteDefaultsResponses = {
     200: SiteDefaultsEnvelope;
 };
 export type UpdateSiteDefaultsResponse = UpdateSiteDefaultsResponses[keyof UpdateSiteDefaultsResponses];
+export type GetSiteEpayData = {
+    body?: never;
+    headers?: {
+        'X-Request-Id'?: string;
+    };
+    path: {
+        clientId: string;
+    };
+    query?: never;
+    url: '/api/admin/v1/sites/{clientId}/epay';
+};
+export type GetSiteEpayErrors = {
+    400: ErrorEnvelope;
+    401: ErrorEnvelope;
+    404: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type GetSiteEpayError = GetSiteEpayErrors[keyof GetSiteEpayErrors];
+export type GetSiteEpayResponses = {
+    200: SiteEpayEnvelope;
+};
+export type GetSiteEpayResponse = GetSiteEpayResponses[keyof GetSiteEpayResponses];
+export type UpdateSiteEpayData = {
+    body: UpdateSiteEpayRequest;
+    headers?: {
+        'X-Request-Id'?: string;
+        Origin?: string;
+    };
+    path: {
+        clientId: string;
+    };
+    query?: never;
+    url: '/api/admin/v1/sites/{clientId}/epay';
+};
+export type UpdateSiteEpayErrors = {
+    400: ErrorEnvelope;
+    401: ErrorEnvelope;
+    403: ErrorEnvelope;
+    404: ErrorEnvelope;
+    409: ErrorEnvelope;
+    413: ErrorEnvelope;
+    415: ErrorEnvelope;
+    422: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type UpdateSiteEpayError = UpdateSiteEpayErrors[keyof UpdateSiteEpayErrors];
+export type UpdateSiteEpayResponses = {
+    200: SiteEpayEnvelope;
+};
+export type UpdateSiteEpayResponse = UpdateSiteEpayResponses[keyof UpdateSiteEpayResponses];
+export type ViewSiteEpayV1SecretData = {
+    body: EmptyObjectRequest;
+    headers?: {
+        'X-Request-Id'?: string;
+        Origin?: string;
+    };
+    path: {
+        clientId: string;
+    };
+    query?: never;
+    url: '/api/admin/v1/sites/{clientId}/secrets/epay_v1/actions/view';
+};
+export type ViewSiteEpayV1SecretErrors = {
+    400: ErrorEnvelope;
+    401: ErrorEnvelope;
+    403: ErrorEnvelope;
+    404: ErrorEnvelope;
+    409: ErrorEnvelope;
+    413: ErrorEnvelope;
+    415: ErrorEnvelope;
+    422: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type ViewSiteEpayV1SecretError = ViewSiteEpayV1SecretErrors[keyof ViewSiteEpayV1SecretErrors];
+export type ViewSiteEpayV1SecretResponses = {
+    200: EpaySecretEnvelope;
+};
+export type ViewSiteEpayV1SecretResponse = ViewSiteEpayV1SecretResponses[keyof ViewSiteEpayV1SecretResponses];
+export type RotateSiteEpayV1SecretData = {
+    body: SettingsRevisionRequest;
+    headers?: {
+        'X-Request-Id'?: string;
+        Origin?: string;
+    };
+    path: {
+        clientId: string;
+    };
+    query?: never;
+    url: '/api/admin/v1/sites/{clientId}/secrets/epay_v1/actions/rotate';
+};
+export type RotateSiteEpayV1SecretErrors = {
+    400: ErrorEnvelope;
+    401: ErrorEnvelope;
+    403: ErrorEnvelope;
+    404: ErrorEnvelope;
+    409: ErrorEnvelope;
+    413: ErrorEnvelope;
+    415: ErrorEnvelope;
+    422: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type RotateSiteEpayV1SecretError = RotateSiteEpayV1SecretErrors[keyof RotateSiteEpayV1SecretErrors];
+export type RotateSiteEpayV1SecretResponses = {
+    200: EpaySecretRotationEnvelope;
+};
+export type RotateSiteEpayV1SecretResponse = RotateSiteEpayV1SecretResponses[keyof RotateSiteEpayV1SecretResponses];
+export type ViewSiteEpayMerchantSecretData = {
+    body: EmptyObjectRequest;
+    headers?: {
+        'X-Request-Id'?: string;
+        Origin?: string;
+    };
+    path: {
+        clientId: string;
+    };
+    query?: never;
+    url: '/api/admin/v1/sites/{clientId}/secrets/epay_merchant/actions/view';
+};
+export type ViewSiteEpayMerchantSecretErrors = {
+    400: ErrorEnvelope;
+    401: ErrorEnvelope;
+    403: ErrorEnvelope;
+    404: ErrorEnvelope;
+    409: ErrorEnvelope;
+    413: ErrorEnvelope;
+    415: ErrorEnvelope;
+    422: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type ViewSiteEpayMerchantSecretError = ViewSiteEpayMerchantSecretErrors[keyof ViewSiteEpayMerchantSecretErrors];
+export type ViewSiteEpayMerchantSecretResponses = {
+    200: EpaySecretEnvelope;
+};
+export type ViewSiteEpayMerchantSecretResponse = ViewSiteEpayMerchantSecretResponses[keyof ViewSiteEpayMerchantSecretResponses];
+export type RotateSiteEpayMerchantSecretData = {
+    body: SettingsRevisionRequest;
+    headers?: {
+        'X-Request-Id'?: string;
+        Origin?: string;
+    };
+    path: {
+        clientId: string;
+    };
+    query?: never;
+    url: '/api/admin/v1/sites/{clientId}/secrets/epay_merchant/actions/rotate';
+};
+export type RotateSiteEpayMerchantSecretErrors = {
+    400: ErrorEnvelope;
+    401: ErrorEnvelope;
+    403: ErrorEnvelope;
+    404: ErrorEnvelope;
+    409: ErrorEnvelope;
+    413: ErrorEnvelope;
+    415: ErrorEnvelope;
+    422: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type RotateSiteEpayMerchantSecretError = RotateSiteEpayMerchantSecretErrors[keyof RotateSiteEpayMerchantSecretErrors];
+export type RotateSiteEpayMerchantSecretResponses = {
+    200: EpaySecretRotationEnvelope;
+};
+export type RotateSiteEpayMerchantSecretResponse = RotateSiteEpayMerchantSecretResponses[keyof RotateSiteEpayMerchantSecretResponses];
+export type ViewSiteEpayPlatformSecretData = {
+    body: EmptyObjectRequest;
+    headers?: {
+        'X-Request-Id'?: string;
+        Origin?: string;
+    };
+    path: {
+        clientId: string;
+    };
+    query?: never;
+    url: '/api/admin/v1/sites/{clientId}/secrets/epay_platform/actions/view';
+};
+export type ViewSiteEpayPlatformSecretErrors = {
+    400: ErrorEnvelope;
+    401: ErrorEnvelope;
+    403: ErrorEnvelope;
+    404: ErrorEnvelope;
+    409: ErrorEnvelope;
+    413: ErrorEnvelope;
+    415: ErrorEnvelope;
+    422: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type ViewSiteEpayPlatformSecretError = ViewSiteEpayPlatformSecretErrors[keyof ViewSiteEpayPlatformSecretErrors];
+export type ViewSiteEpayPlatformSecretResponses = {
+    200: EpaySecretEnvelope;
+};
+export type ViewSiteEpayPlatformSecretResponse = ViewSiteEpayPlatformSecretResponses[keyof ViewSiteEpayPlatformSecretResponses];
+export type RotateSiteEpayPlatformSecretData = {
+    body: SettingsRevisionRequest;
+    headers?: {
+        'X-Request-Id'?: string;
+        Origin?: string;
+    };
+    path: {
+        clientId: string;
+    };
+    query?: never;
+    url: '/api/admin/v1/sites/{clientId}/secrets/epay_platform/actions/rotate';
+};
+export type RotateSiteEpayPlatformSecretErrors = {
+    400: ErrorEnvelope;
+    401: ErrorEnvelope;
+    403: ErrorEnvelope;
+    404: ErrorEnvelope;
+    409: ErrorEnvelope;
+    413: ErrorEnvelope;
+    415: ErrorEnvelope;
+    422: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type RotateSiteEpayPlatformSecretError = RotateSiteEpayPlatformSecretErrors[keyof RotateSiteEpayPlatformSecretErrors];
+export type RotateSiteEpayPlatformSecretResponses = {
+    200: EpaySecretRotationEnvelope;
+};
+export type RotateSiteEpayPlatformSecretResponse = RotateSiteEpayPlatformSecretResponses[keyof RotateSiteEpayPlatformSecretResponses];
+export type ExportSiteIntegrationData = {
+    body: IntegrationExportRequest;
+    headers?: {
+        'X-Request-Id'?: string;
+        Origin?: string;
+    };
+    path: {
+        clientId: string;
+    };
+    query?: never;
+    url: '/api/admin/v1/sites/{clientId}/integration/export';
+};
+export type ExportSiteIntegrationErrors = {
+    400: ErrorEnvelope;
+    401: ErrorEnvelope;
+    403: ErrorEnvelope;
+    404: ErrorEnvelope;
+    409: ErrorEnvelope;
+    413: ErrorEnvelope;
+    415: ErrorEnvelope;
+    422: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type ExportSiteIntegrationError = ExportSiteIntegrationErrors[keyof ExportSiteIntegrationErrors];
+export type ExportSiteIntegrationResponses = {
+    200: string;
+};
+export type ExportSiteIntegrationResponse = ExportSiteIntegrationResponses[keyof ExportSiteIntegrationResponses];
 export type RotateSiteApiSecretData = {
     body: SettingsRevisionRequest;
     headers?: {

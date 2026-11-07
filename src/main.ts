@@ -1,4 +1,5 @@
 import { serve } from "@hono/node-server";
+import { EpayStore } from "./epay/store.ts";
 import { AlipayAccountStore } from "./alipay-accounts/store.ts";
 import { AlipayAccountService } from "./alipay-accounts/service.ts";
 
@@ -42,6 +43,7 @@ const orders: OrderService = new OrderService(database, () => settings.instanceS
   accounts: () => accountStore.snapshots(), available: id => runtime.accountHealth(id).collectionReady,
 });
 const runtime: RuntimeController = new RuntimeController({
+  epay: new EpayStore(database, config.masterKey),
   database,
   activity,
   orders,

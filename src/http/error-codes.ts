@@ -1,5 +1,9 @@
 /** Every code that can be returned in the public HTTP error envelope. */
 export const HTTP_ERROR_CODES = Object.freeze([
+  "epay_revision_conflict",
+  "epay_secret_missing",
+  "epay_not_configured",
+  "epay_order_conflict",
   "audit_event_not_found",
   "audit_query_unavailable",
   "alipay_account_not_found",

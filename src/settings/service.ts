@@ -1,5 +1,6 @@
 import { collectionPolicyInputSchema, type CollectionPolicyInput } from "./collection-policy.ts";
 import { AlipayAccountService } from "../alipay-accounts/service.ts";
+import type { EpayStore } from "../epay/store.ts";
 import { collectionCodeError } from "../shared/collection-code.ts";
 import { collectionCodeInputSchema, providerApplicationInputSchema, instanceDisplayInputSchema, type InstanceDisplayInput, type CollectionCodeInput, type ProviderApplicationInput } from "./model.ts";
 import { adminAccessInputSchema, createAdminAccessPolicy, type AdminAccessInput, type AdminAccess } from "./admin-access.ts";
@@ -381,6 +382,8 @@ export class RuntimeSettingsService {
   }
 
   siteStore() { return this.#store.siteStore(); }
+
+  epayStore(): EpayStore | null { return this.#store.epayStore(); }
 
   accountService(): AlipayAccountService | null {
     if (this.#accounts) return this.#accounts;

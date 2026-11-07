@@ -4,6 +4,8 @@ import type { AlipayAccountService } from "../alipay-accounts/service.ts";
 import { siteOverview } from "./site-overview.ts";
 import { collectionCodeInputSchema, providerApplicationInputSchema, instanceDisplayInputSchema, isProductionProvider } from "../settings/model.ts";
 import { SiteError, type SiteStore } from "../sites/store.ts";
+import { registerEpayRoutes } from "../epay/http.ts";
+import { EpayError, hasEpaySchema, readEpayOrder } from "../epay/store.ts";
 import { changeSiteClientIdInputSchema, createSiteInputSchema, updateSiteInputSchema, updateSiteDefaultsInputSchema, siteClientIdSchema, type SiteSnapshot } from "../sites/model.ts";
 import { collectionPolicyInputSchema } from "../settings/collection-policy.ts";
 import { readLedgerFailureDiagnostic, type LedgerDiagnostics } from "../ledger/diagnostics.ts";
@@ -181,7 +183,7 @@ const LEDGER_CONFLICT_STATUSES = new Set<LedgerConflictStatus>([
   "IGNORED",
 ]);
 
-type AppEnvironment = {
+export type AppEnvironment = {
   Bindings: Partial<HttpBindings>;
   Variables: {
     adminSiteId: string | undefined;
@@ -524,7 +526,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     let initialError: CheckoutPageInitialError | null = null;
     let status: 200 | 404 | 503 = 200;
     try {
-      checkout = dependencies.orders.publicCheckout(token);
+      checkout = publicCheckout(dependencies, token);
       captureCheckoutAuditContext(dependencies, token);
       if (checkout.paymentInstructions !== null) requirePaymentEntryReady(dependencies, dependencies.orders.publicCheckoutOrderId(token));
     } catch (error) {
@@ -586,7 +588,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
         1,
       );
     }
-    const checkout = dependencies.orders.publicCheckout(context.req.param("token"));
+    const checkout = publicCheckout(dependencies, context.req.param("token"));
     captureCheckoutAuditContext(dependencies, context.req.param("token"));
     if (checkout.paymentInstructions === null) {
       throw new HttpApiError(404, "checkout_code_not_found", "收款码不可用");
@@ -955,6 +957,22 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     dependencies.config.publicOrigin,
     dependencies.config.secureCookies,
   );
+
+  registerEpayRoutes(app, dependencies, {
+    adminSession, financialWrite, readJson, readBody: readBodyLimited,
+    audit: context => {
+      if (dependencies.demoMode) throw new HttpApiError(403, "demo_read_only", "当前操作不可用。");
+      requireCurrentSession(context, dependencies.identity);
+      return settingsAuditContext(context, dependencies);
+    },
+    requireReady: () => requirePaymentDatabaseReady(dependencies),
+    requireBackground: () => requirePaymentBackgroundReady(dependencies),
+    rateLimit: context => {
+      if (!publicCheckoutBudget.take(remoteAddress(context, dependencies.config.trustedProxy))) {
+        throw new HttpApiError(429, "public_checkout_rate_limited", "请求过于频繁，请稍后重试。", 1);
+      }
+    },
+  });
 
   if (dependencies.sites) {
     app.get("/api/admin/v1/sites/overview", adminSession, context => context.json(siteOverview(dependencies.database, new URL(context.req.url).searchParams, dependencies.clock?.() ?? Date.now())));
@@ -1832,7 +1850,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     }
     await readJson(context, emptyObjectSchema, 1024);
     const token = context.req.param("token");
-    let checkout = dependencies.orders.publicCheckout(token);
+    let checkout = publicCheckout(dependencies, token);
     captureCheckoutAuditContext(dependencies, token);
     const orderId = dependencies.orders.publicCheckoutOrderId(token);
     let verification = dependencies.checkoutVerification?.(orderId);
@@ -1841,7 +1859,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
       if (!dependencies.requestCheckoutVerification) throw new HttpApiError(503, "system_not_ready", "暂时无法发起付款核实");
       try { verification = dependencies.requestCheckoutVerification(orderId); }
       catch { throw new HttpApiError(503, "system_not_ready", "付款核实暂时不可用，请稍后重试"); }
-      checkout = dependencies.orders.publicCheckout(token);
+      checkout = publicCheckout(dependencies, token);
     }
     const pending = checkout.checkout.status === "OPEN" && checkout.payment.status === "UNPAID" && verification && !["COMPLETED", "FAILED"].includes(verification.state);
     if (pending && verification) context.header("retry-after", String(Math.max(1, verification.retry_after_seconds)));
@@ -1858,7 +1876,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
         1,
       );
     }
-    const checkout = dependencies.orders.publicCheckout(context.req.param("token"));
+    const checkout = publicCheckout(dependencies, context.req.param("token"));
     captureCheckoutAuditContext(dependencies, context.req.param("token"));
     if (checkout.paymentInstructions !== null) requirePaymentEntryReady(dependencies, dependencies.orders.publicCheckoutOrderId(context.req.param("token")));
     const verification = dependencies.checkoutVerification?.(dependencies.orders.publicCheckoutOrderId(context.req.param("token")));
@@ -1925,6 +1943,9 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
   );
 
   app.onError((error, context) => {
+    if (error instanceof EpayError) {
+      return errorResponse(context, error.code === "epay_revision_conflict" ? 409 : 422, error.code, error.message);
+    }
     if (error instanceof AlipayAccountError) {
       return errorResponse(context, error.code === "alipay_account_not_found" ? 404 : 409, error.code, error.message);
     }
@@ -2642,6 +2663,7 @@ async function systemStatus(dependencies: AppDependencies, administrator = false
     status: ready ? (degraded ? "degraded" : "ready") : "not_ready",
     version: APP_VERSION,
     instance_id: dependencies.database.instanceId(),
+    ...(administrator ? { public_origin: dependencies.config.publicOrigin } : {}),
     initialized: dependencies.identity.isInitialized(),
     configured,
     settings_revision: dependencies.settings?.status().revision ?? null,
@@ -3915,6 +3937,8 @@ function serializeWebhookDelivery(delivery: WebhookDelivery) {
 
 function serializeWebhookAttempt(attempt: WebhookAttempt) {
   return {
+    ...(attempt.protocol ? { protocol: attempt.protocol, request_method: attempt.requestMethod,
+      request_url: attempt.requestUrl, request_fingerprint: attempt.requestFingerprint } : {}),
     attempt_id: attempt.attemptId,
     delivery_id: attempt.deliveryId,
     attempt_number: attempt.attemptNumber,
@@ -4395,4 +4419,15 @@ function adminQuery(context: Context<AppEnvironment>): URLSearchParams {
 function administratorEndpoint(context: Context<AppEnvironment>, suffix: string): string {
   const clientId = context.get("adminSiteId");
   return "/api/admin/v1" + (clientId ? "/sites/" + encodeURIComponent(clientId) : "") + suffix;
+}
+
+function publicCheckout(dependencies: AppDependencies, token: string): PublicCheckoutProjection {
+  const checkout = dependencies.orders.publicCheckout(token);
+  if (!checkout.returnUrl || !dependencies.database.read(hasEpaySchema)) return checkout;
+  const orderId = dependencies.orders.publicCheckoutOrderId(token);
+  if (!dependencies.database.read(connection => readEpayOrder(connection, orderId))) return checkout;
+  return { ...checkout, returnUrl: new URL(
+    `/api/public/v1/checkouts/${encodeURIComponent(token)}/return`,
+    dependencies.config.publicOrigin,
+  ).href };
 }

@@ -2,6 +2,8 @@
 
 # 快速接入 PerPay
 
+网站设置中的接入助手提供原生、易支付 V1 和 V2 的完整配置下载。已有易支付插件的系统可直接按对应协议接入。[易支付接入说明](epay-integration.md)
+
 本文按一次网站支付的顺序接入。完整字段见 [OpenAPI](../openapi.yaml)，可运行版本见 [Node.js 调用端示例](../examples/node-client/README.md)。示例使用 Node.js 24.15+（24.x）；下面的请求正文和函数定义不会自动下单或付款。
 
 接入前，在 PerPay 创建业务网站，确认收款就绪，并准备以下配置：

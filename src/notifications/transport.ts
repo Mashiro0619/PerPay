@@ -44,6 +44,7 @@ const FORBIDDEN_EXTENSION_HEADERS = new Set([
 ]);
 
 export type WebhookTransportErrorCode =
+  | "payment_confirmation_revoked"
   | "webhook_target_invalid"
   | "target_address_forbidden"
   | "target_address_limit"
@@ -92,6 +93,12 @@ export interface WebhookTransportResponse {
 }
 
 export interface WebhookTransport {
+  get?(input: {
+    readonly beforeSend?: () => void;
+    readonly targetUrl: string;
+    readonly timeoutMilliseconds: number;
+    readonly signal?: AbortSignal | undefined;
+  }): Promise<WebhookTransportResponse>;
   post(input: {
     readonly targetUrl: string;
     readonly body: Buffer;
@@ -200,6 +207,27 @@ export class NodeWebhookTransport implements WebhookTransport {
     readonly timeoutMilliseconds: number;
     readonly signal?: AbortSignal | undefined;
   }): Promise<WebhookTransportResponse> {
+    return this.#request({ ...input, method: "POST" });
+  }
+
+  async get(input: {
+    readonly beforeSend?: () => void;
+    readonly targetUrl: string;
+    readonly timeoutMilliseconds: number;
+    readonly signal?: AbortSignal | undefined;
+  }): Promise<WebhookTransportResponse> {
+    return this.#request({ ...input, method: "GET", body: Buffer.alloc(0), headers: {} });
+  }
+
+  async #request(input: {
+    readonly beforeSend?: () => void;
+    readonly method: "GET" | "POST";
+    readonly targetUrl: string;
+    readonly body: Buffer;
+    readonly headers: Readonly<Record<string, string>>;
+    readonly timeoutMilliseconds: number;
+    readonly signal?: AbortSignal | undefined;
+  }): Promise<WebhookTransportResponse> {
     if (
       !Number.isSafeInteger(input.timeoutMilliseconds) ||
       input.timeoutMilliseconds < 1 ||
@@ -218,15 +246,17 @@ export class NodeWebhookTransport implements WebhookTransport {
         retryable: false,
       });
     }
-    const target = this.#parseTarget(input.targetUrl);
+    const target = this.#parseTarget(input.targetUrl, input.method === "GET" ? 16 * 1024 : 4096);
     if (input.signal?.aborted) throw cancelledError();
     const deadline = this.#dependencies.now() + input.timeoutMilliseconds;
     const addresses = await this.#resolveAddresses(target.hostname, deadline, input.signal);
     const addressesFingerprint = fingerprintAddresses(addresses);
     if (input.signal?.aborted) throw cancelledError(addressesFingerprint);
     if (deadline - this.#dependencies.now() < 1) throw timeoutError(addressesFingerprint);
+    input.beforeSend?.();
     return requestPinnedAddresses({
       endpoint: target,
+      method: input.method,
       addresses,
       addressesFingerprint,
       body: input.body,
@@ -237,7 +267,7 @@ export class NodeWebhookTransport implements WebhookTransport {
     });
   }
 
-  #parseTarget(value: string): URL {
+  #parseTarget(value: string, maximumBytes: number): URL {
     let target: URL;
     try {
       target = new URL(value);
@@ -267,7 +297,7 @@ export class NodeWebhookTransport implements WebhookTransport {
         retryable: false,
       });
     }
-    if (Buffer.byteLength(value, "utf8") > 4096) {
+    if (Buffer.byteLength(value, "utf8") > maximumBytes) {
       throw new WebhookTransportError({
         code: "webhook_target_invalid",
         message: "通知目标 URL 超过上限",
@@ -346,6 +376,7 @@ export class NodeWebhookTransport implements WebhookTransport {
 
 function requestPinnedAddresses(input: {
   readonly endpoint: URL;
+  readonly method: "GET" | "POST";
   readonly addresses: readonly ResolvedAddress[];
   readonly addressesFingerprint: string;
   readonly body: Buffer;
@@ -405,8 +436,8 @@ function requestPinnedAddresses(input: {
         ...normalizeExtensionHeaders(input.headers, input.addressesFingerprint),
         host: input.endpoint.host,
         "content-length": String(input.body.byteLength),
-        "content-type": "application/json",
-        accept: "application/json",
+        ...(input.method === "POST" ? { "content-type": "application/json" } : {}),
+        accept: input.method === "POST" ? "application/json" : "text/plain",
         "accept-encoding": "identity",
         "user-agent": ALLOWED_USER_AGENT,
         connection: "close",
@@ -417,7 +448,7 @@ function requestPinnedAddresses(input: {
           hostname: endpointHost,
           port: input.endpoint.port || 443,
           path: `${input.endpoint.pathname}${input.endpoint.search}`,
-          method: "POST",
+          method: input.method,
           headers,
           servername: endpointHost,
           rejectUnauthorized: true,

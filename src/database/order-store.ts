@@ -1,4 +1,6 @@
 import { siteClientIdSchema } from "../sites/model.ts";
+import { insertEpayOrder, readEpayOrder } from "../epay/store.ts";
+import type { EpayOrderCreation } from "../epay/order.ts";
 import { assertSiteCanCreate, readSite, SiteError } from "../sites/store.ts";
 import { normalizeListQuery, isDefaultQuery, ORDER_SORT_FIELDS, type ListQuery, type OrderSort } from "../shared/list-query.ts";
 import { listKeyset, listSearch, listCreatedDates } from "./list-query.ts";
@@ -118,6 +120,7 @@ export interface SyncCollectionProfileResult {
 }
 
 export interface CreateStoredOrderInput {
+  readonly epay?: EpayOrderCreation;
   readonly apiClientId: string;
   readonly collectionProfileIds?: readonly string[];
   readonly siteRevision?: number;
@@ -360,6 +363,7 @@ export class OrderStore {
           if (!idempotent) throw new Error("expired idempotent order cannot be read");
         }
         if (
+          !sameEpayRequest(connection, idempotent.order.orderId, input.epay) ||
           idempotent.order.requestFingerprint !== input.requestFingerprint ||
           idempotent.order.requestFingerprintVersion !==
             CREATE_ORDER_REQUEST_FINGERPRINT_VERSION ||
@@ -402,6 +406,7 @@ export class OrderStore {
           if (!migratedReplay) throw new Error("expired migrated order replay cannot be read");
         }
         if (
+          !sameEpayRequest(connection, migratedReplay.order.orderId, input.epay) ||
           migratedReplay.order.requestFingerprint !== input.requestFingerprint ||
           migratedReplay.order.requestFingerprintVersion !==
             CREATE_ORDER_REQUEST_FINGERPRINT_VERSION ||
@@ -428,6 +433,16 @@ export class OrderStore {
         assertSiteCanCreate(connection, input.apiClientId, now);
       }
       beforeCreate?.();
+
+      if (input.epay) {
+        const configuration = connection.prepare("SELECT revision, v1_enabled, v2_enabled FROM epay_sites WHERE site_id = ?").get(input.apiClientId) as
+          { revision: number | bigint; v1_enabled: number | bigint; v2_enabled: number | bigint } | undefined;
+        const enabled = input.epay.protocol === "epay_v1" ? configuration?.v1_enabled : configuration?.v2_enabled;
+        if (input.epay.siteId !== input.apiClientId || !configuration ||
+            Number(configuration.revision) !== input.epay.configurationRevision || Number(enabled) !== 1) {
+          throw new SiteError("site_revision_conflict", "易支付配置已变更，请重新下单。");
+        }
+      }
 
       if (input.webhookTargetRejection) {
         return {
@@ -534,6 +549,8 @@ export class OrderStore {
           now,
         );
       assertChangedOnce(orderInsert.changes, "payment order insert");
+
+      if (input.epay) insertEpayOrder(connection, { ...input.epay, orderId, createdAt: now });
 
       if (input.webhookTarget) {
         const targetInsert = connection
@@ -1621,6 +1638,7 @@ function mapWebhookTarget(row: AggregateRow): StoredWebhookTarget | null {
   const prepared = prepareWebhookTarget(
     row.target_url as string,
     row.target_allowed_origin as string,
+    row.target_format as WebhookTargetFormat,
   );
   if (
     row.target_format !== prepared.format ||
@@ -1692,6 +1710,17 @@ function sameReturnUrlRequest(
   }
 }
 
+function sameEpayRequest(connection: DatabaseSync, orderId: string, input: EpayOrderCreation | undefined): boolean {
+  if (!connection.prepare("SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'epay_orders'").get()) {
+    return input === undefined;
+  }
+  const existing = readEpayOrder(connection, orderId);
+  if (!existing || !input) return !existing && !input;
+  return existing.siteId === input.siteId && existing.protocol === input.protocol &&
+    existing.requestFingerprint === input.requestFingerprint && existing.param === input.param &&
+    existing.returnUrl === input.returnUrl;
+}
+
 function validateWebhookTargetInput(input: CreateStoredOrderInput): void {
   const requestedUrl = input.request.notify_url ?? null;
   const target = input.webhookTarget ?? null;
@@ -1710,7 +1739,7 @@ function validateWebhookTargetInput(input: CreateStoredOrderInput): void {
     return;
   }
   if (!target) throw new RangeError("order webhook target is missing");
-  const prepared = prepareWebhookTarget(requestedUrl, target.allowedOrigin);
+  const prepared = prepareWebhookTarget(requestedUrl, target.allowedOrigin, target.format);
   if (
     target.format !== prepared.format ||
     target.url !== prepared.url ||

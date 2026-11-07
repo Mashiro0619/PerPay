@@ -1,4 +1,5 @@
 import { SiteError, type SiteStore } from "../sites/store.ts";
+import type { EpayOrderCreation } from "../epay/order.ts";
 import type { AlipayAccountSnapshot } from "../alipay-accounts/model.ts";
 import { collectionCandidates } from "./account-allocation.ts";
 import { siteClientIdSchema, type SiteSnapshot } from "../sites/model.ts";
@@ -20,6 +21,7 @@ import {
   WebhookTargetError,
   type PreparedWebhookTarget,
   type WebhookTargetErrorCode,
+  type WebhookTargetFormat,
 } from "../notifications/model.ts";
 import {
   API_CLIENT_ID,
@@ -188,6 +190,7 @@ export class OrderService {
   create(
     request: CreateOrderRequest,
     beforeCreate?: (() => void) | undefined,
+    epay?: EpayOrderCreation,
   ): CreateOrderResult {
     const site = this.#site();
     const settings = this.#configuredSettings(site);
@@ -197,7 +200,8 @@ export class OrderService {
       this.#accounts.accounts(), this.#accounts.available ?? (() => true), this.#accounts.random) : null;
     const collectionProfileIds = candidates?.map(account => this.syncAccountCollectionProfile(account).profile.profileId);
     if (candidates === null) this.syncCollectionProfile(settings.collection, settings.providerAccountKey);
-    const webhookTarget = this.#prepareWebhookTarget(request, webhook);
+    const format = epay ? epay.protocol === "epay_v1" ? "EPAY_V1" : "EPAY_V2" : "NATIVE_JSON_V1";
+    const webhookTarget = this.#prepareWebhookTarget(request, webhook, format);
     const returnUrl = this.#prepareReturnUrl(request, site ? site.configuration.return_origin : webhook.allowedOrigin);
     const result = this.#runStoreOperation(() =>
       this.#store.createOrder(
@@ -206,6 +210,7 @@ export class OrderService {
           ...(collectionProfileIds ? { collectionProfileIds } : {}),
           ...(site ? { siteRevision: site.revision } : {}),
           request,
+          ...(epay ? { epay } : {}),
           idempotencyKeyDigest: digestIdempotencyKey(clientId, request.idempotency_key),
           requestFingerprint: fingerprintCreateOrderRequest(request),
           ttlMilliseconds: settings.collection.orderTtlSeconds * 1000,
@@ -466,6 +471,7 @@ export class OrderService {
   #prepareWebhookTarget(
     request: CreateOrderRequest,
     webhook: RuntimeSettingsSnapshot["webhook"],
+    format: WebhookTargetFormat,
   ): WebhookTargetDecision {
     if (request.notify_url === undefined) return { target: null };
     if (!webhook.enabled) {
@@ -474,7 +480,7 @@ export class OrderService {
         rejection: { url: request.notify_url, code: "webhook_disabled" },
       };
     }
-    if (webhook.allowedOrigin === null || webhook.secret === null) {
+    if (webhook.allowedOrigin === null || (format === "NATIVE_JSON_V1" && webhook.secret === null)) {
       throw new OrderError(
         "system_not_configured",
         "通知功能尚未完成配置",
@@ -482,7 +488,7 @@ export class OrderService {
     }
     try {
       return {
-        target: prepareWebhookTarget(request.notify_url, webhook.allowedOrigin),
+        target: prepareWebhookTarget(request.notify_url, webhook.allowedOrigin, format),
       };
     } catch (error) {
       if (!(error instanceof WebhookTargetError)) throw error;

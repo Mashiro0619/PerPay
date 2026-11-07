@@ -218,8 +218,8 @@ describe("admin order notification summaries", () => {
       const allowed = new Map<string, Set<string>>([
         ["app_lease", new Set(["owner_token", "expires_at", "lease_key"])],
         ["payment_orders", new Set(["order_id"])],
-        ["webhook_targets", new Set(["order_id", "target_id"])],
-        ["outbox_events", new Set(["aggregate_id", "outbox_event_id"])],
+        ["webhook_targets", new Set(["order_id", "target_id", "target_format"])],
+        ["outbox_events", new Set(["aggregate_id", "outbox_event_id", "event_type"])],
         ["webhook_deliveries", new Set(["outbox_event_id", "target_id", "generation", "status"])],
       ]);
       connection.setAuthorizer((action, table, column) => {

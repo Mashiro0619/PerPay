@@ -31,22 +31,32 @@ describe("isolated cross-version business fixture", () => {
         ...Object.values(seeded.fixture.orders).map(order => order.checkoutToken)]) assert.equal(serialized.includes(secret), false);
       assert.ok(baseline.audit.length > 0);
       assert.equal(baseline.tables.payment_orders.rows.length, 2);
+      assert.equal(baseline.schemaVersion, m.DATABASE_COMPATIBILITY.maximum);
+      assert.ok(baseline.tables.epay_sites.rows.length > 0);
+      assert.ok(baseline.tables.epay_credentials.columns.includes("ciphertext"));
+      assert.ok(baseline.tables.epay_orders.columns.includes("protocol"));
+      assert.ok(baseline.tables.webhook_attempts.columns.includes("request_method"));
       database.close();
       database = await m.AppDatabase.open(config.databasePath, { masterKey: config.masterKey });
-      const verified = await verifyBusinessData({ modules: m, database, config, fixture: seeded.fixture, baseline, expectedSchema: 40 });
+      const verified = await verifyBusinessData({ modules: m, database, config, fixture: seeded.fixture, baseline, expectedSchema: m.DATABASE_COMPATIBILITY.maximum });
       assert.equal(verified.originalCredentialsVerified, true);
       assert.equal(verified.originalCheckoutTokensVerified, true);
-      const legacySnapshot = { ...baseline };
+      const legacySnapshot = { ...baseline, schemaVersion: 40, tables: { ...baseline.tables } };
       delete legacySnapshot.observationHistory;
-      await verifyBusinessData({ modules: m, database, config, fixture: seeded.fixture, baseline: legacySnapshot, expectedSchema: 40 });
+      for (const table of ["epay_sites", "epay_credentials", "epay_orders"]) delete legacySnapshot.tables[table];
+      await verifyBusinessData({ modules: m, database, config, fixture: seeded.fixture, baseline: legacySnapshot, expectedSchema: m.DATABASE_COMPATIBILITY.maximum });
+      const changedEpayIdentity = structuredClone(baseline);
+      changedEpayIdentity.tables.epay_sites.rows[0].digest = "0".repeat(64);
+      await assert.rejects(verifyBusinessData({ modules: m, database, config, fixture: seeded.fixture, baseline: changedEpayIdentity,
+        expectedSchema: m.DATABASE_COMPATIBILITY.maximum }), /preserved_row_changed:epay_sites/);
       const changedHistory = { ...baseline, observationHistory: { ...baseline.observationHistory, sha256: "0".repeat(64) } };
-      await assert.rejects(verifyBusinessData({ modules: m, database, config, fixture: seeded.fixture, baseline: changedHistory, expectedSchema: 40 }), /historical_observations_changed/);
+      await assert.rejects(verifyBusinessData({ modules: m, database, config, fixture: seeded.fixture, baseline: changedHistory, expectedSchema: m.DATABASE_COMPATIBILITY.maximum }), /historical_observations_changed/);
       const advanced = await advanceBusinessData({ modules: m, database, config, fixture: seeded.fixture });
       assert.notEqual(advanced.orders.upgraded.orderId, seeded.fixture.orders.paid.orderId);
       const upgraded = captureSnapshot(database, advanced, m.APP_VERSION);
       assert.equal(upgraded.tables.payment_orders.rows.length, 3);
       assert.ok(upgraded.audit.length > baseline.audit.length);
-      await verifyBusinessData({ modules: m, database, config, fixture: advanced, baseline: upgraded, expectedSchema: 40 });
+      await verifyBusinessData({ modules: m, database, config, fixture: advanced, baseline: upgraded, expectedSchema: m.DATABASE_COMPATIBILITY.maximum });
       const settingsStore = new m.RuntimeSettingsStore(database, config.masterKey), sites = settingsStore.siteStore();
       const settings = new m.RuntimeSettingsService({ store: settingsStore });
       const identity = new m.IdentityService(database); await identity.initialize();
@@ -63,7 +73,7 @@ describe("isolated cross-version business fixture", () => {
       assert.equal(invalidCheckout.status, 404, "provider unavailability must not mask an invalid capability");
       const site = sites.get(seeded.siteId);
       sites.update(site.clientId, { revision: site.revision, configuration: { ...site.configuration, name: "Intentional changed fixture" } }, { actorId: "admin" });
-      await assert.rejects(verifyBusinessData({ modules: m, database, config, fixture: seeded.fixture, baseline, expectedSchema: 40 }), /preserved_row_changed:sites/);
+      await assert.rejects(verifyBusinessData({ modules: m, database, config, fixture: seeded.fixture, baseline, expectedSchema: m.DATABASE_COMPATIBILITY.maximum }), /preserved_row_changed:sites/);
     } finally {
       database?.close();
       assert.equal(dirname(resolve(directory)), resolve(tmpdir()));

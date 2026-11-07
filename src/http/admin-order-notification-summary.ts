@@ -52,6 +52,7 @@ export function adminOrderNotificationSummaries(
          LEFT JOIN outbox_events AS outbox
            ON outbox.aggregate_id = orders.order_id
           AND target.target_id IS NOT NULL
+          AND (target.target_format = 'NATIVE_JSON_V1' OR outbox.event_type = 'PAYMENT_CONFIRMED')
          LEFT JOIN webhook_deliveries AS delivery
            ON delivery.outbox_event_id = outbox.outbox_event_id
           AND delivery.target_id = target.target_id

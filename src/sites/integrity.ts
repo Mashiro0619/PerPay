@@ -14,6 +14,7 @@ export function countSiteDomainViolations(connection: DatabaseSync): number {
   }
   const sites = connection.prepare("SELECT client_id, configuration, deleted_at FROM sites").all() as Array<{ client_id: string; configuration: string; deleted_at: number | bigint | null }>;
   const accountsAvailable = !!connection.prepare("SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'alipay_accounts'").get();
+  const epayAvailable = !!connection.prepare("SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'epay_credentials'").get();
   const accountDeletionAvailable = accountsAvailable && connection.prepare("PRAGMA table_info(alipay_accounts)").all().some(column => column.name === "deleted_at");
   for (const row of sites) {
     if (!siteClientIdSchema.safeParse(row.client_id).success) violations++;
@@ -43,7 +44,10 @@ export function countSiteDomainViolations(connection: DatabaseSync): number {
     "SELECT count(*) AS total FROM api_client_config AS identity LEFT JOIN site_secrets AS secret ON secret.client_id = identity.client_id AND secret.secret_name = 'api_secret' WHERE identity.enabled = 1 AND (secret.secret_fingerprint IS NULL OR secret.secret_fingerprint != identity.secret_fingerprint)",
   );
   violations += count(
-    "SELECT count(*) AS total FROM sites AS site LEFT JOIN site_secrets AS secret ON secret.client_id = site.client_id AND secret.secret_name = 'webhook_secret' WHERE json_extract(site.configuration, '$.notifications_enabled') = 1 AND secret.client_id IS NULL",
+    `SELECT count(*) AS total FROM sites AS site LEFT JOIN site_secrets AS secret
+      ON secret.client_id = site.client_id AND secret.secret_name = 'webhook_secret'
+      WHERE json_extract(site.configuration, '$.notifications_enabled') = 1 AND secret.client_id IS NULL
+      ${epayAvailable ? "AND NOT EXISTS (SELECT 1 FROM epay_credentials WHERE site_id = site.client_id AND purpose IN ('v1_key', 'v2_platform') AND retired_at IS NULL)" : ""}`,
   );
   violations += count(
     "SELECT count(*) AS total FROM site_secrets AS secret LEFT JOIN webhook_signing_keys AS key ON key.client_id = secret.client_id AND key.retired_at IS NULL WHERE secret.secret_name = 'webhook_secret' AND (key.key_version IS NULL OR key.secret_fingerprint != secret.secret_fingerprint)",

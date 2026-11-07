@@ -169,7 +169,10 @@ export class SiteStore {
       checkRevision(current.revision, parsed.revision);
       const configuration = resolveSiteCollection(connection, { ...parsed.configuration, collection: parsed.configuration.collection ?? current.configuration.collection });
       if (parsed.configuration.notifications_enabled && !readSecret(connection, clientId, "webhook_secret")) {
-        throw new SiteError("site_secret_missing", "开启通知前请先生成通知签名密钥。");
+        const epayAvailable = connection.prepare("SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'epay_credentials'").get();
+        const epayKey = epayAvailable && connection.prepare(`SELECT 1 FROM epay_credentials
+          WHERE site_id = ? AND purpose IN ('v1_key', 'v2_platform') AND retired_at IS NULL LIMIT 1`).get(clientId);
+        if (!epayKey) throw new SiteError("site_secret_missing", "开启通知前请先生成通知签名密钥或易支付通知密钥。");
       }
       changed(connection.prepare("UPDATE sites SET configuration = ?, revision = revision + 1, updated_at = max(updated_at, ?) WHERE client_id = ? AND revision = ? AND deleted_at IS NULL")
         .run(JSON.stringify(configuration), now, clientId, parsed.revision).changes);
@@ -261,7 +264,8 @@ export class SiteStore {
           AND json_extract(site.configuration, '$.notifications_enabled') = 1
           AND (EXISTS (
             SELECT 1 FROM outbox_events AS event JOIN webhook_targets AS target ON target.order_id = event.aggregate_id
-            WHERE target.api_client_id = site.client_id AND ${LIVE_NOTIFICATION_TARGET} AND NOT EXISTS (
+            WHERE target.api_client_id = site.client_id AND ${LIVE_NOTIFICATION_TARGET}
+              AND (target.target_format = 'NATIVE_JSON_V1' OR event.event_type = 'PAYMENT_CONFIRMED') AND NOT EXISTS (
               SELECT 1 FROM webhook_deliveries WHERE outbox_event_id = event.outbox_event_id AND target_id = target.target_id AND generation = 1))
           OR EXISTS (
             SELECT 1 FROM webhook_deliveries AS delivery JOIN webhook_targets AS target ON target.target_id = delivery.target_id

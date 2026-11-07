@@ -132,7 +132,7 @@ it("migrates actual schema 39 identities, ciphertext, audit hashes and historica
     assert.equal(legacy.database.integrityCheck().ok, true);
     legacy.database.close();
     upgraded = await AppDatabase.open(legacy.config.databasePath, { masterKey: legacy.config.masterKey });
-    assert.equal(upgraded.read(connection => connection.prepare("SELECT max(version) AS version FROM schema_migrations").get()!.version), 40n);
+    assert.equal(upgraded.read(connection => connection.prepare("SELECT max(version) AS version FROM schema_migrations").get()!.version), BigInt(migrations.at(-1)!.version));
     assert.deepEqual(upgraded.read(connection => tables.map(table => connection.prepare("SELECT * FROM " + table + " ORDER BY rowid").all())), before);
     const sites = new SiteStore(upgraded, legacy.config.masterKey);
     assert.deepEqual(sites.credential("default"), credential);

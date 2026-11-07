@@ -6,8 +6,8 @@
  * /validation-state/isolation.json must match kind, run_id, data_dir and backup_dir.
  *
  * seed [--storage-history]              Actual RC1/schema 38 services and optional large history.
- * verify --schema=38|40 --checkpoint=base|upgraded [--label=lowercase-label]
- * advance                               Candidate/schema 40; separate checkpoint.
+ * verify --schema=<image maximum> --checkpoint=base|upgraded [--label=lowercase-label]
+ * advance                               Candidate/schema 40 or later; separate checkpoint.
  * http-verify --checkpoint=base|upgraded  Running main, loopback :6190 only.
  * summary                               Secret-free base snapshot.
  *
@@ -29,6 +29,7 @@ const TABLES = ["admin_identity", "alipay_accounts", "alipay_account_generations
   "ingest_runs", "provider_raw_pages", "provider_raw_events", "ledger_entries", "financial_operations",
   "payment_matches", "match_candidates", "financial_exceptions", "ledger_transactions", "ledger_postings",
   "outbox_events", "webhook_targets", "webhook_deliveries", "webhook_attempts"];
+const EPAY_TABLES = ["epay_sites", "epay_credentials", "epay_orders"];
 
 function requireCondition(condition, code) { if (!condition) throw new Error(code); }
 function canonical(value) {
@@ -202,8 +203,9 @@ export async function seedBusinessData({ modules: m, database, config, prefix = 
 /** Hash complete rows, including ciphertext and original column types, but never export their contents. */
 export function captureSnapshot(database, fixture, imageVersion) {
   return database.read(db => {
+    const schemaVersion = Number(db.prepare("SELECT MAX(version) AS value FROM schema_migrations").get().value);
     const tables = {};
-    for (const table of TABLES) {
+    for (const table of [...TABLES, ...(schemaVersion >= 41 ? EPAY_TABLES : [])]) {
       const columns = db.prepare(`PRAGMA table_info(${quote(table)})`).all();
       requireCondition(columns.length > 0, "snapshot_table_missing:" + table);
       const primary = columns.filter(column => Number(column.pk) > 0).sort((left, right) => Number(left.pk) - Number(right.pk)).map(column => String(column.name));
@@ -215,7 +217,7 @@ export function captureSnapshot(database, fixture, imageVersion) {
     }
     const audit = db.prepare("SELECT * FROM audit_events ORDER BY sequence").all().map(row => ({
       sequence: Number(row.sequence), eventId: String(row.event_id), eventHash: String(row.event_hash), previousHash: row.previous_hash, digest: digest(row) }));
-    return { format: 1, imageVersion, schemaVersion: Number(db.prepare("SELECT MAX(version) AS value FROM schema_migrations").get().value),
+    return { format: 1, imageVersion, schemaVersion,
       instanceId: database.instanceId(), accountId: fixture.accountId, siteId: fixture.siteId,
       orders: Object.fromEntries(Object.entries(fixture.orders).map(([kind, order]) => [kind, { orderId: order.orderId, checkoutTokenFingerprint: digest(order.checkoutToken) }])),
       credentialFingerprints: { api: digest(fixture.apiSecret), notification: digest(fixture.webhookSecret), application: fixture.applicationKeyFingerprint },
@@ -238,7 +240,7 @@ export async function verifyBusinessData({ modules: m, database, config, fixture
     requireCondition(Number(db.prepare("SELECT MAX(version) AS value FROM schema_migrations").get().value) === expectedSchema, "unexpected_verified_schema");
     let checked = 0;
     for (const [table, saved] of Object.entries(baseline.tables)) {
-      requireCondition(TABLES.includes(table), "unknown_snapshot_table");
+      requireCondition(TABLES.includes(table) || EPAY_TABLES.includes(table), "unknown_snapshot_table");
       const actual = new Map(db.prepare(`SELECT ${saved.columns.map(quote).join(",")} FROM ${quote(table)}`).all()
         .map(row => [JSON.stringify(canonical(saved.primary.map(name => row[name]))), digest(row)]));
       for (const row of saved.rows) { requireCondition(actual.get(JSON.stringify(row.key)) === row.digest, "preserved_row_changed:" + table); checked++; }
@@ -251,6 +253,20 @@ export async function verifyBusinessData({ modules: m, database, config, fixture
         "historical_audit_bytes_changed");
     }
     requireCondition(m.inspectAuditChain(db).violations === 0, "audit_chain_integrity_failed");
+    if (expectedSchema >= 41) {
+      requireCondition(!db.prepare("SELECT 1 FROM sites LEFT JOIN epay_sites ON epay_sites.site_id = sites.client_id WHERE epay_sites.pid IS NULL LIMIT 1").get(), "epay_site_identity_missing");
+      if (baseline.schemaVersion < 41) {
+        requireCondition(!db.prepare("SELECT 1 FROM epay_sites WHERE v1_enabled != 0 OR v2_enabled != 0 LIMIT 1").get(), "epay_migration_enabled_protocol");
+        requireCondition(Number(db.prepare("SELECT COUNT(*) AS count FROM epay_credentials").get().count) === 0, "epay_migration_created_credentials");
+      }
+    }
+    if (expectedSchema >= 42 && baseline.schemaVersion < 42) {
+      for (const saved of baseline.tables.webhook_attempts.rows) {
+        const row = db.prepare("SELECT protocol, epay_key_id, request_method, request_url, request_fingerprint FROM webhook_attempts WHERE attempt_id = ?").get(saved.key[0]);
+        requireCondition(row?.protocol === "native" && row.epay_key_id === null && row.request_method === "POST" && row.request_url === null && row.request_fingerprint === null,
+          "historical_notification_protocol_changed");
+      }
+    }
     return checked;
   });
   const settingsStore = new m.RuntimeSettingsStore(database, config.masterKey); settingsStore.initialize();
@@ -276,7 +292,7 @@ export async function verifyBusinessData({ modules: m, database, config, fixture
 }
 
 export async function advanceBusinessData({ modules: m, database, config, fixture }) {
-  requireCondition(m.DATABASE_COMPATIBILITY.maximum === 40, "advance_requires_candidate_schema_40");
+  requireCondition(m.DATABASE_COMPATIBILITY.maximum >= 40, "advance_requires_candidate_schema");
   const settingsStore = new m.RuntimeSettingsStore(database, config.masterKey); settingsStore.initialize();
   const settings = new m.RuntimeSettingsService({ store: settingsStore, verifyProviderApplicationKey: async () => { throw new Error("no_external_verification"); } });
   const sites = settingsStore.siteStore(), accounts = settingsStore.accountStore();
@@ -368,13 +384,13 @@ export async function runUpgradeFixture(arguments_ = process.argv.slice(2), envi
   const privatePath = join(isolation.stateDirectory, "private-fixture" + suffix + ".json"), snapshotPath = join(isolation.stateDirectory, "snapshot" + suffix + ".json");
   if (mode === "summary") { requireCondition(flags.length === 0, "unexpected_summary_options"); return readState(snapshotPath); }
   const m = await loadImageModules();
-  const schemaFlag = flags.find(value => /^--schema=(38|40)$/.test(value)), labelFlag = flags.find(value => /^--label=[a-z0-9-]{1,40}$/.test(value));
+  const schemaFlag = flags.find(value => /^--schema=[1-9][0-9]{0,5}$/.test(value)), labelFlag = flags.find(value => /^--label=[a-z0-9-]{1,40}$/.test(value));
   const expectedSchema = schemaFlag ? Number(schemaFlag.slice("--schema=".length)) : m.DATABASE_COMPATIBILITY.maximum;
   if (mode === "verify") {
     requireCondition((flags.length === 2 || flags.length === 3 && labelFlag) && schemaFlag && checkpointFlag, "verify_requires_schema_and_checkpoint");
     requireCondition(m.DATABASE_COMPATIBILITY.maximum === expectedSchema, "verification_image_schema_mismatch");
   }
-  if (mode === "advance") requireCondition(flags.length === 0 && m.DATABASE_COMPATIBILITY.maximum === 40, "advance_requires_candidate_schema_40");
+  if (mode === "advance") requireCondition(flags.length === 0 && m.DATABASE_COMPATIBILITY.maximum >= 40, "advance_requires_candidate_schema");
   if (mode === "http-verify") requireCondition(flags.length === 1 && checkpointFlag, "http_verify_requires_checkpoint");
   const config = m.loadConfig(environment);
   requireCondition(config.databasePath === "/data/perpay.sqlite3", "unexpected_database_path");
@@ -407,12 +423,12 @@ export async function runUpgradeFixture(arguments_ = process.argv.slice(2), envi
     if (mode === "advance") {
       const upgradedPrivatePath = join(isolation.stateDirectory, "private-fixture-upgraded.json"), upgradedSnapshotPath = join(isolation.stateDirectory, "snapshot-upgraded.json");
       requireCondition(!existsSync(upgradedPrivatePath) && !existsSync(upgradedSnapshotPath), "upgraded_checkpoint_already_exists");
-      await verifyBusinessData({ modules: m, database, config, fixture, baseline, expectedSchema: 40 });
+      await verifyBusinessData({ modules: m, database, config, fixture, baseline, expectedSchema: m.DATABASE_COMPATIBILITY.maximum });
       const advanced = await advanceBusinessData({ modules: m, database, config, fixture });
       const snapshot = captureSnapshot(database, advanced, m.APP_VERSION);
       writeFileSync(upgradedPrivatePath, JSON.stringify(advanced) + "\n", { mode: 0o600, flag: "wx" });
       writeFileSync(upgradedSnapshotPath, JSON.stringify({ runId: isolation.runId, ...snapshot }) + "\n", { mode: 0o600, flag: "wx" });
-      return { ok: true, mode, runId: isolation.runId, imageVersion: m.APP_VERSION, schemaVersion: 40,
+      return { ok: true, mode, runId: isolation.runId, imageVersion: m.APP_VERSION, schemaVersion: snapshot.schemaVersion,
         newOrderId: advanced.orders.upgraded.orderId, newLedgerEntryId: advanced.upgradedLedgerEntryId,
         newPaymentMatchId: advanced.upgradedPaymentMatchId, historicalAuditEvents: snapshot.audit.length, historicalAuditHead: snapshot.audit.at(-1)?.eventHash ?? null,
         checkpoint: "upgraded", networkUsed: false };

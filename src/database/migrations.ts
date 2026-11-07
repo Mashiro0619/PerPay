@@ -1,10 +1,12 @@
 import { MULTI_SITE_SCHEMA_SQL } from "../sites/migrations/schema.ts";
 import { SITE_API_CLIENT_IDS_SCHEMA_SQL } from "../sites/migrations/api-client-ids.ts";
+import { EPAY_SCHEMA_SQL } from "../epay/schema.ts";
 import { ALIPAY_ACCOUNTS_SCHEMA_SQL } from "../alipay-accounts/schema.ts";
 import { ALIPAY_ACCOUNT_DELETION_SCHEMA_SQL } from "../alipay-accounts/deletion-schema.ts";
 import { CORE_AUDIT_SCHEMA_SQL } from "../audit/core-schema.ts";
 import { ACTIVITY_SCHEMA_SQL } from "../audit/activity-schema.ts";
 import { createHash } from "node:crypto";
+import { EPAY_WEBHOOK_SCHEMA_SQL } from "../notifications/epay-schema.ts";
 
 export interface Migration {
   readonly version: number;
@@ -5031,4 +5033,6 @@ export const migrations: readonly Migration[] = [
   { version: 38, name: "alipay_account_deletion_tombstones", sql: ALIPAY_ACCOUNT_DELETION_SCHEMA_SQL },
   { version: 39, name: "unified_audit_and_activity_history", sql: CORE_AUDIT_SCHEMA_SQL + ACTIVITY_SCHEMA_SQL },
   { version: 40, name: "mutable_public_api_client_ids", sql: SITE_API_CLIENT_IDS_SCHEMA_SQL },
+  { version: 41, name: "site_epay_credentials_and_orders", sql: EPAY_SCHEMA_SQL },
+  { version: 42, name: "epay_notification_protocols", sql: EPAY_WEBHOOK_SCHEMA_SQL },
 ] as const;
