@@ -203,7 +203,7 @@ export function registerEpayRoutes(app: Hono<AppEnvironment>, dependencies: AppD
     const credentials = epay.credentialsForSite(metadata.siteId);
     if (!credentials) return context.notFound();
     const order = dependencies.orders.forSite(metadata.siteId).get(metadata.orderId);
-    if (order.payment.status !== "CONFIRMED") return context.redirect(metadata.returnUrl, 302);
+    if (order.payment.status !== "CONFIRMED") return context.redirect(new URL(metadata.returnUrl).href, 302);
     const key = metadata.protocol === "epay_v1" ? credentials.v1Key : credentials.platformPrivateKey;
     if (!key) throw new EpayError("epay_secret_missing", "商户通知密钥不可用。");
     const target = buildEpayCallbackUrl(metadata.returnUrl, { pid: metadata.pid, tradeNo: metadata.tradeNo, outTradeNo: order.merchantOrderNo,

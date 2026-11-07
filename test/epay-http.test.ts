@@ -193,6 +193,24 @@ test("paid synchronous return signs the complete merchant query and uses the ori
   } finally { f.close(); }
 });
 
+test("unpaid returns preserve encoded query values in Unicode merchant URLs", async () => {
+  const f = await fixture();
+  try {
+    for (const protocol of ["epay_v1", "epay_v2"] as const) {
+      const returnUrl = merchantOrigin + "/返回?token=%2B%2526%3D";
+      const created = await (await f.create(protocol, protocol + "-unicode-return", f.first.credentials, { return_url: returnUrl })).json() as { code: number };
+      assert.equal(created.code, protocol === "epay_v1" ? 1 : 0);
+      const metadata = f.epay.findOrder(f.first.site.clientId, { outTradeNo: protocol + "-unicode-return" })!;
+      const order = f.orders.forSite(metadata.siteId).get(metadata.orderId);
+      assert.equal(metadata.returnUrl, returnUrl, "keep the original request for existing order replay checks");
+      const response = await f.app.request("/api/public/v1/checkouts/" + order.checkoutToken + "/return");
+      assert.equal(response.status, 302);
+      assert.equal(response.headers.get("location"), new URL(returnUrl).href);
+      assert.equal(new URL(response.headers.get("location")!).searchParams.get("token"), "+%26=");
+    }
+  } finally { f.close(); }
+});
+
 test("V2 order lists filter payment status before applying offset and limit", async () => {
   const f = await fixture();
   try {
