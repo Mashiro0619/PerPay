@@ -106,12 +106,12 @@ export function AuditChanges({ changes, category }: { changes: readonly AuditCha
       <CardDescription>只列出已记录的变更字段。密码、密钥等敏感值仅保留变更状态。</CardDescription>
     </CardHeader>
     <CardContent>
-      {changes.length === 0 ? <p className="text-sm text-muted-foreground">这条记录未保存前后值，不能据此判断没有配置变更。</p> : <ItemGroup>
+      {changes.length === 0 ? <p className="text-sm text-muted-foreground">这条记录未保存前后值，不能据此判断没有配置变更。</p> : <ItemGroup className="gap-0">
         {changes.map((change, index) => {
           const [before, after] = auditChangeValues(change);
           return <Fragment key={change.field}>
-            {index > 0 && <ItemSeparator aria-hidden="true" />}
-            <Item role="listitem" className="min-w-0 px-0">
+            {index > 0 && <ItemSeparator className="my-0" aria-hidden="true" />}
+            <Item role="listitem" className="min-w-0 px-0 py-2">
               <ItemContent className="min-w-0">
                 <ItemTitle className="wrap-anywhere" title={change.field}>{auditFieldLabel(change.field)}</ItemTitle>
                 <DetailFields density="comfortable" items={[["变更前", before], ["变更后", after]]} />
