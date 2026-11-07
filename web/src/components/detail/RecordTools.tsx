@@ -44,7 +44,7 @@ export function RecordTools({
   if (!technical && actions.length === 0 && !to) return null;
   return (
     <>
-      <div className={cn("flex min-w-0 flex-wrap justify-end gap-2", inline && "inline-flex shrink-0", overlay && technical && "w-full flex-col items-stretch")} data-record-tools>
+      <div className={cn("flex min-w-0 max-w-full flex-wrap justify-end gap-2", inline && "inline-flex shrink-0", overlay && technical && "w-full flex-col items-stretch")} data-record-tools>
         {((technical && !overlay) || actions.length > 0 || to) &&
         <DropdownMenu>
           <Tooltip><TooltipTrigger render={<DropdownMenuTrigger
