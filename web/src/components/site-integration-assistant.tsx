@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, TriangleAlert } from "lucide-react";
 import { ApiError, queryClient, type Site } from "@/api/client";
 import {
   getSiteEpay, rotateEpaySecret, saveSiteEpay, siteEpayKey, viewEpaySecret,
@@ -10,18 +10,18 @@ import { useDirtyDraft } from "@/drafts";
 import { useOverlayCloseGuard } from "@/lib/overlay-context";
 import { Link } from "@/navigation";
 import { CopyValue } from "@/components/copy-value";
+import { SecretViewDialog } from "@/components/secret-view-dialog";
 import { ErrorNotice, Loading } from "@/components/request-state";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Spinner } from "@/components/ui/spinner";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
-  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+  AlertDialogFooter, AlertDialogHeader, AlertDialogMedia, AlertDialogTitle,
 } from "@/components/admin-dialog";
 
 interface AssistantProps {
@@ -40,6 +40,11 @@ const protocols = [
 
 const secretLabels: Record<EpaySecret, string> = {
   epay_v1: "商户密钥", epay_merchant: "商户私钥", epay_platform: "平台私钥",
+};
+const rotationDescriptions: Record<EpaySecret, string> = {
+  epay_v1: "旧商户密钥将立即失效。请同步更新业务网站的商户密钥。",
+  epay_merchant: "旧商户私钥将不能用于新请求。请同步更新业务网站的商户私钥。",
+  epay_platform: "响应和通知将改用新平台私钥签名。请同步更新业务网站的平台公钥。",
 };
 
 export function SiteIntegrationAssistant(props: AssistantProps) {
@@ -77,11 +82,15 @@ function IntegrationContent({ site, siteDirty = false, disabled = false, showCli
   const [refreshRequired, setRefreshRequired] = useState(false);
   const [feedback, setFeedback] = useState("");
   const [pendingRead, setPendingRead] = useState<{ purpose: EpaySecret; publicOnly: boolean } | null>(null);
+  const [viewing, setViewing] = useState<{ purpose: EpaySecret; publicOnly: boolean } | null>(null);
+  const [readError, setReadError] = useState<Error | null>(null);
   const [revealed, setRevealed] = useState<{ purpose: EpaySecret; secret: string; public_key?: string | null; publicOnly?: boolean } | null>(null);
   const [rotation, setRotation] = useState<EpaySecret | null>(null);
   const activeRead = useRef<AbortController | null>(null);
   const generation = useRef(0);
   const writePending = useRef(false);
+  const viewTrigger = useRef<HTMLButtonElement | null>(null);
+  const rotationTrigger = useRef<HTMLButtonElement | null>(null);
 
   const hideSecret = useCallback(() => {
     generation.current++;
@@ -89,6 +98,8 @@ function IntegrationContent({ site, siteDirty = false, disabled = false, showCli
     activeRead.current = null;
     setPendingRead(null);
     setRevealed(null);
+    setViewing(null);
+    setReadError(null);
   }, []);
 
   useLayoutEffect(() => {
@@ -129,6 +140,7 @@ function IntegrationContent({ site, siteDirty = false, disabled = false, showCli
       setError(null);
       setRefreshRequired(false);
       setFeedback(purpose ? "密钥已更新，请更新业务网站配置。" : "易支付设置已保存。");
+      if (purpose) setRotation(null);
     },
     onError: reason => {
       setError(reason instanceof Error ? reason : new Error("保存失败，请重新读取并核对。"));
@@ -138,6 +150,8 @@ function IntegrationContent({ site, siteDirty = false, disabled = false, showCli
   const busy = disabled || reading || pendingRead !== null || persist.isPending;
   const blocked = busy || siteDirty || dirty;
   const selected = protocols.find(item => item.value === protocol)!;
+  const keyReady = (purpose: EpaySecret) => !!(purpose === "epay_v1" ? configuration.v1_key_version
+    : purpose === "epay_merchant" ? configuration.merchant_key_version : configuration.platform_key_version);
   const protocolEnabled = protocol === "native" || (protocol === "epay_v1" ? configuration.v1_enabled : configuration.v2_enabled);
   const keysReady = protocol === "native" || (protocol === "epay_v1"
     ? !!configuration.v1_key_version
@@ -181,9 +195,10 @@ function IntegrationContent({ site, siteDirty = false, disabled = false, showCli
     const controller = new AbortController();
     activeRead.current = controller;
     const current = ++generation.current;
+    setViewing({ purpose, publicOnly });
     setPendingRead({ purpose, publicOnly });
     setRevealed(null);
-    setError(null);
+    setReadError(null);
     setFeedback("");
     try {
       const secret = await viewEpaySecret(site.client_id, purpose, controller.signal);
@@ -193,7 +208,7 @@ function IntegrationContent({ site, siteDirty = false, disabled = false, showCli
       }
     } catch (reason) {
       if (current === generation.current && !controller.signal.aborted) {
-        setError(reason instanceof Error ? reason : new Error("请求失败，请重试。"));
+        setReadError(reason instanceof Error ? reason : new Error("请求失败，请重试。"));
         if (reason instanceof ApiError && reason.status === 409) setRefreshRequired(true);
       }
     } finally {
@@ -203,31 +218,23 @@ function IntegrationContent({ site, siteDirty = false, disabled = false, showCli
 
   function credential(purpose: EpaySecret, publicOnly = false) {
     const label = publicOnly ? "平台公钥" : secretLabels[purpose];
-    const shown = revealed?.purpose === purpose && !!revealed.publicOnly === publicOnly ? revealed : null;
-    const loading = pendingRead?.purpose === purpose && pendingRead.publicOnly === publicOnly;
+    const rotationLabel = (keyReady(purpose) ? "轮换" : "生成") + label;
     const labelId = id + "-" + purpose + (publicOnly ? "-public" : "");
     return <Field key={labelId} aria-labelledby={labelId} className="min-w-0">
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
         <FieldLabel id={labelId}>{label}</FieldLabel>
         <div className="flex shrink-0 gap-2">
-          <Button type="button" variant="outline" aria-label={(shown ? "隐藏" : "查看") + label}
-            aria-busy={loading} disabled={!shown && blocked}
-            onClick={() => { if (shown) hideSecret(); else void read(purpose, publicOnly); }}>
-            {loading ? <><Spinner data-icon="inline-start" />正在读取…</> : shown ? "隐藏" : "查看"}
+          <Button type="button" variant="outline" aria-label={"查看" + label}
+            disabled={blocked} onClick={event => { viewTrigger.current = event.currentTarget; void read(purpose, publicOnly); }}>
+            查看
           </Button>
-          {!publicOnly && <Button type="button" variant="outline" aria-label={"更新" + label}
-            disabled={blocked} onClick={() => setRotation(purpose)}>更新</Button>}
+          {!publicOnly && <Button type="button" variant="outline" aria-label={rotationLabel}
+            disabled={blocked || needsRefresh} onClick={event => {
+              rotationTrigger.current = event.currentTarget;
+              persist.reset(); setError(null); setRotation(purpose);
+            }}>{keyReady(purpose) ? "轮换" : "生成"}</Button>}
         </div>
       </div>
-      {shown && (purpose === "epay_v1"
-        ? <div className="flex min-w-0 items-center gap-2">
-          <Input aria-label="密钥内容" readOnly value={shown.secret} autoComplete="off" spellCheck={false} />
-          <CopyValue value={shown.secret} label={"复制" + label} buttonOnly />
-        </div>
-        : <CopyValue value={publicOnly ? shown.public_key! : shown.secret} secret={!publicOnly} label={"复制" + label} />)}
-      {shown && purpose === "epay_merchant" && shown.public_key && <Field>
-        <FieldLabel>商户公钥</FieldLabel><CopyValue value={shown.public_key} label="复制商户公钥" />
-      </Field>}
     </Field>;
   }
   return <Card data-site-integration>
@@ -255,7 +262,7 @@ function IntegrationContent({ site, siteDirty = false, disabled = false, showCli
             }} />
         </Field>}
       </div>
-      <ErrorNotice error={error} />
+      <ErrorNotice error={rotation ? null : error} />
       {Object.entries(fieldErrors).map(([field, message]) =>
         <p key={field} className="text-sm text-destructive">{message}</p>)}
       {needsRefresh && <Button type="button" variant="outline" className="self-start" disabled={busy} onClick={() => {
@@ -267,7 +274,7 @@ function IntegrationContent({ site, siteDirty = false, disabled = false, showCli
         <Button type="button" variant="outline" disabled={busy} onClick={() => { setDraft(null); clearDraft(); }}>撤销易支付修改</Button>
       </div>}
       {!protocolEnabled && <p role="status">此协议已暂停新订单。</p>}
-      {!keysReady && <Alert><AlertDescription>接入密钥尚未就绪，请更新对应密钥。</AlertDescription></Alert>}
+      {!keysReady && <Alert><AlertDescription>接入密钥尚未就绪，请生成对应密钥。</AlertDescription></Alert>}
       {feedback && <p role="status">{feedback}</p>}
       <FieldGroup className="grid min-w-0 grid-cols-1 gap-4 @lg/integration:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <Field>
@@ -294,11 +301,31 @@ function IntegrationContent({ site, siteDirty = false, disabled = false, showCli
       <Link to={sitePath + "/orders"} className={buttonVariants({ variant: "outline" })}>查看网站订单</Link>
       <Link to={sitePath + "/notifications"} className={buttonVariants({ variant: "outline" })}>查看通知记录</Link>
     </CardFooter>
-    <AlertDialog open={rotation !== null} onOpenChange={open => { if (!open) setRotation(null); }}>
-      <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>更新{rotation ? secretLabels[rotation] : "密钥"}？</AlertDialogTitle>
-        <AlertDialogDescription>新密钥立即用于后续请求或通知。请同步更新业务网站的配置，已有插件需替换对应密钥。</AlertDialogDescription>
-      </AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>取消</AlertDialogCancel>
-        <AlertDialogAction disabled={blocked} onClick={() => { if (rotation && !blocked) { persist.mutate(rotation); setRotation(null); } }}>确认更新</AlertDialogAction>
+    <SecretViewDialog open={viewing !== null} title={viewing?.publicOnly ? "平台公钥" : viewing ? secretLabels[viewing.purpose] : "查看密钥"}
+      pending={pendingRead !== null} error={readError} onClose={hideSecret} finalFocus={() => viewTrigger.current}
+      onRetry={() => { if (viewing) void read(viewing.purpose, viewing.publicOnly); }}
+      values={revealed ? [
+        { label: revealed.publicOnly ? "平台公钥" : secretLabels[revealed.purpose], value: revealed.publicOnly ? revealed.public_key! : revealed.secret },
+        ...(!revealed.publicOnly && revealed.purpose === "epay_merchant" && revealed.public_key
+          ? [{ label: "商户公钥", value: revealed.public_key }] : []),
+      ] : []} />
+    <AlertDialog open={rotation !== null} onOpenChange={(open, event) => {
+      if (!open && persist.isPending) event.cancel();
+      else if (!open) setRotation(null);
+    }}>
+      <AlertDialogContent finalFocus={() => rotationTrigger.current}><AlertDialogHeader>
+        {rotation && keyReady(rotation) && <AlertDialogMedia variant="warning"><TriangleAlert aria-hidden="true" /></AlertDialogMedia>}
+        <AlertDialogTitle>{rotation && keyReady(rotation) ? "轮换" : "生成"}{rotation ? secretLabels[rotation] : "密钥"}？</AlertDialogTitle>
+        <AlertDialogDescription>{rotation && keyReady(rotation) ? rotationDescriptions[rotation] : "生成后，请将接入密钥配置到业务网站。"}</AlertDialogDescription>
+      </AlertDialogHeader>
+      <ErrorNotice error={error} showDiagnostics={false} />
+      {persist.isError && <p>请关闭后查看当前密钥，确认操作结果。</p>}
+      <AlertDialogFooter><AlertDialogCancel disabled={persist.isPending}>{persist.isError ? "关闭" : "取消"}</AlertDialogCancel>
+        <AlertDialogAction variant={rotation && keyReady(rotation) ? "destructive" : "default"}
+          disabled={blocked || persist.isError} onClick={() => { if (rotation && !blocked && !persist.isError) persist.mutate(rotation); }}>
+          {persist.isPending && <Spinner data-icon="inline-start" />}
+          {persist.isPending ? "正在处理…" : rotation && keyReady(rotation) ? "确认轮换" : "生成密钥"}
+        </AlertDialogAction>
       </AlertDialogFooter></AlertDialogContent>
     </AlertDialog>
   </Card>;

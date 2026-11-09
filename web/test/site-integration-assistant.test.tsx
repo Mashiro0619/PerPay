@@ -86,8 +86,8 @@ describe("website integration assistant", () => {
     }
     expect(screen.getByRole("button", { name: "查看商户私钥" })).toBeVisible();
     expect(screen.getByRole("button", { name: "查看平台公钥" })).toBeVisible();
-    expect(screen.getByRole("button", { name: "更新商户私钥" })).toBeVisible();
-    expect(screen.getByRole("button", { name: "更新平台私钥" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "轮换商户私钥" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "轮换平台私钥" })).toBeVisible();
     expect(fixture.writes).toHaveLength(0);
   });
 
@@ -108,7 +108,7 @@ describe("website integration assistant", () => {
     await screen.findByText("网站接入助手");
     await userEvent.click(screen.getByRole("button", { name: "易支付 V1" }));
     expect(screen.getByRole("button", { name: "查看商户密钥" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "更新商户密钥" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "轮换商户密钥" })).toBeDisabled();
     expect(screen.getByRole("switch")).toHaveAttribute("aria-disabled", "true");
     expect(fixture.writes).toHaveLength(0);
   });
@@ -133,32 +133,32 @@ describe("website integration assistant", () => {
     await screen.findByText("网站接入助手");
     await userEvent.click(screen.getByRole("button", { name: "易支付 V2" }));
     await userEvent.click(screen.getByRole("button", { name: "查看平台公钥" }));
-    await waitFor(() => expect(fixture.container).toHaveTextContent("synthetic-public-key"));
+    expect(await within(screen.getByRole("dialog", { name: "平台公钥" })).findByDisplayValue("synthetic-public-key")).toBeVisible();
     expect(screen.queryByDisplayValue("synthetic-private-key")).not.toBeInTheDocument();
     expect(fixture.container).not.toHaveTextContent("synthetic-private-key");
     expect(fixture.writes[0]?.path).toBe("/api/admin/v1/sites/site_alpha/secrets/epay_platform/actions/view");
     expect(JSON.stringify(queryClient.getQueryCache().getAll().map(query => query.state.data))).not.toContain("synthetic-private-key");
   });
 
-  it("shows read progress and toggles a credential in place without issuing another read", async () => {
+  it("opens a separate viewer immediately and restores focus after closing without another read", async () => {
     const fixture = mount();
     await screen.findByText("网站接入助手");
     await userEvent.click(screen.getByRole("button", { name: "易支付 V1" }));
     const group = screen.getByRole("group", { name: "商户密钥" });
     const view = within(group).getByRole("button", { name: "查看商户密钥" });
-    expect(within(group).getByRole("button", { name: "更新商户密钥" })).toBeVisible();
+    expect(within(group).getByRole("button", { name: "轮换商户密钥" })).toBeVisible();
     const release = fixture.deferSecret();
     await userEvent.click(view);
-    expect(view).toHaveAttribute("aria-busy", "true");
-    expect(view).toHaveTextContent("正在读取");
+    const dialog = screen.getByRole("dialog", { name: "商户密钥" });
+    expect(within(dialog).getByRole("status")).toHaveTextContent("正在读取");
     expect(view).toBeDisabled();
     await act(async () => release());
-    expect(await within(group).findByDisplayValue("late-secret")).toBeVisible();
-    expect(view).toHaveAccessibleName("隐藏商户密钥");
-    expect(within(group).queryByRole("button", { name: "查看商户密钥" })).not.toBeInTheDocument();
-    await userEvent.click(view);
+    expect(await within(dialog).findByDisplayValue("late-secret")).toBeVisible();
+    expect(within(group).queryByRole("textbox")).not.toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "关闭" }));
     expect(screen.queryByDisplayValue("late-secret")).not.toBeInTheDocument();
     expect(view).toHaveAccessibleName("查看商户密钥");
+    await waitFor(() => expect(view).toHaveFocus());
     expect(fixture.writes).toHaveLength(1);
   });
 
@@ -167,12 +167,14 @@ describe("website integration assistant", () => {
     await screen.findByText("网站接入助手");
     await userEvent.click(screen.getByRole("button", { name: "易支付 V2" }));
     await userEvent.click(screen.getByRole("button", { name: "查看平台私钥" }));
-    expect(await within(screen.getByRole("group", { name: "平台私钥" })).findByDisplayValue("synthetic-private-key")).toBeVisible();
+    expect(await within(screen.getByRole("dialog", { name: "平台私钥" })).findByDisplayValue("synthetic-private-key")).toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: "关闭" }));
     await userEvent.click(screen.getByRole("button", { name: "查看平台公钥" }));
-    await waitFor(() => expect(screen.getByRole("group", { name: "平台公钥" })).toHaveTextContent("synthetic-public-key"));
+    expect(await within(screen.getByRole("dialog", { name: "平台公钥" })).findByDisplayValue("synthetic-public-key")).toBeVisible();
     expect(screen.queryByDisplayValue("synthetic-private-key")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "关闭" }));
     expect(screen.getByRole("button", { name: "查看平台私钥" })).toBeVisible();
-    expect(screen.getByRole("button", { name: "隐藏平台公钥" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "查看平台公钥" })).toBeVisible();
   });
 
   it("hides revealed private keys on protocol changes and ignores responses after leaving", async () => {
@@ -181,6 +183,7 @@ describe("website integration assistant", () => {
     await userEvent.click(screen.getByRole("button", { name: "易支付 V2" }));
     await userEvent.click(screen.getByRole("button", { name: "查看商户私钥" }));
     expect(await screen.findByDisplayValue("synthetic-private-key")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "关闭" }));
     await userEvent.click(screen.getByRole("button", { name: "易支付 V1" }));
     expect(screen.queryByDisplayValue("synthetic-private-key")).not.toBeInTheDocument();
     const release = fixture.deferSecret();
@@ -195,13 +198,65 @@ describe("website integration assistant", () => {
     const fixture = mount();
     await screen.findByText("网站接入助手");
     await userEvent.click(screen.getByRole("button", { name: "易支付 V1" }));
-    await userEvent.click(screen.getByRole("button", { name: "更新商户密钥" }));
+    await userEvent.click(screen.getByRole("button", { name: "轮换商户密钥" }));
     expect(fixture.writes).toHaveLength(0);
-    await userEvent.click(screen.getByRole("button", { name: "确认更新" }));
+    const confirmation = screen.getByRole("alertdialog", { name: "轮换商户密钥？" });
+    expect(confirmation).toHaveAccessibleDescription("旧商户密钥将立即失效。请同步更新业务网站的商户密钥。");
+    await userEvent.click(screen.getByRole("button", { name: "确认轮换" }));
     await waitFor(() => expect(queryClient.getQueryData<SiteEpayConfiguration>(siteEpayKey(site.client_id))?.revision).toBe(5));
     expect(fixture.writes[0]?.body).toEqual({ revision: 4 });
     const cache = JSON.stringify({ queries: queryClient.getQueryCache().getAll().map(query => query.state.data), mutations: queryClient.getMutationCache().getAll().map(mutation => mutation.state.data) });
     expect(cache).not.toContain("rotated-secret");
+  });
+
+  it("keeps read failures in the viewer and retries without showing stale content", async () => {
+    const fixture = mount();
+    await screen.findByText("网站接入助手");
+    await userEvent.click(screen.getByRole("button", { name: "易支付 V1" }));
+    fixture.fetchMock.mockImplementationOnce(async () => json({ error: { code: "internal_error", message: "读取暂时失败" } }, 503));
+    await userEvent.click(screen.getByRole("button", { name: "查看商户密钥" }));
+    const dialog = screen.getByRole("dialog", { name: "商户密钥" });
+    expect(await within(dialog).findByText("读取暂时失败")).toBeVisible();
+    expect(within(dialog).queryByRole("textbox")).not.toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "重新读取" }));
+    expect(await within(dialog).findByDisplayValue("synthetic-private-key")).toBeVisible();
+    expect(within(dialog).queryByText("读取暂时失败")).not.toBeInTheDocument();
+  });
+
+  it("does not reopen a dismissed viewer when its response arrives late", async () => {
+    const fixture = mount();
+    await screen.findByText("网站接入助手");
+    await userEvent.click(screen.getByRole("button", { name: "易支付 V1" }));
+    const release = fixture.deferSecret();
+    await userEvent.click(screen.getByRole("button", { name: "查看商户密钥" }));
+    const request = fixture.fetchMock.mock.calls.map(([request]) => request).at(-1)!;
+    await userEvent.click(screen.getByRole("button", { name: "关闭" }));
+    expect(request.signal.aborted).toBe(true);
+    await act(async () => release());
+    expect(screen.queryByDisplayValue("late-secret")).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("keeps a pending rotation in the warning dialog and prevents a second submission", async () => {
+    const fixture = mount();
+    await screen.findByText("网站接入助手");
+    await userEvent.click(screen.getByRole("button", { name: "易支付 V1" }));
+    let finish!: (response: Response) => void;
+    fixture.fetchMock.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    await userEvent.click(screen.getByRole("button", { name: "轮换商户密钥" }));
+    const dialog = screen.getByRole("alertdialog", { name: "轮换商户密钥？" });
+    const confirm = within(dialog).getByRole("button", { name: "确认轮换" });
+    await userEvent.click(confirm);
+    expect(confirm).toBeDisabled();
+    expect(within(dialog).getByRole("button", { name: "取消" })).toBeDisabled();
+    await userEvent.keyboard("{Escape}");
+    expect(dialog).toBeVisible();
+    await act(async () => finish(json({ error: { code: "internal_error", message: "轮换结果暂未确认" } }, 503)));
+    expect(await within(dialog).findByText("轮换结果暂未确认")).toBeVisible();
+    expect(within(dialog).getByRole("button", { name: "确认轮换" })).toBeDisabled();
+    await userEvent.click(within(dialog).getByRole("button", { name: "关闭" }));
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(fixture.fetchMock.mock.calls.filter(([request]) => new URL(request.url).pathname.endsWith("/actions/rotate"))).toHaveLength(1);
   });
 
   for (const event of ["visibilitychange", "pagehide"] as const) it(`clears shown and in-flight keys on ${event}, then allows an explicit fresh read`, async () => {

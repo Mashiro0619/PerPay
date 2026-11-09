@@ -6,7 +6,7 @@ import { OverlayNestedModalContext, OverlayStepsContext, type OverlaySize } from
 import * as DialogUI from "@/components/ui/dialog";
 import * as AlertUI from "@/components/ui/alert-dialog";
 export { DialogTrigger, DialogClose, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-export { AlertDialogTrigger, AlertDialogCancel, AlertDialogAction, AlertDialogTitle, AlertDialogDescription } from "@/components/ui/alert-dialog";
+export { AlertDialogTrigger, AlertDialogCancel, AlertDialogAction, AlertDialogTitle, AlertDialogDescription, AlertDialogMedia } from "@/components/ui/alert-dialog";
 const RetainDialogContext = createContext(false);
 const StepDialogContext = createContext<{ id: string; open: boolean } | null>(null);
 function useDialogSuspension(props: Pick<ComponentProps<typeof DialogUI.Dialog>, "open" | "defaultOpen" | "onOpenChange" | "onOpenChangeComplete">) {
