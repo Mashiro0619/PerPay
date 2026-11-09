@@ -4,6 +4,35 @@ import { expect, it } from "vitest";
 import { alipayAccount, json } from "./fixtures";
 import { mountOnboarding, systemStatus } from "./onboarding-fixture";
 
+it("账号冲突时弹窗底部操作也停用，重读后保留草稿并恢复操作", async () => {
+  let account = { ...alipayAccount };
+  const view = mountOnboarding({ stage: 4, path: "/settings/accounts/" + account.id, handle: request => {
+    const path = new URL(request.url).pathname;
+    if (path === "/api/admin/v1/alipay-accounts") return json({ data: [account] });
+    if (path !== "/api/admin/v1/alipay-accounts/" + account.id) return undefined;
+    if (request.method === "GET") return json({ data: account });
+    return json({ error: { code: "alipay_account_revision_conflict", message: "账号设置已变化，请刷新后重试。" } }, 409);
+  } });
+  const user = userEvent.setup();
+  const dialog = await screen.findByRole("dialog", { name: "支付宝账号" });
+  const name = await within(dialog).findByLabelText("账号名称");
+  await user.clear(name);
+  await user.type(name, "仍保留的账号名称");
+  await user.click(within(dialog).getByRole("button", { name: "更多账号操作" }));
+  await user.click(await screen.findByRole("menuitem", { name: "保存草稿" }));
+  const reload = await within(dialog).findByRole("button", { name: "重新读取账号" });
+  expect(within(dialog).getByRole("button", { name: "更多账号操作" })).toBeDisabled();
+  expect(within(dialog).getByRole("button", { name: "保存并检查" })).toBeDisabled();
+  account = { ...account, revision: account.revision + 1, enabled: false };
+  await user.click(reload);
+  await within(dialog).findByText("账号配置已重新读取");
+  expect(name).toHaveValue("仍保留的账号名称");
+  expect(within(dialog).getByRole("switch", { name: "接收新订单" })).not.toBeChecked();
+  expect(within(dialog).getByRole("button", { name: "更多账号操作" })).toBeEnabled();
+  expect(within(dialog).getByRole("button", { name: "保存并检查" })).toBeEnabled();
+  expect(view.writes()).toHaveLength(1);
+});
+
 it("releases the account editor after saving while a background status read is still pending", async () => {
   let account = { ...alipayAccount };
   let saved = false;

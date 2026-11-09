@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
@@ -74,7 +74,168 @@ function mount(element: React.ReactNode, path = "/settings/accounts/first") {
   );
 }
 
+function conflictServer() {
+  const state = {
+    account: structuredClone(first), rejectWrites: true, failRead: false,
+    writes: [] as { method: string; path: string; body: Record<string, unknown> }[],
+  };
+  vi.stubGlobal("fetch", vi.fn(async (request: Request) => {
+    const path = new URL(request.url).pathname;
+    if (request.method === "GET") return state.failRead
+      ? json({ error: { code: "temporarily_unavailable", message: "账号读取失败" } }, 503)
+      : json({ data: path.endsWith("alipay-accounts") ? [state.account] : state.account });
+    const body = await request.json();
+    state.writes.push({ method: request.method, path, body });
+    if (state.rejectWrites) return json({ error: { code: "alipay_account_revision_conflict", message: "账号设置已变化，请刷新后重试。" } }, 409);
+    state.account = { ...state.account, ...body, revision: state.account.revision + 1 };
+    return json({ data: state.account });
+  }));
+  return state;
+}
+
 describe("支付宝账号设置", () => {
+  it("未完成配置的账号可连续两次更换应用密钥，每次使用新的操作编号和当前版本", async () => {
+    const initial: AlipayAccount = { ...first, configured: false, app_id: null, platform_public_key: null, provider_account_key: null };
+    let account = initial;
+    const requests: Array<{ path: string; revision: number; change_id: string; base_fingerprint: string }> = [];
+    const usedIds = new Set<string>();
+    vi.stubGlobal("fetch", vi.fn(async (request: Request) => {
+      const path = new URL(request.url).pathname;
+      if (request.method === "GET") return json({ data: path.endsWith("alipay-accounts") ? [account] : account });
+      const body = await request.json();
+      requests.push({ path, ...body });
+      if (usedIds.has(body.change_id))
+        return json({ error: { code: "provider_application_key_change_conflict", message: "这次换钥操作与原请求不一致。" } }, 409);
+      if (body.revision !== account.revision || body.base_fingerprint !== account.application_key_fingerprint)
+        return json({ error: { code: "alipay_account_revision_conflict" } }, 409);
+      usedIds.add(body.change_id);
+      account = { ...account, revision: account.revision + 1, application_public_key: "新公钥-" + usedIds.size,
+        application_key_fingerprint: String(usedIds.size).repeat(64), pending_application_key: null };
+      return json({ data: account });
+    }));
+    mount(<AlipayAccountEditor initial={initial} />);
+    const user = userEvent.setup();
+    for (const attempt of [1, 2]) {
+      await user.click(screen.getByRole("button", { name: "更换应用密钥" }));
+      await user.click(screen.getByRole("button", { name: "确认" }));
+      await waitFor(() => expect(screen.getByRole("textbox", { name: "应用公钥" })).toHaveValue("新公钥-" + attempt));
+    }
+    expect(requests).toHaveLength(2);
+    expect(requests[0]).toEqual({ path: "/api/admin/v1/alipay-accounts/" + first.id + "/application-key/regenerate",
+      revision: first.revision, change_id: expect.any(String), base_fingerprint: first.application_key_fingerprint });
+    expect(requests[1]).toEqual({ path: requests[0]!.path, revision: first.revision + 1,
+      change_id: expect.any(String), base_fingerprint: "1".repeat(64) });
+    expect(requests[1]!.change_id).not.toBe(requests[0]!.change_id);
+    expect(screen.queryByText("这次换钥操作与原请求不一致。")).not.toBeInTheDocument();
+  });
+  it("版本冲突后重读合并本地名称和服务器收款码，再显式保存新版本", async () => {
+    const server = conflictServer();
+    mount(<AlipayAccountEditor initial={first} />);
+    const user = userEvent.setup();
+    await user.clear(screen.getByLabelText("账号名称"));
+    await user.type(screen.getByLabelText("账号名称"), "本地名称");
+    server.account = { ...first, revision: 3, code_payload: "https://qr.alipay.com/remote-new" };
+    await user.click(screen.getByRole("button", { name: "保存草稿" }));
+    await user.click(await screen.findByRole("button", { name: "重新读取账号" }));
+    await screen.findByText("账号配置已重新读取");
+    expect(screen.getByLabelText("账号名称")).toHaveValue("本地名称");
+    expect(screen.getByDisplayValue("https://qr.alipay.com/remote-new")).toBeEnabled();
+    expect(server.writes).toHaveLength(1);
+    server.rejectWrites = false;
+    await user.click(screen.getByRole("button", { name: "保存草稿" }));
+    await screen.findByText("账号已保存");
+    expect(server.writes[1]?.body).toMatchObject({ revision: 3, name: "本地名称", code_payload: "https://qr.alipay.com/remote-new" });
+  });
+  it.each(["保留我的修改", "采用服务器值"])("同字段冲突经%s后再恢复编辑", async choice => {
+    const server = conflictServer();
+    mount(<AlipayAccountEditor initial={first} />);
+    const user = userEvent.setup();
+    await user.clear(screen.getByLabelText("账号名称"));
+    await user.type(screen.getByLabelText("账号名称"), "本地名称");
+    server.account = { ...first, revision: 3, name: "服务器名称" };
+    await user.click(screen.getByRole("button", { name: "保存草稿" }));
+    await user.click(await screen.findByRole("button", { name: "重新读取账号" }));
+    await screen.findByText("账号配置存在不同修改");
+    expect(screen.getByRole("button", { name: "应用核对结果" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "保存并检查" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: choice }));
+    await user.click(screen.getByRole("button", { name: "应用核对结果" }));
+    expect(screen.getByLabelText("账号名称")).toHaveValue(choice === "保留我的修改" ? "本地名称" : "服务器名称");
+    expect(server.writes).toHaveLength(1);
+  });
+  it.each(["删除账号", "更换应用密钥"])("%s发生版本冲突时重读状态并关闭旧确认，不重放操作", async action => {
+    const server = conflictServer();
+    mount(<AlipayAccountEditor initial={first} />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: action }));
+    await user.click(screen.getByRole("button", { name: "确认" }));
+    const reload = await screen.findByRole("button", { name: "重新读取账号" });
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    server.account = { ...first, revision: 3, deletable: false, pending_application_key: {
+      change_id: "33333333-3333-4333-8333-333333333333", public_key: "remote-pending-key", fingerprint: "b".repeat(64),
+      app_id: first.app_id!, environment: first.environment, created_at: first.created_at,
+    } };
+    await user.click(reload);
+    await screen.findByText("账号配置已重新读取");
+    expect(screen.getByRole("button", { name: "删除账号" })).toBeDisabled();
+    expect(screen.getByRole("textbox", { name: "待启用应用公钥" })).toHaveValue("remote-pending-key");
+    expect(screen.queryByRole("button", { name: "更换应用密钥" })).not.toBeInTheDocument();
+    expect(server.writes).toHaveLength(1);
+    expect(server.writes[0]?.method).toBe(action === "删除账号" ? "DELETE" : "POST");
+  });
+  it("待启用密钥改变后清除旧支付宝公钥输入，避免用于新一轮启用", async () => {
+    const server = conflictServer();
+    const pending = { change_id: "33333333-3333-4333-8333-333333333333", public_key: "pending-key", fingerprint: "b".repeat(64), app_id: first.app_id!, environment: first.environment, created_at: first.created_at };
+    mount(<AlipayAccountEditor initial={{ ...first, pending_application_key: pending }} />);
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText("新的支付宝公钥"), "old-activation-key");
+    await user.click(screen.getByRole("button", { name: "验证并启用" }));
+    server.account = { ...first, revision: 3, pending_application_key: { ...pending, change_id: "44444444-4444-4444-8444-444444444444", public_key: "new-pending-key" } };
+    await user.click(await screen.findByRole("button", { name: "重新读取账号" }));
+    await screen.findByText("账号配置已重新读取");
+    expect(screen.getByLabelText("新的支付宝公钥")).toHaveValue("");
+    expect(screen.getByRole("button", { name: "验证并启用" })).toBeDisabled();
+    expect(server.writes).toHaveLength(1);
+  });
+  it("导入私钥时遇到远端待启用密钥，先核对服务器应用状态", async () => {
+    const server = conflictServer();
+    mount(<AlipayAccountEditor initial={first} />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "导入已有应用私钥（可选）" }));
+    await user.type(screen.getByLabelText("应用私钥（可选）"), "local-import-key");
+    await user.click(screen.getByRole("button", { name: "保存草稿" }));
+    server.account = { ...first, revision: 3, pending_application_key: {
+      change_id: "33333333-3333-4333-8333-333333333333", public_key: "remote-pending-key", fingerprint: "b".repeat(64),
+      app_id: first.app_id!, environment: first.environment, created_at: first.created_at,
+    } };
+    await user.click(await screen.findByRole("button", { name: "重新读取账号" }));
+    const choices = await screen.findByRole("group", { name: "导入的应用私钥冲突处理" });
+    expect(within(choices).getByRole("button", { name: "保留我的修改" })).toBeDisabled();
+    await user.click(within(choices).getByRole("button", { name: "采用服务器值" }));
+    await user.click(screen.getByRole("button", { name: "应用核对结果" }));
+    expect(screen.getByRole("textbox", { name: "待启用应用公钥" })).toHaveValue("remote-pending-key");
+    expect(screen.getByRole("button", { name: "放弃新密钥" })).toBeEnabled();
+    expect(server.writes).toHaveLength(1);
+  });
+  it("账号重读失败仍保留草稿，成功后恢复操作", async () => {
+    const server = conflictServer();
+    mount(<AlipayAccountEditor initial={first} />);
+    const user = userEvent.setup();
+    await user.clear(screen.getByLabelText("账号名称"));
+    await user.type(screen.getByLabelText("账号名称"), "保留的草稿");
+    await user.click(screen.getByRole("button", { name: "保存草稿" }));
+    server.failRead = true;
+    await user.click(await screen.findByRole("button", { name: "重新读取账号" }));
+    await screen.findByText("账号读取失败");
+    expect(screen.getByLabelText("账号名称")).toHaveValue("保留的草稿");
+    expect(screen.getByRole("button", { name: "保存草稿" })).toBeDisabled();
+    server.failRead = false;
+    server.account = { ...first, revision: 3 };
+    await user.click(screen.getByRole("button", { name: "重新读取账号" }));
+    await screen.findByText("账号配置已重新读取");
+    expect(screen.getByRole("button", { name: "保存草稿" })).toBeEnabled();
+    expect(server.writes).toHaveLength(1);
+  });
   it("preserves the production configuration through saving and retrying only that account's connection check", async () => {
     const writes: Array<{ path: string; body: unknown }> = [];
     const initial = first;

@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { onlineManager, useMutation, useQuery } from "@tanstack/react-query";
 import { useLocation, useParams } from "react-router";
 import { ChevronDown, KeyRound, MoreHorizontal, Plus, RefreshCw } from "lucide-react";
 import { api, ApiError, queryClient, result } from "@/api/client";
@@ -60,9 +60,11 @@ import {
   FieldError,
   FieldGroup,
   FieldLabel,
+  FieldTitle,
   FieldLegend,
   FieldSet,
 } from "@/components/ui/field";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   Collapsible,
   CollapsibleContent,
@@ -187,6 +189,13 @@ function accountConfiguration(account: AlipayAccount | null) {
     platform_public_key: account?.platform_public_key ?? "",
   };
 }
+type AccountDraft = ReturnType<typeof accountConfiguration>;
+type AccountField = keyof AccountDraft | "private_key";
+const accountFieldLabels: Record<AccountField, string> = {
+  name: "账号名称", enabled: "接收新订单", code_payload: "收款码",
+  app_id: "应用 ID", platform_public_key: "支付宝公钥", private_key: "导入的应用私钥",
+};
+type AccountConflict = { field: AccountField; local: string | boolean; remote: string | boolean };
 
 const accountSections = [["basic", "基本信息"], ["application", "应用信息"], ["collection", "收款码"], ["usage", "使用情况"]] as const;
 function AccountPanel({ tabbed, value, children }: { tabbed: boolean; value: string; children: ReactNode }) {
@@ -253,6 +262,10 @@ export function AlipayAccountEditor({
   >(null);
   const [activationKey, setActivationKey] = useState("");
   const [keyChangeId, setKeyChangeId] = useState(() => crypto.randomUUID());
+  const [needsReload, setNeedsReload] = useState(false);
+  const [review, setReview] = useState<{ account: AlipayAccount; draft: AccountDraft; conflicts: AccountConflict[] } | null>(null);
+  const [choices, setChoices] = useState<Partial<Record<AccountField, "local" | "remote">>>({});
+  const reloadController = useRef<AbortController | null>(null);
   const form = useRef<HTMLFormElement>(null);
   const invalidDraftField = useRef<HTMLElement | null>(null);
   const focusedSaveError = useRef<Error | null>(null);
@@ -262,6 +275,7 @@ export function AlipayAccountEditor({
     mounted.current = true;
     return () => {
       mounted.current = false;
+      reloadController.current?.abort();
     };
   }, []);
   const dirty =
@@ -272,6 +286,73 @@ export function AlipayAccountEditor({
   const showFormActions = (!tabbed || panel !== "usage" || dirty) && !(tabbed && !historical && panel === "application" && saved?.pending_application_key && !dirty);
   const clear = useDirtyDraft(dirty);
   const clearActivationDraft = useDirtyDraft(activationKey !== "");
+
+  function handleRevisionConflict(error: Error) {
+    if (error instanceof ApiError && error.code === "alipay_account_revision_conflict") {
+      setNeedsReload(true);
+      setConfirmation(null);
+      setSavedMessage("");
+    }
+  }
+
+  function applyReload(account: AlipayAccount, configuration: AccountDraft, keepPrivateKey: boolean) {
+    if (account.pending_application_key?.change_id !== saved?.pending_application_key?.change_id) {
+      setActivationKey("");
+      clearActivationDraft();
+    }
+    setSaved(account);
+    setDraft(configuration);
+    if (!keepPrivateKey) setPrivateKey("");
+    setKeyChangeId(crypto.randomUUID());
+    setNeedsReload(false);
+    setReview(null);
+    setChoices({});
+    setConfirmation(null);
+    setSavedMessage("账号配置已重新读取");
+    setInitialCheckFailure(undefined);
+    save.reset();
+    key.reset();
+    remove.reset();
+    check.reset();
+    queryClient.setQueryData(alipayAccountKey(account.id), { data: account });
+  }
+  const reload = useMutation({
+    networkMode: "always",
+    retry: false,
+    mutationFn: async () => {
+      if (!onlineManager.isOnline() || !navigator.onLine)
+        throw new Error("网络已断开，恢复连接后请重新读取。");
+      const controller = new AbortController();
+      reloadController.current = controller;
+      const response = await result(api.getAlipayAccount({ path: { accountId: saved!.id }, signal: controller.signal }));
+      controller.signal.throwIfAborted();
+      return response.data;
+    },
+    onSuccess: (account) => {
+      if (!mounted.current) return;
+      const base = accountConfiguration(saved);
+      const remote = accountConfiguration(account);
+      const configuration = { ...remote };
+      const conflicts: AccountConflict[] = [];
+      const applicationChanged = saved?.app_id !== account.app_id || saved?.platform_public_key !== account.platform_public_key ||
+        saved?.application_key_fingerprint !== account.application_key_fingerprint ||
+        saved?.pending_application_key?.change_id !== account.pending_application_key?.change_id;
+      for (const field of Object.keys(configuration) as (keyof AccountDraft)[]) {
+        const local = draft[field];
+        if (local === base[field]) continue;
+        if (remote[field] !== local && (remote[field] !== base[field] ||
+          (applicationChanged && (field === "app_id" || field === "platform_public_key")))) {
+          conflicts.push({ field, local, remote: remote[field] });
+        } else Object.assign(configuration, { [field]: local });
+      }
+      if (privateKey.trim() && applicationChanged)
+        conflicts.push({ field: "private_key", local: "使用已填写的私钥", remote: "保留服务器私钥" });
+      if (conflicts.length) {
+        setReview({ account, draft: configuration, conflicts });
+        setChoices({});
+      } else applyReload(account, configuration, !!privateKey);
+    },
+  });
 
   async function accepted(account: AlipayAccount, message: string) {
     if (mounted.current) {
@@ -300,6 +381,7 @@ export function AlipayAccountEditor({
   });
   const save = useMutation({
     networkMode: "always",
+    onError: handleRevisionConflict,
     onMutate: () => { completedNavigation.current = false; },
     mutationFn: async (checkAfter: boolean) => {
       if (historical) throw new Error("此账号仅保留历史记录，请添加已上线应用的支付宝账号。");
@@ -348,6 +430,7 @@ export function AlipayAccountEditor({
   });
   const key = useMutation({
     networkMode: "always",
+    onError: handleRevisionConflict,
     onMutate: () => { completedNavigation.current = false; },
     mutationFn: async (
       action: "generate" | "regenerate" | "activate" | "discard",
@@ -389,7 +472,8 @@ export function AlipayAccountEditor({
       setConfirmation(null);
       setActivationKey("");
       clearActivationDraft();
-      if (action === "discard" || action === "activate")
+      if (action === "discard" || action === "activate" ||
+          (action === "regenerate" && !data.pending_application_key))
         setKeyChangeId(crypto.randomUUID());
       await accepted(
         data,
@@ -403,6 +487,7 @@ export function AlipayAccountEditor({
   });
   const remove = useMutation({
     networkMode: "always",
+    onError: handleRevisionConflict,
     onMutate: () => { completedNavigation.current = false; },
     mutationFn: () =>
       result(
@@ -423,7 +508,9 @@ export function AlipayAccountEditor({
     },
   });
   const busy =
-    save.isPending || key.isPending || remove.isPending || check.isPending;
+    save.isPending || key.isPending || remove.isPending || check.isPending || reload.isPending;
+  const requiresReview = needsReload || review !== null;
+  const editingBlocked = busy || requiresReview;
   // A confirmed create/delete may navigate before React Query clears isPending.
   useOverlayCloseGuard(() => decoding || (busy && !completedNavigation.current));
   const errors = save.error instanceof ApiError ? save.error.fields : {};
@@ -462,6 +549,7 @@ export function AlipayAccountEditor({
     setInitialCheckFailure(undefined);
   }
   function saveDraft() {
+    if (editingBlocked) return;
     const owningForm = form.current;
     if (!owningForm) return;
     if (!owningForm.reportValidity()) {
@@ -501,7 +589,43 @@ export function AlipayAccountEditor({
       {tabbed && <ScrollingTabs><TabsList aria-label="支付宝账号配置分组" variant="line" activateOnFocus={false} className="min-w-max">
         {accountSections.filter(([value]) => value !== "usage" || saved !== null).map(([value, label]) => <TabsTrigger key={value} value={value}>{label}</TabsTrigger>)}
       </TabsList></ScrollingTabs>}
-      <ErrorNotice error={error} />
+      <ErrorNotice error={requiresReview ? null : error} />
+      {needsReload && !review && <Alert>
+        <AlertTitle>账号配置已在其他会话中更新</AlertTitle>
+        <AlertDescription>
+          <p>你的修改已保留，重新读取后可继续操作。</p>
+          <Button variant="outline" disabled={busy} onClick={() => reload.mutate()}>{reload.isPending ? "正在读取…" : "重新读取账号"}</Button>
+        </AlertDescription>
+      </Alert>}
+      {review && <Card>
+        <CardHeader><CardTitle>账号配置存在不同修改</CardTitle><CardDescription>选择要保留的配置，核对后再保存。</CardDescription></CardHeader>
+        <CardContent><FieldGroup>
+          {review.conflicts.map(conflict => <Field key={conflict.field}>
+            <FieldTitle>{accountFieldLabels[conflict.field]}</FieldTitle>
+            <FieldDescription className="whitespace-pre-wrap break-all">服务器值：{typeof conflict.remote === "boolean" ? conflict.remote ? "开启" : "关闭" : conflict.remote || "未填写"}</FieldDescription>
+            <FieldDescription className="whitespace-pre-wrap break-all">我的值：{typeof conflict.local === "boolean" ? conflict.local ? "开启" : "关闭" : conflict.local || "未填写"}</FieldDescription>
+            {!!review.account.pending_application_key && ["app_id", "platform_public_key", "private_key"].includes(conflict.field) && <FieldDescription>服务器有待启用密钥，请先采用服务器配置，再处理该密钥。</FieldDescription>}
+            <ToggleGroup aria-label={accountFieldLabels[conflict.field] + "冲突处理"} variant="outline" className="max-w-full flex-wrap"
+              value={choices[conflict.field] ? [choices[conflict.field]!] : []} onValueChange={value => {
+                const next = value[0];
+                setChoices(previous => ({ ...previous, [conflict.field]: next === "local" || next === "remote" ? next : undefined }));
+              }}>
+              <ToggleGroupItem value="local" disabled={!!review.account.pending_application_key && ["app_id", "platform_public_key", "private_key"].includes(conflict.field)}>保留我的修改</ToggleGroupItem>
+              <ToggleGroupItem value="remote">采用服务器值</ToggleGroupItem>
+            </ToggleGroup>
+          </Field>)}
+        </FieldGroup></CardContent>
+        <CardFooter><Button disabled={review.conflicts.some(conflict => !choices[conflict.field])} onClick={() => {
+          const configuration = { ...review.draft };
+          for (const conflict of review.conflicts) {
+            if (conflict.field !== "private_key") Object.assign(configuration, {
+              [conflict.field]: choices[conflict.field] === "local" ? conflict.local : conflict.remote,
+            });
+          }
+          applyReload(review.account, configuration, choices.private_key !== "remote" && !!privateKey);
+        }}>应用核对结果</Button></CardFooter>
+      </Card>}
+      <ErrorNotice error={reload.error} />
       {historical && (
         <Alert>
           <AlertTitle>旧版测试账号已停用</AlertTitle>
@@ -558,13 +682,13 @@ export function AlipayAccountEditor({
         }}
         onSubmit={(event) => {
           event.preventDefault();
-          if (!busy && !decoding && !historical) {
+          if (!editingBlocked && !decoding && !historical) {
             check.reset();
             save.mutate(!creating && readyToCheck);
           }
         }}
       >
-        <FieldSet disabled={busy || historical}>
+        <FieldSet disabled={editingBlocked || historical}>
           <Card className={tabbed && panel === "usage" ? "hidden" : undefined}>
             <CardHeader hidden={tabbed && panel !== "basic"}>
               <CardTitle>账号信息</CardTitle>
@@ -649,7 +773,7 @@ export function AlipayAccountEditor({
                   )}
                   {!historical && <div className="flex min-w-0 flex-wrap items-center gap-2" data-account-key-actions>
                     {!pending && !privateKey.trim() && <Button type="button" variant="outline" size="sm"
-                      className="h-auto min-h-8 max-w-full whitespace-normal py-1.5" disabled={busy || dirty || !saved}
+                      className="h-auto min-h-8 max-w-full whitespace-normal py-1.5" disabled={editingBlocked || dirty || !saved}
                       onClick={() => saved?.application_public_key ? setConfirmation("regenerate") : key.mutate("generate")}>
                       <KeyRound data-icon="inline-start" />{saved?.application_public_key ? "更换应用密钥" : "生成应用密钥"}
                     </Button>}
@@ -685,8 +809,8 @@ export function AlipayAccountEditor({
                     )}
                   </Field>
                   {pending && <div className="flex flex-wrap gap-2">
-                    <Button type="button" disabled={busy || dirty || !activationKey.trim()} onClick={() => key.mutate("activate")}>验证并启用</Button>
-                    <Button type="button" variant="outline" disabled={busy || dirty} onClick={() => setConfirmation("discard")}>放弃新密钥</Button>
+                    <Button type="button" disabled={editingBlocked || dirty || !activationKey.trim()} onClick={() => key.mutate("activate")}>验证并启用</Button>
+                    <Button type="button" variant="outline" disabled={editingBlocked || dirty} onClick={() => setConfirmation("discard")}>放弃新密钥</Button>
                   </div>}
                   <FieldDescription>应用私钥保存在服务器，无需上传到支付宝。{dirty && saved ? "先保存当前修改，再操作应用密钥。" : ""}</FieldDescription>
                 </FieldSet>
@@ -735,12 +859,12 @@ export function AlipayAccountEditor({
                     支持支付宝收款码或经营码。可以先保存草稿，填写收款码后再接收订单。
                   </FieldDescription>
                   <CollectionCodeField
-                    key={saved?.id ?? "new"}
+                    key={(saved?.id ?? "new") + ":" + (saved?.revision ?? 0)}
                     defaultValue={draft.code_payload}
                     onDecoded={() => {}}
                     onValueChange={(value) => change("code_payload", value)}
                     onPendingChange={setDecoding}
-                    disabled={busy}
+                    disabled={editingBlocked}
                     required={false}
                     error={errors.code_payload}
                   />
@@ -752,12 +876,12 @@ export function AlipayAccountEditor({
               {showFormActions && (
               <OverlayActions className={tabbed ? "w-full" : undefined}>
               {overlay && !tabbed && <Button type="button" variant="outline" disabled={busy || decoding} onClick={() => overlay.requestClose()}>关闭</Button>}
-              <Button form={formId} type="submit" className={tabbed ? "h-auto min-h-8 min-w-0 whitespace-normal py-1.5 max-sm:flex-1" : undefined} disabled={busy || decoding || historical}>
+              <Button form={formId} type="submit" className={tabbed ? "h-auto min-h-8 min-w-0 whitespace-normal py-1.5 max-sm:flex-1" : undefined} disabled={editingBlocked || decoding || historical}>
                 {save.isPending && <Spinner data-icon="inline-start" />}
                 <span className="min-w-0">{save.isPending ? "正在保存…" : creating ? "创建账号并继续" : readyToCheck ? "保存并检查" : "保存配置"}</span>
               </Button>
               {tabbed ? <DropdownMenu onOpenChange={open => { if (open) invalidDraftField.current = null; }}>
-                <DropdownMenuTrigger render={<Button type="button" variant="outline" size="icon" aria-label="更多账号操作" disabled={busy || historical} />}>
+                <DropdownMenuTrigger render={<Button type="button" variant="outline" size="icon" aria-label="更多账号操作" disabled={editingBlocked || historical} />}>
                   <MoreHorizontal aria-hidden="true" />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" side="top" aria-label="更多账号操作"
@@ -765,10 +889,10 @@ export function AlipayAccountEditor({
                     ? invalidDraftField.current
                     : !form.current?.contains(document.activeElement)}>
                   <DropdownMenuGroup>
-                    <DropdownMenuItem disabled={busy || decoding || historical || (!dirty && !!saved)} onClick={saveDraft}>
+                    <DropdownMenuItem disabled={editingBlocked || decoding || historical || (!dirty && !!saved)} onClick={saveDraft}>
                       保存草稿
                     </DropdownMenuItem>
-                    {saved && <DropdownMenuItem disabled={busy || dirty || historical} onClick={() => check.mutate(saved.id)}>
+                    {saved && <DropdownMenuItem disabled={editingBlocked || dirty || historical} onClick={() => check.mutate(saved.id)}>
                       <RefreshCw aria-hidden="true" />重新检查
                     </DropdownMenuItem>}
                   </DropdownMenuGroup>
@@ -777,7 +901,7 @@ export function AlipayAccountEditor({
               <Button
                 type="button"
                 variant="outline"
-                disabled={busy || decoding || historical || (!dirty && !!saved)}
+                disabled={editingBlocked || decoding || historical || (!dirty && !!saved)}
                 onClick={saveDraft}
               >
                 保存草稿
@@ -786,7 +910,7 @@ export function AlipayAccountEditor({
                 <Button
                   type="button"
                   variant="ghost"
-                  disabled={busy || dirty || historical}
+                  disabled={editingBlocked || dirty || historical}
                   onClick={() => check.mutate(saved.id)}
                 >
                   <RefreshCw data-icon="inline-start" />
@@ -842,7 +966,7 @@ export function AlipayAccountEditor({
                 <Button
                   variant="destructive"
                   size="sm"
-                  disabled={busy || dirty || !saved.deletable}
+                  disabled={editingBlocked || dirty || !saved.deletable}
                   onClick={() => setConfirmation("delete")}
                 >
                   删除账号
