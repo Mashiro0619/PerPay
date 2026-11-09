@@ -52,8 +52,7 @@ for (const width of [1440, 390, 320]) {
         await expect(assistant.getByRole("textbox", { name: "Demo 通知地址", exact: true })).toHaveCount(0);
         await expect(assistant.getByRole("textbox", { name: "可复制内容", exact: true })).toHaveCount(0);
         if (label !== "原生 API") {
-          await expect(assistant.getByRole("button", { name: "密钥管理", exact: true })).toHaveAttribute("aria-expanded", "false");
-          await expect(assistant.getByRole("button", { name: /^更新/ })).toHaveCount(0);
+          await expect(assistant.getByRole("button", { name: "更新" + (label === "易支付 V1" ? "商户密钥" : "商户私钥"), exact: true })).toBeVisible();
         }
         for (const colorScheme of ["light", "dark"] as const) {
           await page.emulateMedia({ colorScheme, reducedMotion: "reduce" });
@@ -76,7 +75,7 @@ for (const width of [1440, 390, 320]) {
       let firstMerchantPrivateKey: string | undefined;
       for (const protocol of ["epay_v1", "epay_v2"] as const) {
         const label = protocol === "epay_v1" ? "易支付 V1" : "易支付 V2";
-        const keyLabel = protocol === "epay_v1" ? "V1 密钥" : "V2 商户私钥";
+        const keyLabel = protocol === "epay_v1" ? "商户密钥" : "商户私钥";
         await assistant.getByRole("button", { name: label, exact: true }).click();
         await expect(assistant.getByText(fixture.origin + "/", { exact: true })).toBeVisible();
         const initial = await readConfiguration();
@@ -111,7 +110,19 @@ for (const width of [1440, 390, 320]) {
         const secret = (await (await viewing).json()).data.secret as string;
         await expect(assistant.getByRole("textbox", { name: "密钥内容", exact: true })).toHaveValue(secret);
         expect(secret).toBe(pausedKey.secret);
-        await assistant.getByRole("button", { name: "密钥管理", exact: true }).click();
+        await expect(assistant.getByRole("button", { name: "查看" + keyLabel, exact: true })).toHaveCount(0);
+        await expect(assistant.getByRole("button", { name: "隐藏" + keyLabel, exact: true })).toBeVisible();
+        for (const scale of width === 320 ? [100, 200] : [100]) {
+          await page.evaluate(value => { document.documentElement.style.fontSize = value + "%"; }, scale);
+          for (const colorScheme of ["light", "dark"] as const) {
+            await page.emulateMedia({ colorScheme, reducedMotion: "reduce" });
+            await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
+            await assistant.screenshot({ path: info.outputPath(`integration-revealed-${width}-${protocol}-${scale}-${colorScheme}.png`),
+              mask: [assistant.getByRole("textbox")] });
+          }
+        }
+        await page.evaluate(() => { document.documentElement.style.fontSize = ""; });
+        await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
         await assistant.getByRole("button", { name: "更新" + keyLabel, exact: true }).click();
         const rotating = page.waitForResponse(response => new URL(response.url()).pathname.endsWith("/actions/rotate"));
         await page.getByRole("alertdialog").getByRole("button", { name: "确认更新", exact: true }).click();
@@ -121,7 +132,7 @@ for (const width of [1440, 390, 320]) {
         expect(replacement.secret).toBe(rotated.secret);
         if (protocol === "epay_v2") {
           firstMerchantPrivateKey = replacement.secret;
-          const platform = await viewKey("查看V2 平台公钥", "epay_platform");
+          const platform = await viewKey("查看平台公钥", "epay_platform");
           await expect(assistant.getByRole("textbox", { name: "密钥内容", exact: true })).toHaveCount(0);
           await expect(assistant.getByRole("textbox", { name: "可复制内容", exact: true })).toHaveValue(platform.public_key!);
           expect(await assistant.textContent()).not.toContain(platform.secret);
@@ -149,7 +160,7 @@ for (const width of [1440, 390, 320]) {
       await page.evaluate(() => window.scrollTo(0, 0));
       await page.screenshot({ path: info.outputPath(`integration-${width}.png`), fullPage: true });
       await info.attach("integration-layout", { body: JSON.stringify(geometry), contentType: "application/json" });
-      await assistant.getByRole("button", { name: "查看V1 密钥", exact: true }).click();
+      await assistant.getByRole("button", { name: "查看商户密钥", exact: true }).click();
       const secretField = assistant.getByRole("textbox", { name: "密钥内容", exact: true });
       await expect(secretField).toBeVisible();
       const previousSecret = await secretField.inputValue();
@@ -174,12 +185,12 @@ for (const width of [1440, 390, 320]) {
       await expect(assistant.getByRole("switch", { name: "允许易支付 V1新订单", exact: true })).toBeChecked();
       expect(await assistant.textContent()).not.toContain(previousSecret);
       const viewingOther = page.waitForResponse(response => new URL(response.url()).pathname === "/api/admin/v1/sites/browser_other/secrets/epay_v1/actions/view");
-      await assistant.getByRole("button", { name: "查看V1 密钥", exact: true }).click();
+      await assistant.getByRole("button", { name: "查看商户密钥", exact: true }).click();
       const otherSecret = (await (await viewingOther).json()).data.secret as string;
       expect(otherSecret).not.toBe(previousSecret);
       await expect(assistant.getByRole("textbox", { name: "密钥内容", exact: true })).toHaveValue(otherSecret);
       await assistant.getByRole("button", { name: "易支付 V2", exact: true }).click();
-      const otherMerchant = await viewKey("查看V2 商户私钥", "epay_merchant", "browser_other");
+      const otherMerchant = await viewKey("查看商户私钥", "epay_merchant", "browser_other");
       expect(otherMerchant.secret).not.toBe(firstMerchantPrivateKey);
       await expect(assistant.getByRole("textbox", { name: "密钥内容", exact: true })).toHaveValue(otherMerchant.secret);
     } finally { await fixture.close(); }

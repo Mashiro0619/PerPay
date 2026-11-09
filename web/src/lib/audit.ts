@@ -45,7 +45,7 @@ const fieldLabels: Readonly<Record<string, string>> = {
   app_id: "应用编号（App ID）", environment: "支付宝环境", code_payload: "收款码", collection_code_payload: "收款码",
   private_key: "应用私钥", provider_private_key: "应用私钥", public_key: "支付宝公钥", provider_public_key: "支付宝公钥", pending_private_key: "待启用应用私钥",
   api_secret: "API 密钥", webhook_secret: "通知签名密钥", cidrs: "管理员 IP 白名单", admin_access_enabled: "管理员 IP 白名单开关",
-  v1_key: "易支付 V1 密钥", v2_merchant: "易支付 V2 商户私钥", v2_platform: "易支付 V2 平台私钥",
+  v1_key: "易支付 V1 商户密钥", v2_merchant: "易支付 V2 商户私钥", v2_platform: "易支付 V2 平台私钥",
   timeout_milliseconds: "请求超时（毫秒）", provider_timeout_milliseconds: "查账请求超时（毫秒）", maximum_attempts: "最多发送次数",
   retry_base_seconds: "首次重试间隔（秒）", retry_maximum_seconds: "最大重试间隔（秒）",
   provider_scan_interval_milliseconds: "常规查账间隔（毫秒）", provider_active_scan_interval_milliseconds: "活跃查账间隔（毫秒）",

@@ -568,7 +568,6 @@ function SiteEditor({
         <Input ref={revealedInput} aria-label={revealed.label} readOnly value={revealed.value} autoComplete="off" />
         <CopyValue value={revealed.value} label={"复制" + revealed.label} buttonOnly />
       </div>
-      <Button type="button" variant="outline" className="self-start" onClick={hideSecret}>隐藏密钥</Button>
     </div>}
   </>;
   return (
@@ -783,12 +782,12 @@ function SiteEditor({
                 <div className="flex flex-wrap gap-2">
                   <Button
                     variant="outline"
-                    aria-label="查看 API 密钥"
+                    aria-label={revealed?.purpose === "api" ? "隐藏 API 密钥" : "查看 API 密钥"}
                     aria-busy={action.isPending && action.variables === "view-api"}
-                    disabled={busy}
-                    onClick={() => action.mutate("view-api")}
+                    disabled={busy && revealed?.purpose !== "api"}
+                    onClick={() => { if (revealed?.purpose === "api") hideSecret(); else action.mutate("view-api"); }}
                   >
-                    {action.isPending && action.variables === "view-api" ? <><Spinner data-icon="inline-start" />正在读取…</> : "查看 API 密钥"}
+                    {revealed?.purpose === "api" ? "隐藏" : action.isPending && action.variables === "view-api" ? <><Spinner data-icon="inline-start" />正在读取…</> : "查看"}
                   </Button>
                   <Button
                     variant="outline"
@@ -805,12 +804,12 @@ function SiteEditor({
                 <div className="flex flex-wrap gap-2">
                   <Button
                     variant="outline"
-                    aria-label="查看通知密钥"
+                    aria-label={revealed?.purpose === "webhook" ? "隐藏通知密钥" : "查看通知密钥"}
                     aria-busy={action.isPending && action.variables === "view-webhook"}
-                    disabled={busy}
-                    onClick={() => action.mutate("view-webhook")}
+                    disabled={busy && revealed?.purpose !== "webhook"}
+                    onClick={() => { if (revealed?.purpose === "webhook") hideSecret(); else action.mutate("view-webhook"); }}
                   >
-                    {action.isPending && action.variables === "view-webhook" ? <><Spinner data-icon="inline-start" />正在读取…</> : "查看通知密钥"}
+                    {revealed?.purpose === "webhook" ? "隐藏" : action.isPending && action.variables === "view-webhook" ? <><Spinner data-icon="inline-start" />正在读取…</> : "查看"}
                   </Button>
                   <Button
                     variant="outline"

@@ -140,7 +140,7 @@ async function createSite(page: Page, fixture: BusinessFixture, info: TestInfo, 
     const rotated = page.waitForResponse(response => new URL(response.url()).pathname.includes(`/sites/${site.client_id}/secrets/`) && new URL(response.url()).pathname.endsWith("/actions/rotate") && response.request().method() === "POST");
     await confirm.getByRole("button", { name: "确认", exact: true }).click();
     expect((await rotated).ok()).toBe(true);
-    await overlay.getByRole("button", { name: "隐藏密钥", exact: true }).click();
+    await overlay.getByRole("button", { name: /^隐藏/ }).click();
   }
   await overlay.getByRole("textbox", { name: "通知地址前缀", exact: true }).fill(fixture.notificationOrigin);
   await overlay.getByRole("switch", { name: "开启通知", exact: true }).check();

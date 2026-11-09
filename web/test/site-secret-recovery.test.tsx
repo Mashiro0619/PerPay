@@ -222,7 +222,7 @@ describe("website secret display after configuration recovery", () => {
     await user.click(screen.getByRole("button", { name: rotateLabel("api_secret") }));
     await confirm(user);
     await waitFor(() => expect(pending.started()).toBe(true));
-    await user.click(screen.getByRole("button", { name: "隐藏密钥" }));
+    await user.click(screen.getByRole("button", { name: /^隐藏/ }));
     await refreshSnapshot();
     await act(async () => { pending.release(); });
     await waitFor(() => expect(screen.getByRole("button", { name: rotateLabel("api_secret") })).toBeEnabled());

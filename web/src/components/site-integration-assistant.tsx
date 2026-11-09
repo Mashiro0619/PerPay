@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { ChevronDown, ExternalLink } from "lucide-react";
+import { ExternalLink } from "lucide-react";
 import { ApiError, queryClient, type Site } from "@/api/client";
 import {
   getSiteEpay, rotateEpaySecret, saveSiteEpay, siteEpayKey, viewEpaySecret,
@@ -14,10 +14,10 @@ import { ErrorNotice, Loading } from "@/components/request-state";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
-import { Separator } from "@/components/ui/separator";
+import { Spinner } from "@/components/ui/spinner";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
@@ -39,7 +39,7 @@ const protocols = [
 ] as const;
 
 const secretLabels: Record<EpaySecret, string> = {
-  epay_v1: "V1 密钥", epay_merchant: "V2 商户私钥", epay_platform: "V2 平台私钥",
+  epay_v1: "商户密钥", epay_merchant: "商户私钥", epay_platform: "平台私钥",
 };
 
 export function SiteIntegrationAssistant(props: AssistantProps) {
@@ -76,7 +76,7 @@ function IntegrationContent({ site, siteDirty = false, disabled = false, showCli
   const [error, setError] = useState<Error | null>(null);
   const [refreshRequired, setRefreshRequired] = useState(false);
   const [feedback, setFeedback] = useState("");
-  const [pendingRead, setPendingRead] = useState(false);
+  const [pendingRead, setPendingRead] = useState<{ purpose: EpaySecret; publicOnly: boolean } | null>(null);
   const [revealed, setRevealed] = useState<{ purpose: EpaySecret; secret: string; public_key?: string | null; publicOnly?: boolean } | null>(null);
   const [rotation, setRotation] = useState<EpaySecret | null>(null);
   const activeRead = useRef<AbortController | null>(null);
@@ -87,7 +87,7 @@ function IntegrationContent({ site, siteDirty = false, disabled = false, showCli
     generation.current++;
     activeRead.current?.abort();
     activeRead.current = null;
-    setPendingRead(false);
+    setPendingRead(null);
     setRevealed(null);
   }, []);
 
@@ -135,7 +135,7 @@ function IntegrationContent({ site, siteDirty = false, disabled = false, showCli
       if (reason instanceof ApiError && reason.status === 409) setRefreshRequired(true);
     },
   });
-  const busy = disabled || reading || pendingRead || persist.isPending;
+  const busy = disabled || reading || pendingRead !== null || persist.isPending;
   const blocked = busy || siteDirty || dirty;
   const selected = protocols.find(item => item.value === protocol)!;
   const protocolEnabled = protocol === "native" || (protocol === "epay_v1" ? configuration.v1_enabled : configuration.v2_enabled);
@@ -181,7 +181,7 @@ function IntegrationContent({ site, siteDirty = false, disabled = false, showCli
     const controller = new AbortController();
     activeRead.current = controller;
     const current = ++generation.current;
-    setPendingRead(true);
+    setPendingRead({ purpose, publicOnly });
     setRevealed(null);
     setError(null);
     setFeedback("");
@@ -197,31 +197,50 @@ function IntegrationContent({ site, siteDirty = false, disabled = false, showCli
         if (reason instanceof ApiError && reason.status === 409) setRefreshRequired(true);
       }
     } finally {
-      if (activeRead.current === controller) { activeRead.current = null; setPendingRead(false); }
+      if (activeRead.current === controller) { activeRead.current = null; setPendingRead(null); }
     }
   }
 
-  const purposes: EpaySecret[] = protocol === "epay_v1" ? ["epay_v1"] : ["epay_merchant", "epay_platform"];
-  const revealedKey = revealed && <FieldGroup className="min-w-0 gap-3">
-    <Field>
-      <FieldLabel>{revealed.publicOnly ? "平台公钥" : secretLabels[revealed.purpose]}</FieldLabel>
-      <CopyValue value={revealed.publicOnly ? revealed.public_key! : revealed.secret} secret={!revealed.publicOnly} />
-    </Field>
-    {!revealed.publicOnly && revealed.public_key && <Field><FieldLabel>对应公钥</FieldLabel><CopyValue value={revealed.public_key} /></Field>}
-    <Button type="button" variant="outline" className="self-start" onClick={hideSecret}>隐藏密钥</Button>
-  </FieldGroup>;
-  const maintenanceSecret = revealed?.purpose === "epay_platform" && !revealed.publicOnly;
+  function credential(purpose: EpaySecret, publicOnly = false) {
+    const label = publicOnly ? "平台公钥" : secretLabels[purpose];
+    const shown = revealed?.purpose === purpose && !!revealed.publicOnly === publicOnly ? revealed : null;
+    const loading = pendingRead?.purpose === purpose && pendingRead.publicOnly === publicOnly;
+    const labelId = id + "-" + purpose + (publicOnly ? "-public" : "");
+    return <Field key={labelId} aria-labelledby={labelId} className="min-w-0">
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+        <FieldLabel id={labelId}>{label}</FieldLabel>
+        <div className="flex shrink-0 gap-2">
+          <Button type="button" variant="outline" aria-label={(shown ? "隐藏" : "查看") + label}
+            aria-busy={loading} disabled={!shown && blocked}
+            onClick={() => { if (shown) hideSecret(); else void read(purpose, publicOnly); }}>
+            {loading ? <><Spinner data-icon="inline-start" />正在读取…</> : shown ? "隐藏" : "查看"}
+          </Button>
+          {!publicOnly && <Button type="button" variant="outline" aria-label={"更新" + label}
+            disabled={blocked} onClick={() => setRotation(purpose)}>更新</Button>}
+        </div>
+      </div>
+      {shown && (purpose === "epay_v1"
+        ? <div className="flex min-w-0 items-center gap-2">
+          <Input aria-label="密钥内容" readOnly value={shown.secret} autoComplete="off" spellCheck={false} />
+          <CopyValue value={shown.secret} label={"复制" + label} buttonOnly />
+        </div>
+        : <CopyValue value={publicOnly ? shown.public_key! : shown.secret} secret={!publicOnly} label={"复制" + label} />)}
+      {shown && purpose === "epay_merchant" && shown.public_key && <Field>
+        <FieldLabel>商户公钥</FieldLabel><CopyValue value={shown.public_key} label="复制商户公钥" />
+      </Field>}
+    </Field>;
+  }
   return <Card data-site-integration>
     <CardHeader>
       <CardTitle>网站接入助手</CardTitle>
     </CardHeader>
     <CardContent className="@container/integration flex min-w-0 flex-col gap-5">
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
-        <ToggleGroup aria-label="接入协议" value={[protocol]} variant="outline" spacing={0} className="max-w-full flex-wrap"
+        <ToggleGroup aria-label="接入协议" value={[protocol]} variant="outline" spacing={1} className="max-w-full flex-wrap"
           disabled={busy} onValueChange={value => { if (value[0]) {
             setProtocol(value[0] as IntegrationProtocol); setFeedback("");
           } }}>
-          {protocols.map(item => <ToggleGroupItem key={item.value} value={item.value}>{item.label}</ToggleGroupItem>)}
+          {protocols.map(item => <ToggleGroupItem key={item.value} value={item.value} className="px-1.5">{item.label}</ToggleGroupItem>)}
         </ToggleGroup>
         {protocol !== "native" && <Field orientation="horizontal" className="w-auto gap-2">
           <FieldLabel htmlFor={id + "-enabled"}>允许新订单</FieldLabel>
@@ -248,7 +267,7 @@ function IntegrationContent({ site, siteDirty = false, disabled = false, showCli
         <Button type="button" variant="outline" disabled={busy} onClick={() => { setDraft(null); clearDraft(); }}>撤销易支付修改</Button>
       </div>}
       {!protocolEnabled && <p role="status">此协议已暂停新订单。</p>}
-      {!keysReady && <Alert><AlertDescription>接入密钥尚未就绪，请重新读取配置或在密钥管理中生成。</AlertDescription></Alert>}
+      {!keysReady && <Alert><AlertDescription>接入密钥尚未就绪，请更新对应密钥。</AlertDescription></Alert>}
       {feedback && <p role="status">{feedback}</p>}
       <FieldGroup className="grid min-w-0 grid-cols-1 gap-4 @lg/integration:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <Field>
@@ -264,41 +283,10 @@ function IntegrationContent({ site, siteDirty = false, disabled = false, showCli
       </FieldGroup>
       {protocol === "native"
         ? showClientId && <Link to={sitePath + "/edit?section=integration"} className={buttonVariants({ variant: "outline", className: "self-start" })}>管理 API 与通知密钥</Link>
-        : <FieldGroup className="gap-3">
-          <Field orientation="horizontal">
-            <FieldLabel>{protocol === "epay_v1" ? "商户密钥" : "商户私钥"}</FieldLabel>
-            <Button type="button" variant="outline" aria-label={"查看" + secretLabels[protocol === "epay_v1" ? "epay_v1" : "epay_merchant"]}
-              disabled={blocked} onClick={() => { void read(protocol === "epay_v1" ? "epay_v1" : "epay_merchant"); }}>查看</Button>
-          </Field>
-          {protocol === "epay_v2" && <Field orientation="horizontal">
-            <FieldLabel>平台公钥</FieldLabel>
-            <Button type="button" variant="outline" aria-label="查看V2 平台公钥" disabled={blocked}
-              onClick={() => { void read("epay_platform", true); }}>查看</Button>
-          </Field>}
+        : <FieldGroup className="min-w-0 gap-4">
+          {credential(protocol === "epay_v1" ? "epay_v1" : "epay_merchant")}
+          {protocol === "epay_v2" && <>{credential("epay_platform", true)}{credential("epay_platform")}</>}
         </FieldGroup>}
-      {!maintenanceSecret && revealedKey}
-      {protocol !== "native" && <div className="flex min-w-0 flex-col">
-          <Separator />
-          <Collapsible key={protocol} onOpenChange={open => { if (!open) hideSecret(); }}>
-            <CollapsibleTrigger render={<Button variant="ghost" className="w-full justify-between aria-expanded:[&_svg]:rotate-180" />}>
-              密钥管理<ChevronDown data-icon="inline-end" />
-            </CollapsibleTrigger>
-            <CollapsibleContent>
-              <FieldGroup className="gap-3 pt-3 pb-4">
-                {purposes.map(purpose => <Field key={purpose} orientation="horizontal">
-                  <FieldLabel>{secretLabels[purpose]}</FieldLabel>
-                  <div className="flex shrink-0 gap-2">
-                    {purpose === "epay_platform" && <Button type="button" variant="outline" aria-label="查看V2 平台私钥" disabled={blocked}
-                      onClick={() => { void read(purpose); }}>查看</Button>}
-                    <Button type="button" variant="outline" aria-label={"更新" + secretLabels[purpose]} disabled={blocked}
-                      onClick={() => setRotation(purpose)}>更新</Button>
-                  </div>
-                </Field>)}
-                {maintenanceSecret && revealedKey}
-              </FieldGroup>
-            </CollapsibleContent>
-          </Collapsible>
-      </div>}
     </CardContent>
     <CardFooter className="flex flex-wrap gap-2">
       <a data-external-link href={documentation} target="_blank" rel="noopener noreferrer"
@@ -307,7 +295,7 @@ function IntegrationContent({ site, siteDirty = false, disabled = false, showCli
       <Link to={sitePath + "/notifications"} className={buttonVariants({ variant: "outline" })}>查看通知记录</Link>
     </CardFooter>
     <AlertDialog open={rotation !== null} onOpenChange={open => { if (!open) setRotation(null); }}>
-      <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>生成或轮换{rotation ? secretLabels[rotation] : "密钥"}？</AlertDialogTitle>
+      <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>更新{rotation ? secretLabels[rotation] : "密钥"}？</AlertDialogTitle>
         <AlertDialogDescription>新密钥立即用于后续请求或通知。请同步更新业务网站的配置，已有插件需替换对应密钥。</AlertDialogDescription>
       </AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>取消</AlertDialogCancel>
         <AlertDialogAction disabled={blocked} onClick={() => { if (rotation && !blocked) { persist.mutate(rotation); setRotation(null); } }}>确认更新</AlertDialogAction>

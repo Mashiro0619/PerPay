@@ -69,8 +69,12 @@ describe("website secret display lifetime", () => {
     const input = await within(group).findByDisplayValue("late-secret");
     expect(input).toHaveFocus();
     expect(within(group).getByRole("button", { name: /^复制/ })).toBeVisible();
-    await user.click(within(group).getByRole("button", { name: "隐藏密钥" }));
+    expect(button).toHaveAccessibleName(purpose === "api_secret" ? "隐藏 API 密钥" : "隐藏通知密钥");
+    expect(within(group).queryByRole("button", { name: /^查看/ })).not.toBeInTheDocument();
+    await user.click(within(group).getByRole("button", { name: /^隐藏/ }));
     expect(within(group).queryByDisplayValue("late-secret")).not.toBeInTheDocument();
+    expect(button).toHaveAccessibleName(purpose === "api_secret" ? "查看 API 密钥" : "查看通知密钥");
+    expect(view.requests).toHaveLength(1);
   });
 
   it.each(["api_secret", "webhook_secret"] as const)("shows a failed %s read beside the action and supports retry", async purpose => {
@@ -89,7 +93,7 @@ describe("website secret display lifetime", () => {
   for (const action of ["view", "rotate"] as const) for (const purpose of ["api_secret", "webhook_secret"] as const) {
     it(`hides a late ${purpose} ${action} response without cancelling the operation or losing its revision`, async () => {
       const view = mount(action, purpose), user = userEvent.setup();
-      await user.click(await screen.findByRole("button", { name: "查看 API 密钥" }));
+      await user.click(await screen.findByRole("button", { name: purpose === "api_secret" ? "查看通知密钥" : "查看 API 密钥" }));
       await screen.findByDisplayValue("explicit-secret");
       view.delay();
       const label = action === "rotate"
@@ -98,7 +102,7 @@ describe("website secret display lifetime", () => {
       await user.click(screen.getByRole("button", { name: label }));
       if (action === "rotate") await user.click(await screen.findByRole("button", { name: "确认" }));
       await waitFor(() => expect(view.requests).toHaveLength(2));
-      await user.click(screen.getByRole("button", { name: "隐藏密钥" }));
+      await user.click(screen.getByRole("button", { name: /^隐藏/ }));
       expect(screen.queryByDisplayValue("explicit-secret")).not.toBeInTheDocument();
       // Hiding a secret is not completion of the outstanding API operation.
       expect(screen.getByRole("button", { name: "查看 API 密钥" })).toBeDisabled();

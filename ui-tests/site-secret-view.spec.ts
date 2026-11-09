@@ -46,7 +46,7 @@ for (const width of [1440, 390]) {
         expect(bounds!.y).toBeGreaterThanOrEqual(0);
         expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(720);
         await page.screenshot({ path: info.outputPath(`native-${width}-${groupName}.png`), mask: [input] });
-        await group.getByRole("button", { name: "隐藏密钥", exact: true }).click();
+        await group.getByRole("button", { name: /^隐藏/ }).click();
         await expect(input).toHaveCount(0);
       }
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
