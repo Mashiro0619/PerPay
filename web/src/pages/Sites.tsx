@@ -1,6 +1,6 @@
 import CreateSite from "./CreateSite";
 import { SiteManagementCards } from "@/components/site-management-cards";
-import { Pencil } from "lucide-react";
+import { Pencil, TriangleAlert } from "lucide-react";
 import { CopyValue } from "@/components/copy-value";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
@@ -36,11 +36,11 @@ import { siteTimeoutError, siteTimeoutSeconds } from "@/lib/site-timeout";
 import { SiteConfigurationConflicts } from "@/components/site-configuration-conflicts";
 import { SiteClientIdChange } from "@/components/site-client-id-change";
 import { SiteIntegrationAssistant } from "@/components/site-integration-assistant";
+import { SecretViewDialog } from "@/components/secret-view-dialog";
 import { mergeSiteConfiguration, resolveSiteConflicts, type SiteConflictChoices } from "@/lib/site-configuration";
 import { latestEditorSnapshot, siteEditorKey, siteEditorQueryOptions } from "@/lib/site-editor-query";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Spinner } from "@/components/ui/spinner";
@@ -69,6 +69,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  AlertDialogMedia,
 } from "@/components/admin-dialog";
 
 export default function Sites() {
@@ -309,11 +310,13 @@ function SiteEditor({
     label: string;
     value: string;
   } | null>(null);
-  const revealedInput = useRef<HTMLInputElement>(null);
-  const secretError = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (revealed) revealedInput.current?.focus();
-  }, [revealed]);
+  const [secretDialog, setSecretDialog] = useState<"api" | "webhook" | null>(null);
+  const [secretReadPending, setSecretReadPending] = useState(false);
+  const [secretReadError, setSecretReadError] = useState<unknown>(null);
+  const [missingSecrets, setMissingSecrets] = useState<Partial<Record<"api" | "webhook", number>>>({});
+  const secretOrigin = useRef<HTMLElement | null>(null);
+  const secretReadController = useRef<AbortController | null>(null);
+  const secretDisplayMode = useRef<"read" | "rotate" | "display" | null>(null);
   const secretDisplayGeneration = useRef(0);
   const secretDisplayRequest = useRef<number | null>(null);
   const observedSecretRevision = useRef(initial?.revision ?? -1);
@@ -321,17 +324,26 @@ function SiteEditor({
     () => () => {
       secretDisplayGeneration.current++;
       secretDisplayRequest.current = null;
+      secretReadController.current?.abort();
     },
     [],
   );
   const invalidateSecretDisplay = useCallback(() => {
     secretDisplayGeneration.current++;
     setRevealed(null);
+    if (secretDisplayMode.current !== "rotate") {
+      secretReadController.current?.abort();
+      secretDisplayRequest.current = null;
+      secretDisplayMode.current = null;
+      setSecretDialog(null);
+      setSecretReadPending(false);
+      setSecretReadError(null);
+    }
   }, []);
   const hideSecret = useCallback(() => {
     secretDisplayRequest.current = null;
+    secretDisplayMode.current = null;
     invalidateSecretDisplay();
-    // Do not reset/abort the mutation: hiding is not cancellation of a committed rotation.
   }, [invalidateSecretDisplay]);
   const observeSecretRevision = useCallback((revision: number) => {
     if (revision <= observedSecretRevision.current) return;
@@ -342,6 +354,61 @@ function SiteEditor({
     // A newer snapshot can retire a key even while a view/rotation is pending.
     if (initial) observeSecretRevision(initial.revision);
   }, [initial, observeSecretRevision]);
+  useEffect(() => {
+    const clear = () => {
+      hideSecret();
+      setConfirmation(value => value === "api" || value === "webhook" ? null : value);
+    };
+    const visibility = () => { if (document.hidden) clear(); };
+    document.addEventListener("visibilitychange", visibility);
+    window.addEventListener("pagehide", clear);
+    return () => {
+      document.removeEventListener("visibilitychange", visibility);
+      window.removeEventListener("pagehide", clear);
+    };
+  }, [hideSecret]);
+  useEffect(() => {
+    if (!revealed) return;
+    const timer = window.setTimeout(hideSecret, 60_000);
+    return () => window.clearTimeout(timer);
+  }, [revealed, hideSecret]);
+  async function readSecret(purpose: "api" | "webhook", origin?: HTMLElement) {
+    if (!saved) return;
+    observeSecretRevision(latestEditorSnapshot(saved).site.revision);
+    secretReadController.current?.abort();
+    const controller = new AbortController();
+    secretReadController.current = controller;
+    const generation = ++secretDisplayGeneration.current;
+    secretDisplayRequest.current = generation;
+    secretDisplayMode.current = "read";
+    if (origin) secretOrigin.current = origin;
+    setSecretDialog(purpose);
+    setRevealed(null);
+    setSecretReadError(null);
+    setSecretReadPending(true);
+    const path = { clientId: saved.client_id };
+    const canDisplay = () => mounted.current && !document.hidden && !controller.signal.aborted &&
+      generation === secretDisplayGeneration.current && secretDisplayRequest.current === generation;
+    try {
+      const response = await result(purpose === "api"
+        ? api.viewSiteApiSecret({ path, body: {}, signal: controller.signal })
+        : api.viewSiteWebhookSecret({ path, body: {}, signal: controller.signal }));
+      observeSecretRevision(latestEditorSnapshot(saved).site.revision);
+      if (canDisplay()) {
+        secretDisplayMode.current = "display";
+        setRevealed({ purpose, label: purpose === "api" ? "API 密钥" : "通知签名密钥", value: response.data.secret });
+        setMissingSecrets(previous => ({ ...previous, [purpose]: undefined }));
+      }
+    } catch (error) {
+      if (canDisplay()) {
+        setSecretReadError(error);
+        if (error instanceof ApiError && error.code === "site_secret_missing")
+          setMissingSecrets(previous => ({ ...previous, [purpose]: observedSecretRevision.current }));
+      }
+    } finally {
+      if (canDisplay()) setSecretReadPending(false);
+    }
+  }
   const setFeedback = useSuccessToast();
   const revisionConflict = (error: unknown) => {
     if (!isSiteRevisionConflict(error)) return;
@@ -387,7 +454,7 @@ function SiteEditor({
     networkMode: "always",
     retry: false,
     mutationFn: async (
-      kind: "api" | "webhook" | "view-api" | "view-webhook" | "delete",
+      kind: "api" | "webhook" | "delete",
     ): Promise<void> => {
       if (!saved) return;
       const path = { clientId: saved.client_id };
@@ -416,21 +483,8 @@ function SiteEditor({
       observeSecretRevision(latestEditorSnapshot(saved).site.revision);
       const displayGeneration = ++secretDisplayGeneration.current;
       secretDisplayRequest.current = displayGeneration;
-      if (kind === "view-api" || kind === "view-webhook") {
-        const response = await result(
-          kind === "view-api"
-            ? api.viewSiteApiSecret({ path, body: {} })
-            : api.viewSiteWebhookSecret({ path, body: {} }),
-        );
-        observeSecretRevision(latestEditorSnapshot(saved).site.revision);
-        if (displayGeneration === secretDisplayGeneration.current)
-          setRevealed({
-            purpose: kind === "view-api" ? "api" : "webhook",
-            label: kind === "view-api" ? "API 密钥" : "通知签名密钥",
-            value: response.data.secret,
-          });
-        return;
-      }
+      secretDisplayMode.current = "rotate";
+      setRevealed(null);
       const response = await result(
         kind === "api"
           ? api.rotateSiteApiSecret({
@@ -451,21 +505,25 @@ function SiteEditor({
       const superseded = response.data.site.revision < observedSecretRevision.current;
       // A GET may already have observed this same committed rotation. Preserve its
       // explicit display request unless the user hid it or another request replaced it.
-      if (secretDisplayRequest.current === displayGeneration && !superseded)
+      setConfirmation(null);
+      if (mounted.current && !document.hidden && secretDisplayRequest.current === displayGeneration && !superseded) {
+        secretDisplayMode.current = "display";
+        setSecretReadPending(false);
+        setSecretReadError(null);
+        setSecretDialog(kind);
         setRevealed({
           purpose: kind,
           label: kind === "api" ? "API 密钥" : "通知签名密钥",
           value: response.data.secret,
         });
+        setMissingSecrets(previous => ({ ...previous, [kind]: undefined }));
+      }
       setFeedback(superseded
         ? "密钥操作已完成，请重新查看当前密钥。"
         : "密钥已生成或轮换，请更新业务网站配置。");
     },
     onError: revisionConflict,
   });
-  useEffect(() => {
-    if (action.error && action.variables !== "delete") secretError.current?.focus();
-  }, [action.error, action.variables]);
   function applyReview(site: Site, configuration: SiteConfiguration, timeoutResolved = false) {
     observeSecretRevision(site.revision);
     setSaved(site);
@@ -502,7 +560,7 @@ function SiteEditor({
     },
   });
   const errors = save.error instanceof ApiError ? save.error.fields : {};
-  const busy = save.isPending || action.isPending || reload.isPending;
+  const busy = save.isPending || action.isPending || reload.isPending || secretReadPending;
   useOverlayCloseGuard(() => save.isPending || reload.isPending || (action.isPending && !deletionConfirmed.current));
   useEffect(() => {
     if (!tabbed || !(save.error instanceof ApiError)) return;
@@ -560,16 +618,10 @@ function SiteEditor({
       </Button>
     </OverlayActions>
   );
-  const secretResult = (purpose: "api" | "webhook") => <>
-    {action.error && (action.variables === purpose || action.variables === "view-" + purpose) &&
-      <div ref={secretError} tabIndex={-1} className="outline-none" data-site-secret-error><ErrorNotice error={action.error} showDiagnostics={false} /></div>}
-    {revealed?.purpose === purpose && <div className="flex min-w-0 flex-col gap-2" data-site-secret-result>
-      <div className="flex min-w-0 items-center gap-2">
-        <Input ref={revealedInput} aria-label={revealed.label} readOnly value={revealed.value} autoComplete="off" />
-        <CopyValue value={revealed.value} label={"复制" + revealed.label} buttonOnly />
-      </div>
-    </div>}
-  </>;
+  const isSecretConfirmation = confirmation === "api" || confirmation === "webhook";
+  const generatingSecret = isSecretConfirmation && missingSecrets[confirmation] === saved?.revision;
+  const secretActionName = (purpose: "api" | "webhook") =>
+    (missingSecrets[purpose] === saved?.revision ? "生成" : "轮换") + (purpose === "api" ? " API 密钥" : "通知签名密钥");
   return (
     <div className="admin-settings-layout flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -782,44 +834,40 @@ function SiteEditor({
                 <div className="flex flex-wrap gap-2">
                   <Button
                     variant="outline"
-                    aria-label={revealed?.purpose === "api" ? "隐藏 API 密钥" : "查看 API 密钥"}
-                    aria-busy={action.isPending && action.variables === "view-api"}
-                    disabled={busy && revealed?.purpose !== "api"}
-                    onClick={() => { if (revealed?.purpose === "api") hideSecret(); else action.mutate("view-api"); }}
+                    aria-label="查看 API 密钥"
+                    disabled={busy}
+                    onClick={event => { void readSecret("api", event.currentTarget); }}
                   >
-                    {revealed?.purpose === "api" ? "隐藏" : action.isPending && action.variables === "view-api" ? <><Spinner data-icon="inline-start" />正在读取…</> : "查看"}
+                    查看
                   </Button>
                   <Button
                     variant="outline"
                     disabled={busy || requiresReview}
-                    onClick={() => setConfirmation("api")}
+                    onClick={event => { secretOrigin.current = event.currentTarget; action.reset(); setConfirmation("api"); }}
                   >
-                    生成／轮换 API 密钥
+                    {secretActionName("api")}
                   </Button>
                 </div>
-                {secretResult("api")}
               </FieldSet>
               <FieldSet className="gap-2">
-                <FieldLegend variant="label">通知密钥</FieldLegend>
+                <FieldLegend variant="label">通知签名密钥</FieldLegend>
                 <div className="flex flex-wrap gap-2">
                   <Button
                     variant="outline"
-                    aria-label={revealed?.purpose === "webhook" ? "隐藏通知密钥" : "查看通知密钥"}
-                    aria-busy={action.isPending && action.variables === "view-webhook"}
-                    disabled={busy && revealed?.purpose !== "webhook"}
-                    onClick={() => { if (revealed?.purpose === "webhook") hideSecret(); else action.mutate("view-webhook"); }}
+                    aria-label="查看通知签名密钥"
+                    disabled={busy}
+                    onClick={event => { void readSecret("webhook", event.currentTarget); }}
                   >
-                    {revealed?.purpose === "webhook" ? "隐藏" : action.isPending && action.variables === "view-webhook" ? <><Spinner data-icon="inline-start" />正在读取…</> : "查看"}
+                    查看
                   </Button>
                   <Button
                     variant="outline"
                     disabled={busy || requiresReview}
-                    onClick={() => setConfirmation("webhook")}
+                    onClick={event => { secretOrigin.current = event.currentTarget; action.reset(); setConfirmation("webhook"); }}
                   >
-                    生成／轮换通知密钥
+                    {secretActionName("webhook")}
                   </Button>
                 </div>
-                {secretResult("webhook")}
               </FieldSet>
             </FieldGroup>
           </CardContent>
@@ -843,46 +891,58 @@ function SiteEditor({
       )}
       {saved && visible("integration") && <SiteIntegrationAssistant site={saved} siteDirty={dirty || requiresReview}
         disabled={busy} showClientId={false} onReloadSite={() => reload.mutate()} />}
+      <SecretViewDialog open={secretDialog !== null} title={secretDialog === "api" ? "API 密钥" : "通知签名密钥"}
+        values={revealed ? [{ label: revealed.label, value: revealed.value }] : []}
+        pending={secretReadPending} error={secretReadError} onClose={hideSecret}
+        onRetry={() => { if (secretDialog) void readSecret(secretDialog); }} finalFocus={() => secretOrigin.current} />
       <AlertDialog
         open={confirmation !== null}
-        onOpenChange={(open) => {
-          if (!open) setConfirmation(null);
+        onOpenChange={(open, event) => {
+          if (!open && isSecretConfirmation && action.isPending) event.cancel();
+          else if (!open) { setConfirmation(null); if (isSecretConfirmation) hideSecret(); }
         }}
       >
-        <AlertDialogContent>
+        <AlertDialogContent finalFocus={isSecretConfirmation ? () => secretOrigin.current : undefined}>
           <AlertDialogHeader>
+            {isSecretConfirmation && !generatingSecret && <AlertDialogMedia variant="warning"><TriangleAlert aria-hidden="true" /></AlertDialogMedia>}
             <AlertDialogTitle>
-              确认
-              {confirmation === "delete"
-                ? "删除业务网站"
-                : confirmation === "save"
-                  ? "保存配置"
-                  : "生成或轮换密钥"}
-              ？
+              {isSecretConfirmation ? secretActionName(confirmation) + "？"
+                : confirmation === "delete" ? "确认删除业务网站？" : "确认保存配置？"}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {confirmation === "delete"
                 ? "仅限无历史订单的网站。删除后不可恢复，客户端 ID 不可复用。"
                 : confirmation === "save"
                   ? impact
-                  : confirmation === "webhook"
-                    ? "下次发送使用新密钥，正在发送的通知可能仍用旧签名。接收端需短暂兼容新旧签名；疑似泄露时停止信任旧密钥。失败后先查看当前密钥，勿重复轮换。"
-                    : "已有 API 密钥将立即失效，请同步更新业务网站。失败后先查看当前密钥，勿重复轮换。"}
+                  : generatingSecret ? "生成后复制到业务网站的接入配置。"
+                    : confirmation === "webhook"
+                      ? "后续通知和重试将使用新密钥，请同步业务网站的验签配置；正在发送的通知仍可能使用旧签名。"
+                      : "已有 API 密钥将立即失效，请同步更新业务网站的接入配置。"}
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {isSecretConfirmation && !!action.error && <>
+            <ErrorNotice error={action.error} showDiagnostics={false} />
+            <p className="text-sm text-muted-foreground">请关闭后查看当前密钥，确认操作结果。</p>
+          </>}
           <AlertDialogFooter>
-            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogCancel disabled={isSecretConfirmation && action.isPending}>{isSecretConfirmation && action.error ? "关闭" : "取消"}</AlertDialogCancel>
             <AlertDialogAction
-              disabled={busy || requiresReview || (confirmation === "save" && !!timeoutError)}
-              onClick={() => {
+              variant={(isSecretConfirmation && !generatingSecret) || confirmation === "delete" ? "destructive" : "default"}
+              disabled={busy || requiresReview || (isSecretConfirmation && !!action.error) || (confirmation === "save" && !!timeoutError)}
+              onClick={event => {
                 if (busy || requiresReview || (confirmation === "save" && timeoutError)) return;
                 const selected = confirmation;
-                setConfirmation(null);
-                if (selected === "save") save.mutate();
-                else if (selected) action.mutate(selected);
+                if (selected === "api" || selected === "webhook") {
+                  event.preventDefault();
+                  action.mutate(selected);
+                } else {
+                  setConfirmation(null);
+                  if (selected === "save") save.mutate();
+                  else if (selected) action.mutate(selected);
+                }
               }}
             >
-              确认
+              {isSecretConfirmation ? action.isPending ? <><Spinner data-icon="inline-start" />处理中…</> : generatingSecret ? "生成密钥" : "确认轮换" : "确认"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

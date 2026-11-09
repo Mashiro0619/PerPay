@@ -74,10 +74,13 @@ browserTest("site timeout keeps invalid input through a concurrent key conflict 
       if (request.method() === "PUT" && request.url() === siteUrl) formWrites.push(request.postDataJSON());
     });
 
-    await page.getByRole("button", { name: "生成／轮换 API 密钥", exact: true }).click();
+    await page.getByRole("button", { name: "轮换 API 密钥", exact: true }).click();
+    const rotation = page.getByRole("alertdialog", { name: "轮换 API 密钥？", exact: true });
     const rejectedRotation = page.waitForResponse(response => response.request().method() === "POST" && response.status() === 409);
-    await page.getByRole("alertdialog").getByRole("button", { name: "确认", exact: true }).click();
+    await rotation.getByRole("button", { name: "确认轮换", exact: true }).click();
     expect((await (await rejectedRotation).json()).error.code).toBe("site_revision_conflict");
+    await expect(rotation.getByRole("button", { name: "确认轮换", exact: true })).toBeDisabled();
+    await rotation.getByRole("button", { name: "关闭", exact: true }).click();
     await page.getByRole("button", { name: "读取最新配置并核对", exact: true }).click();
     await expect(page.getByText("最新配置已合并，尚未保存", { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "应用核对结果", exact: true })).toHaveCount(0);

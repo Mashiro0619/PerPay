@@ -134,13 +134,17 @@ async function createSite(page: Page, fixture: BusinessFixture, info: TestInfo, 
   expect(site.configuration.collection?.accounts.map(selected => selected.account_id)).toEqual([account.id]);
   await expect.poll(() => new URL(page.url()).searchParams.get("overlay")).toBe(`/sites/${site.client_id}/edit?section=basic`);
   await selectTab(overlay, "接入与通知");
-  for (const label of ["生成／轮换 API 密钥", "生成／轮换通知密钥"]) {
-    await overlay.getByRole("button", { name: label, exact: true }).click();
-    const confirm = page.getByRole("alertdialog", { name: "确认生成或轮换密钥？", exact: true });
+  for (const name of ["API 密钥", "通知签名密钥"]) {
+    const actionName = "轮换" + (name === "API 密钥" ? " " : "") + name;
+    await overlay.getByRole("button", { name: actionName, exact: true }).click();
+    const confirm = page.getByRole("alertdialog", { name: actionName + "？", exact: true });
     const rotated = page.waitForResponse(response => new URL(response.url()).pathname.includes(`/sites/${site.client_id}/secrets/`) && new URL(response.url()).pathname.endsWith("/actions/rotate") && response.request().method() === "POST");
-    await confirm.getByRole("button", { name: "确认", exact: true }).click();
+    await confirm.getByRole("button", { name: "确认轮换", exact: true }).click();
     expect((await rotated).ok()).toBe(true);
-    await overlay.getByRole("button", { name: /^隐藏/ }).click();
+    const key = page.getByRole("dialog", { name, exact: true });
+    await expect(key.getByRole("textbox", { name, exact: true })).not.toHaveValue("");
+    await key.getByRole("button", { name: "关闭", exact: true }).click();
+    await expect(key).toHaveCount(0);
   }
   await overlay.getByRole("textbox", { name: "通知地址前缀", exact: true }).fill(fixture.notificationOrigin);
   await overlay.getByRole("switch", { name: "开启通知", exact: true }).check();

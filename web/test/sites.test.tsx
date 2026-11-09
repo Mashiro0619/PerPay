@@ -129,11 +129,11 @@ describe("business website management", () => {
   it("groups each website key with its own view and rotation actions", async () => {
     const view = mount("/sites/site_test/settings/integration");
     const apiKeys = await screen.findByRole("group", { name: "API 密钥" });
-    const notificationKeys = screen.getByRole("group", { name: "通知密钥" });
+    const notificationKeys = screen.getByRole("group", { name: "通知签名密钥" });
     expect(within(apiKeys).getByRole("button", { name: "查看 API 密钥" })).toBeVisible();
-    expect(within(apiKeys).getByRole("button", { name: "生成／轮换 API 密钥" })).toBeVisible();
-    expect(within(notificationKeys).getByRole("button", { name: "查看通知密钥" })).toBeVisible();
-    expect(within(notificationKeys).getByRole("button", { name: "生成／轮换通知密钥" })).toBeVisible();
+    expect(within(apiKeys).getByRole("button", { name: "轮换 API 密钥" })).toBeVisible();
+    expect(within(notificationKeys).getByRole("button", { name: "查看通知签名密钥" })).toBeVisible();
+    expect(within(notificationKeys).getByRole("button", { name: "轮换通知签名密钥" })).toBeVisible();
     expect(view.writes).toHaveLength(0);
   });
   it("rejects a whitespace-only name before sending a website update", async () => {
@@ -272,9 +272,10 @@ describe("business website management", () => {
   it("rotates only the selected website key without replacing an unsaved configuration draft", async () => {
     const view = mount("/sites/site_test/settings/integration"); const user = userEvent.setup();
     const name = await screen.findByLabelText("返回地址前缀"); await user.clear(name); await user.type(name, "https://draft.example.com");
-    await user.click(screen.getByRole("button", { name: "生成／轮换 API 密钥" }));
-    await user.click(await screen.findByRole("button", { name: "确认" }));
+    await user.click(screen.getByRole("button", { name: "轮换 API 密钥" }));
+    await user.click(await screen.findByRole("button", { name: "确认轮换" }));
     expect(await screen.findByDisplayValue("synthetic-site-key")).toBeVisible();
+    await user.click(within(screen.getByRole("dialog", { name: /^(API 密钥|通知签名密钥)$/ })).getByRole("button", { name: "关闭" }));
     expect(name).toHaveValue("https://draft.example.com");
     expect(view.writes[0]!.path).toBe("/api/admin/v1/sites/site_test/secrets/api_secret/actions/rotate");
     await user.click(screen.getByRole("button", { name: "保存业务网站" })); if(view.router.state.location.pathname.endsWith("integration")) await user.click(await screen.findByRole("button", { name: "确认" }));
@@ -314,8 +315,9 @@ describe("website configuration recovery", () => {
     fireEvent.change(timeout, { target: { value: "5.123" } });
     fireEvent.change(timeout, { target: { value: "5.1234" } });
     view.changeRemote(configuration => { configuration.policy.orders.order_ttl_seconds = 600; });
-    await user.click(screen.getByRole("button", { name: "生成／轮换 API 密钥" }));
-    await user.click(await screen.findByRole("button", { name: "确认" }));
+    await user.click(screen.getByRole("button", { name: "轮换 API 密钥" }));
+    await user.click(await screen.findByRole("button", { name: "确认轮换" }));
+    await user.click(await screen.findByRole("button", { name: "关闭" }));
     await user.click(await screen.findByRole("button", { name: "读取最新配置并核对" }));
     await screen.findByText("最新配置已合并，尚未保存");
     expect(screen.queryByRole("button", { name: "应用核对结果" })).not.toBeInTheDocument();
@@ -346,8 +348,9 @@ describe("website configuration recovery", () => {
     fireEvent.change(timeout, { target: { value: "5.1234" } });
     fireEvent.change(screen.getByLabelText("最多发送次数"), { target: { value: "15" } });
     view.changeRemote(configuration => { configuration.policy.notification_delivery.maximum_attempts = 18; });
-    await user.click(screen.getByRole("button", { name: "生成／轮换 API 密钥" }));
-    await user.click(await screen.findByRole("button", { name: "确认" }));
+    await user.click(screen.getByRole("button", { name: "轮换 API 密钥" }));
+    await user.click(await screen.findByRole("button", { name: "确认轮换" }));
+    await user.click(await screen.findByRole("button", { name: "关闭" }));
     await user.click(await screen.findByRole("button", { name: "读取最新配置并核对" }));
     await screen.findByText("服务器值：18");
     await user.click(screen.getByRole("button", { name: choice }));
@@ -372,8 +375,9 @@ describe("website configuration recovery", () => {
     fireEvent.change(timeout, { target: { value: "5.123" } });
     fireEvent.change(timeout, { target: { value: "5.1234" } });
     view.changeRemote(configuration => { configuration.policy.notification_delivery.timeout_milliseconds = 7555; });
-    await user.click(screen.getByRole("button", { name: "生成／轮换 API 密钥" }));
-    await user.click(await screen.findByRole("button", { name: "确认" }));
+    await user.click(screen.getByRole("button", { name: "轮换 API 密钥" }));
+    await user.click(await screen.findByRole("button", { name: "确认轮换" }));
+    await user.click(await screen.findByRole("button", { name: "关闭" }));
     await user.click(await screen.findByRole("button", { name: "读取最新配置并核对" }));
     expect(await screen.findByText("服务器值：7.555")).toBeVisible();
     expect(screen.getByText("我的值：5.123")).toBeVisible();
@@ -531,14 +535,16 @@ describe("website configuration recovery", () => {
       configuration.policy.orders.order_ttl_seconds = 600;
       configuration.policy.notification_delivery.timeout_milliseconds = 7000;
     });
-    await user.click(screen.getByRole("button", { name: "生成／轮换通知密钥" }));
-    await user.click(await screen.findByRole("button", { name: "确认" }));
+    await user.click(screen.getByRole("button", { name: "轮换通知签名密钥" }));
+    await user.click(await screen.findByRole("button", { name: "确认轮换" }));
+    await user.click(await screen.findByRole("button", { name: "关闭" }));
     await user.click(await screen.findByRole("button", { name: "读取最新配置并核对" }));
     await screen.findByText("最新配置已合并，尚未保存");
     expect(view.writes).toHaveLength(1);
-    await user.click(screen.getByRole("button", { name: "生成／轮换通知密钥" }));
-    await user.click(await screen.findByRole("button", { name: "确认" }));
+    await user.click(screen.getByRole("button", { name: "轮换通知签名密钥" }));
+    await user.click(await screen.findByRole("button", { name: "确认轮换" }));
     await screen.findByDisplayValue("synthetic-site-key");
+    await user.click(within(screen.getByRole("dialog", { name: /^(API 密钥|通知签名密钥)$/ })).getByRole("button", { name: "关闭" }));
     expect(screen.getByLabelText("返回地址前缀")).toHaveValue("https://draft.example.com");
     expect(screen.getByLabelText("最多发送次数")).toHaveValue(15);
     expect(queryClient.getQueryData<{ site: Site }>(["site-editor", "site_test"])?.site.configuration.return_origin).toBeNull();
@@ -607,8 +613,8 @@ describe("website field feedback", () => {
   });
   it("keeps key rotation revisions on reentry without caching the revealed secret", async () => {
     const view = mount("/sites/site_test/settings/integration"); const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "生成／轮换 API 密钥" }));
-    await user.click(await screen.findByRole("button", { name: "确认" }));
+    await user.click(await screen.findByRole("button", { name: "轮换 API 密钥" }));
+    await user.click(await screen.findByRole("button", { name: "确认轮换" }));
     await screen.findByDisplayValue("synthetic-site-key");
     expect(JSON.stringify(queryClient.getQueryData(["site-editor", "site_test"]))).not.toContain("synthetic-site-key");
     await act(async () => { await view.router.navigate("/sites"); });

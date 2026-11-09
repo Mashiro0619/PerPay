@@ -12,8 +12,8 @@ import { json } from "./fixtures";
 type Purpose = "api_secret" | "webhook_secret";
 type SecretAction = "view" | "rotate";
 const editorKey = ["site-editor", "site_secret_recovery"];
-const viewLabel = (purpose: Purpose) => purpose === "api_secret" ? "查看 API 密钥" : "查看通知密钥";
-const rotateLabel = (purpose: Purpose) => purpose === "api_secret" ? "生成／轮换 API 密钥" : "生成／轮换通知密钥";
+const viewLabel = (purpose: Purpose) => purpose === "api_secret" ? "查看 API 密钥" : "查看通知签名密钥";
+const rotateLabel = (purpose: Purpose) => purpose === "api_secret" ? "轮换 API 密钥" : "轮换通知签名密钥";
 
 function mount() {
   let site: Site = {
@@ -91,7 +91,10 @@ async function refreshSnapshot() {
   await act(async () => { await queryClient.invalidateQueries({ queryKey: editorKey }); });
 }
 async function confirm(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "确认" }));
+  await user.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: /^(确认|确认轮换)$/ }));
+}
+async function closeSecret(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "关闭" }));
 }
 function expectNoCachedSecret(secret: string) {
   expect(JSON.stringify(queryClient.getQueryCache().getAll().map(query => query.state.data))).not.toContain(secret);
@@ -102,6 +105,7 @@ describe("website secret display after configuration recovery", () => {
     const view = mount(), user = userEvent.setup(), oldSecret = view.secret("api_secret");
     await user.click(await screen.findByRole("button", { name: viewLabel("api_secret") }));
     await screen.findByDisplayValue(oldSecret);
+    await closeSecret(user);
     fireEvent.change(screen.getByLabelText("返回地址前缀"), { target: { value: "https://draft.example.com" } });
     view.rotateRemote("api_secret");
     if (sameField) view.changeRemote(configuration => { configuration.return_origin = "https://remote.example.com"; });
@@ -142,9 +146,9 @@ describe("website secret display after configuration recovery", () => {
 
   it("invalidates displayed keys while keeping a dirty draft and permits an explicit current-key read", async () => {
     const view = mount(), user = userEvent.setup(), oldSecret = view.secret("api_secret");
+    fireEvent.change(await screen.findByLabelText("返回地址前缀"), { target: { value: "https://draft.example.com" } });
     await user.click(await screen.findByRole("button", { name: viewLabel("api_secret") }));
     await screen.findByDisplayValue(oldSecret);
-    fireEvent.change(screen.getByLabelText("返回地址前缀"), { target: { value: "https://draft.example.com" } });
     view.rotateRemote("api_secret");
     await refreshSnapshot();
     await screen.findByRole("button", { name: "读取最新配置并核对" });
@@ -152,9 +156,10 @@ describe("website secret display after configuration recovery", () => {
     expect(screen.getByLabelText("返回地址前缀")).toHaveValue("https://draft.example.com");
     await user.click(screen.getByRole("button", { name: viewLabel("api_secret") }));
     const current = await screen.findByDisplayValue(view.secret("api_secret"));
+    await closeSecret(user);
     await user.click(screen.getByRole("button", { name: "读取最新配置并核对" }));
     await screen.findByText("最新配置已合并，尚未保存");
-    expect(current).toBeVisible();
+    expect(current).not.toBeInTheDocument();
     expect(screen.getByLabelText("返回地址前缀")).toHaveValue("https://draft.example.com");
   });
 
@@ -200,6 +205,7 @@ describe("website secret display after configuration recovery", () => {
     const view = mount(), user = userEvent.setup(), oldSecret = view.secret(purpose);
     await user.click(await screen.findByRole("button", { name: viewLabel(purpose) }));
     await screen.findByDisplayValue(oldSecret);
+    await closeSecret(user);
     const pending = view.holdNext("rotate", purpose);
     await user.click(screen.getByRole("button", { name: rotateLabel(purpose) }));
     await confirm(user);
@@ -208,8 +214,7 @@ describe("website secret display after configuration recovery", () => {
     await refreshSnapshot();
     await waitFor(() => expect(screen.queryByDisplayValue(oldSecret)).not.toBeInTheDocument());
     await act(async () => { pending.release(); });
-    await waitFor(() => expect(screen.getByRole("button", { name: rotateLabel(purpose) })).toBeEnabled());
-    expect(screen.getByDisplayValue(view.secret(purpose))).toBeVisible();
+    expect(await screen.findByDisplayValue(view.secret(purpose))).toBeVisible();
     expect(queryClient.getQueryData(editorKey)).toMatchObject({ site: { revision: 1 } });
     expectNoCachedSecret(view.secret(purpose));
   });
@@ -218,11 +223,12 @@ describe("website secret display after configuration recovery", () => {
     const view = mount(), user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: viewLabel("api_secret") }));
     await screen.findByDisplayValue(view.secret("api_secret"));
+    await closeSecret(user);
     const pending = view.holdNext("rotate", "api_secret");
     await user.click(screen.getByRole("button", { name: rotateLabel("api_secret") }));
     await confirm(user);
     await waitFor(() => expect(pending.started()).toBe(true));
-    await user.click(screen.getByRole("button", { name: /^隐藏/ }));
+    await act(async () => { window.dispatchEvent(new Event("pagehide")); });
     await refreshSnapshot();
     await act(async () => { pending.release(); });
     await waitFor(() => expect(screen.getByRole("button", { name: rotateLabel("api_secret") })).toBeEnabled());
@@ -235,11 +241,11 @@ describe("website secret display after configuration recovery", () => {
     const view = mount(), user = userEvent.setup(), oldSecret = view.secret(purpose);
     await user.click(await screen.findByRole("button", { name: viewLabel(purpose) }));
     await screen.findByDisplayValue(oldSecret);
+    await closeSecret(user);
     await user.click(screen.getByRole("button", { name: rotateLabel(purpose) }));
     await confirm(user);
     await waitFor(() => expect(queryClient.getQueryData(editorKey)).toMatchObject({ site: { revision: 1 } }));
-    await waitFor(() => expect(screen.getByRole("button", { name: rotateLabel(purpose) })).toBeEnabled());
-    expect(screen.getByDisplayValue(view.secret(purpose))).toBeVisible();
+    expect(await screen.findByDisplayValue(view.secret(purpose))).toBeVisible();
     expect(screen.queryByDisplayValue(oldSecret)).not.toBeInTheDocument();
     expectNoCachedSecret(view.secret(purpose));
   });
