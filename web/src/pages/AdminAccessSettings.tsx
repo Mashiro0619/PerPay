@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { onlineManager, useMutation, useQuery } from "@tanstack/react-query";
-import { api, result, ApiError, queryClient, type RuntimeSettings } from "@/api/client";
+import { api, result, ApiError, queryClient, type AdminAccessView, type RuntimeSettings } from "@/api/client";
 import { PageHeading } from "@/components/page-heading";
 import { useSuccessToast } from "@/components/Feedback";
 import { OverlayFormActions } from "@/components/overlay-actions";
@@ -19,7 +19,10 @@ import {
   FieldLabel,
   FieldDescription,
   FieldError,
+  FieldTitle,
 } from "@/components/ui/field";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
@@ -48,22 +51,35 @@ export function AdminAccessSettings({
   onSaved: (settings: RuntimeSettings, message?: string) => void;
 }) {
   const overlay = useOverlayContext();
-  const initial = settings.admin_access;
+  const source = useQuery({
+    queryKey: ["admin-access-source"],
+    queryFn: ({ signal }) => result(api.getAdminAccessSettings({ signal })),
+    networkMode: "always",
+    retry: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
+  const initial = source.data && source.data.data.revision >= settings.revision
+    ? source.data.data : { ...settings.admin_access, revision: settings.revision };
   const [draft, setDraft] = useState<{
     enabled: boolean;
     text: string;
     revision: number;
+    base: RuntimeSettings["admin_access"];
   } | null>(null);
+  const [needsReload, setNeedsReload] = useState(false);
+  const [review, setReview] = useState<{
+    snapshot: AdminAccessView;
+    enabled: boolean;
+    text: string;
+  } | null>(null);
+  const [choice, setChoice] = useState<"local" | "remote" | null>(null);
   const enabled = draft?.enabled ?? initial.enabled;
   const text = draft?.text ?? initial.cidrs.join("\n");
   const dirty =
     enabled !== initial.enabled || text !== initial.cidrs.join("\n");
   useDirtyDraft(dirty);
   const [confirm, setConfirm] = useState(false);
-  const source = useQuery({
-    queryKey: ["admin-access-source"],
-    queryFn: () => result(api.getAdminAccessSettings()),
-  });
   const currentIp = source.data?.data.current_ip;
   const save = useMutation({
     networkMode: "always",
@@ -74,7 +90,7 @@ export function AdminAccessSettings({
       return result(
         api.updateAdminAccessSettings({
           body: {
-            revision: draft?.revision ?? settings.revision,
+            revision: draft?.revision ?? initial.revision,
             enabled,
             cidrs:
               text.trim() === ""
@@ -89,11 +105,55 @@ export function AdminAccessSettings({
       onSaved(response.data, "管理员 IP 白名单已保存");
       void source.refetch();
     },
+    onError: (error) => {
+      if (error instanceof ApiError && error.code === "settings_revision_conflict")
+        setNeedsReload(true);
+    },
     onSettled: () => setConfirm(false),
   });
+  function applyReload(snapshot: AdminAccessView, nextEnabled: boolean, nextText: string) {
+    setDraft({ revision: snapshot.revision, base: snapshot, enabled: nextEnabled, text: nextText });
+    setNeedsReload(false);
+    setReview(null);
+    setChoice(null);
+    save.reset();
+  }
+  const reload = useMutation({
+    networkMode: "always",
+    retry: false,
+    mutationFn: async () => {
+      if (!onlineManager.isOnline() || !navigator.onLine)
+        throw new Error("网络已断开，恢复连接后请重新读取。");
+      const response = await source.refetch({ throwOnError: true });
+      return response.data!.data;
+    },
+    onSuccess: (snapshot) => {
+      const base = draft?.base ?? initial;
+      const normalizedText = text.trim() ? text.split(/\r?\n/).map(value => value.trim()).join("\n") : "";
+      const baseText = base.cidrs.join("\n");
+      const remoteText = snapshot.cidrs.join("\n");
+      const nextEnabled = enabled === base.enabled ? snapshot.enabled : enabled;
+      const nextText = normalizedText === baseText ? remoteText : text;
+      if (normalizedText !== baseText && remoteText !== baseText && remoteText !== normalizedText) {
+        setReview({ snapshot, enabled: nextEnabled, text: nextText });
+        setChoice(null);
+      } else applyReload(snapshot, nextEnabled, nextText);
+    },
+  });
+  const busy = save.isPending || reload.isPending;
+  const requiresReview = needsReload || review !== null;
+  function edit(nextEnabled: boolean, nextText: string) {
+    setDraft({
+      revision: draft?.revision ?? initial.revision,
+      base: draft?.base ?? initial,
+      enabled: nextEnabled,
+      text: nextText,
+    });
+    save.reset();
+  }
   const fieldError =
     save.error instanceof ApiError ? save.error.fields.cidrs : undefined;
-  useOverlayCloseGuard(() => save.isPending);
+  useOverlayCloseGuard(() => busy);
   return (
     <Card>
       <CardHeader>
@@ -104,18 +164,36 @@ export function AdminAccessSettings({
       </CardHeader>
       <CardContent>
         <FieldGroup>
+          {needsReload && !review && <Alert>
+            <AlertTitle>配置已在其他会话中更新</AlertTitle>
+            <AlertDescription>
+              <p>你的修改已保留，重新读取后可继续保存。</p>
+              <Button variant="outline" disabled={busy} onClick={() => reload.mutate()}>
+                {reload.isPending ? "正在读取…" : "重新读取配置"}
+              </Button>
+            </AlertDescription>
+          </Alert>}
+          {review && <Alert>
+            <AlertTitle>访问规则存在不同修改</AlertTitle>
+            <AlertDescription>
+              <FieldGroup>
+                <Field><FieldTitle>服务器规则</FieldTitle><FieldDescription className="whitespace-pre-wrap break-all">{review.snapshot.cidrs.join("\n") || "空规则"}</FieldDescription></Field>
+                <Field><FieldTitle>我的规则</FieldTitle><FieldDescription className="whitespace-pre-wrap break-all">{review.text || "空规则"}</FieldDescription></Field>
+                <ToggleGroup aria-label="访问规则冲突处理" variant="outline" className="max-w-full flex-wrap"
+                  value={choice ? [choice] : []} onValueChange={value => setChoice(value[0] === "local" || value[0] === "remote" ? value[0] : null)}>
+                  <ToggleGroupItem value="local">保留我的修改</ToggleGroupItem>
+                  <ToggleGroupItem value="remote">采用服务器值</ToggleGroupItem>
+                </ToggleGroup>
+                <Button className="w-fit" disabled={!choice} onClick={() => applyReload(review.snapshot, review.enabled, choice === "local" ? review.text : review.snapshot.cidrs.join("\n"))}>应用核对结果</Button>
+              </FieldGroup>
+            </AlertDescription>
+          </Alert>}
           <Field orientation="horizontal">
             <Switch
               id="admin-access-enabled"
               checked={enabled}
-              disabled={save.isPending}
-              onCheckedChange={(value) =>
-                setDraft({
-                  revision: draft?.revision ?? settings.revision,
-                  enabled: value,
-                  text,
-                })
-              }
+              disabled={busy || requiresReview}
+              onCheckedChange={(value) => edit(value, text)}
             />
             <FieldLabel htmlFor="admin-access-enabled">
               启用 IP 白名单
@@ -129,14 +207,8 @@ export function AdminAccessSettings({
               id="admin-access-cidrs"
               className="settings-long-text"
               value={text}
-              disabled={save.isPending}
-              onChange={(event) =>
-                setDraft({
-                  revision: draft?.revision ?? settings.revision,
-                  enabled,
-                  text: event.target.value,
-                })
-              }
+              disabled={busy || requiresReview}
+              onChange={(event) => edit(enabled, event.target.value)}
               aria-invalid={Boolean(fieldError)}
               aria-describedby="admin-access-help"
               placeholder={"192.0.2.10\n2001:db8::/64"}
@@ -155,14 +227,10 @@ export function AdminAccessSettings({
             <Button
               type="button"
               variant="outline"
-              disabled={!currentIp || save.isPending}
+              disabled={!currentIp || busy || requiresReview}
               onClick={() => {
-                if (currentIp && !text.split(/\r?\n/).includes(currentIp))
-                  setDraft({
-                    revision: draft?.revision ?? settings.revision,
-                    enabled,
-                    text: [text.trim(), currentIp].filter(Boolean).join("\n"),
-                  });
+                if (currentIp && !text.split(/\r?\n/).map(value => value.trim()).includes(currentIp))
+                  edit(enabled, [text.trim(), currentIp].filter(Boolean).join("\n"));
               }}
             >
               加入当前 IP
@@ -181,16 +249,16 @@ export function AdminAccessSettings({
           </FieldDescription>
           <ErrorNotice
             scope="page"
-            error={source.error}
-            retry={() => void source.refetch()}
+            error={source.error ?? reload.error}
+            retry={() => { if (needsReload) reload.mutate(); else void source.refetch(); }}
           />
-          <ErrorNotice error={save.error} />
+          <ErrorNotice error={requiresReview ? null : save.error} />
         </FieldGroup>
       </CardContent>
       <OverlayFormActions>
-        {overlay && <Button type="button" variant="outline" disabled={save.isPending} onClick={() => overlay.requestClose()}>关闭</Button>}
+        {overlay && <Button type="button" variant="outline" disabled={busy} onClick={() => overlay.requestClose()}>关闭</Button>}
         <Button
-          disabled={!dirty || save.isPending}
+          disabled={!dirty || busy || requiresReview}
           onClick={() => setConfirm(true)}
         >
           保存白名单

@@ -1,4 +1,108 @@
 import { test, expect, login, record } from "./fixtures";
+import { test as isolatedTest } from "@playwright/test";
+import { createSettingsServer } from "./settings-server";
+import type { AdminAccessView } from "../web/src/api/generated/types.gen";
+
+isolatedTest("IP 白名单在真实版本冲突后保留草稿并可继续保存", async ({ page }, info) => {
+  const fixture = await createSettingsServer(Date.now());
+  try {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
+    await page.context().addCookies(fixture.cookies);
+    await page.route("**/*", route => new URL(route.request().url()).origin === fixture.origin ? route.continue() : route.abort("blockedbyclient"));
+    const endpoint = fixture.origin + "/api/admin/v1/settings/admin-access";
+    const headers = { origin: fixture.origin, "x-csrf-token": fixture.cookies.find(cookie => cookie.name.includes("csrf"))!.value };
+    const read = async () => {
+      const response = await page.request.get(endpoint);
+      expect(response.status()).toBe(200);
+      return (await response.json()).data as AdminAccessView;
+    };
+    const writeElsewhere = async (enabled: boolean, cidrs: string[]) => {
+      const current = await read();
+      const response = await page.request.put(endpoint, { headers, data: { revision: current.revision, enabled, cidrs } });
+      expect(response.status()).toBe(200);
+      return read();
+    };
+    const initial = await writeElsewhere(false, ["127.0.0.1"]);
+    await page.goto(fixture.origin + "/admin/settings/security");
+    await page.getByRole("link", { name: "编辑管理员 IP 白名单", exact: true }).click();
+    const editor = page.locator("[data-overlay-content]");
+    const rules = editor.getByRole("textbox", { name: "允许的 IP / 网段", exact: true });
+    const save = editor.getByRole("button", { name: "保存白名单", exact: true });
+    const submitted: { status: number; revision: number; enabled: boolean; cidrs: string[] }[] = [];
+    async function submit(status: number, revision: number) {
+      await save.click();
+      const dialog = page.getByRole("dialog", { name: "确认保存访问规则？", exact: true });
+      const pending = page.waitForResponse(response => response.url() === endpoint && response.request().method() === "PUT");
+      await dialog.getByRole("button", { name: "确认保存", exact: true }).click();
+      const response = await pending;
+      expect(response.status()).toBe(status);
+      const body = response.request().postDataJSON() as { revision: number; enabled: boolean; cidrs: string[] };
+      expect(body.revision).toBe(revision);
+      submitted.push({ status, ...body });
+      await expect(dialog).toBeHidden();
+    }
+    const firstDraft = "127.0.0.1\n192.0.2.10";
+    await expect(rules).toHaveValue("127.0.0.1");
+    await rules.fill(firstDraft);
+    const remoteSwitch = await writeElsewhere(true, ["127.0.0.1"]);
+    await submit(409, initial.revision);
+    await expect(rules).toHaveValue(firstDraft);
+    await expect(save).toBeDisabled();
+    await editor.getByRole("button", { name: "重新读取配置", exact: true }).click();
+    await expect(rules).toBeEnabled();
+    await expect(rules).toHaveValue(firstDraft);
+    await expect(editor.getByRole("switch", { name: "启用 IP 白名单", exact: true })).toBeChecked();
+    await submit(200, remoteSwitch.revision);
+    const firstSaved = await read();
+    expect(firstSaved.enabled).toBe(true);
+    expect(firstSaved.cidrs).toEqual(["127.0.0.1", "192.0.2.10"]);
+
+    await page.setViewportSize({ width: 320, height: 900 });
+    await page.evaluate(() => document.documentElement.style.fontSize = "200%");
+    await expect(page.locator("html")).toHaveCSS("font-size", "32px");
+    const secondDraft = firstDraft + "\n198.51.100.11";
+    await rules.fill(secondDraft);
+    const remoteRules = await writeElsewhere(true, ["127.0.0.1", "203.0.113.12"]);
+    await submit(409, firstSaved.revision);
+    await expect(rules).toHaveValue(secondDraft);
+    await editor.getByRole("button", { name: "重新读取配置", exact: true }).click();
+    const conflict = editor.getByRole("alert").filter({ hasText: "访问规则存在不同修改" });
+    await expect(conflict).toBeVisible();
+    await expect(conflict).toContainText("203.0.113.12");
+    await expect(conflict).toContainText("198.51.100.11");
+    await expect(save).toBeDisabled();
+    const apply = conflict.getByRole("button", { name: "应用核对结果", exact: true });
+    await expect(apply).toBeDisabled();
+    await conflict.scrollIntoViewIfNeeded();
+    const geometry = await editor.evaluate(element => {
+      const box = element.getBoundingClientRect();
+      return { viewport: innerWidth, document: document.documentElement.scrollWidth,
+        left: box.left, right: box.right, width: element.clientWidth, content: element.scrollWidth };
+    });
+    expect(geometry.document).toBeLessThanOrEqual(geometry.viewport + 1);
+    expect(geometry.left).toBeGreaterThanOrEqual(-1);
+    expect(geometry.right).toBeLessThanOrEqual(geometry.viewport + 1);
+    expect(geometry.content).toBeLessThanOrEqual(geometry.width + 1);
+    for (const button of await conflict.getByRole("button").all()) {
+      const bounds = await button.boundingBox();
+      expect(bounds!.x).toBeGreaterThanOrEqual(0);
+      expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(321);
+    }
+    await page.screenshot({ path: info.outputPath("access-conflict-320-200.png") });
+    await conflict.getByRole("button", { name: "保留我的修改", exact: true }).click();
+    await apply.click();
+    await expect(rules).toBeEnabled();
+    await expect(rules).toHaveValue(secondDraft);
+    await submit(200, remoteRules.revision);
+    const secondSaved = await read();
+    expect(secondSaved.enabled).toBe(true);
+    expect(secondSaved.cidrs).toEqual(["127.0.0.1", "192.0.2.10", "198.51.100.11"]);
+    await expect(save).toBeDisabled();
+    await page.screenshot({ path: info.outputPath("access-saved-320-200.png") });
+    await info.attach("access-recovery", { body: JSON.stringify({ submitted, firstSaved, secondSaved, geometry }), contentType: "application/json" });
+  } finally { await fixture.close(); }
+});
 
 test("website category tabs reveal keyboard focus without moving the page or navigating before Enter", async ({ page, manifest }, info) => {
   await page.setViewportSize({ width: 390, height: 844 });
