@@ -10,6 +10,37 @@ import { json } from "./fixtures";
 import { systemStatus } from "./onboarding-fixture";
 
 describe("runtime failure explanations", () => {
+  it.each([
+    [{ recovery_required: true }, "备份任务需要恢复"],
+    [{ clock_moved_backwards: true }, "系统时钟发生回退"],
+    [{ instance_matches: false }, "备份与当前实例不匹配"],
+    [{ backup_required: true }, "当前数据需要重新备份"],
+    [{}, "当前备份未通过健康检查"],
+  ])("explains an unhealthy backup even when an older snapshot exists (%j)", async (flags, message) => {
+    const status = systemStatus();
+    Object.assign(status.backup, { enabled: true, ok: false, backup_available: true, backup_required: false }, flags);
+    vi.stubGlobal("fetch", vi.fn(async () => json({ data: status })));
+    render(<QueryClientProvider client={queryClient}><BackupStatus /></QueryClientProvider>);
+    expect(await screen.findByText(new RegExp(message as string))).toBeVisible();
+    expect(screen.queryByText("备份任务已启用")).not.toBeInTheDocument();
+  });
+
+  it.each([null, "verification"] as const)("shows a running backup before missing snapshots or earlier failures (%s)", async stage => {
+    const status = systemStatus();
+    status.backup.enabled = true;
+    status.backup.backup_in_progress = true;
+    status.backup.backup_available = false;
+    status.backup.last_error_stage = stage;
+    vi.stubGlobal("fetch", vi.fn(async () => json({ data: status })));
+    render(<QueryClientProvider client={queryClient}><BackupStatus /></QueryClientProvider>);
+    expect(await screen.findByText("正在备份")).toBeVisible();
+    expect(screen.queryByText(/请先完成一次备份验证|最近备份失败/)).not.toBeInTheDocument();
+    if (stage) {
+      await userEvent.setup().click(screen.getByRole("button", { name: "备份错误诊断" }));
+      expect(screen.getByText(stage)).toBeVisible();
+    }
+  });
+
   it("distinguishes credentials, permission, network and local storage failures", () => {
     expect(runtimeErrorMessage("查账", "provider_authentication_failed")).toContain("应用和密钥");
     expect(runtimeErrorMessage("查账", "remote_authorization_failed")).toContain("查询权限不足");
