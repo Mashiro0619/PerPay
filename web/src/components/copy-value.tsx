@@ -1,5 +1,5 @@
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Check, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -16,30 +16,34 @@ export function CopyValue({
   tooltip?: boolean;
   buttonOnly?: boolean;
 }) {
-  const [copied, setCopied] = useState(false);
-  const [failed, setFailed] = useState(false);
+  const [state, setState] = useState<"idle" | "success" | "error">("idle");
+  const request = useRef(0);
+  const copied = state === "success";
+  const failed = state === "error";
+  useLayoutEffect(() => {
+    setState("idle");
+    return () => { request.current++; };
+  }, [value]);
   useEffect(() => {
     if (!copied) return;
-    const timer = window.setTimeout(() => setCopied(false), 2000);
+    const timer = window.setTimeout(() => setState("idle"), 2000);
     return () => window.clearTimeout(timer);
   }, [copied]);
   const block = secret || /[\r\n]/.test(value);
   const copy = () => {
-    setCopied(false);
-    setFailed(false);
+    const current = ++request.current;
+    setState("idle");
     if (!navigator.clipboard) {
-      setFailed(true);
+      setState("error");
       return;
     }
     void navigator.clipboard
       .writeText(value)
       .then(() => {
-        setCopied(true);
-        setFailed(false);
+        if (current === request.current) setState("success");
       })
       .catch(() => {
-        setCopied(false);
-        setFailed(true);
+        if (current === request.current) setState("error");
       });
   };
   const button = (
@@ -47,7 +51,7 @@ export function CopyValue({
       variant="ghost"
       size="icon-sm"
       type="button"
-      data-copy-state={failed ? "error" : copied ? "success" : "idle"}
+      data-copy-state={state}
       aria-label={label ?? "复制内容"}
       title={tooltip ? undefined : label ?? "复制内容"}
       onClick={copy}
