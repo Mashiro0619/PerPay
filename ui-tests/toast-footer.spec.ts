@@ -73,6 +73,13 @@ for (const layout of [
         const notification = page.locator('[data-slot="toast"]');
         await expect(dialog).toBeVisible();
         await expect(notification.locator('[data-slot="toast-title"]')).toHaveText("API 密钥已更新，请同步业务服务端。");
+        await expect.poll(() => notification.evaluate(element => {
+          const title = element.querySelector<HTMLElement>('[data-slot="toast-title"]')!;
+          return title.getBoundingClientRect().width / parseFloat(getComputedStyle(title).fontSize);
+        }), { message: "提示正文至少保留四个汉字的行宽" }).toBeGreaterThanOrEqual(4);
+        const closeBounds = await notification.locator('[data-slot="toast-close"]').boundingBox();
+        expect(closeBounds!.x).toBeGreaterThanOrEqual(0);
+        expect(closeBounds!.x + closeBounds!.width).toBeLessThanOrEqual(layout.width);
         const finish = dialog.getByRole("button", { name: "完成", exact: true });
         await finish.scrollIntoViewIfNeeded();
         await page.waitForTimeout(500);

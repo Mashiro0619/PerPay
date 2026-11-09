@@ -57,6 +57,7 @@ isolatedTest("IP 白名单在真实版本冲突后保留草稿并可继续保存
     const firstSaved = await read();
     expect(firstSaved.enabled).toBe(true);
     expect(firstSaved.cidrs).toEqual(["127.0.0.1", "192.0.2.10"]);
+    await expect(page.locator('[data-slot="toast"]')).toHaveCount(0);
 
     await page.setViewportSize({ width: 320, height: 900 });
     await page.evaluate(() => document.documentElement.style.fontSize = "200%");
@@ -74,7 +75,7 @@ isolatedTest("IP 白名单在真实版本冲突后保留草稿并可继续保存
     await expect(save).toBeDisabled();
     const apply = conflict.getByRole("button", { name: "应用核对结果", exact: true });
     await expect(apply).toBeDisabled();
-    await conflict.scrollIntoViewIfNeeded();
+    await conflict.locator('[data-slot="alert-title"]').scrollIntoViewIfNeeded();
     const geometry = await editor.evaluate(element => {
       const box = element.getBoundingClientRect();
       return { viewport: innerWidth, document: document.documentElement.scrollWidth,
@@ -90,6 +91,8 @@ isolatedTest("IP 白名单在真实版本冲突后保留草稿并可继续保存
       expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(321);
     }
     await page.screenshot({ path: info.outputPath("access-conflict-320-200.png") });
+    await apply.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: info.outputPath("access-conflict-actions-320-200.png") });
     await conflict.getByRole("button", { name: "保留我的修改", exact: true }).click();
     await apply.click();
     await expect(rules).toBeEnabled();
@@ -99,6 +102,16 @@ isolatedTest("IP 白名单在真实版本冲突后保留草稿并可继续保存
     expect(secondSaved.enabled).toBe(true);
     expect(secondSaved.cidrs).toEqual(["127.0.0.1", "192.0.2.10", "198.51.100.11"]);
     await expect(save).toBeDisabled();
+    const toast = page.locator('[data-slot="toast"]');
+    await expect(toast.locator('[data-slot="toast-title"]')).toHaveText("管理员 IP 白名单已保存");
+    await expect.poll(() => toast.evaluate(element => {
+      const title = element.querySelector<HTMLElement>('[data-slot="toast-title"]')!;
+      const content = element.querySelector<HTMLElement>('[data-slot="toast-content"]')!;
+      const titleBounds = title.getBoundingClientRect(), contentBounds = content.getBoundingClientRect();
+      return titleBounds.width >= parseFloat(getComputedStyle(title).fontSize) * 4
+        && titleBounds.top >= contentBounds.top && titleBounds.bottom <= contentBounds.bottom + 1
+        && content.scrollHeight <= content.clientHeight + 1;
+    }), { message: "放大文字后的完整成功提示可直接阅读" }).toBe(true);
     await page.screenshot({ path: info.outputPath("access-saved-320-200.png") });
     await info.attach("access-recovery", { body: JSON.stringify({ submitted, firstSaved, secondSaved, geometry }), contentType: "application/json" });
   } finally { await fixture.close(); }
