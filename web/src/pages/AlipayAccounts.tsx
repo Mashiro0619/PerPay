@@ -2,8 +2,10 @@ import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { onlineManager, useMutation, useQuery } from "@tanstack/react-query";
 import { useLocation, useParams } from "react-router";
 import { ChevronDown, KeyRound, MoreHorizontal, Plus, RefreshCw } from "lucide-react";
-import { api, ApiError, queryClient, result } from "@/api/client";
-import { useDirtyDraft } from "@/drafts";
+import { api, ApiError, queryClient, result, type AlipayAccountInput } from "@/api/client";
+import { useDirtyDraft, useOperationNavigation } from "@/drafts";
+import { useFixedOperation } from "@/lib/fixed-operation";
+import { useOperationKey } from "@/lib/idempotency";
 import { Link, useNavigate } from "@/navigation";
 import {
   accountHealth,
@@ -27,6 +29,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CollectionCodeField } from "@/components/CollectionCodeField";
 import { CopyValue } from "@/components/copy-value";
 import { ErrorNotice, QueryView } from "@/components/request-state";
+import { OperationRecoveryNotice } from "@/components/operation-recovery-notice";
+import { OperationNavigationDialog } from "@/components/operation-navigation-dialog";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -196,6 +200,31 @@ const accountFieldLabels: Record<AccountField, string> = {
   app_id: "应用 ID", platform_public_key: "支付宝公钥", private_key: "导入的应用私钥",
 };
 type AccountConflict = { field: AccountField; local: string | boolean; remote: string | boolean };
+type AccountCreation = { body: AlipayAccountInput & { operation_id: string }; checkAfter: boolean };
+
+function readCreatedAccount(value: unknown, operationId: string): AlipayAccount {
+  const object = (item: unknown): item is Record<string, unknown> => item !== null && typeof item === "object" && !Array.isArray(item);
+  const nullableText = (item: unknown) => item === null || typeof item === "string";
+  const timestamp = (item: unknown) => typeof item === "string" && Number.isFinite(Date.parse(item));
+  const account = object(value) ? value.data : undefined;
+  if (!object(account) || account.id !== "alipay_" + operationId || !Number.isSafeInteger(account.revision) || Number(account.revision) < 0 ||
+      typeof account.name !== "string" || !account.name || typeof account.enabled !== "boolean" ||
+      !["PRODUCTION", "SANDBOX"].includes(String(account.environment)) ||
+      !["code_payload", "app_id", "platform_public_key", "provider_account_key", "application_public_key", "application_key_fingerprint"].every(key => nullableText(account[key])) ||
+      typeof account.configured !== "boolean" || typeof account.deletable !== "boolean" ||
+      !Array.isArray(account.sites) || !account.sites.every(site => object(site) && typeof site.client_id === "string" && typeof site.name === "string") ||
+      !timestamp(account.created_at) || !timestamp(account.updated_at) ||
+      (account.last_check !== null && (!object(account.last_check) || typeof account.last_check.ok !== "boolean" ||
+        !timestamp(account.last_check.checked_at) || typeof account.last_check.message !== "string")) ||
+      (account.pending_application_key !== null && (!object(account.pending_application_key) ||
+        !["change_id", "public_key", "fingerprint", "app_id"].every(key => typeof (account.pending_application_key as Record<string, unknown>)[key] === "string") ||
+        !["PRODUCTION", "SANDBOX"].includes(String(account.pending_application_key.environment)) || !timestamp(account.pending_application_key.created_at))) ||
+      (account.health !== undefined && (!object(account.health) || typeof account.health.state !== "string" ||
+        !nullableText(account.health.last_success_at) || !nullableText(account.health.last_error_code) || typeof account.health.collection_ready !== "boolean"))) {
+    throw new Error("服务未返回完整的账号结果，请重试上一次操作。");
+  }
+  return account as AlipayAccount;
+}
 
 const accountSections = [["basic", "基本信息"], ["application", "应用信息"], ["collection", "收款码"], ["usage", "使用情况"]] as const;
 function AccountPanel({ tabbed, value, children }: { tabbed: boolean; value: string; children: ReactNode }) {
@@ -244,6 +273,9 @@ export function AlipayAccountEditor({
   const [panel, setPanel] = useState(() => hasSavedFeedback && accountSections.some(([value]) => value === navigationFeedback?.accountPanel)
     ? navigationFeedback!.accountPanel! : initial?.pending_application_key ? "application" : "basic");
   const [saved, setSaved] = useState(initial);
+  const creationKey = useOperationKey();
+  const creationConfirmed = useRef(false);
+  const [leavingCreation, setLeavingCreation] = useState(false);
   const historical = saved?.environment === "SANDBOX";
   const [draft, setDraft] = useState(() => accountConfiguration(initial));
   const [privateKey, setPrivateKey] = useState("");
@@ -394,40 +426,51 @@ export function AlipayAccountEditor({
         platform_public_key: draft.platform_public_key.trim() || null,
         ...(privateKey.trim() ? { private_key: privateKey.trim() } : {}),
       };
-      const response = saved
-        ? await result(
-            api.updateAlipayAccount({
-              path: { accountId: saved.id },
-              body: { ...input, revision: saved.revision },
-            }),
-          )
-        : await result(api.createAlipayAccount({ body: input }));
-      return { account: response.data, checkAfter, created: saved === null };
+      if (!saved) throw new Error("请先创建账号。");
+      const response = await result(
+        api.updateAlipayAccount({
+          path: { accountId: saved.id },
+          body: { ...input, revision: saved.revision },
+        }),
+      );
+      return { account: response.data, checkAfter, created: false };
     },
-    onSuccess: async ({ account, checkAfter, created }) => {
-      await accepted(account, "账号已保存");
-      if (created && onBack) setPanel("application");
-      let checkFailure: string | undefined;
-      if (checkAfter && mounted.current) {
-        try {
-          const checked = await check.mutateAsync(account.id);
-          queryClient.setQueryData(alipayAccountKey(account.id), {
-            data: { ...account, last_check: checked.data },
-          });
-        } catch (error) {
-          checkFailure =
-            error instanceof Error ? error.message : "连接检查暂不可用";
-        }
-      }
-      if (created && mounted.current && !onBack) {
-        completedNavigation.current = true;
-        void navigate("/settings/accounts/" + account.id, {
-          replace: true,
-          state: { savedAccountId: account.id, savedAccountRevision: account.revision, checkFailure,
-            ...(tabbed ? { accountPanel: panel === "basic" ? "application" : panel } : {}) },
+    onSuccess: finishSave,
+  });
+  async function finishSave({ account, checkAfter, created }: { account: AlipayAccount; checkAfter: boolean; created: boolean }) {
+    await accepted(account, "账号已保存");
+    if (created && onBack) setPanel("application");
+    let checkFailure: string | undefined;
+    if (checkAfter && mounted.current) {
+      try {
+        const checked = await check.mutateAsync(account.id);
+        queryClient.setQueryData(alipayAccountKey(account.id), {
+          data: { ...account, last_check: checked.data },
         });
+      } catch (error) {
+        checkFailure =
+          error instanceof Error ? error.message : "连接检查暂不可用";
       }
+    }
+    if (created && mounted.current && !onBack) {
+      completedNavigation.current = true;
+      void navigate("/settings/accounts/" + account.id, {
+        replace: true,
+        state: { savedAccountId: account.id, savedAccountRevision: account.revision, checkFailure,
+          ...(tabbed ? { accountPanel: panel === "basic" ? "application" : panel } : {}) },
+      });
+    }
+  }
+  const creation = useFixedOperation({
+    execute: async (input: AccountCreation, signal) => {
+      const response = await result(api.createAlipayAccount({ body: input.body, signal }));
+      return { account: readCreatedAccount(response, input.body.operation_id), checkAfter: input.checkAfter, created: true };
     },
+    onSuccess: value => {
+      creationConfirmed.current = true;
+      void finishSave(value);
+    },
+    isSafeRejection: error => error instanceof ApiError && error.status === 422 && error.code === "settings_validation_failed",
   });
   const key = useMutation({
     networkMode: "always",
@@ -508,20 +551,23 @@ export function AlipayAccountEditor({
       else void navigate("/settings/accounts");
     },
   });
-  const busy =
-    save.isPending || key.isPending || remove.isPending || check.isPending || reload.isPending;
+  const saving = save.isPending || creation.isPending;
+  const saveError = saved ? save.error : creation.error;
+  const busy = saving || key.isPending || remove.isPending || check.isPending || reload.isPending;
   const requiresReview = needsReload || review !== null;
-  const editingBlocked = busy || requiresReview;
+  const editingBlocked = busy || requiresReview || !!creation.recovery;
+  const navigation = useOperationNavigation(creation.isPending || !!creation.recovery,
+    () => !creationConfirmed.current && (creation.isBusy() || !!creation.recovery));
   // A confirmed create/delete may navigate before React Query clears isPending.
   useOverlayCloseGuard(() => decoding || (busy && !completedNavigation.current));
-  const errors = save.error instanceof ApiError ? save.error.fields : {};
+  const errors = saveError instanceof ApiError ? saveError.fields : {};
   const activationKeyError = key.error instanceof ApiError ? key.error.fields.platform_public_key : undefined;
   useEffect(() => {
-    if (save.isPending || !errors.private_key) return;
+    if (saving || !errors.private_key) return;
     setPrivateKeyOpen(true);
-  }, [errors.private_key, save.isPending]);
+  }, [errors.private_key, saving]);
   useEffect(() => {
-    if (save.isPending || !save.error || focusedSaveError.current === save.error) return;
+    if (saving || !saveError || creation.recovery || focusedSaveError.current === saveError) return;
     const invalid = form.current?.querySelector<HTMLElement>(
       '[aria-invalid="true"]',
     );
@@ -531,9 +577,9 @@ export function AlipayAccountEditor({
       setPanel(nextPanel);
       return;
     }
-    focusedSaveError.current = save.error;
+    focusedSaveError.current = saveError;
     requestAnimationFrame(() => { if (invalid.isConnected) invalid.focus(); });
-  }, [save.error, save.isPending, tabbed, privateKeyOpen, panel]);
+  }, [saveError, saving, tabbed, privateKeyOpen, panel, creation.recovery]);
   useEffect(() => {
     if (key.isPending || !activationKeyError) return;
     if (tabbed) setPanel("application");
@@ -543,11 +589,25 @@ export function AlipayAccountEditor({
     field: T,
     value: (typeof draft)[T],
   ) {
+    if (!saved && !creation.reset()) return;
     setDraft((previous) => ({ ...previous, [field]: value }));
     setSavedMessage("");
     save.reset();
     check.reset();
     setInitialCheckFailure(undefined);
+  }
+  function submitSave(checkAfter: boolean) {
+    if (editingBlocked || decoding || historical) return;
+    completedNavigation.current = false;
+    check.reset();
+    if (saved) { save.mutate(checkAfter); return; }
+    const input: AlipayAccountInput = {
+      ...draft, environment: "PRODUCTION", name: draft.name.trim(),
+      code_payload: draft.code_payload.trim() || null, app_id: draft.app_id.trim() || null,
+      platform_public_key: draft.platform_public_key.trim() || null,
+      ...(privateKey.trim() ? { private_key: privateKey.trim() } : {}),
+    };
+    creation.submit({ body: { ...input, operation_id: creationKey(input) }, checkAfter });
   }
   function saveDraft() {
     if (editingBlocked) return;
@@ -559,10 +619,9 @@ export function AlipayAccountEditor({
       );
       return;
     }
-    check.reset();
-    save.mutate(false);
+    submitSave(false);
   }
-  const error = save.error || key.error || remove.error;
+  const error = saveError || key.error || remove.error;
   const pending = historical ? null : saved?.pending_application_key;
   const platformKeyError = pending ? activationKeyError : errors.platform_public_key;
   const checkResult = historical ? null : check.data?.data ?? (!dirty ? saved?.last_check : null);
@@ -585,7 +644,7 @@ export function AlipayAccountEditor({
           {saved?.name ?? "添加支付宝账号"}
         </h2>
         {onBack ? (
-          <Button variant="ghost" onClick={onBack}>
+          <Button variant="ghost" disabled={creation.isPending} onClick={() => creation.recovery ? setLeavingCreation(true) : onBack()}>
             返回账号列表
           </Button>
         ) : !overlay ? (
@@ -600,7 +659,14 @@ export function AlipayAccountEditor({
       {tabbed && <ScrollingTabs><TabsList aria-label="支付宝账号配置分组" variant="line" activateOnFocus={false} className="min-w-max">
         {accountSections.filter(([value]) => value !== "usage" || saved !== null).map(([value, label]) => <TabsTrigger key={value} value={value}>{label}</TabsTrigger>)}
       </TabsList></ScrollingTabs>}
-      <ErrorNotice error={requiresReview ? null : error} />
+      <ErrorNotice error={requiresReview || creation.recovery ? null : error} />
+      {creation.recovery && <>
+        <OperationRecoveryNotice heading="创建结果待确认" operationId={creation.recovery.body.operation_id} error={creation.error} conflict={creation.conflict} />
+        <OverlayActions><Button type="button" disabled={creation.isPending || creation.conflict}
+          onClick={() => creation.recovery && creation.submit(creation.recovery)}>
+          {creation.isPending ? "正在重试…" : "重试上一次操作"}
+        </Button></OverlayActions>
+      </>}
       {needsReload && !review && <Alert>
         <AlertTitle>账号配置已在其他会话中更新</AlertTitle>
         <AlertDescription>
@@ -712,10 +778,7 @@ export function AlipayAccountEditor({
         }}
         onSubmit={(event) => {
           event.preventDefault();
-          if (!editingBlocked && !decoding && !historical) {
-            check.reset();
-            save.mutate(!creating && readyToCheck);
-          }
+          submitSave(!creating && readyToCheck);
         }}
       >
         <FieldSet disabled={editingBlocked || historical}>
@@ -864,6 +927,7 @@ export function AlipayAccountEditor({
                         rows={4}
                         value={privateKey}
                         onChange={(event) => {
+                          if (!saved && !creation.reset()) return;
                           setPrivateKey(event.currentTarget.value);
                           save.reset();
                         }}
@@ -903,11 +967,11 @@ export function AlipayAccountEditor({
               </FieldGroup>
             </CardContent>
             <AccountFormFooter tabbed={tabbed}>
-              {showFormActions && (
+              {showFormActions && !creation.recovery && (
               <OverlayActions className={tabbed ? "w-full" : undefined}>
-              <Button form={formId} type="submit" className={tabbed ? "h-auto min-h-8 min-w-0 whitespace-normal py-1.5 max-sm:flex-1" : undefined} disabled={editingBlocked || decoding || historical}>
-                {save.isPending && <Spinner data-icon="inline-start" />}
-                <span className="min-w-0">{save.isPending ? "正在保存…" : creating ? "创建账号并继续" : readyToCheck ? "保存并检查" : "保存配置"}</span>
+              <Button form={formId} type="submit" className={tabbed ? "h-auto min-h-8 min-w-0 whitespace-normal py-1.5 max-sm:flex-1" : undefined} disabled={editingBlocked || decoding || historical || (!saved && creation.conflict)}>
+                {saving && <Spinner data-icon="inline-start" />}
+                <span className="min-w-0">{saving ? "正在保存…" : creating ? "创建账号并继续" : readyToCheck ? "保存并检查" : "保存配置"}</span>
               </Button>
               {tabbed ? <DropdownMenu onOpenChange={open => { if (open) invalidDraftField.current = null; }}>
                 <DropdownMenuTrigger render={<Button type="button" variant="outline" size="icon" aria-label="更多账号操作" disabled={editingBlocked || historical} />}>
@@ -953,6 +1017,12 @@ export function AlipayAccountEditor({
           </Card>
         </FieldSet>
       </form>
+      <OperationNavigationDialog
+        navigation={leavingCreation ? { blocked: true, hasDrafts: dirty, stay: () => setLeavingCreation(false),
+          proceed: onLeave => { onLeave(); clear(); onBack?.(); } } : navigation}
+        operationId={creation.submitted?.body.operation_id} pending={creation.isPending}
+        finalFocus={() => form.current} onLeave={() => creation.stopWaiting()}
+      />
       {saved && (
         <AccountPanel tabbed={tabbed} value="usage">
         <Card data-account-usage-card>

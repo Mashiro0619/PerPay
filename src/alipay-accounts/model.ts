@@ -19,6 +19,7 @@ const fields = {
   private_key: z.string().trim().min(1).max(16 * 1024).optional(),
 };
 export const createAlipayAccountInputSchema = z.object({
+  operation_id: z.uuidv4().optional(),
   ...fields, enabled: fields.enabled.default(true), code_payload: fields.code_payload.default(null),
   environment: fields.environment.default("PRODUCTION"), app_id: fields.app_id.default(null),
 }).strict();
@@ -68,6 +69,7 @@ export interface AlipayAccountView {
 }
 export class AlipayAccountError extends Error {
   readonly code: "alipay_account_not_found" | "alipay_account_revision_conflict" |
+    "alipay_account_creation_conflict" |
     "alipay_account_in_use" | "alipay_account_app_conflict" | "alipay_account_not_configured";
   constructor(code: AlipayAccountError["code"], message: string) {
     super(message);

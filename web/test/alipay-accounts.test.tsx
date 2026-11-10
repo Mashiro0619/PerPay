@@ -331,6 +331,7 @@ describe("支付宝账号设置", () => {
 
   it("saves an incomplete account without a QR code or application data, then generates its own key", async () => {
     const writes: Array<{ path: string; body: Record<string, unknown> }> = [];
+    let createdAccountId = "";
     vi.stubGlobal(
       "fetch",
       vi.fn(async (request: Request) => {
@@ -338,9 +339,11 @@ describe("支付宝账号设置", () => {
         const body =
           request.method === "GET" ? {} : await request.clone().json();
         if (request.method !== "GET") writes.push({ path, body });
+        if (path.endsWith("/alipay-accounts") && request.method === "POST") createdAccountId = "alipay_" + body.operation_id;
         const account = {
           ...first,
           ...body,
+          id: createdAccountId,
           revision: 3,
           configured: false,
           application_public_key: path.endsWith("application-key")
@@ -378,7 +381,7 @@ describe("支付宝账号设置", () => {
       platform_public_key: null,
     });
     expect(writes[1]?.path).toBe(
-      "/api/admin/v1/alipay-accounts/" + first.id + "/application-key",
+      "/api/admin/v1/alipay-accounts/" + createdAccountId + "/application-key",
     );
     expect(writes.some((write) => write.path.endsWith("/check"))).toBe(false);
   });

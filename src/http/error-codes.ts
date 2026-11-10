@@ -9,6 +9,7 @@ export const HTTP_ERROR_CODES = Object.freeze([
   "alipay_account_not_found",
   "alipay_accounts_unavailable",
   "alipay_account_revision_conflict",
+  "alipay_account_creation_conflict",
   "alipay_account_in_use",
   "alipay_account_app_conflict",
   "alipay_account_not_configured",

@@ -540,7 +540,8 @@ describe("settings summaries and owned editing overlays", () => {
     const pending = new Promise<Response>(resolve => { release = resolve; });
     const view = mountOnboarding({ stage: 4, path: "/settings/accounts/new", handle: request => {
       const path = new URL(request.url).pathname;
-      if (path === "/api/admin/v1/alipay-accounts") return request.method === "POST" ? pending : json({ data: [] });
+      if (path === "/api/admin/v1/alipay-accounts") return request.method === "POST"
+        ? request.clone().json().then(input => { account.id = "alipay_" + input.operation_id; return pending; }) : json({ data: [] });
       if (path === "/api/admin/v1/alipay-accounts/" + account.id) return json({ data: account });
       if (path.endsWith("/check")) return json({ data: { ok: true, message: "连接检查通过" } });
       return undefined;
@@ -578,7 +579,9 @@ describe("settings summaries and owned editing overlays", () => {
       platform_public_key: null, application_public_key: null, application_key_fingerprint: null };
     const view = mountOnboarding({ stage: 4, path: "/settings/accounts/new", handle: request => {
       const path = new URL(request.url).pathname;
-      if (path === "/api/admin/v1/alipay-accounts") return json({ data: request.method === "POST" ? account : [account] }, request.method === "POST" ? 201 : 200);
+      if (path === "/api/admin/v1/alipay-accounts") return request.method === "POST"
+        ? request.clone().json().then(input => { account = { ...account, id: "alipay_" + input.operation_id }; return json({ data: account }, 201); })
+        : json({ data: [account] });
       if (path === "/api/admin/v1/alipay-accounts/" + account.id) return json({ data: account });
       if (path.endsWith("/check")) return apiError("internal_error", "创建时的连接检查暂不可用", 503);
       if (path.endsWith("/application-key")) {

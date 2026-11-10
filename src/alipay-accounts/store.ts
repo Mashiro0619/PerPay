@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { auditChanges, auditContextAvailable, currentAuditContext } from "../audit/context.ts";
 import type { DatabaseSync } from "node:sqlite";
@@ -114,10 +114,25 @@ export class AlipayAccountStore {
       };
     });
   }
-  create(input:AccountWrite,audit:SettingsAuditContext):AlipayAccountView {
+  create(input:AccountWrite & { readonly operation_id?: string | undefined },audit:SettingsAuditContext):AlipayAccountView {
     assertProductionAlipayEnvironment(input.environment);
-    const id="alipay_"+randomUUID();
+    const id="alipay_"+(input.operation_id??randomUUID());
+    // Canonical fields bind retries without retaining another copy of key material.
+    const fingerprint=createHash("sha256").update(JSON.stringify({
+      name:input.name,enabled:input.enabled,code_payload:input.code_payload,
+      environment:input.environment,app_id:input.app_id,
+      platform_public_key:input.platform_public_key??null,private_key:input.private_key??null,
+    })).digest("hex");
     this.#write(id, db=>{
+      if(input.operation_id) {
+        const previous=db.prepare("SELECT details_json FROM audit_events WHERE subject_type='alipay_account' AND subject_id=? AND action='alipay_account.created' ORDER BY sequence LIMIT 1")
+          .get(id) as {details_json:string}|undefined;
+        if(previous) {
+          if(JSON.parse(previous.details_json).creation_fingerprint!==fingerprint) throw new AlipayAccountError("alipay_account_creation_conflict","该创建操作已用于其他账号配置，请核对原请求。");
+          this.#row(db,id); // A deleted account must never be recreated by a retry.
+          return;
+        }
+      }
       this.#assertUnique(db,id,input.environment,input.app_id);
       const now=Date.now();
       const providerKey=input.app_id?this.#newBinding(db,input,now):null;
@@ -126,7 +141,7 @@ export class AlipayAccountStore {
       if(providerKey)this.#appendGeneration(db,id,providerKey,now);
       this.#saveCredentials(db,id,input,null,now);
       this.#snapshot(db,this.#row(db,id));
-      this.#audit(db,id,audit,"alipay_account.created",0,{name:input.name},now);
+      this.#audit(db,id,audit,"alipay_account.created",0,{name:input.name,...(input.operation_id?{creation_fingerprint:fingerprint}:{})},now);
     });
     return this.view(id);
   }

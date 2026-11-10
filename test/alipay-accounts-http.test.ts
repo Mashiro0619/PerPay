@@ -21,6 +21,24 @@ async function fixture() {
 const update = (account: AlipayAccountView, name = account.name) => ({ revision: account.revision, name, enabled: account.enabled, code_payload: account.code_payload, app_id: account.app_id, environment: "PRODUCTION" as const, platform_public_key: account.platform_public_key });
 
 describe("Alipay account management HTTP", () => {
+  it("replays account creation IDs and rejects changed payloads or deleted accounts", async () => {
+    const f = await fixture();
+    try {
+      const body = { name: "请求重放账号", operation_id: randomUUID() };
+      assert.equal((await f.request("alipay-accounts", "POST", { ...body, operation_id: "invalid" })).status, 422);
+      const create = await f.request("alipay-accounts", "POST", body);
+      assert.equal(create.status, 201);
+      const { data } = await create.json() as { data: AlipayAccountView };
+      const replay = await f.request("alipay-accounts", "POST", body);
+      assert.equal(replay.status, 201);
+      assert.equal((await replay.json() as { data: AlipayAccountView }).data.id, data.id);
+      const conflict = await f.request("alipay-accounts", "POST", { ...body, name: "不同请求" });
+      assert.equal(conflict.status, 409);
+      assert.equal((await conflict.json() as { error: { code: string } }).error.code, "alipay_account_creation_conflict");
+      assert.equal((await f.request(`alipay-accounts/${data.id}`, "DELETE", { revision: data.revision })).status, 204);
+      assert.equal((await f.request("alipay-accounts", "POST", body)).status, 404);
+    } finally { f.close(); }
+  });
   it("keeps an existing checkout and its verification available when all accounts are paused", async () => {
     const f = await fixture();
     try {

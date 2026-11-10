@@ -7785,6 +7785,10 @@ components:
       required:
         - name
       properties:
+        operation_id:
+          type: string
+          format: uuid
+          description: 创建操作的 UUID v4。同一编号和相同内容重试返回原账号当前状态；不同内容返回 409，原账号已删除返回 404。省略时每次请求创建新账号。
         name:
           type: string
           minLength: 1
@@ -11583,6 +11587,7 @@ components:
         - alipay_account_not_found
         - alipay_accounts_unavailable
         - alipay_account_revision_conflict
+        - alipay_account_creation_conflict
         - alipay_account_in_use
         - alipay_account_app_conflict
         - alipay_account_not_configured

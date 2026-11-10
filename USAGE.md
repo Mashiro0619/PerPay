@@ -30,7 +30,7 @@ PerPay 不用在手机上运行监听软件，服务器需持续运行。可以�
 
 先访问 `/admin` 初始化管理员并登录，再按三步完成收款配置：
 
-1. 打开“系统设置 → 支付宝账号”，新增账号并保存收款码、App ID 和支付宝公钥；在同一页面生成应用密钥或导入已有私钥，把应用公钥上传到对应支付宝应用，点击“保存并检查”。检查失败仍保留保存内容，可修正后重试。
+1. 打开“系统设置 → 支付宝账号”，新增账号并保存收款码、App ID 和支付宝公钥；在同一页面生成应用密钥或导入已有私钥，把应用公钥上传到对应支付宝应用，点击“保存并检查”。检查失败仍保留保存内容，可修正后重试。创建结果暂时无法确认时，表单保留原请求，点击“重试上一次操作”恢复同一账号。
 2. 创建业务网站并选择收款账号：指定一个、多个等概率随机或按权重分配。只有一个可用账号时自动预选；多个账号时需明确选择。网站策略采用默认模板，API／通知密钥需在网站设置中另行生成。
 3. 等待所选账号查账和自动确认收款就绪，在该网站下试收款并核对实际收款账号。通知和备份在各自设置中配置，备份仍需验证恢复。
 
@@ -45,7 +45,7 @@ PerPay 不用在手机上运行监听软件，服务器需持续运行。可以�
 也可直接调用以下管理 API：
 
 1. 从当前服务启动日志的 `administrator_setup_required` 事件读取 `setup_token`（Docker 部署执行 `docker compose logs --tail=100 app`），通过 `POST /api/admin/v1/setup` 在 JSON 正文中同时提交 `setup_token` 和 `password`。令牌只在本次未初始化的进程中有效，管理员创建成功后失效，重启未初始化服务会换新令牌。初始化不会创建会话，再通过 `POST /api/admin/v1/session/login` 提交密码登录；不要把令牌写进 URL 或保存到业务网站配置。
-2. 使用 `POST /api/admin/v1/alipay-accounts` 新增账号，在 `POST /api/admin/v1/alipay-accounts/:accountId/application-key` 生成应用密钥，再用 `PUT /api/admin/v1/alipay-accounts/:accountId` 保存应用与收款码。`POST .../:accountId/check` 检查已保存内容。应用私钥按账号加密保存，网站 API 密钥仍通过各网站的密钥接口生成。
+2. 使用 `POST /api/admin/v1/alipay-accounts` 新增账号，在 `POST /api/admin/v1/alipay-accounts/:accountId/application-key` 生成应用密钥，再用 `PUT /api/admin/v1/alipay-accounts/:accountId` 保存应用与收款码。`POST .../:accountId/check` 检查已保存内容。应用私钥按账号加密保存，网站 API 密钥仍通过各网站的密钥接口生成。创建支付宝账号的 `POST /api/admin/v1/alipay-accounts` 可携带 UUID v4 `operation_id`。同一编号及相同内容重试返回原账号当前状态；修改内容返回 `409 / alipay_account_creation_conflict`，原账号已删除返回 `404`。省略编号时每次请求创建新账号。
 3. 使用 `POST /api/admin/v1/sites` 创建网站，提交 UUID `operation_id` 和完整 `configuration`，初始 `notifications_enabled` 为 `false`，`configuration.collection` 指定收款账号与分配方式。可先通过 `GET /api/admin/v1/settings/site-defaults` 取得策略模板。可选顶层字段 `client_id` 指定客户端 ID，省略时由服务端生成。响应中的 `client_id` 为稳定网站编号，用于管理路径，`api_client_id` 为当前业务接入 ID。已占用的 ID 返回 `409 / site_client_id_conflict`，字段错误位于 `error.fields.client_id`。重试同一次创建须携带原 `operation_id`、`client_id` 和配置。ID 格式与更换规则详见[多网站管理](docs/multi-site.md#创建与接入)。
 4. 在该网站下调用 `POST /api/admin/v1/sites/:clientId/secrets/api_secret/actions/rotate` 生成 API 密钥；需要通知时，再调用 `POST /api/admin/v1/sites/:clientId/secrets/webhook_secret/actions/rotate` 生成通知密钥。每次携带最新的网站 `revision`，后一次操作使用前一次响应中的版本。密钥只保存到对应网站后端的环境变量或密钥管理器；已有通知密钥可通过 `POST /api/admin/v1/sites/:clientId/secrets/webhook_secret/actions/view` 显式查看，无需轮换。
 5. 使用 `PUT /api/admin/v1/sites/:clientId` 提交最新 `revision` 与完整 `configuration`，设置 `notifications_enabled: true` 和精确 `notification_origin`，例如 `https://shop.example.com`（只填写来源，不填写路径）。需要返回链接时另行填写 `return_origin`；二者相互独立。全局通知写接口已退役，不再代表某个默认网站。
