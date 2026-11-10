@@ -294,6 +294,7 @@ function SiteEditor({
   const [review, setReview] = useState<({ site: Site } & ReturnType<typeof mergeSiteConfiguration>) | null>(null);
   const [choices, setChoices] = useState<SiteConflictChoices>({});
   const reloadController = useRef<AbortController | null>(null);
+  const reloadTrigger = useRef<HTMLButtonElement>(null);
   const mounted = useRef(true);
   const deletionConfirmed = useRef(false);
   useLayoutEffect(() => {
@@ -523,7 +524,14 @@ function SiteEditor({
         ? "密钥操作已完成，请重新查看当前密钥。"
         : "密钥已生成或轮换，请更新业务网站配置。");
     },
-    onError: revisionConflict,
+    onError: async (error, kind) => {
+      revisionConflict(error);
+      if (saved && kind !== "delete") {
+        // Reopening the editor must also reread an operation's uncertain state.
+        await queryClient.cancelQueries({ queryKey: siteEditorKey(saved.client_id) });
+        await queryClient.invalidateQueries({ queryKey: siteEditorKey(saved.client_id), refetchType: "none" });
+      }
+    },
   });
   function applyReview(site: Site, configuration: SiteConfiguration, timeoutResolved = false) {
     observeSecretRevision(site.revision);
@@ -571,7 +579,9 @@ function SiteEditor({
   useEffect(() => {
     if (!busy && save.error) formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
   }, [section, save.error, busy]);
-  const requiresReview = needsReview || !!review || (!!initial && !!saved && initial.revision > saved.revision && dirty);
+  const requiresConfigurationReview = needsReview || !!review || (!!initial && !!saved && initial.revision > saved.revision && dirty);
+  const requiresSecretReview = action.isError && (action.variables === "api" || action.variables === "webhook");
+  const requiresReview = requiresConfigurationReview || requiresSecretReview;
   useEffect(() => {
     // The write/reload callback adopts its own response and must finish first.
     if (busy || !initial || !saved || initial.revision <= saved.revision) return;
@@ -658,11 +668,13 @@ function SiteEditor({
       <ErrorNotice error={reload.error} />
       {requiresReview && (
         <Alert>
-          <AlertTitle>业务网站配置已变更</AlertTitle>
+          <AlertTitle>{requiresConfigurationReview ? "业务网站配置已变更" : "核对密钥操作结果"}</AlertTitle>
           <AlertDescription>
-            <p>你的修改已保留。读取最新配置将合并无冲突项，冲突需核对；不会自动保存或重试密钥操作。</p>
-            <Button variant="outline" disabled={busy} onClick={() => reload.mutate()}>
-              {reload.isPending ? "正在读取…" : "读取最新配置并核对"}
+            <p>{requiresConfigurationReview
+              ? "你的修改已保留。读取最新配置将合并无冲突项，冲突需核对；不会自动保存或重试密钥操作。"
+              : "重新读取密钥状态后，可查看已保存的密钥。未保存的配置会保留。"}</p>
+            <Button ref={reloadTrigger} variant="outline" disabled={busy} onClick={() => reload.mutate()}>
+              {reload.isPending ? "正在读取…" : requiresConfigurationReview ? "读取最新配置并核对" : "重新读取密钥状态"}
             </Button>
           </AlertDescription>
         </Alert>
@@ -904,7 +916,7 @@ function SiteEditor({
           else if (!open) { setConfirmation(null); if (isSecretConfirmation) hideSecret(); }
         }}
       >
-        <AlertDialogContent finalFocus={isSecretConfirmation ? () => secretOrigin.current : undefined}>
+        <AlertDialogContent finalFocus={() => requiresSecretReview ? reloadTrigger.current : isSecretConfirmation ? secretOrigin.current : null}>
           <AlertDialogHeader>
             <AlertDialogTitle>
               {isSecretConfirmation ? secretActionName(confirmation) + "？"
@@ -923,7 +935,7 @@ function SiteEditor({
           </AlertDialogHeader>
           {isSecretConfirmation && !!action.error && <>
             <ErrorNotice error={action.error} showDiagnostics={false} />
-            <p className="text-sm text-muted-foreground">请关闭后查看当前密钥，确认操作结果。</p>
+            <p className="text-sm text-muted-foreground">请关闭后重新读取配置，核对当前密钥。</p>
           </>}
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isSecretConfirmation && action.isPending}>{isSecretConfirmation && action.error ? "关闭" : "取消"}</AlertDialogCancel>
