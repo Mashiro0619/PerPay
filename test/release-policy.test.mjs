@@ -42,16 +42,15 @@ for (const version of ["0.3.0-alpha.1", "0.3.0-beta.2", "0.3.0-rc.10", "0.3.0"])
       assert.notEqual(inspectVersionFiles(root, "v9.0.0").errors.length, 0);
       const pre = version.includes("-");
       assert.deepEqual(readReleaseMetadata(root), {
-        version, prerelease: String(pre), compose_image_tag: pre ? version : "latest", database_minimum: "24", database_maximum: String(schemaMaximum),
+        version, prerelease: String(pre), compose_image_tag: version, database_minimum: "24", database_maximum: String(schemaMaximum),
       });
       const rendered = renderReleaseCompose(compose, version);
-      const expectedTag = pre ? version : "latest";
+      const expectedTag = version;
       assert.equal(inspectComposeContract(rendered).image, "ghcr.io/mashiro0619/perpay:" + expectedTag);
       assert.deepEqual(Object.values(parse(rendered).services).map(service => service.image),
         Array(3).fill("ghcr.io/mashiro0619/perpay:" + expectedTag));
       assert.equal(releasePolicy(version).promoteLatest, !pre);
-      if (!pre) assert.equal(rendered, compose);
-      else assert.match(rendered, /固定镜像版本/u);
+      assert.match(rendered, /固定镜像版本/u);
     }, schemaMaximum);
   });
 }

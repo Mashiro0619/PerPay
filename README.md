@@ -51,6 +51,8 @@
 
 ## 部署前准备
 
+收款时，PerPay 为订单分配应付金额，例如商品 10 元、顾客按收银台付 10.03 元；查询支付宝账单后确认订单，再通知业务网站。同金额订单会占用不同的分位金额，错付、迟付、重复付款需要人工核对；退款先在支付宝完成，再登记结果。选择前可阅读[金额与订单容量](USAGE.md#金额复用冷却与付款截止)。
+
 - Linux 服务器，安装 Docker 和 Docker Compose v2；Windows 使用 WSL2 的 Linux 容器。
 - 公网使用需准备域名和 HTTPS 反向代理。
 - 支付宝收款码（经营码可选），以及支付宝平台状态为“已上线”、具备对应收款账户账务明细查询权限的开放平台应用。“开发中”应用不能查账。也可向订单对应的支付宝账号转账，金额须与订单一致。
@@ -59,12 +61,15 @@
 
 ### 1. 下载配置
 
-在服务器终端执行：
+先从发布页选定一个**已发布标签**，将下方 `vX.Y.Z` 换成该标签（预发布保留 `-rc.N`）。在服务器终端执行：
 
 ```sh
 mkdir -p perpay && cd perpay
-curl -fsSLo docker-compose.yml https://raw.githubusercontent.com/Mashiro0619/PerPay/main/docker-compose.yml
+PERPAY_RELEASE=vX.Y.Z
+curl -fsSLo docker-compose.yml "https://github.com/Mashiro0619/PerPay/releases/download/${PERPAY_RELEASE}/docker-compose.yml"
 ```
+
+同一发布页的 `docker-compose.yml`、`demo.zip` 和教程是一套材料。新发布的模板固定对应镜像版本；历史附件如使用 `latest`，按该版本教程把全部服务镜像改为所选版本。只需部署 PerPay 时不用下载 Demo。
 
 ### 2. 修改配置
 
@@ -72,7 +77,7 @@ curl -fsSLo docker-compose.yml https://raw.githubusercontent.com/Mashiro0619/Per
 
 | 配置项 | 怎么填 |
 | --- | --- |
-| `x-perpay-image` | 默认 `ghcr.io/mashiro0619/perpay:latest`；固定版本时修改这里，应用、备份和维护工具统一使用该镜像。 |
+| `x-perpay-image` | 发布附件固定为所选版本，应用、备份和维护工具统一使用该镜像；升级时修改这一处。源码模板使用稳定通道 `latest`。 |
 | `x-perpay-public-url` | 你的 HTTPS 地址，如 `https://pay.example.com`，不带路径。 |
 | `x-perpay-trusted-proxy-cidrs` | PerPay 容器实际看到的直连代理 IP 或网段，多个用逗号分隔；HTTPS 部署必填。 |
 | `x-perpay-host-port` | 默认 `127.0.0.1:6190:6190`，只允许从宿主机访问。 |
@@ -84,7 +89,7 @@ curl -fsSLo docker-compose.yml https://raw.githubusercontent.com/Mashiro0619/Per
 
 ### 3. 启动
 
-首次启动前，先限制域名访问，只允许自己；创建管理员后再对外开放。
+首次启动前，按[首次访问控制](docs/reverse-proxy.md#首次访问控制)限制域名访问，只允许自己；创建管理员后再对外开放。
 
 ```sh
 docker compose config --quiet
@@ -109,7 +114,7 @@ docker compose ps
 
 在 **运行状态 → 官方更新** 查看新版和发布说明，选择“仅稳定版”或“包含预发布版”。默认开启自动检查并包含预发布版；这些设置保存在当前浏览器。后台提供更新提醒，安装由下面的部署命令完成。
 
-更新前做好备份，在原部署目录执行：
+更新前做好备份，在 **运行状态 → 官方更新** 复制目标版本的镜像标签，填入 Compose 顶部的 `x-perpay-image`，再在原部署目录执行：
 
 ```sh
 docker compose pull
@@ -117,7 +122,7 @@ docker compose up -d
 docker compose ps
 ```
 
-默认镜像 `latest` 跟随稳定版。使用固定版本或预发布版时，先将 Compose 顶部的 `x-perpay-image` 改为目标版本，再执行上述命令。旧配置没有此项时，将 `app`、`backup`、`maintenance` 三处镜像统一修改。详见 [版本与更新通道](docs/maintenance.md#预发布版本与更新通道)及[固定版本与回滚](docs/maintenance.md#固定版本与回滚)。
+`latest` 跟随稳定版；看到预发布提醒后需要显式选择该预发布标签。旧配置没有 `x-perpay-image` 时，将 `app`、`backup`、`maintenance` 三处镜像统一修改。详见 [版本与更新通道](docs/maintenance.md#预发布版本与更新通道)及[固定版本与回滚](docs/maintenance.md#固定版本与回滚)。
 
 ## 数据与备份
 

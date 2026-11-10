@@ -5,6 +5,7 @@ import { lstat, mkdir, readFile, realpath, rename, unlink, writeFile } from 'nod
 import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { deflateRawSync } from 'node:zlib';
+import { releasePolicy } from './release-policy.mjs';
 
 const project = fileURLToPath(new URL('../', import.meta.url));
 export const DEMO_FILES = Object.freeze([
@@ -26,6 +27,7 @@ export function crc32(bytes) {
 
 export async function buildDemoArchive(sourceDirectory = join(project, 'examples', 'node-client')) {
   const source = await realpath(sourceDirectory);
+  const { version } = releasePolicy(JSON.parse(await readFile(join(source, 'package.json'), 'utf8')).version);
   const local = [], central = [];
   let offset = 0;
   for (const relative of DEMO_FILES) {
@@ -34,7 +36,9 @@ export async function buildDemoArchive(sourceDirectory = join(project, 'examples
     const actual = await realpath(file);
     if (!metadata.isFile() || metadata.isSymbolicLink() || !actual.startsWith(source + sep)) throw new Error('Demo source must be a regular file within the example directory: ' + relative);
     if (metadata.size > 1024 * 1024) throw new Error('Unexpectedly large demo source: ' + relative);
-    const bytes = await readFile(file);
+    let bytes = await readFile(file);
+    if (relative === 'README.md') bytes = Buffer.from(bytes.toString('utf8').replaceAll(
+      'https://github.com/Mashiro0619/PerPay/blob/main/', 'https://github.com/Mashiro0619/PerPay/blob/v' + version + '/'));
     if (relative === '.env.example') {
       for (const key of ['PERPAY_API_SECRET', 'PERPAY_WEBHOOK_SECRET', 'EPAY_V1_KEY', 'EPAY_MERCHANT_PRIVATE_KEY', 'EPAY_PLATFORM_PUBLIC_KEY']) {
         const declarations = bytes.toString('utf8').split(/\r?\n/).filter(line => line.startsWith(key + '='));

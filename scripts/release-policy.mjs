@@ -1,6 +1,6 @@
 import { parseReleaseVersion } from "../src/shared/release-version.ts";
 
-/** Stable releases alone own latest; preview downloads must stay pinned to their version. */
+/** All release downloads stay pinned; stable releases also promote the latest channel. */
 export function releasePolicy(version) {
   const parsed = parseReleaseVersion(version);
   if (!parsed) throw new Error("release version must be canonical X.Y.Z or X.Y.Z-prerelease (without +build)");
@@ -8,7 +8,7 @@ export function releasePolicy(version) {
   return Object.freeze({
     version,
     prerelease,
-    composeImageTag: prerelease ? version : "latest",
+    composeImageTag: version,
     promoteLatest: !prerelease,
   });
 }

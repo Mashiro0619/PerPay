@@ -566,7 +566,7 @@ jobs:
             release_channel_note="这是预发布版本，不会覆盖稳定版 latest。附件固定当前版本，后续升级时修改 x-perpay-image，再拉取并重启。"
           elif [ "$RELEASE_PRERELEASE" = false ]; then
             release_flags=(--latest)
-            release_channel_note="这是正式版本，附件跟随稳定版 latest 更新通道。"
+            release_channel_note="这是正式版本，附件固定当前版本；稳定通道 latest 同步更新。后续升级时修改 x-perpay-image，再拉取并重启。"
           else
             echo "::error::Unknown release channel"
             exit 1
@@ -593,6 +593,8 @@ jobs:
           ${release_channel_note}
 
           首次部署下载附件 \`docker-compose.yml\`，按中文注释填写域名和代理配置，再执行 \`docker compose up -d\`。调用端示例见附件 \`demo.zip\`。
+
+          对应版本教程：[部署与初始化](https://github.com/Mashiro0619/PerPay/blob/${GITHUB_REF_NAME}/README.md#部署) · [支付宝配置](https://github.com/Mashiro0619/PerPay/blob/${GITHUB_REF_NAME}/docs/alipay-setup.md) · [维护与恢复](https://github.com/Mashiro0619/PerPay/blob/${GITHUB_REF_NAME}/docs/maintenance.md)。
 
           Linux 校验附件：\`echo "${compose_sha256}  docker-compose.yml" | sha256sum -c -\`。
 

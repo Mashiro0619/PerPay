@@ -14,8 +14,20 @@
 
 ## 配置与启动
 
+从与你的 PerPay 相同版本的 [GitHub Release](https://github.com/Mashiro0619/PerPay/releases) 下载 `demo.zip`。发布包内 `package.json` 标明版本；包内教程链接也固定到该版本。已有易支付插件的网站可先用自己的插件联调。
+
 1. [配好 PerPay](https://github.com/Mashiro0619/PerPay/blob/main/docs/alipay-setup.md)，创建业务网站，进入「网站设置 → 接入与通知」的网站接入助手。选择协议，复制服务地址／网关和客户端 ID／商户 PID。原生协议点击「管理 API 与通知密钥」查看 API 密钥和通知密钥；易支付 V1 查看商户密钥，V2 查看商户私钥和平台公钥。已有密钥可直接复用，缺少时再生成。
-2. 将业务域名下的 `POST /webhooks/perpay` 转发到 Demo 的 `http://127.0.0.1:6196/webhooks/perpay`，保留原始正文和请求头。**只开放回调路径**，Demo 页面没有登录保护。
+2. 将业务域名下的 `/webhooks/perpay` 转发到 Demo 的 `http://127.0.0.1:6196/webhooks/perpay`；原生通知使用 POST，易支付通知使用 GET，保留方法、查询参数、原始正文和请求头。**只开放回调路径**，Demo 页面没有登录保护。在业务域名的 Nginx `server` 中加入：
+
+   ```nginx
+   location = /webhooks/perpay {
+       proxy_pass http://127.0.0.1:6196;
+       proxy_set_header Host $host;
+       proxy_set_header X-Forwarded-Proto https;
+   }
+   ```
+
+   执行 `sudo nginx -t && sudo systemctl reload nginx`。实际回调 URL 为 `https://shop.example.com/webhooks/perpay`，PerPay 中的通知域名填写 `https://shop.example.com`。
 3. 解压 `demo.zip`，在 `perpay-client-demo` 中打开终端；源码位于 `examples/node-client`。复制配置模板：
 
    ```powershell
@@ -35,7 +47,7 @@
 
    PerPay 地址不带 `/admin`。`DEMO_NOTIFY_URL` 填接收端的完整 HTTPS 地址，`DEMO_RETURN_URL` 按需填写。
 
-4. 运行 `npm start`，打开 [http://127.0.0.1:6196](http://127.0.0.1:6196)。远程服务器运行时，用 SSH 转发端口访问页面。修改配置后需重启。
+4. 运行 `npm start`，打开 [http://127.0.0.1:6196](http://127.0.0.1:6196)。远程服务器运行时，在自己的电脑执行 `ssh -N -L 6196:127.0.0.1:6196 user@server`，保持终端连接，再打开同一地址。修改配置后需重启。
 5. 接收端配置完成后，回到该网站的“网站设置 → 接入与通知”，通知来源填业务域名的 HTTPS Origin（如 `https://shop.example.com`，不带回调路径），开启通知并保存。确认保存成功后再创建测试订单；订单的回调地址必须属于该来源。
 
 启动时会通过签名请求核对网站身份，PerPay 服务须可访问。更换客户端 ID 后，更新 `.env` 中的 `PERPAY_CLIENT_ID` 并重启。示例按稳定网站编号核对原数据目录，继续使用已有订单与通知记录。
@@ -72,7 +84,7 @@ PERPAY_WEBHOOK_KEYS='{"11111111-1111-4111-8111-111111111111":"当前通知密钥
 
 ## 多网站与本地数据
 
-每份示例服务连接一个明确的网站，必须填写 `PERPAY_CLIENT_ID`，不会自动使用 `default`。多份业务网站可以指向同一 `PERPAY_URL`，但分别使用各自 API／通知密钥、回调地址、端口和 `DEMO_DATA_DIR`。PerPay 后台也要分别配置通知来源。
+每份示例服务连接一个明确的网站。原生协议填写 `PERPAY_CLIENT_ID`，易支付填写 `EPAY_PID`。多份业务网站可以连接同一 PerPay 实例，分别使用各自协议的凭据、回调地址、端口和 `DEMO_DATA_DIR`。PerPay 后台也要分别配置通知来源。
 
 本地数据库绑定 PerPay 来源和网站 ID，不能通过修改环境变量把旧订单带到另一个网站。旧示例数据库只可在原实例的 `default` 网站下原地使用；其他网站使用新的数据目录。轮换同一网站密钥不会改变此绑定。示例不负责部署或自动同步密钥。
 

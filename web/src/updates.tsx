@@ -11,6 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "@/components/ui/toast";
+import { CopyValue } from "@/components/copy-value";
 export const officialUpdateKey = ["official-update", "prerelease"] as const;
 const checkInterval = 6 * 60 * 60 * 1000;
 const channels: { value: UpdateChannel; label: string }[] = [
@@ -278,11 +279,16 @@ function UpdatePanel({ currentVersion }: { currentVersion?: string | undefined }
                 {isPrereleaseVersion(knownVersion) && <span>（预发布）</span>}
               </span>
             {(status || remaining > 0) && <p className="system-update-status">
-              {status && <span role="status">{status}</span>}
+              {status && <span role="status" aria-label="更新状态">{status}</span>}
               {!checking && remaining > 0 && (
                 <span id="official-update-wait"> 请至少等待 {retryWait(remaining)}后重试。</span>
               )}
             </p>}
+            {data?.status === "update_available" && <div className="flex min-w-0 flex-col gap-1 text-sm">
+              <span>目标镜像</span>
+              <CopyValue value={"ghcr.io/mashiro0619/perpay:" + data.latest_version} label="复制目标镜像" />
+              <span className="text-muted-foreground">将部署配置中的 x-perpay-image 改为此标签，再拉取并重启。</span>
+            </div>}
           </div>
         </div>
         <FieldGroup className="system-update-preferences" role="group" aria-label="更新检查设置">
@@ -313,7 +319,7 @@ function UpdatePanel({ currentVersion }: { currentVersion?: string | undefined }
               className={buttonVariants({ variant: "ghost", size: "sm" })}
               href={data.release_url} target="_blank" rel="noopener noreferrer">发布说明</a>
             <a data-external-link className={buttonVariants({ variant: "ghost", size: "sm" })}
-              href={upgradeGuide} target="_blank" rel="noopener noreferrer">更新方法</a>
+              href={"https://github.com/Mashiro0619/PerPay/blob/v" + data.latest_version + "/README.md#更新"} target="_blank" rel="noopener noreferrer">更新方法</a>
           </div>}
           {reminder.dismissedVersion !== null && (data?.status !== "update_available" || !reminder.ignored) && <Button variant="ghost" size="sm" onClick={() => restoreUpdateReminders(preferences.channel)}>恢复此通道更新提醒</Button>}
         </FieldGroup>

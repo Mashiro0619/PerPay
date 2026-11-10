@@ -278,11 +278,11 @@ describe("shared page request notices", () => {
     });
     await userEvent.click(await screen.findByRole("button", { name: "加载更多网站汇总" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("下一页网站读取失败");
-    expect(screen.getByRole("link", { name: "第一页网站，进入后台" })).toBeVisible();
+    expect(screen.getByRole("link", { name: "第一页网站，查看网站总览" })).toBeVisible();
     failed = false;
     await userEvent.click(within(screen.getByRole("alert")).getByRole("button", { name: /重试/ }));
-    expect(await screen.findByRole("link", { name: "第二页网站，进入后台" })).toBeVisible();
-    expect(screen.getByRole("link", { name: "第一页网站，进入后台" })).toBeVisible();
+    expect(await screen.findByRole("link", { name: "第二页网站，查看网站总览" })).toBeVisible();
+    expect(screen.getByRole("link", { name: "第一页网站，查看网站总览" })).toBeVisible();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(cursors).toEqual([null, "second-page", "second-page"]);
   });

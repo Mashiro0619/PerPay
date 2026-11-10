@@ -23,6 +23,19 @@ server {
 }
 ```
 
+## 首次访问控制
+
+在上方 `server` 内、`location /` 之前临时加入以下两行，将示例地址换成你当前使用的公网 IP；它限制整个站点，包括首次管理员创建接口：
+
+```nginx
+allow 203.0.113.10;
+deny all;
+```
+
+宿主机运行 `sudo nginx -t && sudo systemctl reload nginx`；Docker 代理运行 `docker compose exec proxy nginx -t && docker compose exec proxy nginx -s reload`。用允许的地址打开 `/admin/`，应出现初始化页；其他来源应收到 403。创建管理员并成功登录后，删除这两行并用同一命令重新加载，随后开放收银台及业务 API。
+
+无法固定来源 IP 时，可在首次启动前将 Compose 的 `x-perpay-setup-token-enabled` 改为 `"true"`，使用启动日志中的一次性初始化令牌。先准备令牌，再通过自己的 HTTPS 域名创建管理员。
+
 将 Compose 顶部 `x-perpay-public-url` 设为 `https://pay.example.com`。首次部署先创建应用容器和网络，此时应用尚未启动：
 
 ```sh

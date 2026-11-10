@@ -8,6 +8,7 @@ import { dismissUpdateVersion, getUpdateReminder, markUpdatePresented, useUpdate
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/admin-dialog";
+import { CopyValue } from "@/components/copy-value";
 
 export interface UpdateDialogRequest {
   readonly channel: UpdateChannel;
@@ -251,9 +252,14 @@ export function UpdateDialog(props: Props) {
               <dd className="flex min-w-0 flex-wrap items-center gap-2"><span className="break-all font-mono">v{data.latest_version}</span>{isPrereleaseVersion(data.latest_version) && <Badge variant="secondary">预发布</Badge>}</dd>
             </div>
           </dl>
+          <div className="flex min-w-0 flex-col gap-2">
+            <p>目标镜像</p>
+            <CopyValue value={"ghcr.io/mashiro0619/perpay:" + data.latest_version} label="复制目标镜像" />
+            <p className="text-sm text-muted-foreground">将部署配置中的 x-perpay-image 改为此标签，再拉取并重启。</p>
+          </div>
           <div className="flex flex-wrap gap-2">
             <a data-external-link className={buttonVariants({ variant: "outline", size: "sm" })} href={data.release_url} target="_blank" rel="noopener noreferrer">查看发布说明</a>
-            <a data-external-link className={buttonVariants({ variant: "ghost", size: "sm" })} href={upgradeGuide} target="_blank" rel="noopener noreferrer">更新方法</a>
+            <a data-external-link className={buttonVariants({ variant: "ghost", size: "sm" })} href={upgradeGuide.replace("/blob/main/", "/blob/v" + data.latest_version + "/")} target="_blank" rel="noopener noreferrer">更新方法</a>
           </div>
         </DialogBody>
         <DialogFooter>

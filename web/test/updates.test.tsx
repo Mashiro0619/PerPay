@@ -466,7 +466,7 @@ describe("automatic official update checks", () => {
     expect(updateIndicator()).not.toBeInTheDocument();
     expect(within(screen.getByRole("navigation", { name: "全局管理" })).getByRole("link", { name: "运行状态" })).toBeVisible();
     expect(panel.queryByRole("button", { name: "忽略此版本" })).not.toBeInTheDocument();
-    expect(panel.getByRole("status")).toHaveTextContent("有可用更新：v0.2.1（已忽略）");
+    expect(panel.getByRole("status", { name: "更新状态" })).toHaveTextContent("有可用更新：v0.2.1（已忽略）");
     expect(panel.getByRole("button", { name: "恢复此通道更新提醒" })).toBeVisible();
     expect(panel.getByRole("button", { name: "恢复此通道更新提醒" })).toHaveFocus();
     expect(panel.getByRole("button", { name: "查看更新" })).toBeVisible();
