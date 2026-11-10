@@ -129,9 +129,7 @@ export function workItemFilters(search: URLSearchParams, clientId: string | null
 }
 
 export function workItemSortFields(visibility: WorkItemVisibility) {
-  // Priority remains exclusive to the overview preview.
-  return WORK_ITEM_SORT_FIELDS.filter(field => field !== "priority")
-    .filter(field => visibility === "IGNORED" || field !== "ignored_at");
+  return WORK_ITEM_SORT_FIELDS.filter(field => visibility === "IGNORED" ? field !== "priority" : field !== "ignored_at");
 }
 
 export function workItemsQuery(clientId: string | null, list: ListRead<WorkItemSort>, cursor: string | undefined, type: AdminWorkItemTypeFilter, visibility: WorkItemVisibility) {

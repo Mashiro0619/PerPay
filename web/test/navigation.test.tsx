@@ -7,11 +7,46 @@ import { createMemoryRouter, RouterProvider } from "react-router";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 
 import { appRoutes } from "../src/App";
-import { queryClient, type SystemAnalytics } from "../src/api/client";
-import { apiError, json, settings } from "./fixtures";
+import { queryClient, type AdminOrderSummary, type SystemAnalytics } from "../src/api/client";
+import { apiError, json, order, settings } from "./fixtures";
 import { systemStatus } from "./onboarding-fixture";
 import { matchesTestMedia } from "./media-query";
 import { readOverlayTarget } from "../src/lib/overlay-navigation";
+
+const completedOrders: AdminOrderSummary[] = [
+  { ...order, requested_amount_cents: 700, payable_amount_cents: 700, received_amount_cents: 700,
+    payment: { status: "CONFIRMED", basis: "INFERRED", received_amount_cents: 700 },
+    checkout: { status: "CLOSED", expires_at: "2026-09-06T01:00:00.000Z", closed_at: "2026-09-06T00:01:00.000Z" },
+    payment_confirmed_at: "2026-09-06T00:01:00.000Z", updated_at: "2026-09-06T00:01:00.000Z" },
+  { ...order, order_id: "33333333-3333-4333-8333-333333333333", merchant_order_no: "earlier-merchant-order", product_name: "上月商品",
+    requested_amount_cents: 8300, payable_amount_cents: 8300, received_amount_cents: 8300,
+    payment: { status: "CONFIRMED", basis: "INFERRED", received_amount_cents: 8300 },
+    checkout: { status: "CLOSED", expires_at: "2026-08-15T01:00:00.000Z", closed_at: "2026-08-15T00:01:00.000Z" },
+    created_at: "2026-08-15T00:00:00.000Z", eligible_from: "2026-08-15T00:00:00.000Z",
+    payment_confirmed_at: "2026-08-15T00:01:00.000Z", updated_at: "2026-08-15T00:01:00.000Z" },
+];
+
+function analyticsFor(range: 7 | 30 | 90, orders: readonly AdminOrderSummary[] = []): SystemAnalytics {
+  const to = Date.parse("2026-09-07T16:00:00.000Z");
+  const from = to - range * 86_400_000;
+  const periodOrders = orders.filter(item => Date.parse(item.created_at) >= from && Date.parse(item.created_at) < to);
+  const day = (value: string) => new Date(Date.parse(value) + 8 * 3_600_000).toISOString().slice(0, 10);
+  return {
+    range_days: range, from: new Date(from).toISOString(), to: new Date(to).toISOString(),
+    orders: { created: periodOrders.length, unpaid: 0, confirmed: periodOrders.length, disputed: 0, closed: periodOrders.length, expired: 0 },
+    confirmations: { count: periodOrders.length, amount_cents: periodOrders.reduce((sum, item) => sum + item.received_amount_cents!, 0) },
+    notifications: { acknowledged: 0, failed: 0, pending: 0 },
+    pending: { orders: 0, exceptions: 0, conflicts: 0, notifications: 0 },
+    daily: Array.from({ length: range }, (_, index) => {
+      const date = new Date(from + (index * 24 + 8) * 3_600_000).toISOString().slice(0, 10);
+      const created = periodOrders.filter(item => day(item.created_at) === date);
+      const confirmed = periodOrders.filter(item => day(item.payment_confirmed_at!) === date);
+      return { date, orders_created: created.length, confirmations: confirmed.length,
+        confirmed_amount_cents: confirmed.reduce((sum, item) => sum + item.received_amount_cents!, 0),
+        notifications_acknowledged: 0, notifications_failed: 0 };
+    }),
+  };
+}
 
 function mount(
   options: {
@@ -19,6 +54,7 @@ function mount(
     logoutFailure?: boolean;
     path?: string;
     configured?: boolean;
+    hasOrders?: boolean;
     mobile?: boolean;
   } = {},
 ) {
@@ -61,38 +97,13 @@ function mount(
           configured: !!options.configured,
         },
       });
-    if (path === "/api/admin/v1/system/analytics")
-      return json({
-        data: {
-          range_days: 30,
-          from: "2026-08-08T16:00:00.000Z",
-          to: "2026-09-07T16:00:00.000Z",
-          orders: {
-            created: 0,
-            unpaid: 0,
-            confirmed: 0,
-            disputed: 0,
-            closed: 0,
-            expired: 0,
-          },
-          confirmations: { count: 0, amount_cents: 0 },
-          notifications: { acknowledged: 0, failed: 0, pending: 0 },
-          pending: { orders: 0, exceptions: 0, conflicts: 0, notifications: 0 },
-          daily: Array.from({ length: 30 }, (_, dayIndex) => ({
-            date: new Date(Date.UTC(2026, 7, dayIndex + 9))
-              .toISOString()
-              .slice(0, 10),
-            orders_created: 0,
-            confirmations: 0,
-            confirmed_amount_cents: 0,
-            notifications_acknowledged: 0,
-            notifications_failed: 0,
-          })),
-        },
-      });
+    if (path === "/api/admin/v1/system/analytics") {
+      const range = Number(new URL(request.url).searchParams.get("range"));
+      return json({ data: analyticsFor(range === 7 || range === 90 ? range : 30, options.hasOrders ? completedOrders : []) });
+    }
     if (path === "/api/admin/v1/settings") return json({ data: saved });
     if (path === "/api/admin/v1/orders")
-      return json({ data: [], page: { next_cursor: null } });
+      return json({ data: options.hasOrders ? completedOrders : [], page: { next_cursor: null } });
     if (path === "/api/admin/v1/work-items")
       return json({ data: [], page: { next_cursor: null } });
     if (path === "/api/admin/v1/password")
@@ -380,7 +391,7 @@ describe("navigation and draft protection", () => {
     expect(screen.queryByText("经典蓝")).not.toBeInTheDocument();
   });
   it("surfaces a real outage without hiding payment statistics behind it", async () => {
-    const { container, fetchMock } = mount({ path: "/", configured: true });
+    const { container, fetchMock } = mount({ path: "/", configured: true, hasOrders: true });
     await screen.findByRole("heading", { name: "收款趋势" });
     expect(
       container.querySelector(".payment-pipeline, .daily-chart"),
@@ -400,7 +411,7 @@ describe("navigation and draft protection", () => {
     ).toBe(true);
   });
   it("shows a loading state rather than labeling old statistics as a new period", async () => {
-    const { container, fetchMock } = mount({ path: "/", configured: true });
+    const { container, fetchMock } = mount({ path: "/", configured: true, hasOrders: true });
     await screen.findByRole("heading", { name: "收款趋势" });
     const previous = queryClient.getQueryData<{ data: SystemAnalytics }>([
       "analytics",
@@ -429,13 +440,7 @@ describe("navigation and draft protection", () => {
     await act(async () => {
       finishRange(
         json({
-          data: {
-            ...previous.data,
-            range_days: 7,
-            from: "2026-08-31T16:00:00.000Z",
-            daily: previous.data.daily.slice(-7),
-            confirmations: { count: 1, amount_cents: 432100 },
-          },
+          data: analyticsFor(7, completedOrders),
         }),
       );
     });
@@ -452,13 +457,8 @@ describe("navigation and draft protection", () => {
     expect(within(loadedDaily).getByRole("status")).toHaveTextContent("共 7 天");
   });
   it("does not replace the selected period with a late response after rapid switching", async () => {
-    const { fetchMock } = mount({ path: "/", configured: true });
+    const { fetchMock } = mount({ path: "/", configured: true, hasOrders: true });
     await screen.findByRole("heading", { name: "收款趋势" });
-    const previous = queryClient.getQueryData<{ data: SystemAnalytics }>([
-      "analytics",
-      30,
-      null,
-    ])!;
     const originalFetch = fetchMock.getMockImplementation()!;
     const pending = new Map<string, (response: Response) => void>();
     fetchMock.mockImplementation((request) => {
@@ -476,11 +476,7 @@ describe("navigation and draft protection", () => {
     await act(async () => {
       pending.get("90")!(
         json({
-          data: {
-            ...previous.data,
-            range_days: 90,
-            confirmations: { count: 1, amount_cents: 9000 },
-          },
+          data: analyticsFor(90, completedOrders),
         }),
       );
     });
@@ -488,11 +484,7 @@ describe("navigation and draft protection", () => {
     await act(async () => {
       pending.get("7")!(
         json({
-          data: {
-            ...previous.data,
-            range_days: 7,
-            confirmations: { count: 1, amount_cents: 700 },
-          },
+          data: analyticsFor(7, completedOrders),
         }),
       );
     });
@@ -647,8 +639,18 @@ describe("navigation and draft protection", () => {
 });
 
 describe("overview layout", () => {
-  it("places trends immediately after metrics, before recent activity and daily detail", async () => {
+  it("offers first-collection setup actions without an empty business chart", async () => {
     mount({ path: "/", configured: true });
+    const first = await screen.findByText("开始第一笔收款");
+    const card = within(first.closest('[data-slot="card"]')! as HTMLElement);
+    expect(card.getByRole("link", { name: "接入业务网站" })).toHaveAttribute("href", "/sites");
+    expect(new URL(card.getByRole("link", { name: "测试收款" }).getAttribute("href")!, "http://localhost").searchParams.get("overlay")).toBe("/test-payment");
+    expect(screen.queryByRole("heading", { name: "收款趋势" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "每日数据" })).not.toBeInTheDocument();
+  });
+
+  it("places trends immediately after metrics, before recent activity and daily detail", async () => {
+    mount({ path: "/", configured: true, hasOrders: true });
     const trend = await screen.findByRole("heading", { name: "收款趋势" });
     const metrics = screen.getByText("今日确认金额", { exact: true });
     const work = screen.getByRole("heading", { name: "全部待处理" });
@@ -853,7 +855,7 @@ describe("shared content width navigation", () => {
   });
 
   it("does not reset the daily-report tab, page or analytics observers when width changes", async () => {
-    const { fetchMock, container } = mount({ path: "/", configured: true });
+    const { fetchMock, container } = mount({ path: "/", configured: true, hasOrders: true });
     const tab = await screen.findByRole("tab", { name: "每日数据" });
     await userEvent.click(tab);
     const report = await screen.findByRole("region", { name: "每日数据" });

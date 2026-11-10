@@ -125,6 +125,8 @@ function DashboardContent() {
     : null;
   const workEmpty = workTotal === 0 && work.isSuccess && !work.isPlaceholderData &&
     !work.isPaused && work.data.data.length === 0;
+  const firstOrder = orders.isSuccess && !orders.isPlaceholderData && orders.data.data.length === 0 &&
+    data?.orders.created === 0 && data.confirmations.count === 0;
   return (
     <div
       className="flex w-full min-w-0 flex-col gap-4"
@@ -155,6 +157,14 @@ function DashboardContent() {
           </AlertDescription>
         </Alert>
       )}
+      {firstOrder && <Card>
+        <CardHeader><CardTitle>开始第一笔收款</CardTitle><CardDescription>{settings.data?.data.completion.complete ? "收款配置已完成，可以接入业务网站或创建测试订单。" : "先完成支付宝账号配置，再将收款账号分配给业务网站。"}</CardDescription></CardHeader>
+        <CardContent className="flex flex-wrap gap-2">
+          {!settings.data?.data.completion.complete
+            ? <Link to={onboardingPath()} className={buttonVariants()}>继续配置收款</Link>
+            : <><Link to={clientId ? "/sites/" + encodeURIComponent(clientId) + "/settings/integration" : "/sites"} className={buttonVariants()}>接入业务网站</Link><Link to="/test-payment" className={buttonVariants({ variant: "outline" })}>测试收款</Link></>}
+        </CardContent>
+      </Card>}
       <SectionCards
         analytics={metricsUnavailable ? undefined : data}
         clientId={clientId}
@@ -171,7 +181,7 @@ function DashboardContent() {
             void analytics.refetch();
           }}
         />}
-        <ChartAreaInteractive
+        {!firstOrder && <ChartAreaInteractive
           scopeKey={clientId ?? "all"}
           analytics={data}
           chartType={
@@ -180,7 +190,7 @@ function DashboardContent() {
           range={range}
           onRangeChange={changeRange}
           pending={!analytics.isPaused && (analytics.isPending || analytics.isPlaceholderData)}
-        />
+        />}
       </div>
       {!clientId && <SiteOverviewList range={range} />}
       <div className="overview-records" data-work-empty={workEmpty || undefined}>

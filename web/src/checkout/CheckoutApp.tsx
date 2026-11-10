@@ -375,6 +375,10 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                             }}
                           />
                         </div>
+                        <p className="text-center text-sm text-muted-foreground" data-checkout-payment-instructions>
+                          <span className="sm:hidden">保存二维码后，在支付宝扫一扫中从相册选择，按 {formattedAmount} 付款。</span>
+                          <span className="hidden sm:inline">用支付宝扫描二维码，按 {formattedAmount} 付款。</span>
+                        </p>
                         <div className="flex flex-wrap justify-center gap-2">
                           <Dialog open={expanded} onOpenChange={setExpanded}>
                             <DialogTrigger render={<Button variant="outline" />}>

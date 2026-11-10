@@ -126,8 +126,8 @@ export default function WorkItems() {
           next.set("visibility", nextVisibility);
         else next.delete("visibility");
         if (
-          nextVisibility !== "IGNORED" &&
-          next.get("sort_by") === "ignored_at"
+          (nextVisibility !== "IGNORED" && next.get("sort_by") === "ignored_at") ||
+          (nextVisibility === "IGNORED" && next.get("sort_by") === "priority")
         ) {
           next.delete("sort_by");
           next.delete("sort_order");
@@ -275,11 +275,10 @@ function WorkItemPage({
   const mounted = useMounted();
   const { clientId } = useWorkspace();
   const pagination = useCursor();
-  // Priority is an overview preview policy; retain the full list's existing sort choices.
   const sortFields = workItemSortFields(visibility);
   const listQuery = useListQuery(
     sortFields,
-    visibility === "IGNORED" ? "ignored_at" : "actionable_at",
+    visibility === "IGNORED" ? "ignored_at" : "priority",
     "desc",
   );
   const list = useRef<HTMLDivElement>(null);
@@ -522,6 +521,7 @@ function WorkItemPage({
             actionable_at: "提醒时间",
             created_at: "创建时间",
             ignored_at: "忽略时间",
+            priority: "需要处理优先",
           }[value],
         }))}
       />

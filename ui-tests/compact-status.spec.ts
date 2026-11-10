@@ -49,7 +49,8 @@ async function openList(page: Page, manifest: Manifest, path: string, table: str
       const search = new URL(path, manifest.origin).searchParams;
       const visibility = search.get("visibility") ?? "ACTIVE";
       const query = new URLSearchParams({ type: search.get("type") ?? "ALL", visibility, limit: "20",
-        sort_by: visibility === "IGNORED" ? "ignored_at" : "actionable_at", sort_order: "desc" });
+        sort_by: search.get("sort_by") ?? (visibility === "IGNORED" ? "ignored_at" : "priority"),
+        sort_order: search.get("sort_order") ?? "desc" });
       const response = await page.request.get(manifest.origin + "/api/admin/v1/work-items?" + query);
       expect(response.status()).toBe(200);
       data = (await response.json() as AdminWorkItemPageEnvelope).data;

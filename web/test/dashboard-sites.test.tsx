@@ -27,7 +27,11 @@ function mount(
     if (url.pathname === "/api/admin/v1/sites/overview")
       return json({ data: [], period: { from: "2026-09-11", to: "2026-10-10" }, max_confirmed_amount_cents: 0, page: { next_cursor: null } });
     if (url.pathname.endsWith("/settings")) return json({ data: { ...settings, site_mode: true, completion: { ...settings.completion, complete: true, sites: true } } });
-    if (url.pathname.endsWith("/analytics")) return json({ data: { pending: { orders: clientId === "site_b" ? 4 : 3 }, daily: [] } });
+    if (url.pathname.endsWith("/analytics")) return json({ data: {
+      orders: { created: 4, unpaid: 4, confirmed: 0, disputed: 0, closed: 0, expired: 0 },
+      confirmations: { count: 0, amount_cents: 0 },
+      pending: { orders: clientId === "site_b" ? 4 : 3 }, daily: [],
+    } });
     if (url.pathname.endsWith("/work-items/summary")) {
       summaryReads.push(clientId);
       return summary ? summary(clientId) : json({ data: { total: clientId === "site_a" ? 6 : 0 } });

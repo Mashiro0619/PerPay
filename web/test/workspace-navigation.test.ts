@@ -91,7 +91,7 @@ describe("workspace navigation preparation", () => {
     ["/notifications", "status=DEAD_LETTER&sort_by=attempt_count&sort_order=asc&cursor=opaque", { limit: "20", status: "DEAD_LETTER", sort_by: "attempt_count", sort_order: "asc", cursor: "opaque" }],
     ["/notifications", "status=invalid&sort_by=invalid", { limit: "20", sort_by: "created_at", sort_order: "desc" }],
     ["/work-items", "type=LEDGER_CONFLICT&visibility=IGNORED&sort_by=priority&created_from=ignored", { limit: "20", type: "ALL", visibility: "IGNORED", sort_by: "ignored_at", sort_order: "desc" }],
-    ["/work-items", "type=FINANCIAL_EXCEPTION&visibility=invalid&sort_by=ignored_at", { limit: "20", type: "FINANCIAL_EXCEPTION", visibility: "ACTIVE", sort_by: "actionable_at", sort_order: "desc" }],
+    ["/work-items", "type=FINANCIAL_EXCEPTION&visibility=invalid&sort_by=ignored_at", { limit: "20", type: "FINANCIAL_EXCEPTION", visibility: "ACTIVE", sort_by: "priority", sort_order: "desc" }],
   ] as const)("preserves the page's filter parsing for %s (%s)", async (localPath, search, expected) => {
     authenticate();
     const urls: URL[] = [];

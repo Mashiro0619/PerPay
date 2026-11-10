@@ -120,6 +120,7 @@ for (const layout of [
         await dialog.getByRole("button", { name: "关闭", exact: true }).click();
 
         if (layout.width === 1440 && layout.font === 100) {
+          fixture.seedPaidOrder();
           await page.goto(fixture.origin + "/admin/");
           await expect(page.locator(".trend-plot[data-chart-type]")).toHaveAttribute("data-chart-type", "LINE");
           await page.evaluate(() => localStorage.removeItem("perpay:dashboard-chart-type"));
