@@ -241,6 +241,7 @@ export function FinancialDialog({
             : finalFocus
         }
         className="flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden sm:max-w-xl"
+        scrollMode="body"
       >
         <DialogHeader className="shrink-0 pr-8">
           <DialogTitle>人工关联收款</DialogTitle>
@@ -249,7 +250,7 @@ export function FinancialDialog({
           </DialogDescription>
         </DialogHeader>
         <form className="contents" onSubmit={submit}>
-          <FieldGroup className="-mx-4 min-h-0 w-auto overflow-y-auto px-4 pb-1">
+          <FieldGroup data-overlay-step-scroll className="-mx-4 min-h-0 w-auto overflow-y-auto px-4 pb-1">
             {save.recovery && (
               <OperationRecoveryNotice
                 operationId={save.recovery.financial_operation_id}

@@ -127,7 +127,7 @@ for (const layout of [{ width: 320, height: 560, text: 200 }, { width: 640, heig
       const input = dialog.getByRole('searchbox', { name: '搜索订单', exact: true });
       await input.scrollIntoViewIfNeeded();
       const searchGeometry = await input.evaluate(element => {
-        const input = element.getBoundingClientRect(), scroll = element.closest('[data-admin-dialog-scroll]')!;
+        const input = element.getBoundingClientRect(), scroll = element.closest('[data-admin-dialog-scroll], [data-overlay-step-scroll]')!;
         const bounds = scroll.getBoundingClientRect();
         return { input: input.toJSON(), scroll: bounds.toJSON(), width: scroll.clientWidth, scrollWidth: scroll.scrollWidth };
       });
