@@ -34,7 +34,7 @@ for (const width of [1440, 390]) {
 
         async function verifyCreated(site: Site, expectedId: string, expectedName: string) {
           expect(site.client_id).toBe(expectedId);
-          await expect.poll(() => new URL(page.url()).searchParams.get("overlay")).toBe(`/sites/${expectedId}/edit?section=basic`);
+          await expect.poll(() => new URL(page.url()).searchParams.get("overlay")).toBe(`/sites/${expectedId}/edit?section=integration`);
           await expect(dialog.getByRole("textbox", { name: /客户端 ID/ })).toHaveCount(0);
           const stored = await page.request.get(`${fixture.origin}/api/admin/v1/sites/${expectedId}`);
           expect(stored.status()).toBe(200);
@@ -105,7 +105,7 @@ for (const width of [1440, 390]) {
           await dialog.getByRole("textbox", { name: /客户端 ID/ }).fill(id);
           const response = await submitSite(page, 201);
           expect((await response.json()).data.client_id).toBe(id);
-          await expect.poll(() => new URL(page.url()).searchParams.get("overlay")).toBe(`/sites/${id}/edit?section=basic`);
+          await expect.poll(() => new URL(page.url()).searchParams.get("overlay")).toBe(`/sites/${id}/edit?section=integration`);
           await dialog.getByRole("button", { name: "关闭对话框", exact: true }).click();
           await expect(dialog).toHaveCount(0);
         }

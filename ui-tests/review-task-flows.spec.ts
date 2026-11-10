@@ -65,7 +65,7 @@ test("mobile website rows explain metrics and enter the selected workspace direc
   await expect(row.getByText(/近 30 天实收/)).toBeVisible();
   await expect(row.getByRole("link", { name: /^网站设置：/ })).toBeVisible();
   await page.screenshot({ path: info.outputPath("mobile-website-actions.png") });
-  await row.getByRole("link", { name: "进入后台", exact: true }).click();
+  await row.getByRole("link", { name: "查看网站总览", exact: true }).click();
   await expect.poll(() => new URL(page.url()).pathname).toBe("/admin/sites/" + id);
   expect(new URL(page.url()).searchParams.has("overlay")).toBe(false);
 });

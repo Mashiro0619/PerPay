@@ -16,7 +16,8 @@ import { SettingsSummary, type SettingsSummaryRow } from "@/components/settings-
 import { OverlayActions } from "@/components/overlay-actions";
 import { useOverlayCloseGuard, useOverlayContext } from "@/lib/overlay-context";
 import { overviewQueries, overviewRange } from "@/api/workspace-queries";
-import { count, dateTime, money } from "@/lib/format";
+import { count, dateTime, durationLabel, money } from "@/lib/format";
+import type { IntegrationProtocol } from "@/api/integration";
 import {
   api,
   ApiError,
@@ -90,15 +91,15 @@ function siteSummaryRows(site: Site, section: string): SettingsSummaryRow[] {
     ["收款账号", <SiteCollectionSummary collection={value.collection} />],
   ];
   if (section === "orders") return [
-    ["收银台有效期", policy.orders.order_ttl_seconds + " 秒"],
+    ["收银台有效期", durationLabel(policy.orders.order_ttl_seconds)],
     ["最大加价金额", money(policy.orders.amount_offset_maximum_cents)],
-    ["应付金额复用等待", policy.orders.amount_reuse_cooldown_seconds + " 秒"],
+    ["应付金额复用等待", durationLabel(policy.orders.amount_reuse_cooldown_seconds)],
     ["待付款订单上限", policy.orders.pending_order_limit === null ? "不限" : count(policy.orders.pending_order_limit)],
   ];
   if (section === "integration") return [
     ["通知", value.notifications_enabled ? "开启" : "关闭"],
-    ["通知地址前缀", value.notification_origin || "未设置"],
-    ["返回地址前缀", value.return_origin || "未设置"],
+    ["通知域名", value.notification_origin || "未设置"],
+    ["返回域名", value.return_origin || "未设置"],
     ["通知超时", siteTimeoutSeconds(policy.notification_delivery.timeout_milliseconds) + " 秒"],
     ["最多发送次数", count(policy.notification_delivery.maximum_attempts)],
     ["首次 / 最大重试间隔", policy.notification_delivery.retry_base_seconds + " / " + policy.notification_delivery.retry_maximum_seconds + " 秒"],
@@ -206,7 +207,7 @@ export function SiteSummaryOverlay() {
     ]} /></DetailSection>
     <OverlayActions>
       <Link to={"/sites/" + encodeURIComponent(current.client_id) + "/edit?section=basic"} className={buttonVariants({ variant: "outline" })}>编辑网站</Link>
-      <Link to={"/sites/" + encodeURIComponent(current.client_id) + "?range=" + range} className={buttonVariants()}>进入后台</Link>
+      <Link to={"/sites/" + encodeURIComponent(current.client_id) + "?range=" + range} className={buttonVariants()}>查看网站总览</Link>
     </OverlayActions>
   </DetailPage>}</QueryView>;
 }
@@ -270,6 +271,7 @@ function SiteEditor({
   const formId = useId();
   const formRef = useRef<HTMLFormElement>(null);
   const [activeSection, setActiveSection] = useState(initialSection);
+  const [protocol, setProtocol] = useState<IntegrationProtocol>("native");
   const section = tabbed ? activeSection : initialSection;
   const navigate = useNavigate();
   const location = useLocation();
@@ -619,9 +621,11 @@ function SiteEditor({
     </OverlayActions>
   );
   const isSecretConfirmation = confirmation === "api" || confirmation === "webhook";
-  const generatingSecret = isSecretConfirmation && missingSecrets[confirmation] === saved?.revision;
+  const secretConfigured = (purpose: "api" | "webhook") => missingSecrets[purpose] === saved?.revision
+    ? false : saved?.secrets?.[purpose === "api" ? "api_secret" : "webhook_secret"];
+  const generatingSecret = isSecretConfirmation && secretConfigured(confirmation) === false;
   const secretActionName = (purpose: "api" | "webhook") =>
-    (missingSecrets[purpose] === saved?.revision ? "生成" : "轮换") + (purpose === "api" ? " API 密钥" : "通知签名密钥");
+    (secretConfigured(purpose) === false ? "生成" : "轮换") + (purpose === "api" ? " API 密钥" : "通知签名密钥");
   return (
     <div className="admin-settings-layout flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -677,7 +681,9 @@ function SiteEditor({
           }}
         />
       )}
-      {saved && visible("integration") && (
+      {saved && visible("integration") && <SiteIntegrationAssistant site={saved} siteDirty={dirty || requiresReview}
+        disabled={busy} showClientId={false} onReloadSite={() => reload.mutate()} selectedProtocol={protocol} onProtocolChange={setProtocol} />}
+      {saved && visible("integration") && protocol === "native" && (
         <Card>
           <CardHeader>
             <CardTitle>接入信息</CardTitle>
@@ -757,11 +763,9 @@ function SiteEditor({
                         }
                       />
                     </Field>
-                    <FieldDescription>
-                      开启前需生成通知密钥并填写通知地址前缀。
-                    </FieldDescription>
+                    {protocol === "native" && secretConfigured("webhook") === false && <FieldDescription>原生 API 通知需要在下方生成通知签名密钥。</FieldDescription>}
                     <SiteTextField
-                      label="通知地址前缀"
+                      label="通知域名"
                       type="url"
                       placeholder="https://notify.example.com"
                       value={draft.notification_origin ?? ""}
@@ -773,7 +777,7 @@ function SiteEditor({
                       }
                     />
                     <SiteTextField
-                      label="返回地址前缀"
+                      label="返回域名"
                       type="url"
                       placeholder="https://shop.example.com"
                       value={draft.return_origin ?? ""}
@@ -785,7 +789,7 @@ function SiteEditor({
                       }
                     />
                     <FieldDescription>
-                      不含路径、端口或通配符。
+                      例如通知地址为 https://shop.example.com/payment/notify，通知域名填 https://shop.example.com。不含路径、端口或通配符。
                     </FieldDescription>
                   </>
                 )}
@@ -822,27 +826,28 @@ function SiteEditor({
           setFeedback("客户端 ID 操作已完成。");
           void queryClient.invalidateQueries({ queryKey: ["sites"] });
         }} />}
-      {saved && visible("integration") && (
+      {saved && visible("integration") && protocol === "native" && (
         <Card>
           <CardHeader>
-            <CardTitle>业务网站密钥</CardTitle>
+            <CardTitle>原生 API 密钥</CardTitle>
           </CardHeader>
           <CardContent>
             <FieldGroup>
+              {!saved.secrets && <Alert><AlertDescription>密钥状态未返回。<Button variant="outline" disabled={busy} onClick={() => reload.mutate()}>重新读取密钥状态</Button></AlertDescription></Alert>}
               <FieldSet className="gap-2">
                 <FieldLegend variant="label">API 密钥</FieldLegend>
                 <div className="flex flex-wrap gap-2">
-                  <Button
+                  {secretConfigured("api") === true && <Button
                     variant="outline"
                     aria-label="查看 API 密钥"
                     disabled={busy}
                     onClick={event => { void readSecret("api", event.currentTarget); }}
                   >
                     查看
-                  </Button>
+                  </Button>}
                   <Button
                     variant="outline"
-                    disabled={busy || requiresReview}
+                    disabled={busy || requiresReview || secretConfigured("api") === undefined}
                     onClick={event => { secretOrigin.current = event.currentTarget; action.reset(); setConfirmation("api"); }}
                   >
                     {secretActionName("api")}
@@ -852,17 +857,17 @@ function SiteEditor({
               <FieldSet className="gap-2">
                 <FieldLegend variant="label">通知签名密钥</FieldLegend>
                 <div className="flex flex-wrap gap-2">
-                  <Button
+                  {secretConfigured("webhook") === true && <Button
                     variant="outline"
                     aria-label="查看通知签名密钥"
                     disabled={busy}
                     onClick={event => { void readSecret("webhook", event.currentTarget); }}
                   >
                     查看
-                  </Button>
+                  </Button>}
                   <Button
                     variant="outline"
-                    disabled={busy || requiresReview}
+                    disabled={busy || requiresReview || secretConfigured("webhook") === undefined}
                     onClick={event => { secretOrigin.current = event.currentTarget; action.reset(); setConfirmation("webhook"); }}
                   >
                     {secretActionName("webhook")}
@@ -889,8 +894,6 @@ function SiteEditor({
           </CardContent>
         </Card>
       )}
-      {saved && visible("integration") && <SiteIntegrationAssistant site={saved} siteDirty={dirty || requiresReview}
-        disabled={busy} showClientId={false} onReloadSite={() => reload.mutate()} />}
       <SecretViewDialog open={secretDialog !== null} title={secretDialog === "api" ? "API 密钥" : "通知签名密钥"}
         values={revealed ? [{ label: revealed.label, value: revealed.value }] : []}
         pending={secretReadPending} error={secretReadError} onClose={hideSecret}

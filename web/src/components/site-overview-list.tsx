@@ -38,7 +38,7 @@ function SiteOverviewCard({ site, label, range, maximum }: {
       className="site-overview-card"
       data-slot="site-overview-card"
       to={"/sites/" + encodeURIComponent(site.client_id) + "?range=" + range}
-      aria-label={label + "，进入后台"}
+      aria-label={label + "，查看网站总览"}
       aria-describedby={summaryId}
     >
       <Card size="sm" className="site-overview-card-surface">

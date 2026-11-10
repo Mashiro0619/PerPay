@@ -47,6 +47,16 @@ browserTest("site timeout keeps invalid input through a concurrent key conflict 
     page.on("pageerror", error => pageErrors.push(error.message));
     await page.route("**/*", route => new URL(route.request().url()).origin === fixture.origin ? route.continue() : route.abort("blockedbyclient"));
     await page.context().addCookies(fixture.cookies);
+    const siteUrl = fixture.origin + "/api/admin/v1/sites/default";
+    const csrf = fixture.cookies.find(cookie => cookie.name.includes("csrf"));
+    expect(csrf).toBeDefined();
+    const headers = { origin: fixture.origin, "x-csrf-token": decodeURIComponent(csrf!.value) };
+    const initial = await page.request.get(siteUrl);
+    expect(initial.status()).toBe(200);
+    const generated = await page.request.post(siteUrl + "/secrets/api_secret/actions/rotate", {
+      headers, data: { revision: (await initial.json()).data.revision },
+    });
+    expect(generated.status()).toBe(200);
     await page.goto(fixture.origin + "/admin/sites/default/edit?section=integration");
     await page.getByRole("button", { name: "高级设置", exact: true }).click();
     const timeout = page.getByLabel("通知超时（秒）", { exact: true });
@@ -56,16 +66,13 @@ browserTest("site timeout keeps invalid input through a concurrent key conflict 
     await expect(save).toBeDisabled();
 
     // An independent administrator updates another group while this form is dirty.
-    const siteUrl = fixture.origin + "/api/admin/v1/sites/default";
     const current = await page.request.get(siteUrl);
     expect(current.status()).toBe(200);
     const latest = (await current.json()).data;
     const remoteTtl = latest.configuration.policy.orders.order_ttl_seconds === 600 ? 900 : 600;
     latest.configuration.policy.orders.order_ttl_seconds = remoteTtl;
-    const csrf = fixture.cookies.find(cookie => cookie.name.includes("csrf"));
-    expect(csrf).toBeDefined();
     const remoteSave = await page.request.put(siteUrl, {
-      headers: { origin: fixture.origin, "x-csrf-token": decodeURIComponent(csrf!.value) },
+      headers,
       data: { revision: latest.revision, configuration: latest.configuration },
     });
     expect(remoteSave.status()).toBe(200);

@@ -94,6 +94,22 @@ function conflictServer() {
 }
 
 describe("支付宝账号设置", () => {
+  it("连接通过但缺少收款码时，向导明确缺项并能切换到收款码继续", async () => {
+    const account: AlipayAccount = { ...first, configured: false, code_payload: null,
+      last_check: { ok: true, checked_at: first.created_at, message: "查账连接正常" } };
+    mount(<AlipayAccountEditor initial={account} onBack={() => {}} />);
+    const user = userEvent.setup();
+    expect(screen.getByText("连接检查通过")).toBeVisible();
+    expect(screen.getByText("待补充：收款码")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "继续配置收款码" }));
+    expect(screen.getByRole("tab", { name: "收款码" })).toHaveAttribute("aria-selected", "true");
+    await user.click(screen.getByRole("tab", { name: "基本信息" }));
+    const name = screen.getByRole("textbox", { name: "账号名称" });
+    await user.clear(name); await user.type(name, "配置草稿");
+    await user.click(screen.getByRole("tab", { name: "收款码" }));
+    await user.click(screen.getByRole("tab", { name: "基本信息" }));
+    expect(name).toHaveValue("配置草稿");
+  });
   it("未完成配置的账号可连续两次更换应用密钥，每次使用新的操作编号和当前版本", async () => {
     const initial: AlipayAccount = { ...first, configured: false, app_id: null, platform_public_key: null, provider_account_key: null };
     let account = initial;

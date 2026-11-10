@@ -88,7 +88,7 @@ function mountDefaults() {
     if (path === "/api/admin/v1/sites" && request.method === "POST") {
       const body = await request.clone().json() as CreateRequest;
       creations.push(structuredClone(body));
-      const site: Site = { client_id: "site_created", revision: 0, configuration: body.configuration, created_at: "2026-10-08T00:00:00Z", updated_at: "2026-10-08T00:00:00Z", deleted_at: null };
+      const site: Site = { secrets: { api_secret: false, webhook_secret: false }, client_id: "site_created", revision: 0, configuration: body.configuration, created_at: "2026-10-08T00:00:00Z", updated_at: "2026-10-08T00:00:00Z", deleted_at: null };
       sites.push(site);
       return json({ data: site }, 201);
     }
@@ -98,7 +98,7 @@ function mountDefaults() {
     { path: "/sites/defaults", element: <SiteDefaultsPage /> },
     { path: "/sites", element: <Sites /> },
     { path: "/sites/new", element: <SiteEditorPage /> },
-    { path: "/sites/:clientId", element: <p>新网站已创建</p> },
+    { path: "/sites/:clientId/settings/integration", element: <p>新网站已创建</p> },
   ] }], { initialEntries: ["/sites/defaults"] });
   render(<QueryClientProvider client={queryClient}><Toaster><RouterProvider router={router} /></Toaster></QueryClientProvider>);
   return {
@@ -308,6 +308,7 @@ describe("website default template conflict recovery", () => {
     await user.type(await screen.findByLabelText("业务网站名称"), "使用恢复后模板的网站");
     await user.click(screen.getByRole("button", { name: "创建业务网站" }));
     await screen.findByText("新网站已创建");
+    expect(view.router.state.location.pathname).toBe("/sites/site_created/settings/integration");
     expect(view.creations).toHaveLength(1);
     expect(view.creations[0]).toMatchObject({
       operation_id: expect.any(String),

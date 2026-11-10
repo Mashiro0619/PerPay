@@ -25,7 +25,7 @@ import {
   AlertDialogAction,
 } from "@/components/admin-dialog";
 const DraftContext = createContext({
-  setDirty: (_id: string, _dirty: boolean, _owner?: string) => undefined as void,
+  setDirty: (_id: string, _dirty: boolean, _owner?: string, _submitting?: () => boolean) => undefined as void,
   requestDiscard: (action: () => void) => action(),
   setDialogFinalFocus: (_element: HTMLElement | null) => undefined as void,
 });
@@ -51,7 +51,7 @@ const OperationNavigationContext = createContext({
   proceed: (_onLeave: () => void) => undefined as void,
 });
 export function DraftProvider({ children }: { children: ReactNode }) {
-  const drafts = useRef(new Map<string, string>());
+  const drafts = useRef(new Map<string, { owner: string; submitting?: () => boolean }>());
   const protections = useRef(new Map<string, { check: NavigationCheck; owner: string }>());
   const dismissalGuards = useRef(new Map<string, { check: NavigationCheck; owner: string }>());
   const operationWasBlocked = useRef(false);
@@ -62,7 +62,7 @@ export function DraftProvider({ children }: { children: ReactNode }) {
   const dialogFinalFocus = useRef<HTMLElement | null>(null);
   const hasLeavingDrafts = (next: Location) => {
     const retained = retainedOwners(next);
-    return [...drafts.current.values()].some(owner => !retained.has(owner));
+    return [...drafts.current.values()].some(draft => !retained.has(draft.owner));
   };
   const protectedOperation = (next: Location) => {
     const retained = retainedOwners(next);
@@ -81,6 +81,8 @@ export function DraftProvider({ children }: { children: ReactNode }) {
   });
   const blockedId = blocker.state === "blocked" && !dismissalWasBlocked.current ? protectedOperation(blocker.location) : null;
   const leavingDrafts = blocker.state === "blocked" && hasLeavingDrafts(blocker.location);
+  const retainedDraftOwners = blocker.state === "blocked" ? retainedOwners(blocker.location) : new Set<string>();
+  const leavingSubmission = [...drafts.current.values()].some(draft => !retainedDraftOwners.has(draft.owner) && draft.submitting?.());
   const setProtection = useCallback(
     (id: string, check: NavigationCheck | null, owner = "*") => {
       if (check) protections.current.set(id, { check, owner });
@@ -89,10 +91,11 @@ export function DraftProvider({ children }: { children: ReactNode }) {
     },
     [],
   );
-  const setDirty = useCallback((id: string, value: boolean, owner = "*") => {
-    if (value) drafts.current.set(id, owner);
+  const setDirty = useCallback((id: string, value: boolean, owner = "*", submitting?: () => boolean) => {
+    if (value) drafts.current.set(id, { owner, ...(submitting ? { submitting } : {}) });
     else drafts.current.delete(id);
     setHasDrafts(drafts.current.size > 0);
+    setProtectionVersion(version => version + 1);
   }, []);
   const setDismissalGuard = useCallback((id: string, check: NavigationCheck | null, owner: string) => {
     if (check) dismissalGuards.current.set(id, { check, owner });
@@ -183,7 +186,7 @@ export function DraftProvider({ children }: { children: ReactNode }) {
             <AlertDialogTitle>放弃未保存的修改？</AlertDialogTitle>
           </AlertDialogHeader>
           <DialogBody><AlertDialogDescription>
-              已提交的保存可能仍在执行，请重新读取后核对结果。
+              {leavingSubmission ? "已提交的保存可能仍在执行，请重新读取后核对结果。" : "未保存的修改将丢失。"}
             </AlertDialogDescription></DialogBody>
           <AlertDialogFooter>
             <AlertDialogCancel
@@ -236,21 +239,24 @@ export function useOperationNavigation(
 }
 export const useDraftGuard = () => useContext(DraftContext);
 export const useHasDirtyDrafts = () => useContext(OperationNavigationContext).hasDrafts;
-export function useDirtyDraft(dirty: boolean) {
+export function useDirtyDraft(dirty: boolean, submitting?: () => boolean) {
   const id = useId();
   const owner = useDraftOwner();
   const { setDirty } = useDraftGuard();
+  const currentSubmission = useRef(submitting);
+  currentSubmission.current = submitting;
+  const submissionActive = submitting?.() ?? false;
   useEffect(() => {
-    setDirty(id, dirty, owner);
-  }, [id, dirty, setDirty, owner]);
+    setDirty(id, dirty, owner, () => currentSubmission.current?.() ?? false);
+  }, [id, dirty, setDirty, owner, submissionActive]);
   useEffect(() => () => setDirty(id, false), [id, setDirty]);
   return () => setDirty(id, false);
 }
-export function useFormDraft() {
+export function useFormDraft(submitting?: () => boolean) {
   const form = useRef<HTMLFormElement>(null);
   const baseline = useRef("");
   const [dirty, setDirty] = useState(false);
-  const clearGuard = useDirtyDraft(dirty);
+  const clearGuard = useDirtyDraft(dirty, submitting);
   const snapshot = () =>
     form.current
       ? JSON.stringify([...new FormData(form.current).entries()])

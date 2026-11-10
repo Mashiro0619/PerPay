@@ -15,7 +15,7 @@ const second: AlipayAccount = { ...first, id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb
 const configured: SiteCollection["accounts"] = [{ account_id: first.id, weight: 3 }, { account_id: second.id, weight: 1 }];
 
 function mountCollection(collection: SiteCollection | undefined, read: () => Response | Promise<Response>) {
-  const site: Site = { client_id: "shop", revision: 1, configuration: {
+  const site: Site = { secrets: { api_secret: true, webhook_secret: true }, client_id: "shop", revision: 1, configuration: {
     name: "业务网站", accepting_orders: true, notifications_enabled: false, notification_origin: null, return_origin: null,
     ...(collection ? { collection } : {}),
     policy: {

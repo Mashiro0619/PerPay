@@ -23,6 +23,7 @@ import { OperationNavigationDialog } from "@/components/operation-navigation-dia
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldSet } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import {
   Card,
   CardContent,
@@ -77,7 +78,7 @@ function CreateSiteForm({ policy, accounts, onCreated }: { policy: SiteConfigura
       void queryClient.invalidateQueries({ queryKey: ["site-overview"] });
       void queryClient.invalidateQueries({ queryKey: ["settings"] });
       if (onCreated) onCreated(response.data.client_id);
-      else void navigate("/sites/" + response.data.client_id + (overlay ? "/edit?section=basic" : ""), overlay ? { replace: true } : undefined);
+      else void navigate("/sites/" + response.data.client_id + (overlay ? "/edit?section=integration" : "/settings/integration"), overlay ? { replace: true } : undefined);
     },
     isSafeRejection: (error) =>
       error instanceof ApiError && error.status === 422,
@@ -93,10 +94,17 @@ function CreateSiteForm({ policy, accounts, onCreated }: { policy: SiteConfigura
     () => !creationConfirmed.current && (create.isBusy() || !!create.recovery),
   );
   useOverlayCloseGuard(() => !creationConfirmed.current && create.isBusy());
+  const availableAccounts = accounts.filter(account => account.environment === "PRODUCTION" && account.enabled && account.configured);
+  const [collectionError, setCollectionError] = useState<string>();
   function submit() {
     creationConfirmed.current = false;
     if (create.recovery) {
       create.submit(create.recovery);
+      return;
+    }
+    if (!collection.accounts.length) {
+      setCollectionError("请选择至少一个已配置并启用的收款账号。");
+      form.current?.querySelector<HTMLElement>('[role="combobox"]')?.focus();
       return;
     }
     const normalizedClientId = clientId.trim();
@@ -117,6 +125,12 @@ function CreateSiteForm({ policy, accounts, onCreated }: { policy: SiteConfigura
     const input = { configuration, ...(normalizedClientId ? { client_id: normalizedClientId } : {}) };
     create.submit({ operation_id: key.current(input), ...input });
   }
+  if (!availableAccounts.length && !create.recovery) return <Empty>
+    <EmptyHeader><EmptyTitle>先配置收款账号</EmptyTitle>
+      <EmptyDescription>完成支付宝应用和收款码配置，并启用账号后，即可创建业务网站。</EmptyDescription>
+    </EmptyHeader>
+    <EmptyContent><Link to="/settings/accounts" className={buttonVariants()}>配置收款账号</Link></EmptyContent>
+  </Empty>;
   return (
     <div className="admin-settings-layout">
       <form
@@ -174,7 +188,7 @@ function CreateSiteForm({ policy, accounts, onCreated }: { policy: SiteConfigura
                   </FieldDescription>
                   {clientIdError && <FieldError id={clientIdFieldId + "-error"}>{clientIdError}</FieldError>}
                 </Field>
-                <CollectionChoices accounts={accounts} value={collection} onChange={value => { setCollection(value); create.reset(); }} disabled={create.isPending || !!create.recovery} error={create.error instanceof ApiError ? Object.entries(create.error.fields).find(([field]) => field.startsWith("configuration.collection"))?.[1] : undefined} />
+                <CollectionChoices accounts={accounts} value={collection} onChange={value => { setCollection(value); setCollectionError(undefined); create.reset(); }} disabled={create.isPending || !!create.recovery} error={collectionError ?? (create.error instanceof ApiError ? Object.entries(create.error.fields).find(([field]) => field.startsWith("configuration.collection"))?.[1] : undefined)} />
               </FieldSet>
               {create.recovery && (
                 <OperationRecoveryNotice

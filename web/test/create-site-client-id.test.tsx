@@ -31,7 +31,7 @@ function mountCreate(reject?: (input: CreateCommand, attempt: number) => Respons
       writes.push(input);
       const response = reject?.(input, writes.length);
       if (response) return response;
-      const site: Site = { client_id: input.client_id ?? "site_generated", revision: 0, configuration: input.configuration,
+      const site: Site = { secrets: { api_secret: false, webhook_secret: false }, client_id: input.client_id ?? "site_generated", revision: 0, configuration: input.configuration,
         created_at: "2026-11-06T00:00:00Z", updated_at: "2026-11-06T00:00:00Z", deleted_at: null };
       return json({ data: site }, 201);
     }

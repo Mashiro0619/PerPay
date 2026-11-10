@@ -9,8 +9,8 @@ import { DraftProvider } from "../src/drafts";
 import { SiteEditorPage } from "../src/pages/Sites";
 import { json } from "./fixtures";
 
-function mount(action: "view" | "rotate", purpose: "api_secret" | "webhook_secret") {
-  let site: Site = { client_id: "site_a", revision: 0, configuration: {
+function mount(action: "view" | "rotate", purpose: "api_secret" | "webhook_secret", configured = true) {
+  let site: Site = { secrets: { api_secret: configured, webhook_secret: configured }, client_id: "site_a", revision: 0, configuration: {
     name: "A", accepting_orders: true, notifications_enabled: false, notification_origin: null, return_origin: null,
     policy: { orders: { order_ttl_seconds: 300, amount_offset_maximum_cents: 99, amount_reuse_cooldown_seconds: 600, pending_order_limit: null },
       display: { checkout_name: "A", checkout_help_url: null, checkout_show_product_name: true },
@@ -38,7 +38,7 @@ function mount(action: "view" | "rotate", purpose: "api_secret" | "webhook_secre
       await held;
       return json({ data: action === "rotate" ? { site, secret: "late-secret" } : { secret: "late-secret" } });
     }
-    if (request.url.endsWith("/actions/rotate")) { site = { ...site, revision: site.revision + 1 }; return json({ data: { site, secret: "explicit-secret" } }); }
+    if (request.url.endsWith("/actions/rotate")) { site = { ...site, secrets: { ...site.secrets, [purpose]: true }, revision: site.revision + 1 }; return json({ data: { site, secret: "explicit-secret" } }); }
     return json({ data: { secret: "explicit-secret" } });
   }));
   const router = createMemoryRouter([{ path: "/sites/:clientId/settings/:section", element: <DraftProvider><SiteEditorPage /></DraftProvider> }], { initialEntries: ["/sites/site_a/settings/integration"] });
@@ -53,6 +53,20 @@ async function closeSecret(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe("网站密钥独立弹窗", () => {
+  it.each(["api_secret", "webhook_secret"] as const)("首次直接生成%s，成功后才能查看或轮换", async purpose => {
+    const view = mount("rotate", purpose, false), user = userEvent.setup(), name = secretName(purpose);
+    const label = (purpose === "api_secret" ? " " : "") + name;
+    await user.click(await screen.findByRole("button", { name: "生成" + label }));
+    expect(screen.queryByRole("button", { name: "查看" + label })).not.toBeInTheDocument();
+    expect(view.requests).toHaveLength(0);
+    await user.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "生成密钥" }));
+    expect(await screen.findByDisplayValue("explicit-secret")).toBeVisible();
+    await closeSecret(user);
+    expect(screen.getByRole("button", { name: "查看" + label })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "轮换" + label })).toBeEnabled();
+    expect(view.requests).toHaveLength(1);
+    expect(view.requests[0]!.url).toContain(`/secrets/${purpose}/actions/rotate`);
+  });
   it.each(["api_secret", "webhook_secret"] as const)("在弹窗说明%s缺失，关闭后显示生成入口", async purpose => {
     const view = mount("view", purpose), user = userEvent.setup(), name = secretName(purpose);
     const button = await screen.findByRole("button", { name: "查看" + (purpose === "api_secret" ? " " : "") + name });

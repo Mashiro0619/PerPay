@@ -110,7 +110,7 @@ describe("website management compact table", () => {
     expect(amount(row)).toHaveTextContent("¥129.01");
     expect(workload(row)).toHaveTextContent("5");
     expect(within(row).getByRole("link", { name: "网站设置：手机网站" })).toBeVisible();
-    await userEvent.setup().click(within(row).getByRole("link", { name: "进入后台" }));
+    await userEvent.setup().click(within(row).getByRole("link", { name: "查看网站总览" }));
     expect(view.router.state.location.pathname).toBe("/sites/site_mobile");
     expect(await screen.findByRole("heading", { name: "网站后台页面" })).toBeVisible();
   });
@@ -123,7 +123,7 @@ describe("website management compact table", () => {
     expect(document.querySelectorAll("[data-slot=skeleton]").length).toBeGreaterThan(0);
     expect(cards()).toHaveLength(0);
     expect(screen.queryByText("¥0.00", { exact: true })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "进入后台" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "查看网站总览" })).not.toBeInTheDocument();
     await act(async () => { pending.resolve(page([site("site_single", "唯一网站")])); });
     await findCard("site_single");
     expect(cards()).toHaveLength(1);
@@ -140,7 +140,7 @@ describe("website management compact table", () => {
     expect(workload(item).querySelector("[data-slot=badge]")).toHaveAttribute("data-variant", "warning");
     expect(within(item).getByText("接单中", { exact: true })).toBeVisible();
     expect(within(item).getByRole("link", { name: "单个经营网站" })).toHaveAttribute("href", "/sites/site_single/summary?range=" + range);
-    expect(within(item).getByRole("link", { name: "进入后台" })).toHaveAttribute("href", "/sites/site_single?range=" + range);
+    expect(within(item).getByRole("link", { name: "查看网站总览" })).toHaveAttribute("href", "/sites/site_single?range=" + range);
     expect(within(item).getByRole("link", { name: "网站设置：单个经营网站" })).toHaveAttribute("href", "/sites/site_single/settings/basic");
     expect(item.querySelectorAll('[data-column-id]')).toHaveLength(5);
     expect(item.querySelector("a a, a button")).toBeNull();
@@ -164,7 +164,7 @@ describe("website management compact table", () => {
     expect(within(paused).getByText("暂停接单", { exact: true })).toBeVisible();
     expect(amount(paused)).toHaveTextContent("¥7.00");
     expect(workload(paused)).toHaveTextContent(/^1$/);
-    expect(within(paused).getByRole("link", { name: "进入后台" })).not.toHaveAttribute("aria-disabled", "true");
+    expect(within(paused).getByRole("link", { name: "查看网站总览" })).not.toHaveAttribute("aria-disabled", "true");
     expect(new URL(view.requests[0]!.url).searchParams.get("range")).toBe("30");
     expect(rangeButton(30)).toHaveAttribute("aria-pressed", "true");
   });
@@ -200,7 +200,7 @@ describe("website management compact table", () => {
       const visibleName = within(item).getByRole("link", { name: name + " · " + suffix });
       expect(visibleName).toBeVisible();
       expect(visibleName).toHaveAttribute("href", "/sites/" + clientId + "/summary?range=30");
-      expect(within(item).getByRole("link", { name: "进入后台" })).toHaveAttribute("href", "/sites/" + clientId + "?range=30");
+      expect(within(item).getByRole("link", { name: "查看网站总览" })).toHaveAttribute("href", "/sites/" + clientId + "?range=30");
       expect(within(item).getByRole("link", { name: "网站设置：" + name })).toHaveAttribute("href", "/sites/" + clientId + "/settings/basic");
     }
   });
@@ -294,7 +294,7 @@ describe("website management compact table", () => {
     const current = await findCard("site_new_range");
     expect(cards()).toHaveLength(1);
     expect(amount(current)).toHaveTextContent("¥77.00");
-    expect(within(current).getByRole("link", { name: "进入后台" })).toHaveAttribute("href", "/sites/site_new_range?range=7");
+    expect(within(current).getByRole("link", { name: "查看网站总览" })).toHaveAttribute("href", "/sites/site_new_range?range=7");
     expect(view.requests.map(request => new URL(request.url).searchParams.get("cursor"))).toEqual([null, null]);
   });
 
@@ -331,7 +331,7 @@ describe("website management compact table", () => {
     await act(async () => { late.resolve(page([site("site_late", "不应追加的经营网站")])); });
     expect(cards()).toHaveLength(1);
     expect(screen.queryByText("不应追加的经营网站", { exact: true })).not.toBeInTheDocument();
-    expect(within(card("site_current")).getByRole("link", { name: "进入后台" })).toHaveAttribute("href", "/sites/site_current?range=90");
+    expect(within(card("site_current")).getByRole("link", { name: "查看网站总览" })).toHaveAttribute("href", "/sites/site_current?range=90");
   });
 
   it.each([false, true])("hides a different-date next page and restarts from the first page, even for an empty append: %s", async emptyAppend => {
@@ -442,7 +442,7 @@ describe("website management compact table", () => {
 
   it.each([
     { name: "导航网站", destination: "/sites/site_navigation/summary?range=90", heading: "网站概况弹层" },
-    { name: "进入后台", destination: "/sites/site_navigation?range=90", heading: "网站后台页面" },
+    { name: "查看网站总览", destination: "/sites/site_navigation?range=90", heading: "网站后台页面" },
     { name: "网站设置：导航网站", destination: "/sites/site_navigation/settings/basic", heading: "网站设置页面" },
   ])("opens the separate $name link without nesting other controls", async ({ name, destination, heading }) => {
     const view = mount(() => page([site("site_navigation", "导航网站")], null, { range: 90 }), "/sites?range=90");

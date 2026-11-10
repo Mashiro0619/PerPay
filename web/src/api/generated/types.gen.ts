@@ -1683,6 +1683,10 @@ export type Site = {
     api_client_id?: string;
     revision: number;
     configuration: SiteConfiguration;
+    secrets: {
+        api_secret: boolean;
+        webhook_secret: boolean;
+    };
     created_at: string;
     updated_at: string;
     deleted_at: string | null;

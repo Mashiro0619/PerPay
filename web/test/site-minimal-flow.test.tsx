@@ -50,6 +50,15 @@ function createPage() {
   return router;
 }
 describe("minimal website workflows", () => {
+  it("引导无可用账号的首次用户先完成收款配置，不提交空账号列表", async () => {
+    queryClient.setQueryData(["alipay-accounts"], { data: [] });
+    const fetch = vi.fn(async (_request: Request) => json({ data: { revision: 2, policy } }));
+    vi.stubGlobal("fetch", fetch);
+    createPage();
+    expect(await screen.findByRole("link", { name: "配置收款账号" })).toHaveAttribute("href", "/settings/accounts");
+    expect(screen.queryByRole("button", { name: "创建业务网站" })).not.toBeInTheDocument();
+    expect(fetch.mock.calls.every(([request]) => (request as Request).method === "GET")).toBe(true);
+  });
   it("does not create with missing template or fall back to hardcoded defaults", async () => {
     vi.stubGlobal(
       "fetch",

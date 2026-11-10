@@ -265,7 +265,8 @@ export function SettingsEditor({
       if (field.isConnected && !field.matches(":disabled")) field.focus();
     });
   }
-  const draft = useFormDraft();
+  const submitting = useRef(false);
+  const draft = useFormDraft(() => submitting.current);
   const queryClient = useQueryClient();
   const [decoding, setDecoding] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -290,7 +291,6 @@ export function SettingsEditor({
   const localFeedback = useSuccessToast();
   // A parent that remounts this editor after saving keeps the same toast owner.
   const setSavedMessage = onFeedback ?? localFeedback;
-  const submitting = useRef(false);
   const canSave = !legacyProvider && (
     guided ||
     draft.dirty ||

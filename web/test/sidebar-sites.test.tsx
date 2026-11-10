@@ -10,7 +10,7 @@ import { recordAction } from "./menu-helper";
 import { mountOnboarding } from "./onboarding-fixture";
 
 function site(clientId: string, name: string): Site {
-  return {
+  return { secrets: { api_secret: true, webhook_secret: true },
     client_id: clientId,
     revision: 0,
     configuration: {

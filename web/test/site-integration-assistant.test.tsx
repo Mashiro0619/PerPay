@@ -9,7 +9,7 @@ import { SiteIntegrationAssistant } from "../src/components/site-integration-ass
 import { DraftProvider } from "../src/drafts";
 import { json } from "./fixtures";
 
-const site: Site = {
+const site: Site = { secrets: { api_secret: true, webhook_secret: true },
   client_id: "site_alpha", api_client_id: "public_alpha", revision: 7,
   created_at: "2026-11-07T00:00:00Z", updated_at: "2026-11-07T00:00:00Z", deleted_at: null,
   configuration: {

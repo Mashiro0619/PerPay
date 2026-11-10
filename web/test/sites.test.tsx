@@ -14,7 +14,7 @@ const policy: SitePolicy = {
   display: { checkout_name: "网站收银台", checkout_help_url: null, checkout_show_product_name: true },
   notification_delivery: { timeout_milliseconds: 5000, maximum_attempts: 12, retry_base_seconds: 5, retry_maximum_seconds: 3600 },
 };
-const initial: Site = { client_id: "site_test", revision: 0, configuration: { name: "网站 A", accepting_orders: true, notifications_enabled: false, notification_origin: null, return_origin: null, policy }, created_at: "2026-10-06T00:00:00.000Z", updated_at: "2026-10-06T00:00:00.000Z", deleted_at: null };
+const initial: Site = { secrets: { api_secret: true, webhook_secret: true }, client_id: "site_test", revision: 0, configuration: { name: "网站 A", accepting_orders: true, notifications_enabled: false, notification_origin: null, return_origin: null, policy }, created_at: "2026-10-06T00:00:00.000Z", updated_at: "2026-10-06T00:00:00.000Z", deleted_at: null };
 function mount(path = "/sites/site_test/settings/basic", failSave = false, fieldErrors?: Record<string, string>) {
   let rejectFields = !!fieldErrors;
   let saved = structuredClone(initial), defaults = structuredClone(policy);
@@ -211,8 +211,8 @@ describe("business website management", () => {
   it("explains notification and return prefix changes separately before saving", async () => {
     const view = mount("/sites/site_test/settings/integration");
     const user = userEvent.setup();
-    fireEvent.change(await screen.findByLabelText("通知地址前缀"), { target: { value: "https://notify.example.com" } });
-    fireEvent.change(screen.getByLabelText("返回地址前缀"), { target: { value: "https://shop.example.com" } });
+    fireEvent.change(await screen.findByLabelText("通知域名"), { target: { value: "https://notify.example.com" } });
+    fireEvent.change(screen.getByLabelText("返回域名"), { target: { value: "https://shop.example.com" } });
     await user.click(screen.getByRole("button", { name: "保存业务网站" }));
     const confirmation = await screen.findByRole("alertdialog");
     expect(confirmation).toHaveTextContent("后续通知按新前缀校验，旧地址可能无法发送。");
@@ -271,7 +271,7 @@ describe("business website management", () => {
   });
   it("rotates only the selected website key without replacing an unsaved configuration draft", async () => {
     const view = mount("/sites/site_test/settings/integration"); const user = userEvent.setup();
-    const name = await screen.findByLabelText("返回地址前缀"); await user.clear(name); await user.type(name, "https://draft.example.com");
+    const name = await screen.findByLabelText("返回域名"); await user.clear(name); await user.type(name, "https://draft.example.com");
     await user.click(screen.getByRole("button", { name: "轮换 API 密钥" }));
     await user.click(await screen.findByRole("button", { name: "确认轮换" }));
     expect(await screen.findByDisplayValue("synthetic-site-key")).toBeVisible();
@@ -286,7 +286,7 @@ describe("business website management", () => {
     const save = await screen.findByRole<HTMLButtonElement>("button", { name: "保存默认模板" });
     const ttl = await screen.findByLabelText("收银台有效期（秒）"); fireEvent.change(ttl, { target: { value: "600" } });
     expect(save.form).toBe(ttl.closest("form"));
-    expect(screen.queryByLabelText("通知地址前缀")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("通知域名")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "保存默认模板" }));
     await waitFor(() => expect(view.writes).toHaveLength(1));
     expect(view.writes[0]!.path).toBe("/api/admin/v1/settings/site-defaults");
@@ -298,7 +298,7 @@ describe("business website management", () => {
     expect(document.querySelectorAll('[data-business-table="sites"] [data-business-row]')).toHaveLength(1);
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
     expect(screen.queryByText("site_test", { exact: true })).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "进入后台" })).toHaveAttribute("href", "/sites/site_test?range=30");
+    expect(screen.getByRole("link", { name: "查看网站总览" })).toHaveAttribute("href", "/sites/site_test?range=30");
     expect(screen.getByRole("link", { name: "网站设置：网站 A" })).toHaveAttribute("href", "/sites/site_test/settings/basic");
     expect(screen.getByText("¥129.01", { exact: true })).toBeVisible();
     expect(screen.getByRole("columnheader", { name: "待处理" })).toBeVisible();
@@ -528,7 +528,7 @@ describe("website configuration recovery", () => {
   it("requires explicit retry after a rotation conflict and retains integration drafts through rotation", async () => {
     const view = mount(), user = userEvent.setup();
     await user.click(await screen.findByRole("tab", { name: "接入与通知" }));
-    fireEvent.change(await screen.findByLabelText("返回地址前缀"), { target: { value: "https://draft.example.com" } });
+    fireEvent.change(await screen.findByLabelText("返回域名"), { target: { value: "https://draft.example.com" } });
     await user.click(screen.getByRole("button", { name: "高级设置" }));
     fireEvent.change(await screen.findByLabelText("最多发送次数"), { target: { value: "15" } });
     view.changeRemote(configuration => {
@@ -545,7 +545,7 @@ describe("website configuration recovery", () => {
     await user.click(await screen.findByRole("button", { name: "确认轮换" }));
     await screen.findByDisplayValue("synthetic-site-key");
     await user.click(within(screen.getByRole("dialog", { name: /^(API 密钥|通知签名密钥)$/ })).getByRole("button", { name: "关闭" }));
-    expect(screen.getByLabelText("返回地址前缀")).toHaveValue("https://draft.example.com");
+    expect(screen.getByLabelText("返回域名")).toHaveValue("https://draft.example.com");
     expect(screen.getByLabelText("最多发送次数")).toHaveValue(15);
     expect(queryClient.getQueryData<{ site: Site }>(["site-editor", "site_test"])?.site.configuration.return_origin).toBeNull();
     await user.click(screen.getByRole("tab", { name: "基本信息" }));
@@ -586,7 +586,7 @@ describe("website field feedback", () => {
     const cases: Record<string, [string, string, string][]> = {
       basic: [["业务网站名称", "configuration.name", "新的网站名"]],
       orders: [["收银台有效期（秒）", "configuration.policy.orders.order_ttl_seconds", "600"], ["待付款订单上限", "configuration.policy.orders.pending_order_limit", "10"]],
-      integration: [["通知地址前缀", "configuration.notification_origin", "https://notify.example.com"], ["返回地址前缀", "configuration.return_origin", "https://shop.example.com"]],
+      integration: [["通知域名", "configuration.notification_origin", "https://notify.example.com"], ["返回域名", "configuration.return_origin", "https://shop.example.com"]],
       display: [["收银台名称", "configuration.policy.display.checkout_name", "草稿名称"], ["帮助链接", "configuration.policy.display.checkout_help_url", "https://help.example.com"]],
       defaults: [["收银台名称", "policy.display.checkout_name", "模板草稿"], ["收银台有效期（秒）", "policy.orders.order_ttl_seconds", "600"]],
     };

@@ -104,7 +104,7 @@ describe("website-aware instance settings", () => {
       if (path === "/api/admin/v1/sites" && request.method === "GET") return json({ data: site ? [site] : [], page: { next_cursor: null } });
       if (path.endsWith("/site-defaults")) return json({ data: { revision: 0, policy } });
       if (path === "/api/admin/v1/sites" && request.method === "POST") return request.json().then((body: { configuration: SiteConfiguration }) => {
-        site = { client_id: "site_created", revision: 0, configuration: body.configuration, created_at: "2026-10-06T00:00:00.000Z", updated_at: "2026-10-06T00:00:00.000Z", deleted_at: null };
+        site = { secrets: { api_secret: false, webhook_secret: false }, client_id: "site_created", revision: 0, configuration: body.configuration, created_at: "2026-10-06T00:00:00.000Z", updated_at: "2026-10-06T00:00:00.000Z", deleted_at: null };
         data = { ...data, completion: { ...data.completion, sites: true } };
         return json({ data: site }, 201);
       });

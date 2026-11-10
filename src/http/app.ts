@@ -4405,7 +4405,7 @@ function scopedOrders(dependencies: AppDependencies, context: Context<AppEnviron
   return dependencies.sites ? dependencies.orders.forSite(context.get("apiClientId")) : dependencies.orders;
 }
 function serializeSite(site: SiteSnapshot) {
-  return { client_id: site.clientId, api_client_id: site.apiClientId, revision: site.revision, configuration: site.configuration,
+  return { client_id: site.clientId, api_client_id: site.apiClientId, revision: site.revision, configuration: site.configuration, secrets: site.secrets,
     created_at: new Date(site.createdAt).toISOString(), updated_at: new Date(site.updatedAt).toISOString(), deleted_at: site.deletedAt === null ? null : new Date(site.deletedAt).toISOString() };
 }
 

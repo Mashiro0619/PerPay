@@ -15,19 +15,7 @@ for (const width of [1440, 390, 320]) {
       });
       await page.route("**/*", route => new URL(route.request().url()).origin === fixture.origin ? route.continue() : route.abort("blockedbyclient"));
       const sitePath = "/api/admin/v1/sites/default";
-      const headers = { origin: fixture.origin, "x-csrf-token": fixture.cookies.find(cookie => cookie.name.includes("csrf"))!.value };
-      await page.goto(fixture.origin + "/admin/sites/default/settings/integration");
-      await page.getByRole("link", { name: "编辑接入与通知", exact: true }).click();
-      const emptyGroup = page.locator("[data-overlay-content]").getByRole("group", { name: "API 密钥", exact: true });
-      const emptyTrigger = emptyGroup.getByRole("button", { name: "查看 API 密钥", exact: true });
-      await emptyTrigger.click();
-      const missingDialog = page.getByRole("dialog", { name: "API 密钥", exact: true });
-      const missing = missingDialog.getByText("尚未生成该网站的密钥。", { exact: true });
-      await expect(missing).toBeVisible();
-      await expect(missingDialog.getByRole("textbox")).toHaveCount(0);
-      const missingBounds = await missing.boundingBox();
-      expect(missingBounds!.y).toBeGreaterThanOrEqual(0);
-      expect(missingBounds!.y + missingBounds!.height).toBeLessThanOrEqual(720);
+      const headers = { origin: fixture.origin, "x-csrf-token": decodeURIComponent(fixture.cookies.find(cookie => cookie.name.includes("csrf"))!.value) };
       const secrets: Record<string, string> = {};
       for (const purpose of ["api_secret", "webhook_secret"]) {
         const current = await page.request.get(fixture.origin + sitePath);
@@ -37,12 +25,32 @@ for (const width of [1440, 390, 320]) {
         expect(response.status()).toBe(200);
         secrets[purpose] = (await response.json()).data.secret;
       }
-      await missingDialog.getByRole("button", { name: "重新读取", exact: true }).click();
-      await expect(missingDialog.getByRole("textbox", { name: "API 密钥", exact: true })).toHaveValue(secrets.api_secret!);
-      await expect(missing).toHaveCount(0);
+      let reads = 0;
+      const viewPath = fixture.origin + sitePath + "/secrets/api_secret/actions/view";
+      // Existing credentials make View a valid action. Fail only the first read;
+      // retry returns the actual isolated server's saved key.
+      await page.route(viewPath, route => ++reads === 1
+        ? route.fulfill({ status: 503, json: { error: { code: "synthetic_secret_unavailable", message: "合成的密钥读取失败，请重试。" } } })
+        : route.continue());
+      await page.goto(fixture.origin + "/admin/sites/default/settings/integration");
+      await page.getByRole("link", { name: "编辑接入与通知", exact: true }).click();
+      const retryGroup = page.locator("[data-overlay-content]").getByRole("group", { name: "API 密钥", exact: true });
+      const retryTrigger = retryGroup.getByRole("button", { name: "查看 API 密钥", exact: true });
+      await retryTrigger.click();
+      const retryDialog = page.getByRole("dialog", { name: "API 密钥", exact: true });
+      const error = retryDialog.getByText("合成的密钥读取失败，请重试。", { exact: true });
+      await expect(error).toBeVisible();
+      await expect(retryDialog.getByRole("textbox")).toHaveCount(0);
+      const errorBounds = await error.boundingBox();
+      expect(errorBounds!.y).toBeGreaterThanOrEqual(0);
+      expect(errorBounds!.y + errorBounds!.height).toBeLessThanOrEqual(720);
+      await retryDialog.getByRole("button", { name: "重新读取", exact: true }).click();
+      await expect(retryDialog.getByRole("textbox", { name: "API 密钥", exact: true })).toHaveValue(secrets.api_secret!);
+      await expect(error).toHaveCount(0);
+      expect(reads).toBe(2);
       await page.keyboard.press("Escape");
-      await expect(missingDialog).toHaveCount(0);
-      await expect(emptyTrigger).toBeFocused();
+      await expect(retryDialog).toHaveCount(0);
+      await expect(retryTrigger).toBeFocused();
       await page.goto(fixture.origin + "/admin/sites/default/settings/integration");
       await page.getByRole("link", { name: "编辑接入与通知", exact: true }).click();
       const editor = page.locator("[data-overlay-content]");

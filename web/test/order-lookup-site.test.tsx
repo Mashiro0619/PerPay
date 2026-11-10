@@ -9,7 +9,7 @@ import { TestPaymentProvider } from "../src/components/test-payment-provider";
 import { apiError, json, order } from "./fixtures";
 import { mobileMedia } from "./mobile-media";
 
-const site = (clientId: string) => ({
+const site = (clientId: string) => ({ secrets: { api_secret: true, webhook_secret: true },
   client_id: clientId,
   revision: 0,
   configuration: {

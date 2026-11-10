@@ -33,6 +33,19 @@ async function leave(view: ReturnType<typeof mountOnboarding>) {
 }
 
 describe("settings saves never wait in an offline queue", () => {
+  it("明确拒绝保存后离开只提示未保存草稿", async () => {
+    const view = mountOnboarding({ stage: 4, path: "/settings/display/edit", handle: request => {
+      if (request.method === "PUT") return json({ error: { code: "settings_validation_failed", message: "名称不符合要求", fields: { system_name: "名称不符合要求" } } }, 422);
+      return undefined;
+    } });
+    const input = await editName();
+    fireEvent.submit(input.closest("form")!);
+    await waitFor(() => expect(input).toHaveAttribute("aria-invalid", "true"));
+    await act(async () => { await view.router.navigate("/orders"); });
+    const dialog = await screen.findByRole("alertdialog", { name: "放弃未保存的修改？" });
+    expect(within(dialog).getByText("未保存的修改将丢失。")).toBeVisible();
+    expect(within(dialog).queryByText(/已提交的保存可能仍在执行/)).not.toBeInTheDocument();
+  });
   it("does not send an abandoned save after route navigation and reconnection", async () => {
     const view = mountOnboarding({ stage: 4, path: "/settings/display/edit" });
     const input = await editName();

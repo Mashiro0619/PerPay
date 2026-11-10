@@ -23,7 +23,7 @@ import { TestPaymentButton, TestPaymentProvider } from "../src/components/test-p
 import { mountOnboarding, systemStatus } from "./onboarding-fixture";
 import { json, order, orderId } from "./fixtures";
 import { readOverlayTarget } from "../src/lib/overlay-navigation";
-const site = (id: string) => ({
+const site = (id: string) => ({ secrets: { api_secret: true, webhook_secret: true },
   client_id: id,
   revision: 0,
   configuration: {

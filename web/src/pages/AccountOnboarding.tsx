@@ -125,15 +125,25 @@ export function AccountOnboarding({
           <QueryView query={sites}>
             {() => (
               <>
-                {current.id === "accounts" &&
-                  (accountId ? (
+                {current.id === "accounts" && <>
+                  {!accountId && <Alert>
+                    <AlertTitle>开始前确认支付宝准备条件</AlertTitle>
+                    <AlertDescription>
+                      <ul className="list-disc pl-4">
+                        <li>收款码与开放平台应用属于同一收款账号。</li>
+                        <li>应用已上线，且已获得该账号的账务明细查询权限。</li>
+                      </ul>
+                      <a href="https://github.com/Mashiro0619/PerPay/blob/main/docs/alipay-setup.md#准备条件自检" target="_blank" rel="noopener noreferrer">查看应用准备与配置步骤</a>
+                    </AlertDescription>
+                  </Alert>}
+                  {accountId ? (
                     <AlipayAccountDetail
                       accountId={accountId}
                       onBack={() => requestDiscard(() => setAccountId(null))}
                     />
                   ) : (
                     <AlipayAccountList onSelect={setAccountId} />
-                  ))}
+                  )}</>}
                 {current.id === "sites" && (
                   <>
                     <p className="text-sm text-muted-foreground">
@@ -171,14 +181,14 @@ export function AccountOnboarding({
                                 to={
                                   "/sites/" +
                                   site.client_id +
-                                  "/settings/collection"
+                                  (site.configuration.collection?.accounts.length ? "/edit?section=integration" : "/settings/collection")
                                 }
                                 className={buttonVariants({
                                   variant: "outline",
                                   size: "sm",
                                 })}
                               >
-                                配置收款账号
+                                {site.configuration.collection?.accounts.length ? "接入业务网站" : "配置收款账号"}
                               </Link>
                             </div>
                           ))}

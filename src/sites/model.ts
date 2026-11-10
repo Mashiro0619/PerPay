@@ -17,7 +17,7 @@ export const siteCollectionSchema = z.object({
   accounts: z.array(z.object({
     account_id: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$/),
     weight: z.number().int().min(1).max(1_000_000).default(1),
-  }).strict()).min(1).max(100),
+  }).strict()).min(1, "请选择至少一个已配置并启用的收款账号。").max(100, "每个网站最多选择 100 个收款账号。"),
 }).strict().superRefine((input, context) => {
   if (input.mode === "FIXED" && input.accounts.length !== 1) {
     context.addIssue({ code: "custom", path: ["accounts"], message: "指定收款账号时请选择一个账号。" });
@@ -120,6 +120,7 @@ export interface SiteSnapshot {
   readonly apiClientId: string;
   readonly revision: number;
   readonly configuration: SiteConfiguration;
+  readonly secrets: { readonly api_secret: boolean; readonly webhook_secret: boolean };
   readonly createdAt: number;
   readonly updatedAt: number;
   readonly deletedAt: number | null;

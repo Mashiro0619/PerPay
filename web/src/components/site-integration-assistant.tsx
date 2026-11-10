@@ -30,6 +30,8 @@ interface AssistantProps {
   disabled?: boolean;
   showClientId?: boolean;
   onReloadSite: () => void;
+  onProtocolChange?: (protocol: IntegrationProtocol) => void;
+  selectedProtocol?: IntegrationProtocol;
 }
 
 const protocols = [
@@ -67,12 +69,13 @@ export function SiteIntegrationAssistant(props: AssistantProps) {
   </>;
 }
 
-function IntegrationContent({ site, siteDirty = false, disabled = false, showClientId = true,
+function IntegrationContent({ site, siteDirty = false, disabled = false, showClientId = true, onProtocolChange, selectedProtocol,
   configuration, reading, onReload }: AssistantProps & {
     configuration: SiteEpayConfiguration; reading: boolean; onReload: () => Promise<SiteEpayConfiguration>;
   }) {
   const id = useId();
-  const [protocol, setProtocol] = useState<IntegrationProtocol>("native");
+  const [localProtocol, setProtocol] = useState<IntegrationProtocol>("native");
+  const protocol = selectedProtocol ?? localProtocol;
   type Switches = Pick<SiteEpayConfiguration, "revision" | "v1_enabled" | "v2_enabled">;
   const [draft, setDraft] = useState<{ base: Switches; values: Switches } | null>(null);
   const values = draft?.values ?? configuration;
@@ -245,7 +248,7 @@ function IntegrationContent({ site, siteDirty = false, disabled = false, showCli
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
         <ToggleGroup aria-label="接入协议" value={[protocol]} variant="outline" spacing={1} className="max-w-full flex-wrap"
           disabled={busy} onValueChange={value => { if (value[0]) {
-            setProtocol(value[0] as IntegrationProtocol); setFeedback("");
+            setProtocol(value[0] as IntegrationProtocol); onProtocolChange?.(value[0] as IntegrationProtocol); setFeedback("");
           } }}>
           {protocols.map(item => <ToggleGroupItem key={item.value} value={item.value} className="px-1.5">{item.label}</ToggleGroupItem>)}
         </ToggleGroup>

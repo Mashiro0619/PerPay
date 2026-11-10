@@ -155,7 +155,7 @@ for (const width of [390, 1440]) {
       await page
         .getByRole("button", { name: "创建业务网站", exact: true })
         .click();
-      await expect.poll(() => new URL(page.url()).searchParams.get("overlay")).toMatch(/^\/sites\/site_[^/]+\/edit\?section=basic$/);
+      await expect.poll(() => new URL(page.url()).searchParams.get("overlay")).toMatch(/^\/sites\/site_[^/]+\/edit\?section=integration$/);
       const siteId = new URL(new URL(page.url()).searchParams.get("overlay")!, fixture.origin).pathname.split("/")[2]!;
 
       await page.goto(

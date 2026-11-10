@@ -29,8 +29,9 @@ describe("business website HTTP boundaries", () => {
       const create = (body: object) => f.app.request("/api/admin/v1/sites", { method: "POST", headers: f.headers, body: JSON.stringify(body) });
       const response = await create(input);
       assert.equal(response.status, 201, await response.clone().text());
-      const created = await response.json() as { data: { client_id: string; revision: number } };
+      const created = await response.json() as { data: { client_id: string; revision: number; secrets: { api_secret: boolean; webhook_secret: boolean } } };
       assert.equal(created.data.client_id, input.client_id);
+      assert.deepEqual(created.data.secrets, { api_secret: false, webhook_secret: false });
       const replay = await create(input);
       assert.equal(replay.status, 201);
       assert.deepEqual(await replay.json(), created);
@@ -42,6 +43,10 @@ describe("business website HTTP boundaries", () => {
       assert.equal(rename.status, 422);
 
       const key = f.sites.rotateSecret(input.client_id, "api_secret", created.data.revision, { actorId: "admin" });
+      const siteResponse = await f.app.request("/api/admin/v1/sites/" + input.client_id, { headers: f.headers });
+      const siteSnapshot = await siteResponse.json() as typeof created;
+      assert.deepEqual(siteSnapshot.data.secrets, { api_secret: true, webhook_secret: false });
+      assert.equal(JSON.stringify(siteSnapshot).includes(key.secret), false);
       const order = f.orders.forSite(input.client_id).create(createOrderRequestSchema.parse({
         merchant_order_no: "custom-identity", idempotency_key: "custom-identity", amount_cents: 100, product_name: "自定义网站订单",
       })).order;

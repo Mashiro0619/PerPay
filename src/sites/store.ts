@@ -25,6 +25,7 @@ const SITE_AUDIT_FIELDS = ["name", "accepting_orders", "notifications_enabled", 
   ...SITE_POLICY_AUDIT_FIELDS.map(field => "policy." + field)];
 interface SiteRow {
   client_id: string; api_client_id: string; revision: number | bigint; configuration: string;
+  has_api_secret: number | bigint; has_webhook_secret: number | bigint;
   created_at: number | bigint; updated_at: number | bigint; deleted_at: number | bigint | null;
 }
 interface SecretRow {
@@ -322,14 +323,18 @@ function requiredSite(connection: DatabaseSync, clientId: string): SiteSnapshot 
   return site;
 }
 function mapSite(row: SiteRow): SiteSnapshot {
-  return { clientId: row.client_id, apiClientId: siteClientIdSchema.parse(row.api_client_id), revision: integer(row.revision), configuration: siteConfigurationSchema.parse(JSON.parse(row.configuration)), createdAt: integer(row.created_at), updatedAt: integer(row.updated_at), deletedAt: row.deleted_at === null ? null : integer(row.deleted_at) };
+  return { clientId: row.client_id, apiClientId: siteClientIdSchema.parse(row.api_client_id), revision: integer(row.revision), configuration: siteConfigurationSchema.parse(JSON.parse(row.configuration)),
+    secrets: { api_secret: Boolean(row.has_api_secret), webhook_secret: Boolean(row.has_webhook_secret) },
+    createdAt: integer(row.created_at), updatedAt: integer(row.updated_at), deletedAt: row.deleted_at === null ? null : integer(row.deleted_at) };
 }
 function hasApiClientIds(connection: DatabaseSync): boolean {
   return !!connection.prepare("SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'site_api_client_ids'").get();
 }
 function siteSelect(connection: DatabaseSync): string {
-  if (!hasApiClientIds(connection)) return "SELECT site.*, site.client_id AS api_client_id FROM sites AS site";
-  return `SELECT site.*, public.api_client_id FROM sites AS site
+  const secrets = `EXISTS(SELECT 1 FROM site_secrets WHERE client_id = site.client_id AND secret_name = 'api_secret') AS has_api_secret,
+    EXISTS(SELECT 1 FROM site_secrets WHERE client_id = site.client_id AND secret_name = 'webhook_secret') AS has_webhook_secret`;
+  if (!hasApiClientIds(connection)) return `SELECT site.*, site.client_id AS api_client_id, ${secrets} FROM sites AS site`;
+  return `SELECT site.*, public.api_client_id, ${secrets} FROM sites AS site
     LEFT JOIN site_api_client_ids AS public ON public.client_id = site.client_id AND public.is_current = 1`;
 }
 function requireUnusedClientId(connection: DatabaseSync, clientId: string): void {

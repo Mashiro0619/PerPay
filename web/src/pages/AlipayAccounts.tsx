@@ -228,7 +228,7 @@ export function AlipayAccountEditor({
   onBack?: () => void;
 }) {
   const overlay = useOverlayContext();
-  const tabbed = !!overlay && !onBack;
+  const tabbed = !!overlay || !!onBack;
   const formId = useId();
   const navigate = useNavigate();
   const location = useLocation();
@@ -406,6 +406,7 @@ export function AlipayAccountEditor({
     },
     onSuccess: async ({ account, checkAfter, created }) => {
       await accepted(account, "账号已保存");
+      if (created && onBack) setPanel("application");
       let checkFailure: string | undefined;
       if (checkAfter && mounted.current) {
         try {
@@ -566,6 +567,16 @@ export function AlipayAccountEditor({
   const platformKeyError = pending ? activationKeyError : errors.platform_public_key;
   const checkResult = historical ? null : check.data?.data ?? (!dirty ? saved?.last_check : null);
   const checkFailure = historical ? undefined : check.error?.message ?? initialCheckFailure;
+  const setupGaps = saved ? [
+    !saved.app_id && { label: "应用 ID", panel: "application", field: "alipay-app-id" },
+    !saved.application_public_key && { label: "应用密钥", panel: "application", field: "alipay-app-id" },
+    !saved.platform_public_key && { label: "支付宝公钥", panel: "application", field: "alipay-platform-key" },
+    !saved.code_payload && { label: "收款码", panel: "collection", field: null },
+  ].filter((gap): gap is { label: string; panel: string; field: string | null } => !!gap) : [];
+  const nextSetupGap = setupGaps[0];
+  const collectionReady = saved?.health?.collection_ready === true;
+  const setupStatus = !saved ? "先创建支付宝账号" : setupGaps.length ? "待补充：" + setupGaps.map(gap => gap.label).join("、")
+    : !saved.enabled ? "账号已暂停新订单" : collectionReady ? "当前可收款" : "配置已完成，等待查账就绪";
   return (
     <div className="flex min-w-0 flex-col gap-4" data-alipay-account-editor>
       <Tabs value={panel} onValueChange={value => { if (value) setPanel(value); }} className="min-w-0 gap-4">
@@ -635,14 +646,33 @@ export function AlipayAccountEditor({
           </AlertDescription>
         </Alert>
       )}
+      {!historical && <Alert role="status">
+        <AlertTitle>{setupStatus}</AlertTitle>
+        <AlertDescription>
+          {!saved ? <p>填写账号名称并创建，再生成应用密钥、配置支付宝应用和收款码。</p>
+            : nextSetupGap ? <>
+              <p>账号补齐配置并通过查账后，才会接收新订单。</p>
+              <Button type="button" variant="outline" disabled={busy} onClick={() => {
+                setPanel(nextSetupGap.panel);
+                requestAnimationFrame(() => {
+                  const target = nextSetupGap.field ? document.getElementById(nextSetupGap.field)
+                    : form.current?.querySelector<HTMLElement>('[data-account-panel="collection"] input, [data-account-panel="collection"] button');
+                  target?.focus(); target?.scrollIntoView({ block: "nearest" });
+                });
+              }}>继续配置{nextSetupGap.label}</Button>
+            </> : !saved.enabled ? <Button type="button" variant="outline" onClick={() => {
+              setPanel("basic"); requestAnimationFrame(() => document.getElementById("alipay-enabled")?.focus());
+            }}>调整接单设置</Button> : <>
+              {!collectionReady && <p>连接检查确认应用可用；首次查账完成后，运行状态会显示收款就绪。</p>}
+              {!saved.sites.length && <Link to="/sites/new" className={buttonVariants({ variant: "outline" })}>创建业务网站</Link>}
+              <Link to="/system" className={buttonVariants({ variant: "outline" })}>查看收款状态</Link>
+            </>}
+          {dirty && saved && <p>以上为已保存的配置，当前修改尚未保存。</p>}
+        </AlertDescription>
+      </Alert>}
       {savedMessage && (
         <Alert role="status">
           <AlertTitle>{savedMessage}</AlertTitle>
-          {!saved?.configured && (
-            <AlertDescription>
-              配置尚未完成，此账号暂不参与新订单分配。可以稍后继续填写。
-            </AlertDescription>
-          )}
         </Alert>
       )}
       {(checkResult || checkFailure || check.isPending) && (
@@ -721,7 +751,7 @@ export function AlipayAccountEditor({
                   <FieldContent className="min-w-0">
                     <FieldLabel htmlFor="alipay-enabled">接收新订单</FieldLabel>
                     <FieldDescription>
-                      暂停只影响新订单，已有订单继续查账。
+                      {saved?.configured ? "暂停只影响新订单，已有订单继续查账。" : "完成配置并通过查账后生效。"}
                     </FieldDescription>
                   </FieldContent>
                   <Switch
@@ -875,7 +905,6 @@ export function AlipayAccountEditor({
             <AccountFormFooter tabbed={tabbed}>
               {showFormActions && (
               <OverlayActions className={tabbed ? "w-full" : undefined}>
-              {overlay && !tabbed && <Button type="button" variant="outline" disabled={busy || decoding} onClick={() => overlay.requestClose()}>关闭</Button>}
               <Button form={formId} type="submit" className={tabbed ? "h-auto min-h-8 min-w-0 whitespace-normal py-1.5 max-sm:flex-1" : undefined} disabled={editingBlocked || decoding || historical}>
                 {save.isPending && <Spinner data-icon="inline-start" />}
                 <span className="min-w-0">{save.isPending ? "正在保存…" : creating ? "创建账号并继续" : readyToCheck ? "保存并检查" : "保存配置"}</span>

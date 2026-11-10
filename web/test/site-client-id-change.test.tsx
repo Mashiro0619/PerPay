@@ -8,7 +8,7 @@ import { mountOnboarding } from "./onboarding-fixture";
 
 type Command = { operation_id: string; revision: number; client_id: string };
 const stableId = "stable_site";
-const initial: Site = { client_id: stableId, api_client_id: "Public.Shop", revision: 2,
+const initial: Site = { secrets: { api_secret: true, webhook_secret: true }, client_id: stableId, api_client_id: "Public.Shop", revision: 2,
   configuration: { name: "业务网站", accepting_orders: true, notifications_enabled: false,
     notification_origin: null, return_origin: null,
     policy: {

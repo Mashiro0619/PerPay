@@ -256,7 +256,7 @@ describe("website overview amount cards", () => {
     const link = await findCard(current.client_id);
     expect(screen.getByText("近 " + range + " 天实收", { exact: true })).toBeVisible();
     expect(link).toHaveAttribute("href", "/sites/site_amount?range=" + range);
-    expect(link).toHaveAccessibleName("金额网站，进入后台");
+    expect(link).toHaveAccessibleName("金额网站，查看网站总览");
     expect(link).toHaveAccessibleDescription(new RegExp("近 " + range + " 天实收 ¥98,765\\.43"));
     expect(link).toHaveAccessibleDescription(/待处理 5 项/);
     expect(link.querySelector(".site-overview-card-title")).toHaveTextContent(current.name);
@@ -525,8 +525,8 @@ describe("website overview amount cards", () => {
     expect(second.querySelector(".site-overview-card-title")).toHaveTextContent(/^同名网站$/);
     expect(within(first).getByText("aaaaaaaa", { exact: true })).toBeVisible();
     expect(within(second).getByText("bbbbbbbb", { exact: true })).toBeVisible();
-    expect(first).toHaveAccessibleName("同名网站 · aaaaaaaa，进入后台");
-    expect(second).toHaveAccessibleName("同名网站 · bbbbbbbb，进入后台");
+    expect(first).toHaveAccessibleName("同名网站 · aaaaaaaa，查看网站总览");
+    expect(second).toHaveAccessibleName("同名网站 · bbbbbbbb，查看网站总览");
     expect(first).toHaveAttribute("href", "/sites/site_aaaaaaaa-first?range=7");
     expect(second).toHaveAttribute("href", "/sites/site_bbbbbbbb-next?range=7");
   });
@@ -545,7 +545,7 @@ describe("website overview amount cards", () => {
       expect(name).toHaveTextContent(longName);
       expect(identifier).toBeVisible();
       expect(name).not.toContainElement(identifier);
-      expect(link).toHaveAccessibleName(longName + " · " + suffix + "，进入后台");
+      expect(link).toHaveAccessibleName(longName + " · " + suffix + "，查看网站总览");
     }
   });
 
@@ -566,7 +566,7 @@ describe("website overview amount cards", () => {
     const largeCard = await findCard(large.client_id);
     expect(largeCard.querySelector(".site-overview-card-title")).toHaveTextContent(longName);
     expect(largeCard.querySelector(".site-overview-card-title")).toHaveAttribute("title", longName);
-    expect(largeCard).toHaveAccessibleName(longName + "，进入后台");
+    expect(largeCard).toHaveAccessibleName(longName + "，查看网站总览");
     expect(largeCard.querySelector(".site-overview-card-amount")).toHaveTextContent("¥9,876,543,210.12");
     expect(within(largeCard).getByText("待处理 8", { exact: true })).toBeVisible();
     expect(barWidth(largeCard)).toBe(100);
@@ -578,7 +578,7 @@ describe("website overview amount cards", () => {
     expect(within(zeroCard).queryByText(/待处理|本期暂无收款/)).not.toBeInTheDocument();
     expect(zeroCard).not.toHaveAttribute("aria-disabled", "true");
     expect(zeroCard).toHaveAttribute("href", "/sites/site_zero?range=7");
-    expect(screen.queryByRole("button", { name: "进入后台" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "查看网站总览" })).not.toBeInTheDocument();
   });
 
   it("shows the empty state when no website exists instead of a zero-payment card", async () => {

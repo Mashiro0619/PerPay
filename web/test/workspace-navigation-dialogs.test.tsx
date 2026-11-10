@@ -12,7 +12,7 @@ import { json } from "./fixtures";
 import { mountOnboarding } from "./onboarding-fixture";
 
 function site(clientId: string): Site {
-  return {
+  return { secrets: { api_secret: true, webhook_secret: true },
     client_id: clientId, revision: 1,
     configuration: {
       name: "网站 " + clientId.toUpperCase(), accepting_orders: true, notifications_enabled: false,

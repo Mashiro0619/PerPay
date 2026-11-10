@@ -12077,6 +12077,16 @@ components:
           maximum: 9007199254740991
         configuration:
           $ref: "#/components/schemas/SiteConfiguration"
+        secrets:
+          type: object
+          additionalProperties: false
+          description: Whether each native credential has been generated. Contains no secret values.
+          properties:
+            api_secret:
+              type: boolean
+            webhook_secret:
+              type: boolean
+          required: [api_secret, webhook_secret]
         created_at: &a1
           type: string
           format: date-time
@@ -12090,6 +12100,7 @@ components:
         - client_id
         - revision
         - configuration
+        - secrets
         - created_at
         - updated_at
         - deleted_at

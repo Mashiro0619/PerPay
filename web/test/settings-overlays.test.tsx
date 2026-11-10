@@ -7,7 +7,7 @@ import { apiError, json } from "./fixtures";
 import { mountOnboarding } from "./onboarding-fixture";
 
 function sampleSite(): Site {
-  return { client_id: "overlay_site", revision: 1, configuration: {
+  return { secrets: { api_secret: true, webhook_secret: true }, client_id: "overlay_site", revision: 1, configuration: {
     name: "弹窗测试网站", accepting_orders: true, notifications_enabled: false, notification_origin: null, return_origin: null,
     policy: {
       orders: { order_ttl_seconds: 300, amount_offset_maximum_cents: 99, amount_reuse_cooldown_seconds: 600, pending_order_limit: null },
@@ -665,7 +665,7 @@ describe("settings summaries and owned editing overlays", () => {
     await user.keyboard("{Escape}");
     expect(new URLSearchParams(view.router.state.location.search).get("overlay")).toBe("/sites/new");
     await act(async () => { release(json({ data: site }, 201)); });
-    await waitFor(() => expect(new URLSearchParams(view.router.state.location.search).get("overlay")).toBe("/sites/overlay_site/edit?section=basic"));
+    await waitFor(() => expect(new URLSearchParams(view.router.state.location.search).get("overlay")).toBe("/sites/overlay_site/edit?section=integration"));
     expect(view.writes()).toHaveLength(1);
     expect(await screen.findByRole("button", { name: "保存业务网站" })).toBeEnabled();
   });
