@@ -299,7 +299,7 @@ describe("trend chart remembered preferences", () => {
     expectSelectedType("LINE", container);
   });
 
-  it("preserves the chart and metric choices when visiting the daily data and its second page", async () => {
+  it("preserves the chart and metric choices when visiting the complete daily data", async () => {
     const user = userEvent.setup();
     const { container } = render(
       <ChartAreaInteractive
@@ -319,10 +319,13 @@ describe("trend chart remembered preferences", () => {
     expect(
       screen.queryByRole("group", { name: "趋势指标" }),
     ).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "下一页" }));
     expect(screen.getByRole("status")).toHaveTextContent(
-      "第 2/3 页 · 共 30 天",
+      "共 30 天",
     );
+    const report = screen.getByRole("region", { name: "每日数据" });
+    const dates = Array.from(report.querySelectorAll<HTMLTimeElement>(".daily-date time[datetime]"))
+      .map(time => time.dateTime);
+    expect(dates).toHaveLength(30);
 
     await user.click(screen.getByRole("tab", { name: "图表" }));
     expectSelectedType("LINE", container);
@@ -335,8 +338,10 @@ describe("trend chart remembered preferences", () => {
     );
     await user.click(screen.getByRole("tab", { name: "每日数据" }));
     expect(screen.getByRole("status")).toHaveTextContent(
-      "第 2/3 页 · 共 30 天",
+      "共 30 天",
     );
+    expect(Array.from(report.querySelectorAll<HTMLTimeElement>(".daily-date time[datetime]"))
+      .map(time => time.dateTime)).toEqual(dates);
   });
 
   it("never clears the single chart selection when its selected button is clicked again", async () => {
@@ -417,7 +422,7 @@ describe("trend chart remembered preferences", () => {
       "false",
     );
     expect(screen.getByRole("status")).toHaveTextContent(
-      "第 1/3 页 · 共 30 天",
+      "共 30 天",
     );
     await user.click(screen.getByRole("tab", { name: "图表" }));
     expect(container.querySelector("[data-metric-value]")).toHaveTextContent(

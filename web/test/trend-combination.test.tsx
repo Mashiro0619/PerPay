@@ -131,7 +131,7 @@ describe("amount and order combination view", () => {
     await expectTooltip(container, "2026-06-01", "¥0.00", "0");
   });
 
-  it("keeps the keyboard choice, daily page and saved single-series type without writes", async () => {
+  it("keeps the keyboard choice, complete daily data and saved single-series type without writes", async () => {
     const request = vi.fn();
     vi.stubGlobal("fetch", request);
     const onRangeChange = vi.fn();
@@ -148,12 +148,17 @@ describe("amount and order combination view", () => {
     expect(combined).toHaveAttribute("aria-pressed", "true");
     expect(screen.queryByRole("group", { name: "图表类型" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("tab", { name: "每日数据" }));
-    await user.click(screen.getByRole("button", { name: "下一页" }));
-    expect(screen.getByRole("status")).toHaveTextContent("第 2/3 页 · 共 30 天");
+    expect(screen.getByRole("status")).toHaveTextContent("共 30 天");
+    const report = screen.getByRole("region", { name: "每日数据" });
+    const dates = Array.from(report.querySelectorAll<HTMLTimeElement>(".daily-date time[datetime]"))
+      .map(time => time.dateTime);
+    expect(dates).toHaveLength(30);
     await user.click(screen.getByRole("tab", { name: "图表" }));
     expect(screen.getByRole("button", { name: "金额与订单" })).toHaveAttribute("aria-pressed", "true");
     await user.click(screen.getByRole("tab", { name: "每日数据" }));
-    expect(screen.getByRole("status")).toHaveTextContent("第 2/3 页 · 共 30 天");
+    expect(screen.getByRole("status")).toHaveTextContent("共 30 天");
+    expect(Array.from(report.querySelectorAll<HTMLTimeElement>(".daily-date time[datetime]"))
+      .map(time => time.dateTime)).toEqual(dates);
     await user.click(screen.getByRole("tab", { name: "图表" }));
     await user.click(screen.getByRole("button", { name: "确认金额" }));
     expect(screen.getByRole("button", { name: "折线图" })).toHaveAttribute("aria-pressed", "true");

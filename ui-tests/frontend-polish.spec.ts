@@ -217,17 +217,19 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
         await page.waitForTimeout(200);
         await trend.getByRole("button", { name: "确认金额", exact: true }).click();
       }));
-      observations.push(await observe(page, "daily-view-and-page-retention", async () => {
+      observations.push(await observe(page, "daily-view-and-data-retention", async () => {
         await trend.getByRole("tab", { name: "每日数据", exact: true }).click();
         const daily = trend.getByRole("region", { name: "每日数据", exact: true });
-        await daily.getByRole("button", { name: "下一页", exact: true }).click();
-        await expect(daily.getByRole("status")).toHaveText("第 2/3 页 · 共 30 天");
+        await expect(daily.getByRole("status")).toHaveText("共 30 天");
+        const dates = await daily.locator(".daily-date time").evaluateAll(elements => elements.map(element => element.getAttribute("datetime")));
+        expect(dates).toHaveLength(30);
         await trend.getByRole("tab", { name: "图表", exact: true }).click();
         await page.waitForTimeout(200);
         await trend.getByRole("tab", { name: "每日数据", exact: true }).click();
-        await expect(daily.getByRole("status")).toHaveText("第 2/3 页 · 共 30 天");
+        await expect(daily.getByRole("status")).toHaveText("共 30 天");
+        expect(await daily.locator(".daily-date time").evaluateAll(elements => elements.map(element => element.getAttribute("datetime")))).toEqual(dates);
       }));
-      await capture("daily-page-two");
+      await capture("daily-complete");
       await trend.getByRole("tab", { name: "图表", exact: true }).click();
       observations.push(await observe(page, "overview-refresh", () => refreshOverview(page, manifest, mobile)));
 
@@ -481,16 +483,16 @@ if (phase === "final") {
     }
     await dailyTab.click();
     const daily = trend.getByRole("region", { name: "每日数据", exact: true });
-    await daily.getByRole("button", { name: "下一页", exact: true }).click();
-    await expect(daily.getByRole("status")).toHaveText("第 2/3 页 · 共 30 天");
+    await expect(daily.getByRole("status")).toHaveText("共 30 天");
     const dates = await daily.locator(".daily-date time").evaluateAll(elements => elements.map(element => element.getAttribute("datetime")));
+    expect(dates).toHaveLength(30);
     for (let index = 0; index < 2; index++) {
       await chartTab.click({ force: true });
       expect(await chartTab.getAttribute("aria-selected")).toBe("true");
       await page.clock.runFor(25);
       await dailyTab.click({ force: true });
       expect(await dailyTab.getAttribute("aria-selected")).toBe("true");
-      await expect(daily.getByRole("status")).toHaveText("第 2/3 页 · 共 30 天");
+      await expect(daily.getByRole("status")).toHaveText("共 30 天");
       expect(await daily.locator(".daily-date time").evaluateAll(elements => elements.map(element => element.getAttribute("datetime")))).toEqual(dates);
       await page.clock.runFor(25);
     }

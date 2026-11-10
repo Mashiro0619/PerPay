@@ -854,27 +854,26 @@ describe("shared content width navigation", () => {
     expect(container.querySelector("[data-content-width]")).toHaveAttribute("data-content-width", "full");
   });
 
-  it("does not reset the daily-report tab, page or analytics observers when width changes", async () => {
+  it("preserves the daily-report tab, every date and analytics observers when width changes", async () => {
     const { fetchMock, container } = mount({ path: "/", configured: true, hasOrders: true });
     const tab = await screen.findByRole("tab", { name: "每日数据" });
     await userEvent.click(tab);
     const report = await screen.findByRole("region", { name: "每日数据" });
     const before = fetchMock.mock.calls.length;
-    await userEvent.click(within(report).getByRole("button", { name: "下一页" }));
-    expect(fetchMock).toHaveBeenCalledTimes(before);
     const table = within(report).getByRole("table", { name: "每日收款数据" });
     const dates = Array.from(table.querySelectorAll<HTMLTimeElement>("time[datetime]"))
       .map((time) => time.dateTime);
+    expect(dates).toHaveLength(30);
     await userEvent.click(screen.getByRole("tab", { name: "图表" }));
     await userEvent.click(tab);
-    expect(within(report).getByRole("status")).toHaveTextContent("第 2/3 页 · 共 30 天");
+    expect(within(report).getByRole("status")).toHaveTextContent("共 30 天");
     expect(fetchMock).toHaveBeenCalledTimes(before);
     await userEvent.click(screen.getByRole("button", { name: "切换为全屏布局" }));
     expect(tab).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("table", { name: "每日收款数据" })).toBe(table);
     expect(Array.from(table.querySelectorAll<HTMLTimeElement>("time[datetime]"))
       .map((time) => time.dateTime)).toEqual(dates);
-    expect(within(report).getByRole("status")).toHaveTextContent("第 2/3 页 · 共 30 天");
+    expect(within(report).getByRole("status")).toHaveTextContent("共 30 天");
     expect(fetchMock).toHaveBeenCalledTimes(before);
     expect(container.querySelector("[data-overview-layout]")).not.toHaveClass("max-w-7xl", "px-4");
   });

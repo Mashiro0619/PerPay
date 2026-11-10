@@ -71,7 +71,7 @@ async function captureCard(card: Locator, info: TestInfo, name: string) {
   await info.attach(name, { path, contentType: "image/png" });
 }
 
-test("one cent across New Year stays readable in each chart and presentation changes retain the daily page", async ({ page, manifest }, info) => {
+test("one cent across New Year stays readable in each chart and presentation changes retain every daily row", async ({ page, manifest }, info) => {
   const reads = await mockAnalytics(page, () => "sparse");
   await page.setViewportSize({ width: 1440, height: 1000 });
   await login(page, manifest);
@@ -86,9 +86,9 @@ test("one cent across New Year stays readable in each chart and presentation cha
   await expect(card.locator('[data-trend-summary="peak"]')).toContainText("¥0.01");
   await card.getByRole("tab", { name: "每日数据", exact: true }).click();
   const report = card.getByRole("region", { name: "每日数据", exact: true });
-  await report.getByRole("button", { name: "下一页", exact: true }).click();
   const dates = await report.locator(".daily-date time").evaluateAll(elements => elements.map(element => element.getAttribute("datetime")));
-  await expect(report.getByRole("status")).toHaveText("第 2/3 页 · 共 30 天");
+  expect(dates).toHaveLength(30);
+  await expect(report.getByRole("status")).toHaveText("共 30 天");
   await card.getByRole("tab", { name: "图表", exact: true }).click();
   const readsBeforePresentation = reads();
 
@@ -110,7 +110,7 @@ test("one cent across New Year stays readable in each chart and presentation cha
   }
 
   await card.getByRole("tab", { name: "每日数据", exact: true }).click();
-  await expect(report.getByRole("status")).toHaveText("第 2/3 页 · 共 30 天");
+  await expect(report.getByRole("status")).toHaveText("共 30 天");
   expect(await report.locator(".daily-date time").evaluateAll(elements => elements.map(element => element.getAttribute("datetime")))).toEqual(dates);
   expect(reads()).toBe(readsBeforePresentation);
   await record(page, info, { scenario: "one-cent-cross-year", preservedDates: dates, reads: reads() });

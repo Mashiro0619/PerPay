@@ -3,7 +3,7 @@ import type { SystemAnalytics } from "../web/src/api/generated/types.gen";
 import { test, expect, login, record } from "./fixtures";
 import { audit, screenshot } from "./audit";
 
-const ANALYTICS = "**/api/admin/v1/system/analytics?*";
+const ANALYTICS = /\/api\/admin\/v1\/(?:sites\/[^/]+\/)?system\/analytics\?/;
 const DAY = 86_400_000;
 const BEIJING_OFFSET = 8 * 60 * 60 * 1000;
 
@@ -32,7 +32,7 @@ function dailyFixture(base: SystemAnalytics, range: SystemAnalytics["range_days"
     from: new Date(endDate - (range - 1) * DAY - BEIJING_OFFSET).toISOString(),
     to: new Date(endDate + DAY - BEIJING_OFFSET).toISOString(),
     daily,
-    // Keep an independent authoritative total so pagination cannot accidentally sum its page.
+    // Keep an independent authoritative total so the view does not recompute it from daily rows.
     confirmations: { count: daily.reduce((sum, day) => sum + day.confirmations, 0), amount_cents: scenario === "zero" ? 0 : 7654321 },
   };
 }
@@ -56,7 +56,7 @@ async function range(page: Page, days: number) {
   await expect(report(page).locator('[role="status"]')).toContainText(`共 ${days} 天`);
 }
 
-test("daily pagination keeps every date, interval totals and bar scales without additional reads", async ({ page, manifest }, info) => {
+test("daily data shows every date, interval totals and bar scales together without additional reads", async ({ page, manifest }, info) => {
   let reads = 0;
   const fixtures = new Map<number, SystemAnalytics>();
   await page.route(ANALYTICS, async route => {
@@ -82,39 +82,26 @@ test("daily pagination keeps every date, interval totals and bar scales without 
     const expected = [...fixtures.get(days)!.daily].reverse();
     const totals = await current.locator("[data-daily-summary]").allTextContents();
     await expect(current.locator('[data-daily-summary="total"]')).toContainText("¥76,543.21");
-    const beforePaging = reads;
-    const observed: (string | null)[] = [];
-    const numberOfPages = Math.ceil(days / 10);
+    const beforeInspecting = reads;
+    const observed = await visibleDates(page);
     const pager = current.getByRole("navigation", { name: "每日数据分页", exact: true });
-
-    if (days === 7) {
-      await expect(current.locator('[role="status"]')).toHaveText("共 7 天");
-      await expect(pager).toHaveCount(0);
-    } else {
-      await expect(pager.getByRole("button", { name: "上一页", exact: true })).toBeDisabled();
+    await expect(current.locator('[role="status"]')).toHaveText(`共 ${days} 天`);
+    await expect(pager).toHaveCount(0);
+    expect(observed).toEqual(expected.map(day => day.date));
+    const bars = await current.locator(".daily-amount-bar").evaluateAll(elements => elements.map(element => ({
+      date: element.getAttribute("data-date"), track: element.getBoundingClientRect().width,
+      fill: element.querySelector("[data-daily-bar-fill]")!.getBoundingClientRect().width,
+    })));
+    expect(bars).toHaveLength(days);
+    const maximum = Math.max(...expected.map(day => day.confirmed_amount_cents));
+    for (const bar of bars) {
+      expect(bar.track).toBeCloseTo(64, 1);
+      expect(bar.fill).toBeCloseTo(64 * expected.find(day => day.date === bar.date)!.confirmed_amount_cents / maximum, 1);
     }
-    for (let index = 0; index < numberOfPages; index++) {
-      if (days !== 7) await expect(current.locator('[role="status"]')).toHaveText(`第 ${index + 1}/${numberOfPages} 页 · 共 ${days} 天`);
-      const dates = await visibleDates(page);
-      expect(dates).toEqual(expected.slice(index * 10, (index + 1) * 10).map(day => day.date));
-      observed.push(...dates);
-      expect(await current.locator("[data-daily-summary]").allTextContents()).toEqual(totals);
-      const bars = await current.locator(".daily-amount-bar").evaluateAll(elements => elements.map(element => ({
-        date: element.getAttribute("data-date"), track: element.getBoundingClientRect().width,
-        fill: element.querySelector("[data-daily-bar-fill]")!.getBoundingClientRect().width,
-      })));
-      const maximum = Math.max(...expected.map(day => day.confirmed_amount_cents));
-      for (const bar of bars) {
-        expect(bar.track).toBeCloseTo(64, 1);
-        expect(bar.fill).toBeCloseTo(64 * expected.find(day => day.date === bar.date)!.confirmed_amount_cents / maximum, 1);
-      }
-      if (days === 30 && index === 0) await screenshot(page, info, "daily-normal-1440-first-page");
-      if (index < numberOfPages - 1) await pager.getByRole("button", { name: "下一页", exact: true }).click();
-    }
+    if (days === 30) await screenshot(page, info, "daily-normal-1440-complete");
     expect(observed).toHaveLength(days);
     expect(new Set(observed).size).toBe(days);
-    expect(reads).toBe(beforePaging);
-    if (days !== 7) await expect(pager.getByRole("button", { name: "下一页", exact: true })).toBeDisabled();
+    expect(reads).toBe(beforeInspecting);
     await record(page, info, { days, expectedDates: expected.map(day => day.date), observed, reads, totals });
   }
   await page.getByRole("button", { name: "统计口径", exact: true }).click();
@@ -122,50 +109,35 @@ test("daily pagination keeps every date, interval totals and bar scales without 
   await expect(page.getByRole("dialog", { name: "统计口径" })).toContainText("北京时间");
 });
 
-test("daily page survives tabs, resizing and refresh but resets for site, period and Beijing midnight", async ({ page, manifest }, info) => {
+test("complete daily data survives presentation changes and updates for website, period and Beijing midnight", async ({ page, manifest }, info) => {
   let midnight = false;
   let reads = 0;
+  let siteFixture: SystemAnalytics | undefined;
   await page.route(ANALYTICS, async route => {
     reads++;
     const response = await route.fetch();
     const body = await response.json() as { data: SystemAnalytics };
     const days = selectedRange(route.request().url());
-    await route.fulfill({ response, json: { data: dailyFixture(body.data, days, midnight ? "2026-01-05" : "2026-01-04") } });
+    const scoped = new URL(route.request().url()).pathname.includes("/sites/");
+    const data = dailyFixture(body.data, days, scoped ? "2026-01-06" : midnight ? "2026-01-05" : "2026-01-04");
+    if (scoped) siteFixture = data;
+    await route.fulfill({ response, json: { data } });
   });
   await page.setViewportSize({ width: 1440, height: 1000 });
   await login(page, manifest);
   await showDaily(page);
   const current = report(page);
   const status = current.locator('[role="status"]');
-  const next = current.getByRole("button", { name: "下一页", exact: true });
-  const previous = current.getByRole("button", { name: "上一页", exact: true });
-  await next.focus();
-  await page.keyboard.press("Enter");
-  await expect(status).toHaveText("第 2/3 页 · 共 30 天");
+  await expect(status).toHaveText("共 30 天");
   await expect(status).toHaveAttribute("aria-live", "polite");
   await expect(status).toHaveAttribute("aria-atomic", "true");
-  await page.keyboard.press("Enter");
-  await expect(status).toHaveText("第 3/3 页 · 共 30 天");
-  await expect(next).toBeDisabled();
-  const lastPageFocus = await page.evaluate(() => ({ tag: document.activeElement?.tagName, text: document.activeElement?.textContent?.slice(0, 60) }));
-  await page.keyboard.press("Shift+Tab");
-  await expect(previous).toBeFocused();
-  await page.keyboard.press("Enter");
-  await expect(status).toHaveText("第 2/3 页 · 共 30 天");
-  await page.keyboard.press("Enter");
-  await expect(status).toHaveText("第 1/3 页 · 共 30 天");
-  await expect(previous).toBeDisabled();
-  const firstPageFocus = await page.evaluate(() => ({ tag: document.activeElement?.tagName, text: document.activeElement?.textContent?.slice(0, 60) }));
-  await page.keyboard.press("Tab");
-  await expect(next).toBeFocused();
-  await page.keyboard.press("Enter");
-  await expect(status).toHaveText("第 2/3 页 · 共 30 天");
   const dates = await visibleDates(page);
+  expect(dates).toHaveLength(30);
   const beforePresentation = reads;
   await page.getByRole("tab", { name: "图表", exact: true }).click();
   await expect(page.locator('[data-slot="chart"]')).toBeVisible();
   await showDaily(page);
-  await expect(status).toHaveText("第 2/3 页 · 共 30 天");
+  await expect(status).toHaveText("共 30 天");
   await page.getByRole("button", { name: "切换为全屏布局", exact: true }).click();
   await page.setViewportSize({ width: 390, height: 900 });
   await expect(current.locator(".daily-mobile-list")).toBeVisible();
@@ -180,23 +152,29 @@ test("daily page survives tabs, resizing and refresh but resets for site, period
   await refresh.click();
   await expect.poll(() => reads).toBeGreaterThan(beforePresentation);
   await expect(refresh).toBeEnabled();
-  await expect(status).toHaveText("第 2/3 页 · 共 30 天");
+  await expect(status).toHaveText("共 30 天");
+  expect(await visibleDates(page)).toEqual(dates);
   midnight = true;
   const beforeMidnight = reads;
   await refresh.click();
   await expect.poll(() => reads).toBeGreaterThan(beforeMidnight);
-  await expect(status).toHaveText("第 1/3 页 · 共 30 天");
-  await next.click();
+  await expect(current.locator(".daily-date time").first()).toHaveAttribute("datetime", "2026-01-05");
+  await expect(status).toHaveText("共 30 天");
+  const nextDates = await visibleDates(page);
+  expect(nextDates).toEqual(["2026-01-05", ...dates.slice(0, -1)]);
   await range(page, 90);
-  await expect(status).toHaveText("第 1/9 页 · 共 90 天");
-  await next.click();
+  await expect(status).toHaveText("共 90 天");
+  await expect(current.locator(".daily-date time")).toHaveCount(90);
 
   const sitePath = manifest.routes.find(path => /^\/sites\/[^/]+$/.test(path) && !["/sites/new", "/sites/defaults"].includes(path))!;
   await page.getByRole("list", { name: "业务网站列表", exact: true }).locator(`a[href^="/admin${sitePath}?"]`).click();
   await expect(page).toHaveURL(new RegExp(sitePath));
   await showDaily(page);
-  await expect(report(page).locator('[role="status"]')).toContainText("第 1/");
-  await record(page, info, { preservedDates: dates, reads, midnightReset: true, keyboardPagination: true, keyboardBoundaryFocus: { lastPageFocus, firstPageFocus }, sitePath });
+  await expect(report(page).locator(".daily-date time").first()).toHaveAttribute("datetime", "2026-01-06");
+  expect(siteFixture).toBeDefined();
+  await expect(report(page).locator('[role="status"]')).toHaveText(`共 ${siteFixture!.range_days} 天`);
+  expect(await visibleDates(page)).toEqual(siteFixture!.daily.map(day => day.date).reverse());
+  await record(page, info, { preservedDates: dates, reads, midnightDates: nextDates, sitePath, siteDates: await visibleDates(page) });
 });
 
 test("daily table and mobile summaries keep fixed bars and complete large values in all supported layouts", async ({ page, manifest }, info) => {
@@ -219,8 +197,8 @@ test("daily table and mobile summaries keep fixed bars and complete large values
     await page.goto(manifest.origin + "/admin/");
     await showDaily(page);
     const current = report(page);
-    await expect(current.locator('[role="status"]')).toHaveText("第 1/3 页 · 共 30 天");
-    await expect(current.locator(".daily-date time")).toHaveCount(10);
+    await expect(current.locator('[role="status"]')).toHaveText("共 30 天");
+    await expect(current.locator(".daily-date time")).toHaveCount(30);
     await expect(current.locator(".daily-date time").first()).toHaveText("2026-01-04");
     await expect(current.getByText("今日", { exact: true })).toBeVisible();
     await expect(current.getByText("¥20,000,000,000,000.00", { exact: true }).last()).toBeVisible();
@@ -247,11 +225,11 @@ test("daily table and mobile summaries keep fixed bars and complete large values
     });
     expect(geometry.mobile).toBe(geometry.container < 640);
     expect(geometry.table).toBe(geometry.container >= 640);
-    expect(geometry.rows).toBe(10);
+    expect(geometry.rows).toBe(30);
     expect(geometry.clipped).toEqual([]);
     if (geometry.table) {
       expect(geometry.heads).toBe(1);
-      expect(geometry.bars).toHaveLength(10);
+      expect(geometry.bars).toHaveLength(30);
       expect(geometry.bars.every(bar => Math.abs(bar.width - 64) < .1)).toBe(true);
       expect(geometry.amounts.every(amount => amount.gap >= 8 && amount.gap <= 16)).toBe(true);
       expect(geometry.amounts.every(amount => Math.abs(amount.right - geometry.amounts[0]!.right) < .1)).toBe(true);
@@ -281,7 +259,6 @@ test("daily data separates loading, failures, empty series and valid zero days t
   await login(page, manifest);
   await showDaily(page);
   const current = report(page);
-  await current.getByRole("button", { name: "下一页", exact: true }).click();
   hold90 = true;
   holding90 = new Promise<void>(resolve => { release90 = resolve; });
   await page.getByRole("combobox", { name: "统计周期", exact: true }).click();

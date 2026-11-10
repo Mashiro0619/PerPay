@@ -122,9 +122,9 @@ test("combined money and order series retain independent units, authoritative to
   await card.getByRole("button", { name: "折线图", exact: true }).click();
   await card.getByRole("tab", { name: "每日数据", exact: true }).click();
   const daily = card.getByRole("region", { name: "每日数据", exact: true });
-  await daily.getByRole("button", { name: "下一页", exact: true }).click();
-  await expect(daily.getByRole("status")).toHaveText("第 2/3 页 · 共 30 天");
+  await expect(daily.getByRole("status")).toHaveText("共 30 天");
   const dates = await daily.locator(".daily-date time").allTextContents();
+  expect(dates).toHaveLength(30);
   await card.getByRole("tab", { name: "图表", exact: true }).click();
   const beforePresentation = fixture.reads();
   const combined = card.getByRole("button", { name: "金额与订单", exact: true });
@@ -149,7 +149,7 @@ test("combined money and order series retain independent units, authoritative to
 
   await card.getByRole("tab", { name: "每日数据", exact: true }).click();
   await expect(card.getByRole("group", { name: "趋势指标", exact: true })).toHaveCount(0);
-  await expect(daily.getByRole("status")).toHaveText("第 2/3 页 · 共 30 天");
+  await expect(daily.getByRole("status")).toHaveText("共 30 天");
   expect(await daily.locator(".daily-date time").allTextContents()).toEqual(dates);
   await card.getByRole("tab", { name: "图表", exact: true }).click();
   await expectCombined(card, data);
