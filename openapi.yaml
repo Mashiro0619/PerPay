@@ -1,13 +1,13 @@
 openapi: 3.1.1
 info:
   title: PerPay Native API
-  version: 1.0.0-rc.5
+  version: 1.0.0
   summary: Self-hosted collection-code payment and reconciliation API
   license:
     name: MIT
     identifier: MIT
   description: |
-    Development contract for the native order, public checkout, automatic
+    API contract for the native order, public checkout, automatic
     reconciliation, administrator exception handling, and reliable notification APIs.
     This version creates collection-code orders only. An order may opt into a notification
     URL under the single HTTPS origin configured by the operator. A strictly unique,

@@ -37,7 +37,7 @@
 
 技术栈：**Node.js 24 · TypeScript · Hono · SQLite · React · Vite · shadcn/ui**。
 
-当前源码对应 `1.0.0-rc.5`，包含支付宝官方 SDK、易支付 V1/V2 和网站接入助手。[待发布变更](docs/releases/unreleased.md) · [易支付接入](docs/epay-integration.md)
+当前源码对应 `1.0.0`，包含支付宝官方 SDK、易支付 V1/V2 和网站接入助手。[1.0.0 发布说明](docs/releases/v1.0.0.md) · [易支付接入](docs/epay-integration.md)
 
 部署时从 [正式发布](https://github.com/Mashiro0619/PerPay/releases/latest) 或 [全部发布（含预发布）](https://github.com/Mashiro0619/PerPay/releases) 选择版本，使用该版本的附件与教程。`main` 展示开发中的功能，发布页中的版本说明对应实际镜像。
 
