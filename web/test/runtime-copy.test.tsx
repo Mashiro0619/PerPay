@@ -14,7 +14,12 @@ describe("runtime failure explanations", () => {
   it("shows a disabled task and existing recoverable copy without opening the policy editor", async () => {
     const status = systemStatus();
     Object.assign(status.backup, { enabled: false, backup_available: true, backup_name: "perpay-verified.sqlite3", retained_count: 2, last_success_at: 1_794_268_800_000 });
-    vi.stubGlobal("fetch", vi.fn(async () => json({ data: status })));
+    vi.stubGlobal("fetch", vi.fn(async (request: Request) => {
+      const path = new URL(request.url).pathname;
+      if (path === "/api/admin/v1/system/status") return json({ data: status });
+      if (path === "/api/admin/v1/system/backups") return json({ data: { items: [] } });
+      throw new Error("Unexpected request: " + request.method + " " + path);
+    }));
     const router = createMemoryRouter([{ path: "/settings/backup", element: <BackupOverview settings={settings} /> }], { initialEntries: ["/settings/backup"] });
     render(<QueryClientProvider client={queryClient}><RouterProvider router={router} /></QueryClientProvider>);
     expect(await screen.findByText("2 份")).toBeVisible();
@@ -22,6 +27,7 @@ describe("runtime failure explanations", () => {
     expect(screen.getByText(/备份未启用/)).toBeVisible();
     expect(screen.getByRole("link", { name: "恢复说明" })).toBeVisible();
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(await screen.findByText("暂无备份文件")).toBeVisible();
   });
 
   it.each([
