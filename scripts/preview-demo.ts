@@ -456,6 +456,7 @@ export async function createPreviewDemo(options: { port?: number; now?: number; 
     const app = createApp({ ...dependencies, demoMode: !options.interactive });
     // Payer pages always retain the demo bootstrap and disabled payment probes.
     const publicApp = options.interactive ? createApp({ ...dependencies, demoMode: true }) : app;
+    const previewInstanceId = db.instanceId();
     const preview = new Hono<{ Bindings: Partial<HttpBindings> }>();
     preview.use("*", async (context, next) => {
       const marker = (options.interactive ? "interactive; storage=temporary" : "read-only") + "; health=simulated";
@@ -470,6 +471,9 @@ export async function createPreviewDemo(options: { port?: number; now?: number; 
       }
       await next();
       context.header("X-PerPay-Demo", marker);
+      if (context.req.method === "POST" && context.req.path === "/api/admin/v1/session/login") {
+        context.header("X-PerPay-Preview-Instance", previewInstanceId);
+      }
     });
     // Replace the displayed code with plain text, so a screenshot can never initiate payment.
     // Gate through the real route first, preserving token/status checks and security headers.

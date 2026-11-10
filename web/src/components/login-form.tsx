@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useLocation, useNavigate, Link } from "react-router";
 import { Eye, EyeOff, WalletCards, CheckCircle2, ChevronDown } from "lucide-react";
 import { api, ApiError, result } from "@/api/client";
+import { previewInstanceChanged } from "@/demo-mode";
 import { MIN_ADMIN_PASSWORD_CHARACTERS, validatePassword } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { ThemeControl } from "@/theme";
@@ -145,15 +146,20 @@ export function LoginForm({ onLogin }: { onLogin: () => void }) {
         setConfigured(true);
         navigate("/login", { replace: true });
       } else {
+        let loginResponse: Response | undefined;
         await result(
           api.loginAdministrator({
             body: remember ? { password, remember_me: true } : { password },
+          }).then(reply => {
+            loginResponse = reply.response;
+            return reply;
           }),
         );
         setPassword("");
+        if (previewInstanceChanged(loginResponse) || ["/login", "/setup"].includes(location.pathname)) {
+          await navigate("/", { replace: true, state: null, viewTransition: false });
+        }
         onLogin();
-        if (["/login", "/setup"].includes(location.pathname))
-          navigate("/", { replace: true });
       }
     } catch (failure) {
       if (
