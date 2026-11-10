@@ -155,7 +155,6 @@ for (const width of [1440, 390, 320]) {
         await expect(rotate).toBeFocused();
         expect((await readConfiguration()).revision).toBe(configuration.revision);
         await rotate.click();
-        await expect(warning.locator('[data-slot="alert-dialog-media"] svg')).toBeVisible();
         for (const scale of width === 320 ? [100, 200] : [100]) {
           await page.evaluate(value => { document.documentElement.style.fontSize = value + "%"; }, scale);
           for (const colorScheme of ["light", "dark"] as const) {

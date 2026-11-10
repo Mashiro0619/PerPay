@@ -128,7 +128,6 @@ describe("网站密钥独立弹窗", () => {
     view.delay();
     await user.click(await screen.findByRole("button", { name: purpose === "api_secret" ? "轮换 API 密钥" : "轮换通知签名密钥" }));
     const warning = await screen.findByRole("alertdialog", { name: "轮换" + (purpose === "api_secret" ? " " : "") + name + "？" });
-    expect(warning.querySelector('[data-slot="alert-dialog-media"] svg')).not.toBeNull();
     expect(view.requests).toHaveLength(0);
     await user.click(within(warning).getByRole("button", { name: "确认轮换" }));
     expect(within(warning).getByRole("button", { name: "取消" })).toBeDisabled();

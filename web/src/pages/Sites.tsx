@@ -1,6 +1,6 @@
 import CreateSite from "./CreateSite";
 import { SiteManagementCards } from "@/components/site-management-cards";
-import { Pencil, TriangleAlert } from "lucide-react";
+import { Pencil } from "lucide-react";
 import { CopyValue } from "@/components/copy-value";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
@@ -70,7 +70,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogMedia,
 } from "@/components/admin-dialog";
 
 export default function Sites() {
@@ -907,7 +906,6 @@ function SiteEditor({
       >
         <AlertDialogContent finalFocus={isSecretConfirmation ? () => secretOrigin.current : undefined}>
           <AlertDialogHeader>
-            {isSecretConfirmation && !generatingSecret && <AlertDialogMedia variant="warning"><TriangleAlert aria-hidden="true" /></AlertDialogMedia>}
             <AlertDialogTitle>
               {isSecretConfirmation ? secretActionName(confirmation) + "？"
                 : confirmation === "delete" ? "确认删除业务网站？" : "确认保存配置？"}

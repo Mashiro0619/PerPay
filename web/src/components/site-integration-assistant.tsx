@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { ExternalLink, TriangleAlert } from "lucide-react";
+import { ExternalLink } from "lucide-react";
 import { ApiError, queryClient, type Site } from "@/api/client";
 import {
   getSiteEpay, rotateEpaySecret, saveSiteEpay, siteEpayKey, viewEpaySecret,
@@ -21,7 +21,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
-  AlertDialogFooter, AlertDialogHeader, AlertDialogMedia, AlertDialogTitle,
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/admin-dialog";
 
 interface AssistantProps {
@@ -317,7 +317,6 @@ function IntegrationContent({ site, siteDirty = false, disabled = false, showCli
       else if (!open) setRotation(null);
     }}>
       <AlertDialogContent finalFocus={() => rotationTrigger.current}><AlertDialogHeader>
-        {rotation && keyReady(rotation) && <AlertDialogMedia variant="warning"><TriangleAlert aria-hidden="true" /></AlertDialogMedia>}
         <AlertDialogTitle>{rotation && keyReady(rotation) ? "轮换" : "生成"}{rotation ? secretLabels[rotation] : "密钥"}？</AlertDialogTitle>
         <AlertDialogDescription>{rotation && keyReady(rotation) ? rotationDescriptions[rotation] : "生成后，请将接入密钥配置到业务网站。"}</AlertDialogDescription>
       </AlertDialogHeader>
