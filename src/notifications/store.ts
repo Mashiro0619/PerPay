@@ -104,6 +104,7 @@ export interface WebhookDeliveryCursor {
 
 export interface WebhookDeliveryDetail {
   readonly isLatest: boolean;
+  readonly latestDeliveryId: string;
   readonly delivery: WebhookDelivery;
   readonly event: WebhookEvent;
   readonly target: WebhookTargetProjection;
@@ -785,9 +786,9 @@ export class WebhookStore {
                   target.order_id, target.api_client_id, target.target_format,
                   target.target_url, target.allowed_origin,
                   target.url_fingerprint, target.created_at AS target_created_at,
-                  NOT EXISTS (SELECT 1 FROM webhook_deliveries AS newer
+                  (SELECT newer.delivery_id FROM webhook_deliveries AS newer
                     WHERE newer.outbox_event_id = delivery.outbox_event_id
-                      AND newer.target_id = delivery.target_id AND newer.generation > delivery.generation) AS is_latest
+                      AND newer.target_id = delivery.target_id ORDER BY newer.generation DESC LIMIT 1) AS latest_delivery_id
              FROM webhook_deliveries AS delivery
              JOIN outbox_events AS outbox ON outbox.outbox_event_id = delivery.outbox_event_id
              JOIN webhook_targets AS target ON target.target_id = delivery.target_id
@@ -808,7 +809,8 @@ export class WebhookStore {
         )
         .all(deliveryId) as unknown as AttemptRow[];
       return {
-        isLatest: Number(row.is_latest) === 1,
+        isLatest: row.latest_delivery_id === row.delivery_id,
+        latestDeliveryId: row.latest_delivery_id,
         delivery: mapDelivery(row),
         event: mapEvent(row),
         target: mapTarget(row),
@@ -840,9 +842,9 @@ export class WebhookStore {
                   target.order_id, target.api_client_id, target.target_format,
                   target.target_url, target.allowed_origin,
                   target.url_fingerprint, target.created_at AS target_created_at,
-                  NOT EXISTS (SELECT 1 FROM webhook_deliveries AS newer
+                  (SELECT newer.delivery_id FROM webhook_deliveries AS newer
                     WHERE newer.outbox_event_id = delivery.outbox_event_id
-                      AND newer.target_id = delivery.target_id AND newer.generation > delivery.generation) AS is_latest
+                      AND newer.target_id = delivery.target_id ORDER BY newer.generation DESC LIMIT 1) AS latest_delivery_id
              FROM webhook_deliveries AS delivery
              JOIN outbox_events AS outbox
                ON outbox.outbox_event_id = delivery.outbox_event_id
@@ -875,7 +877,8 @@ export class WebhookStore {
       const last = pageRows.at(-1);
       return {
         deliveries: pageRows.map((row) => ({
-          isLatest: Number(row.is_latest) === 1,
+          isLatest: row.latest_delivery_id === row.delivery_id,
+          latestDeliveryId: row.latest_delivery_id,
           delivery: mapDelivery(row),
           event: mapEvent(row),
           target: mapTarget(row),
@@ -1040,7 +1043,7 @@ type ClaimRow = DeliveryRow & EventRow & {
   readonly target_created_at: bigint | number;
 };
 type DetailRow = DeliveryRow & EventRow & {
-  readonly is_latest: number | bigint;
+  readonly latest_delivery_id: string;
   readonly order_id: string;
   readonly api_client_id: string;
   readonly target_format: WebhookTargetFormat;

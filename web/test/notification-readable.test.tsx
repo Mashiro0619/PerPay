@@ -48,6 +48,34 @@ function mountDetail(site = false) {
   );
 }
 describe("readable standalone notification detail", () => {
+  it("follows a resent delivery to its result and links both generations", async () => {
+    const nextId = "33333333-3333-4333-8333-333333333333";
+    let resent = false;
+    const newDelivery = { ...delivery.delivery, delivery_id: nextId, predecessor_delivery_id: deliveryId, status: "ACKNOWLEDGED" as const };
+    vi.stubGlobal("fetch", vi.fn(async (request: Request) => {
+      const path = new URL(request.url).pathname;
+      if (request.method === "POST") {
+        resent = true;
+        return json({ data: { delivery: newDelivery, replayed: false } });
+      }
+      if (path.endsWith("/attempts")) return json({ data: [] });
+      if (path.includes("/orders/")) return json({ data: paidOrder });
+      return json({ data: { ...delivery, latest_delivery_id: resent ? nextId : deliveryId,
+        is_latest: !resent || path.endsWith(nextId),
+        delivery: path.endsWith(nextId) ? newDelivery : { ...delivery.delivery, status: "DEAD_LETTER" },
+      } });
+    }));
+    mountDetail();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "重新发送" }));
+    const dialog = await screen.findByRole("dialog", { name: "重新发送通知" });
+    await user.type(within(dialog).getByRole("textbox", { name: "操作理由" }), "已修复业务接口并核对日志");
+    await user.click(within(dialog).getByRole("button", { name: "确认重新发送" }));
+    expect(await screen.findByText("通知已确认", { exact: true })).toBeVisible();
+    await user.click(screen.getByRole("link", { name: "查看原投递" }));
+    const latest = await screen.findByRole("link", { name: "已重新发送，查看最新结果" });
+    expect(latest).toHaveAttribute("href", "/notifications/" + nextId);
+  });
   it.each([false, true])("shows delivery information, the order and history together without duplicate reads (site=%s)", async (site) => {
     const requests = mockDetail();
     mountDetail(site);

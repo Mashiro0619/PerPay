@@ -3888,6 +3888,7 @@ function serializeWebhookDeliverySummary(summary: WebhookDeliverySummary) {
 function serializeWebhookDeliveryDetail(detail: WebhookDeliveryDetail, siteName: string | null) {
   return {
     is_latest: detail.isLatest,
+    latest_delivery_id: detail.latestDeliveryId,
     delivery: serializeWebhookDelivery(detail.delivery),
     event: serializeWebhookEvent(detail.event),
     target: {

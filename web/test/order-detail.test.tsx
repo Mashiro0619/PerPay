@@ -16,6 +16,7 @@ import {
   type OrderWebhookDeliveryDetail,
 } from "../src/api/client";
 import { OrderDetail } from "../src/pages/OrderDetail";
+import { NotificationDetail } from "../src/pages/Notifications";
 import EvidenceDetail from "../src/pages/ReconciliationDetail";
 import { DeliveryCard } from "../src/components/detail/NotificationEvidence";
 import { recordAction } from "./menu-helper";
@@ -41,6 +42,7 @@ function mount(path = "/orders/" + orderId) {
       <MemoryRouter initialEntries={[path]}>
         <Routes>
           <Route path="/orders/:orderId" element={<OrderDetail />} />
+          <Route path="/notifications/:deliveryId" element={<NotificationDetail />} />
           <Route
             path="/reconciliation/:kind/:resourceId"
             element={<EvidenceDetail />}
@@ -71,6 +73,10 @@ function mockData(
         return json({ data: state.order });
       if (url.pathname.endsWith("/notifications/deliveries"))
         return json({ data: state.deliveries, page: { next_cursor: null } });
+      const notification = state.deliveries.find(item => url.pathname === "/api/admin/v1/webhooks/deliveries/" + item.delivery.delivery_id ||
+        url.pathname === "/api/admin/v1/webhooks/deliveries/" + item.delivery.delivery_id + "/attempts");
+      if (notification) return url.pathname.endsWith("/attempts")
+        ? json({ data: notification.attempts }) : json({ data: notification });
       if (url.pathname.endsWith("/matches/" + matchId))
         return json({
           data: state.order.reconciliation.matches[0] ?? paymentMatch,
@@ -397,17 +403,23 @@ describe("order detail work surface", () => {
     ).toBeGreaterThan(1);
   });
 
-  it("reuses a redelivery operation UUID on retry and never leaves the order", async () => {
+  it("reuses a redelivery operation UUID on retry and opens the resulting delivery", async () => {
     const bodies: unknown[] = [];
+    const newDeliveryId = "99999999-9999-4999-8999-999999999999";
     const terminal = {
       ...delivery,
       delivery: { ...delivery.delivery, status: "DEAD_LETTER" as const },
     };
-    mockData(paidOrder, [terminal], async (request) => {
+    const { state } = mockData(paidOrder, [terminal], async (request) => {
       bodies.push(await request.json());
-      return bodies.length === 1
-        ? apiError("internal_error", "lost response", 500)
-        : json({ data: { delivery: { delivery_id: "new-delivery" } } });
+      if (bodies.length === 1) return apiError("internal_error", "lost response", 500);
+      const successor: OrderWebhookDeliveryDetail = {
+        ...delivery, attempts: [],
+        delivery: { ...delivery.delivery, delivery_id: newDeliveryId, predecessor_delivery_id: terminal.delivery.delivery_id,
+          generation: 2, status: "PENDING", attempt_count: 0, last_error_code: null },
+      };
+      state.deliveries = [successor, { ...terminal, is_latest: false }];
+      return json({ data: successor });
     });
     mount();
     await screen.findByRole("heading", { name: "订单信息" });
@@ -422,9 +434,10 @@ describe("order detail work surface", () => {
     expect(await screen.findByText(/已创建新投递，等待发送/)).toBeVisible();
     expect(bodies).toHaveLength(2);
     expect(bodies[1]).toEqual(bodies[0]);
-    expect(screen.getByLabelText("当前页面")).toHaveTextContent(
-      "/orders/" + orderId,
-    );
+    expect(await screen.findByRole("heading", { name: "通知详情", level: 1 })).toBeVisible();
+    expect(screen.getByLabelText("当前页面")).toHaveTextContent("/notifications/" + newDeliveryId);
+    expect(await screen.findByText("等待投递", { exact: true })).toBeVisible();
+    expect(screen.getByRole("link", { name: "查看原投递" })).toHaveAttribute("href", "/notifications/" + terminal.delivery.delivery_id);
   });
 
   it.each([
@@ -612,7 +625,9 @@ describe("order detail work surface", () => {
     await user.click(
       within(dialog).getByRole("button", { name: "确认标记已退款" }),
     );
-    await screen.findByText("已标记退款");
+    const refund = await screen.findByRole("region", { name: "管理员退款标记" });
+    expect(within(refund).getByText("已标记退款")).toBeVisible();
+    expect(within(screen.getByRole("group", { name: "PerPay 收款状态" })).getByText("已标记退款")).toBeVisible();
     expect(await recordAction("撤销退款标记")).toBeVisible();
     expect(state.order.payment).toEqual(paidOrder.payment);
     expect(state.order.received_amount_cents).toBe(

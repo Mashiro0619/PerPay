@@ -2,9 +2,9 @@ import { useQuery } from '@/lib/workspace-query';
 import { useWorkspace, useWorkspaceApi } from "@/workspace";
 import { Button } from "@/components/ui/button";
 import { SiteIdentity } from "@/components/site-identity";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Info } from "lucide-react";
-import { Link } from "@/navigation";
+import { Link, useNavigate } from "@/navigation";
 
 import { result, type OrderWebhookDeliveryDetail, type WebhookDeliveryDetail, type WebhookAttempt } from "@/api/client";
 import { refreshNotificationRecords } from "@/lib/record-refresh";
@@ -66,10 +66,15 @@ export function DeliveryCard({
   section?: "all" | "overview" | "attempts";
 }) {
   const api = useWorkspaceApi();
+  const navigate = useNavigate();
   const { clientId } = useWorkspace();
   const overlay = useOverlayContext();
   const [snapshot, setSnapshot] = useState<DeliveryContext | null>(null);
   const [sent, setSent] = useState(false);
+  const [newDeliveryId, setNewDeliveryId] = useState<string | null>(null);
+  useEffect(() => {
+    if (newDeliveryId) navigate("/notifications/" + newDeliveryId);
+  }, [newDeliveryId, navigate]);
   const setMessage = useSuccessToast();
   const finalFocus = useRef<HTMLElement | null>(null);
   const delivery = detail.delivery;
@@ -150,6 +155,12 @@ export function DeliveryCard({
     <CopyValue value={detail.target.target_url} label="复制通知地址" />,
   ] as const;
   const deliveryFields = [
+    ...(!detail.is_latest && detail.latest_delivery_id
+      ? [["后续结果", <Link to={"/notifications/" + detail.latest_delivery_id}>已重新发送，查看最新结果</Link>] as const]
+      : []),
+    ...(delivery.predecessor_delivery_id
+      ? [["原投递", <Link to={"/notifications/" + delivery.predecessor_delivery_id}>查看原投递</Link>] as const]
+      : []),
     ...(delivery.next_attempt_at && !terminal
       ? [["下次重试", dateTime(delivery.next_attempt_at)] as const]
       : []),
@@ -196,12 +207,13 @@ export function DeliveryCard({
               }),
             )
           }
-          onSuccess={() => {
+          onSuccess={({ data }) => {
             // A successful redelivery creates a newer record and removes this
             // action. Restore focus to content that remains on the page.
             finalFocus.current = document.getElementById("main-content");
             setSnapshot(null);
             setSent(true);
+            setNewDeliveryId(data.delivery.delivery_id);
             setMessage("已创建新投递，等待发送");
             void refreshNotificationRecords(detail.event.order_id, delivery.delivery_id);
           }}

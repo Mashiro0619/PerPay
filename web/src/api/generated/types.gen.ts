@@ -1515,6 +1515,7 @@ export type WebhookTarget = {
     created_at: string;
 };
 export type WebhookDeliveryDetail = {
+    latest_delivery_id?: string;
     is_latest: boolean;
     delivery: WebhookDelivery;
     event: WebhookEvent;
@@ -1524,6 +1525,7 @@ export type WebhookDeliveryDetailEnvelope = {
     data: WebhookDeliveryDetail;
 };
 export type OrderWebhookDeliveryDetail = {
+    latest_delivery_id?: string;
     is_latest: boolean;
     delivery: WebhookDelivery;
     event: WebhookEvent;

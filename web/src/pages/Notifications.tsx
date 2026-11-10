@@ -400,9 +400,13 @@ function DeliveryDetail({ deliveryId }: { deliveryId: string }) {
     queryKey: ["notification", deliveryId],
     queryFn: ({ signal }) =>
       result(api.getWebhookDelivery({ path: { deliveryId }, signal })),
+    refetchInterval: query => {
+      const status = query.state.data?.data.delivery.status;
+      return status && ["PENDING", "LEASED", "RETRY_WAIT"].includes(status) ? 5_000 : false;
+    },
   });
   const attempts = useQuery({
-    queryKey: ["notification-attempts", deliveryId],
+    queryKey: ["notification-attempts", deliveryId, delivery.data?.data.delivery.attempt_count, delivery.data?.data.delivery.status],
     enabled: delivery.isSuccess,
     queryFn: ({ signal }) =>
       result(api.listWebhookDeliveryAttempts({ path: { deliveryId }, signal })),

@@ -9,7 +9,7 @@ const labels: Record<string, string> = {
   CREATED: "订单已创建", CHECKOUT_CLOSED: "收银台已关闭", CHECKOUT_EXPIRED: "收银台已过期", PAYMENT_CONFIRMED: "收款已确认",
   PAYMENT_DISPUTED: "收款有争议", REFUND_UPDATED: "退款记录已更新", ACKNOWLEDGED: "通知已确认", HTTP_ERROR: "HTTP 错误",
   NETWORK_ERROR: "网络连接失败", TIMEOUT: "请求超时", INVALID_ACKNOWLEDGEMENT: "对方的确认回执无效", IN_FLIGHT: "投递中",
-  STARTED: "投递已开始", RETRYABLE_FAILURE: "可重试的投递失败", PERMANENT_FAILURE: "不可重试的投递失败", OUTCOME_UNKNOWN: "投递结果未知",
+  STARTED: "投递已开始", RETRYABLE_FAILURE: "等待自动重试", PERMANENT_FAILURE: "已停止自动重试", OUTCOME_UNKNOWN: "投递结果未知",
   KEEP_EXISTING: "保留已有流水", ACKNOWLEDGE_ISOLATED: "确认隔离记录", CONFIRM_VARIANT: "原始页变更已确认",
   healthy: "运行正常", running: "运行中", catching_up: "查询历史账单", degraded: "运行异常", idle: "等待执行", stopped: "已停止",
   UNALLOCATED: "未分配", CANDIDATE: "可能匹配", ALLOCATED: "已分配", CONFLICT: "存在冲突", ISOLATED: "已隔离", IGNORED: "已忽略",

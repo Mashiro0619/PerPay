@@ -246,6 +246,7 @@ describe("WebhookStore", () => {
       assert.equal(created.delivery.predecessorDeliveryId, original.deliveryId);
       assert.equal(created.delivery.requestKey, redeliveryId);
       assert.equal(store.delivery(original.deliveryId)?.isLatest, false);
+      assert.equal(store.delivery(original.deliveryId)?.latestDeliveryId, created.delivery.deliveryId);
       assert.equal(store.delivery(created.delivery.deliveryId)?.isLatest, true);
       const orderId = store.delivery(original.deliveryId)!.event.orderId;
       const newestPage = store.listDeliveriesForOrder({ orderId, limit: 1 });
@@ -253,6 +254,7 @@ describe("WebhookStore", () => {
       assert.ok(newestPage.nextCursor);
       const olderPage = store.listDeliveriesForOrder({ orderId, limit: 1, cursor: newestPage.nextCursor });
       assert.equal(olderPage.deliveries[0]?.isLatest, false);
+      assert.equal(olderPage.deliveries[0]?.latestDeliveryId, created.delivery.deliveryId);
 
       const exactReplay = store.replay(input);
       assert.equal(exactReplay.replayed, true);

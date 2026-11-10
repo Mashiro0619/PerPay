@@ -11390,6 +11390,10 @@ components:
       additionalProperties: false
       required: [delivery, event, target, is_latest]
       properties:
+        latest_delivery_id:
+          type: string
+          format: uuid
+          description: 同一事件与通知目标的最新投递编号，可从历史记录直接查看后续结果。
         is_latest:
           type: boolean
           description: Latest delivery for the event and target, independent of pagination. Writes still revalidate eligibility.
@@ -11407,6 +11411,10 @@ components:
       additionalProperties: false
       required: [delivery, event, target, attempts, is_latest]
       properties:
+        latest_delivery_id:
+          type: string
+          format: uuid
+          description: 同一事件与通知目标的最新投递编号。
         is_latest:
           type: boolean
           description: Latest delivery for the event and target, independent of pagination. Writes still revalidate eligibility.

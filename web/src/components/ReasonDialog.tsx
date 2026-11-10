@@ -24,7 +24,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/admin-dialog";
-export function ReasonDialog({
+export function ReasonDialog<Output>({
   title,
   intent = "default",
   description,
@@ -44,9 +44,9 @@ export function ReasonDialog({
     reason: string,
     operationId: string,
     signal?: AbortSignal,
-  ) => Promise<unknown>;
+  ) => Promise<Output>;
   onClose: () => void;
-  onSuccess: () => void;
+  onSuccess: (value: Output) => void;
   finalFocus?: (() => HTMLElement | null) | undefined;
 }) {
   // The evidence being confirmed must not silently change under an open dialog.
