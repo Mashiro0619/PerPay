@@ -33,6 +33,7 @@ import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { z } from "zod";
 
 import type { BackupHealth } from "../backup/runner.ts";
+import { createBackupCatalogProvider } from "../backup/catalog.ts";
 import type { AppConfig } from "../config.ts";
 import type { AppDatabase } from "../database/database.ts";
 import { IdentityError, IdentityService, MIN_ADMIN_PASSWORD_CHARACTERS, type AuthenticatedSession } from "../identity/service.ts";
@@ -359,6 +360,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
   const probeOperations = new HealthProbeCache<OperationalSummaries>();
   const adminFrontend = loadAdminFrontend();
   const updateChecker = dependencies.updateChecker ?? new OfficialUpdateChecker();
+  const backupCatalog = createBackupCatalogProvider(dependencies.config.backupDir);
 
   app.use("*", async (context, next) => {
     const supplied = context.req.header("x-request-id");
@@ -711,6 +713,14 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
   app.get("/api/admin/v1/system/status", adminSession, async (context) =>
     context.json({ data: await systemStatus(dependencies, true) }),
   );
+
+  app.get("/api/admin/v1/system/backups", adminSession, async (context) => {
+    try {
+      return context.json({ data: await backupCatalog() });
+    } catch {
+      throw new HttpApiError(503, "backup_list_unavailable", "备份文件列表暂时无法读取，请检查备份目录及读取权限后重试。");
+    }
+  });
 
   app.post("/api/admin/v1/system/ledger/scan", adminSession, async (context) => {
     requireJsonContentType(context);

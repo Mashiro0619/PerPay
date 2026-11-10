@@ -9,6 +9,7 @@ import { SettingsSummary, type SettingsSummaryRow } from "@/components/settings-
 import { ErrorNotice } from "@/components/request-state";
 import { CopyValue } from "@/components/copy-value";
 import { buttonVariants } from "@/components/ui/button";
+import { BackupFiles } from "@/components/backup-files";
 
 function backupStatusMessage(backup: BackupHealth): string {
   if (backup.backup_in_progress) return "正在备份";
@@ -59,6 +60,7 @@ export function BackupOverview({ settings }: { settings: RuntimeSettings }) {
       <a data-external-link className={buttonVariants({ variant: "ghost", size: "sm" })} href={guide + "#主密钥与备份的异地保存"} target="_blank" rel="noopener noreferrer">导出备份步骤</a>
       <a data-external-link className={buttonVariants({ variant: "ghost", size: "sm" })} href={guide + "#恢复数据库"} target="_blank" rel="noopener noreferrer">恢复说明</a>
     </>} />
+    <BackupFiles />
   </div>;
 }
 

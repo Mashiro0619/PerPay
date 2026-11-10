@@ -46,6 +46,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { NotificationKeyActions, SecuritySettings } from "./SecuritySettings";
 import { AlipayAccountList } from "./AlipayAccounts";
 import { BackupOverview } from "@/components/backup-status";
+import { backupFilesKey } from "@/components/backup-files";
 import { durationLabel } from "@/lib/format";
 
 const sectionIcons = {
@@ -97,7 +98,14 @@ export default function Settings() {
   function refresh() {
     requestDiscard(() => {
       setRefreshing(true);
-      void Promise.all([settings.refetch(), queryClient.invalidateQueries({ queryKey: ["alipay-accounts"] })]).then(
+      void Promise.all([
+        settings.refetch(),
+        queryClient.invalidateQueries({ queryKey: ["alipay-accounts"] }),
+        ...(requestedSection === "backup" ? [
+          queryClient.invalidateQueries({ queryKey: backupFilesKey }),
+          queryClient.invalidateQueries({ queryKey: ["status"] }),
+        ] : []),
+      ]).then(
         ([response]) => {
           if (!response.isError) {
             setEditorVersion((value) => value + 1);
@@ -121,7 +129,7 @@ export default function Settings() {
           <Settings2 data-icon="inline-start" />
           <span className="hidden sm:inline">配置向导</span>
         </Link></PageHeaderActionLink>
-        <RefreshButton disabled={settings.isFetching} onClick={refresh} busy={settings.isFetching} />
+        <RefreshButton disabled={settings.isFetching || refreshing} onClick={refresh} busy={settings.isFetching || refreshing} />
       </PageHeaderActions>
       <PageHeading title="系统设置" />
       <QueryView query={settings}>

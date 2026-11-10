@@ -29,6 +29,7 @@ export const HTTP_ERROR_CODES = Object.freeze([
   "api_nonce_replayed",
   "asset_not_found",
   "auth_rate_limited",
+  "backup_list_unavailable",
   "candidate_not_found",
   "candidate_set_changed",
   "checkout_code_generation_failed",

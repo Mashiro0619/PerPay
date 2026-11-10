@@ -1082,6 +1082,33 @@ paths:
               schema:
                 $ref: '#/components/schemas/SystemStatusEnvelope'
         '401': { $ref: '#/components/responses/AdminUnauthorized' }
+  /api/admin/v1/system/backups:
+    get:
+      tags: [System]
+      operationId: listBackupFiles
+      summary: 列出备份目录中的文件
+      description: >-
+        按文件名记录的生成时间倒序返回全部备份文件，最多 4096 份，不分页。
+        只读取目录和文件元数据，不执行 SQLite 完整性或摘要校验。
+        目录尚未创建时返回空列表；读取目录失败或超过扫描上限时返回 503。
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+      responses:
+        '200':
+          description: 备份文件列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BackupFileListEnvelope'
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '503':
+          description: backup_list_unavailable；备份文件列表暂不可用。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/admin/v1/system/ledger/scan:
     post:
       tags:
@@ -8649,6 +8676,37 @@ components:
           type: integer
           minimum: 0
           description: Latest-generation dead letters that have no administrative successor.
+    BackupFile:
+      type: object
+      additionalProperties: false
+      required: [name, created_at, size_bytes]
+      properties:
+        name:
+          type: string
+          description: 备份文件名，不包含目录。
+        created_at:
+          type: string
+          format: date-time
+          description: 从备份文件名解析的生成时间。
+        size_bytes:
+          type: [integer, 'null']
+          minimum: 0
+          description: 文件大小；非普通单链接文件或元数据无法读取时为 null。
+    BackupFileListEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [items]
+          properties:
+            items:
+              type: array
+              maxItems: 4096
+              items:
+                $ref: '#/components/schemas/BackupFile'
     BackupHealth:
       type: object
       additionalProperties: false
@@ -11607,6 +11665,7 @@ components:
         - api_nonce_replayed
         - asset_not_found
         - auth_rate_limited
+        - backup_list_unavailable
         - candidate_not_found
         - candidate_set_changed
         - checkout_code_generation_failed
