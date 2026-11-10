@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import { queryClient } from "../src/api/client";
 import { presentSystemStatus } from "../src/lib/system-status";
 import { mountOnboarding, systemStatus } from "./onboarding-fixture";
-import { apiError, json } from "./fixtures";
+import { alipayAccount, apiError, json } from "./fixtures";
 function ready() {
   const data = systemStatus();
   data.ledger.conflicts = {
@@ -25,6 +25,25 @@ function ready() {
   return data;
 }
 describe("shared runtime presentation", () => {
+  it("opens account diagnosis with the connection result before technical data", async () => {
+    const data = ready();
+    data.ledger.collection_ready = false;
+    data.ledger.last_error_code = "remote_authorization_failed";
+    data.alipay_accounts = [{ ...alipayAccount, name: "主收款账号", last_check: { ok: false, checked_at: "2026-11-10T02:00:00Z", message: "应用查询权限不足" } }];
+    mountOnboarding({ stage: 4, path: "/system", status: () => data });
+    const trigger = await screen.findByRole("button", { name: "查账运行诊断" });
+    const user = userEvent.setup();
+    await user.click(trigger);
+    const dialog = await screen.findByRole("dialog", { name: "查账诊断" });
+    expect(within(dialog).getByText("应用查询权限不足")).toBeVisible();
+    expect(new URL(within(dialog).getByRole("link", { name: "配置主收款账号" }).getAttribute("href")!, "http://localhost").searchParams.get("overlay")).toBe("/settings/accounts/" + alipayAccount.id);
+    expect(within(dialog).queryByText(/"ledger":/)).not.toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: "技术数据" }));
+    expect(within(dialog).getByRole("button", { name: "复制查账技术数据" })).toBeVisible();
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(trigger).toHaveFocus());
+  });
+
   it("keeps the current snapshot during a navigation refresh and removes it if that refresh fails", async () => {
     let defer = false;
     let finish!: (response: Response) => void;
@@ -338,7 +357,7 @@ describe("shared runtime presentation", () => {
     await userEvent
       .setup()
       .click(screen.getByRole("link", { name: "总览" }));
-    await screen.findByRole("heading", { name: "收款趋势" });
+    await screen.findByText("开始第一笔收款");
     await waitFor(() => expect(reads()).toBe(3));
   });
   it("clears and restores the navigation notice without changing runtime health or raw evidence", async () => {

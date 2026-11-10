@@ -97,15 +97,15 @@ export function AuditAggregation({ event }: { event: AuditEventItem }) {
   </Card>;
 }
 
-export function AuditChanges({ changes, category }: { changes: readonly AuditChange[]; category: AuditEventItem["category"] }) {
-  if (changes.length === 0 && category !== "configuration") return null;
+export function AuditChanges({ changes }: { changes: readonly AuditChange[]; category: AuditEventItem["category"] }) {
+  if (changes.length === 0) return null;
   return <Card aria-label="配置变更" className="detail-section">
     <CardHeader>
       <CardTitle role="heading" aria-level={2}>配置变更</CardTitle>
       <CardDescription>只列出已记录的变更字段。密码、密钥等敏感值仅保留变更状态。</CardDescription>
     </CardHeader>
     <CardContent>
-      {changes.length === 0 ? <p className="text-sm text-muted-foreground">这条记录未保存前后值，不能据此判断没有配置变更。</p> : <ItemGroup className="gap-0">
+      <ItemGroup className="gap-0">
         {changes.map((change, index) => {
           const [before, after] = auditChangeValues(change);
           return <Fragment key={change.field}>
@@ -118,7 +118,7 @@ export function AuditChanges({ changes, category }: { changes: readonly AuditCha
             </Item>
           </Fragment>;
         })}
-      </ItemGroup>}
+      </ItemGroup>
     </CardContent>
   </Card>;
 }

@@ -3,13 +3,27 @@ import userEvent from "@testing-library/user-event";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
 import { queryClient } from "../src/api/client";
-import { BackupStatus } from "../src/components/backup-status";
+import { BackupOverview, BackupStatus } from "../src/components/backup-status";
 import { RuntimeErrorDetails } from "../src/components/runtime-error-details";
 import { backupFailureStageName, runtimeErrorMessage } from "../src/lib/runtime-copy";
-import { json } from "./fixtures";
+import { json, settings } from "./fixtures";
+import { createMemoryRouter, RouterProvider } from "react-router";
 import { systemStatus } from "./onboarding-fixture";
 
 describe("runtime failure explanations", () => {
+  it("shows a disabled task and existing recoverable copy without opening the policy editor", async () => {
+    const status = systemStatus();
+    Object.assign(status.backup, { enabled: false, backup_available: true, backup_name: "perpay-verified.sqlite3", retained_count: 2, last_success_at: 1_794_268_800_000 });
+    vi.stubGlobal("fetch", vi.fn(async () => json({ data: status })));
+    const router = createMemoryRouter([{ path: "/settings/backup", element: <BackupOverview settings={settings} /> }], { initialEntries: ["/settings/backup"] });
+    render(<QueryClientProvider client={queryClient}><RouterProvider router={router} /></QueryClientProvider>);
+    expect(await screen.findByText("2 份")).toBeVisible();
+    expect(screen.getByText("perpay-verified.sqlite3")).toBeVisible();
+    expect(screen.getByText(/备份未启用/)).toBeVisible();
+    expect(screen.getByRole("link", { name: "恢复说明" })).toBeVisible();
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+  });
+
   it.each([
     [{ recovery_required: true }, "备份任务需要恢复"],
     [{ clock_moved_backwards: true }, "系统时钟发生回退"],

@@ -103,6 +103,8 @@ describe("Alipay account configuration",()=>{
       const check=await guarded.check(account.id);
       assert.equal(check.ok,false);
       assert.match(check.message,/已上线/);
+      const checkAudit=db.read(connection=>connection.prepare("SELECT details_json FROM audit_events WHERE action='alipay_account.checked' AND subject_id=? ORDER BY sequence DESC LIMIT 1").get(account.id));
+      assert.equal(JSON.parse(String(checkAudit?.details_json)).reason,check.message);
       assert.equal(verifications,0);
       assert.equal(store.snapshot(account.id).provider!.endpoint,"https://openapi-sandbox.dl.alipaydev.com");
       assert.equal(store.snapshot(account.id).providerAccountKey,before.provider_account_key);

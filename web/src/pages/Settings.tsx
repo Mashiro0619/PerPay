@@ -45,6 +45,8 @@ import {
 import { useIsMobile } from "@/hooks/use-mobile";
 import { NotificationKeyActions, SecuritySettings } from "./SecuritySettings";
 import { AlipayAccountList } from "./AlipayAccounts";
+import { BackupOverview } from "@/components/backup-status";
+import { durationLabel } from "@/lib/format";
 
 const sectionIcons = {
   accounts: Wallet,
@@ -215,7 +217,7 @@ export default function Settings() {
                   inert={refreshing}
                   aria-busy={refreshing}
                 >
-                  {section === "accounts" ? <AlipayAccountList /> : section === "security" ? (
+                  {section === "accounts" ? <AlipayAccountList /> : section === "backup" ? <BackupOverview settings={data} /> : section === "security" ? (
                     <SecuritySettings
                       key={"security:" + editorVersion}
                       settings={data}
@@ -244,7 +246,7 @@ function settingsSummaryRows(settings: RuntimeSettings, section: ConfigurationSe
   if (section === "notifications") return [["通知", settings.notifications?.enabled ? "开启" : "关闭"], ["通知地址前缀", settings.notifications?.allowed_origin || "未设置"], ["通知超时", settings.notifications ? settings.notifications.timeout_milliseconds / 1000 + " 秒" : "未配置"], ["最多发送次数", settings.notifications?.maximum_attempts ?? "未配置"], ["首次 / 最大重试间隔", settings.notifications ? settings.notifications.retry_base_seconds + " / " + settings.notifications.retry_maximum_seconds + " 秒" : "未配置"]];
   if (section === "backup") return [["备份间隔", settings.backup.interval_seconds % 86400 === 0 ? "每 " + settings.backup.interval_seconds / 86400 + " 天" : settings.backup.interval_seconds % 3600 === 0 ? "每 " + settings.backup.interval_seconds / 3600 + " 小时" : settings.backup.interval_seconds + " 秒"], ["保留备份数量", settings.backup.keep_count]];
   if (section === "display") return [["系统名称", settings.display.system_name || "PerPay"], ["收款趋势默认图形", { AREA: "面积图", BAR: "柱状图", LINE: "折线图" }[settings.display.dashboard_chart_type]], ...(!settings.site_mode ? [["显示商品名称", settings.display.checkout_show_product_name !== false ? "开启" : "关闭"], ["帮助链接", settings.display.checkout_help_url || "未设置"]] as SettingsSummaryRow[] : [])];
-  return [["收银台链接密钥轮换周期", settings.advanced.checkout_key_rotation_days + " 天"], ["结束后可查询时长", settings.advanced.checkout_terminal_observation_seconds + " 秒"]];
+  return [["收银台链接密钥轮换周期", settings.advanced.checkout_key_rotation_days + " 天"], ["结束后可查询时长", durationLabel(settings.advanced.checkout_terminal_observation_seconds)]];
 }
 
 export function SettingsEditorOverlay() {

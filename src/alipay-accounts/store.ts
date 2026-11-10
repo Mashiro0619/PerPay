@@ -231,7 +231,7 @@ export class AlipayAccountStore {
         const scope = currentAuditContext();
         appendAuditEvent(db, { occurredAt: now, actorType: scope?.actorType ?? "SYSTEM", actorId: scope?.actorId ?? undefined,
           action: "alipay_account.checked", outcome: ok ? "SUCCESS" : "FAILURE", subjectType: "alipay_account", subjectId: id,
-          context: { siteId: null, siteName: null }, details: { revision, connected: ok } });
+          context: { siteId: null, siteName: null }, details: { revision, connected: ok, reason: message } });
       }
     });
   }

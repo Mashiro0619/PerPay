@@ -331,13 +331,23 @@ describe("audit event details", () => {
     expect(screen.getByRole("group", { name: "配置变更" })).toBe(changes);
   });
 
-  it("does not turn a historical source hash into a real IP or claim that missing changes did not happen", async () => {
+  it("keeps historical request context absent and omits an empty change section", async () => {
     backend({ detail: { ...auditDetail(), source_address: null, user_agent: null, context_recorded: false } });
     mount(`/audit/core/${auditEvent.event_id}`);
     await screen.findByRole("group", { name: "来源与请求" });
     expect(screen.getAllByText("当时未记录").length).toBeGreaterThan(0);
-    expect(screen.getByText(/这条记录未保存前后值/)).toBeVisible();
+    expect(screen.queryByRole("group", { name: "配置变更" })).not.toBeInTheDocument();
     expect(screen.queryByText("c".repeat(64))).not.toBeInTheDocument();
+  });
+
+  it("shows the stored account check failure and links directly to the checked account", async () => {
+    const detail = { ...auditDetail(), action: "alipay_account.checked", outcome: "FAILURE" as const,
+      subject_type: "alipay_account", subject_id: "account-checked", details: { reason: "支付宝查询权限不足，请检查应用授权。" } };
+    backend({ detail });
+    mount(`/audit/core/${auditEvent.event_id}`);
+    expect(await screen.findByText(detail.details.reason)).toBeVisible();
+    expect(screen.getByRole("link", { name: "查看收款账号" })).toHaveAttribute("href", "/settings/accounts/account-checked");
+    expect(screen.queryByRole("group", { name: "配置变更" })).not.toBeInTheDocument();
   });
 
   it("identifies activity aggregates and calculates the average from the total duration", async () => {

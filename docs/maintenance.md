@@ -4,6 +4,15 @@
 
 以下命令在 `docker-compose.yml` 所在目录执行。[返回部署说明](../README.md)。
 
+| 当前任务 | 操作入口与完成结果 |
+| --- | --- |
+| 检查运行 | [查看状态](#查看状态)：应用及备份容器正常；后台展示收款与查账状态。 |
+| 制作可恢复副本 | [启用与验证备份](#启用与验证备份) → [异地保存](#主密钥与备份的异地保存)：保存数据库、原主密钥、版本号和校验值。 |
+| 更新 | [固定版本与回滚](#固定版本与回滚)：选择目标版本、备份、统一三个服务的镜像，再验证启动。 |
+| 恢复 | [原服务器](#原服务器恢复)或[全新服务器](#全新服务器恢复)：导入原密钥、校验备份并恢复，核对原订单和网站后接管收款。 |
+
+日常记录最近成功备份、最近异地副本和最近恢复演练的日期。后台的可用备份数量用于确认本机副本，异地保存和恢复演练按下文完成。
+
 ## 查看状态
 
 ```sh
@@ -94,7 +103,7 @@ docker compose --profile maintenance run --rm --no-deps --entrypoint node mainte
 
 ## 查看备份
 
-备份保存在 `perpay-backups` 卷，周期和保留数量在后台“实例设置 → 自动备份”调整。
+备份保存在 `perpay-backups` 卷，周期和保留数量在后台“系统设置 → 自动备份”调整。
 
 ```sh
 docker compose --profile maintenance run --rm maintenance list-backups
@@ -114,7 +123,7 @@ docker compose --profile maintenance run --rm maintenance list-backups
 - “知道了”、关闭按钮及 Esc 只关闭弹窗。可在弹窗或 **运行状态 → 官方更新** 点击“忽略此版本”，隐藏当前通道中该版本及更早版本的提醒和侧边栏标记；运行状态页显示“已忽略”，仍可查看更新，出现更高版本时再次提醒。“恢复此通道更新提醒”撤销忽略，但不清除已经自动展示过的记录。
 - 自动检查、通道偏好及提醒记录仅保存在当前浏览器，同源标签页同步；浏览器禁止存储时在当前页面内生效，不会变更服务器配置，也不会修改 `app`、`backup`、`maintenance` 的镜像。
 - 更新检查仍然只是提示，不自动安装，也不会建议降级。选择“包含预发布版”时，没有新正式版的 RC 实例仍能检查后续 RC；读不到完整结果时显示检查不可用，而不是“已是最新”。预发布目录最多读取 5 页、每页 100 项，并有响应大小及整体超时限制。
-- 根目录部署模板和正式 Release 附件继续使用稳定版 `latest`。预发布 Release 的 Compose 附件固定为对应预发布版本，**不会自动跟随下一版 RC**；升级时修改顶部 `x-perpay-image`，三个服务会使用同一镜像，再拉取并重启。
+- 根目录源码模板使用稳定版 `latest`。新发布的正式版和预发布版 Compose 附件都固定为对应版本；升级时修改顶部 `x-perpay-image`，三个服务会使用同一镜像，再拉取并重启。已有的 `latest` 配置继续跟随稳定版；选择预发布目标时需要显式填写该标签。
 - 预发布流水线仍执行原有测试、安全扫描及隔离部署/备份恢复验收，但只发布固定版本镜像，并将 GitHub Release 标为预发布；不会修改镜像或 GitHub 的 `latest`。紧急 latest 恢复流程也只接受正式版。
 
 发布时 Git 标签使用 `vX.Y.Z[-预发布标识]`，`package.json`、锁文件根版本、`src/version.ts`、OpenAPI `info.version` 和 Dockerfile 版本必须一致。无需为了启用预发布支持修改数据库兼容范围；实际升级仍应按发布说明核对数据库兼容性，并先保管好数据库及主密钥。预发布版本不建议直接用于生产收款。
@@ -300,6 +309,7 @@ age-keygen -y perpay-recovery.agekey
   docker compose stop backup
 
   docker compose --profile maintenance run --rm --no-deps -T maintenance run-once
+  docker compose --profile maintenance run --rm --no-deps -T --entrypoint node maintenance -p 'JSON.parse(require("node:fs").readFileSync("package.json","utf8")).version' > "$export_directory/perpay-version.txt"
 
   docker compose run --rm --no-deps -T --entrypoint tar backup \
     -C /backups -cf - . |
@@ -313,7 +323,7 @@ age-keygen -y perpay-recovery.agekey
 
   (
     cd "$export_directory"
-    sha256sum perpay-backups.tar.age perpay-master-key.tar.age > SHA256SUMS
+    sha256sum perpay-backups.tar.age perpay-master-key.tar.age perpay-version.txt > SHA256SUMS
   )
   printf '加密导出目录：%s\n' "$export_directory"
 )
@@ -321,11 +331,11 @@ age-keygen -y perpay-recovery.agekey
 
 `tar` 的输出直接通过管道交给宿主上的 age，未加密的归档不落盘；`-T` 禁用终端转换，`--entrypoint tar` 不启动应用或维护脚本，`--no-deps` 不启动依赖服务。`pipefail` 会让读取失败或加密失败中止脚本；仅完整成功的文件才去掉 `.part` 后缀。失败后先检查 `docker compose ps backup`，确认自动备份已经恢复；不要把 `.part` 文件当作可恢复备份。
 
-将两份 `.age` 密文及 `SHA256SUMS` 复制到已配置的独立备份主机或离线介质。例如，替换以下目录、账号及地址后，在宿主执行：
+将两份 `.age` 密文、`perpay-version.txt` 及 `SHA256SUMS` 复制到已配置的独立备份主机或离线介质。例如，替换以下目录、账号及地址后，在宿主执行：
 
 ```bash
 cd "$HOME/perpay-offsite/export.替换为实际目录"
-scp perpay-backups.tar.age perpay-master-key.tar.age SHA256SUMS \
+scp perpay-backups.tar.age perpay-master-key.tar.age perpay-version.txt SHA256SUMS \
   backup-user@backup-host:/srv/private/perpay/
 ```
 
@@ -365,6 +375,8 @@ age --decrypt -i /安全路径/perpay-recovery.agekey perpay-master-key.tar.age 
 
 ## 恢复数据库
 
+### 原服务器恢复
+
 恢复会覆盖当前数据库。先保留当前数据副本，并确认原 `perpay-secrets` 卷仍在。停止应用、自动备份及所有其他会打开该数据库的进程；`docker compose stop app backup` 不会停止另行启动的维护容器。
 
 1. 停止应用和自动备份，列出可用备份：
@@ -385,6 +397,73 @@ age --decrypt -i /安全路径/perpay-recovery.agekey perpay-master-key.tar.age 
    ```sh
    docker compose up -d
    ```
+
+### 全新服务器恢复
+
+准备 Linux、Docker Compose、age 解密身份，以及异地保存的 `perpay-backups.tar.age`、`perpay-master-key.tar.age`、`perpay-version.txt` 和 `SHA256SUMS`。使用备份时的 PerPay 版本恢复，成功后再单独升级。下例使用独立项目名 `perpay-recovery`，所有命令都保留该项目名。
+
+1. 新建恢复目录，将上述文件放入其中。从原版本发布页下载 `docker-compose.yml`，核对镜像：
+
+   ```sh
+   mkdir -p perpay-recovery && cd perpay-recovery
+   PERPAY_RELEASE="v$(cat perpay-version.txt)"
+   curl -fsSLo docker-compose.yml "https://github.com/Mashiro0619/PerPay/releases/download/${PERPAY_RELEASE}/docker-compose.yml"
+   sha256sum -c SHA256SUMS
+   docker compose -p perpay-recovery --profile maintenance config --images
+   ```
+
+   三个镜像应全部是 `perpay-version.txt` 记录的版本；历史模板如为 `latest`，先修改为原版本。`SHA256SUMS` 的每项都应显示 `OK`。早期副本没有版本文件时，从原部署记录核对版本后填写 `PERPAY_RELEASE`。
+
+2. 拉取镜像，创建独立数据卷并核对为空。这里以 `sh` 启动检查容器，不启动 PerPay，也不生成新主密钥：
+
+   ```sh
+   docker compose -p perpay-recovery --profile maintenance pull
+   docker compose -p perpay-recovery run --rm --no-deps --entrypoint sh app -ceu 'test -w /data; test -w /run/perpay-secrets; test -r /backups; test -z "$(ls -A /data)"; test -z "$(ls -A /run/perpay-secrets)"; test -z "$(ls -A /backups)"; id -u'
+   ```
+
+   成功输出 UID `1000`；检查包含三个卷中的隐藏文件和数据库 sidecar。如果空卷检查失败，换一个未使用的项目名并在后续所有命令中同步修改。
+
+3. 在 Bash 中启用管道失败检查，再导入主密钥和备份。密钥直接写入 secrets 卷，保留 UID 1000 的访问权限：
+
+   ```bash
+   set -o pipefail
+   age --decrypt -i /安全路径/perpay-recovery.agekey perpay-master-key.tar.age |
+     docker compose -p perpay-recovery run --rm --no-deps -T --entrypoint sh app -ceu 'umask 077; tar -xf - -C /run/perpay-secrets; chmod 600 /run/perpay-secrets/master-key; test -s /run/perpay-secrets/master-key'
+   age --decrypt -i /安全路径/perpay-recovery.agekey perpay-backups.tar.age |
+     docker compose -p perpay-recovery run --rm --no-deps -T --entrypoint sh backup -ceu 'umask 077; tar -xf - -C /backups; test -w /backups'
+   ```
+
+   两条管道都须退出成功。若保存的是环境变量方案的 `perpay-master-key.txt.age`，主密钥导入改用下列命令；恢复配置中不再设置另一份 `PERPAY_MASTER_KEY`：
+
+   ```bash
+   age --decrypt -i /安全路径/perpay-recovery.agekey perpay-master-key.txt.age |
+     docker compose -p perpay-recovery run --rm --no-deps -T --entrypoint sh app -ceu 'umask 077; cat > /run/perpay-secrets/master-key; chmod 600 /run/perpay-secrets/master-key; test -s /run/perpay-secrets/master-key'
+   ```
+
+4. 列出备份，将目标的 `name` 和 `sha256` 代入恢复命令：
+
+   ```sh
+   docker compose -p perpay-recovery --profile maintenance run --rm --no-deps maintenance list-backups
+   docker compose -p perpay-recovery --profile maintenance run --rm --no-deps maintenance restore BACKUP_NAME SHA256 --confirm-replace-current-database
+   ```
+
+   工具会校验备份摘要、数据库结构、原主密钥及恢复后的数据库。只有命令退出成功并输出恢复结果后才继续；失败时保留输出，按具体错误处理。
+
+5. 在应用仍停止时，以只读方式核对恢复的实例和数据数量：
+
+   ```sh
+   docker compose -p perpay-recovery --profile maintenance run --rm --no-deps --entrypoint node maintenance --input-type=module -e 'import {DatabaseSync} from "node:sqlite"; const db=new DatabaseSync("/data/perpay.sqlite3",{readOnly:true}); try { console.log(JSON.stringify({instance:db.prepare("SELECT value FROM system_metadata WHERE key = ?").get("instance_id"),orders:db.prepare("SELECT count(*) AS count FROM payment_orders").get(),integrity:db.prepare("PRAGMA integrity_check").get()})); } finally { db.close(); }'
+   ```
+
+   核对实例编号、订单数量及 `integrity_check: "ok"`。恢复演练可在此结束，保留结果记录；要正式接管时，先确保原实例已停止，再按[反向代理部署](reverse-proxy.md)配置域名和可信代理，执行：
+
+   ```sh
+   docker compose -p perpay-recovery up -d
+   docker compose -p perpay-recovery ps
+   docker compose -p perpay-recovery logs --tail=100 app backup
+   ```
+
+   用原管理员密码登录，核对原网站、订单、支付宝账号及运行状态。已有账号和数据应直接恢复，不应再次创建管理员。最后确认新的成功备份，再将域名切换到恢复实例。
 
 ### 主库损坏时隔离原始文件
 

@@ -19,7 +19,11 @@ import { AlipayAccountStatus } from "@/components/alipay-account-status";
 import { RefreshButton } from "@/components/refresh-button";
 import { ErrorNotice, Loading, QueryView, ReadPausedNotice } from "@/components/request-state";
 import { useRequestConnectionOnline } from "@/lib/request-notices";
-import { TechnicalDetailsDialog } from "@/components/detail/DetailPrimitives";
+import { DetailFields, TechnicalDetailsDialog } from "@/components/detail/DetailPrimitives";
+import { Dialog, DialogBody, DialogClose, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/admin-dialog";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { CopyValue } from "@/components/copy-value";
+import { accountHealth, accountState } from "@/lib/alipay-accounts";
 import { OfficialUpdatePanel } from "@/updates";
 import { useManualLedgerScan } from "@/features/manual-ledger-scan";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -106,6 +110,7 @@ function SystemSnapshot({
   const state = presentSystemStatus(data);
   const attentionCount = [state.ledgerHealthy, state.reconciliationHealthy, state.webhookHealthy, data.database.ok, state.backupHealthy].filter(healthy => !healthy).length;
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
+  const [ledgerDiagnosticsOpen, setLedgerDiagnosticsOpen] = useState(false);
   const diagnosticTrigger = useRef<HTMLButtonElement>(null);
   const manualScanFeedbackId = useId();
   const openDiagnostics = (trigger: HTMLButtonElement) => { diagnosticTrigger.current = trigger; setDiagnosticsOpen(true); };
@@ -211,7 +216,7 @@ function SystemSnapshot({
         <TableBody role="rowgroup">
           <RuntimeServices>
           <RuntimeService
-            onDiagnose={openDiagnostics}
+            onDiagnose={trigger => { diagnosticTrigger.current = trigger; setLedgerDiagnosticsOpen(true); }}
             title="查账"
             enabled={data.ledger.enabled}
             healthy={state.ledgerHealthy}
@@ -405,8 +410,51 @@ function SystemSnapshot({
           ["备份 SHA-256", data.backup.backup_sha256],
         ]}
       />
+      <LedgerDiagnosis data={data} open={ledgerDiagnosticsOpen} onOpenChange={setLedgerDiagnosticsOpen} finalFocus={() => diagnosticTrigger.current} />
     </section>
   );
+}
+
+function LedgerDiagnosis({ data, open, onOpenChange, finalFocus }: { data: SystemStatus; open: boolean; onOpenChange: (open: boolean) => void; finalFocus: () => HTMLElement | null }) {
+  const title = useRef<HTMLHeadingElement>(null);
+  const accounts = data.alipay_accounts;
+  const technical = JSON.stringify({ ledger: data.ledger, accounts: accounts?.map(account => ({
+    id: account.id, name: account.name, configured: account.configured, health: account.health, last_check: account.last_check,
+  })) }, null, 2);
+  return <Dialog open={open} onOpenChange={onOpenChange}>
+    <DialogContent initialFocus={title} finalFocus={finalFocus}>
+      <DialogHeader><DialogTitle ref={title} tabIndex={-1}>查账诊断</DialogTitle></DialogHeader>
+      <DialogBody>
+        <Alert variant={data.ledger.collection_ready ? "default" : "destructive"}>
+          <AlertTitle>{data.ledger.collection_ready ? "查账已就绪" : "查账尚未就绪"}</AlertTitle>
+          <AlertDescription>{!data.configured ? "先补齐支付宝账号配置，再检查连接。" : data.ledger.last_error_code
+            ? runtimeErrorMessage("查账", data.ledger.last_error_code) : data.ledger.in_flight ? "正在查询支付宝账单，请等待本轮结果。" : "核对下方账号的配置、连接检查和最近查账结果。"}</AlertDescription>
+        </Alert>
+        <DetailFields items={[["最近成功查账", dateTime(data.ledger.last_success_at)], ["连续失败", data.ledger.consecutive_failures + " 次"]]} />
+        <LedgerIngestionDiagnostics diagnostics={data.ledger.diagnostics} />
+        {accounts?.map(account => <section key={account.id} aria-label={account.name} className="flex min-w-0 flex-col gap-3">
+          <h3 className="text-sm font-medium">{account.name}</h3>
+          <DetailFields items={[
+            ["配置状态", accountState(account)],
+            ["连接检查", account.last_check ? account.last_check.message : "尚未检查"],
+            ["最近检查", dateTime(account.last_check?.checked_at)],
+            ["查账状态", accountHealth(account)],
+            ["最近成功", dateTime(account.health?.last_success_at)],
+          ]} />
+          <Link to={"/settings/accounts/" + encodeURIComponent(account.id)} className={buttonVariants({ variant: "outline", size: "sm" })} onClick={() => onOpenChange(false)}>配置{account.name}</Link>
+        </section>)}
+        {!accounts?.length && <Link to="/settings/onboarding" onClick={() => onOpenChange(false)}>继续配置支付宝账号</Link>}
+        <Collapsible>
+          <CollapsibleTrigger render={<Button variant="ghost" size="sm" />}>技术数据<ChevronDown data-icon="inline-end" /></CollapsibleTrigger>
+          <CollapsibleContent className="flex min-w-0 flex-col gap-2">
+            <CopyValue value={technical} label="复制查账技术数据" buttonOnly />
+            <pre tabIndex={0} className="rounded-md bg-muted p-3 text-xs whitespace-pre-wrap wrap-anywhere">{technical}</pre>
+          </CollapsibleContent>
+        </Collapsible>
+      </DialogBody>
+      <DialogFooter><DialogClose render={<Button variant="outline" />}>关闭</DialogClose></DialogFooter>
+    </DialogContent>
+  </Dialog>;
 }
 
 function RuntimeServices({ children }: { children: ReactNode }) {

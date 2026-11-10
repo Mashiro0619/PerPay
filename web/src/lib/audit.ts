@@ -39,7 +39,7 @@ export function auditCaptureLabel(capture?: AuditCaptureState): string {
 const fieldLabels: Readonly<Record<string, string>> = {
   api_client_id: "客户端 ID",
   name: "名称", enabled: "启用状态", deleted: "删除状态", accepting_orders: "接收新订单", notifications_enabled: "付款通知",
-  notification_origin: "通知地址前缀", return_origin: "返回地址前缀", "collection.mode": "收款账号分配方式", "collection.accounts": "参与收款的账号",
+  notification_origin: "通知域名", return_origin: "返回域名", "collection.mode": "收款账号分配方式", "collection.accounts": "参与收款的账号",
   system_name: "系统名称", checkout_name: "收银台名称", checkout_help_url: "收银台帮助链接", checkout_show_product_name: "展示商品名称", dashboard_chart_type: "总览图表类型",
   order_ttl_seconds: "收银台有效期（秒）", amount_offset_maximum_cents: "最大加价（分）", amount_reuse_cooldown_seconds: "金额复用间隔（秒）", pending_order_limit: "待付款订单上限",
   app_id: "应用编号（App ID）", environment: "支付宝环境", code_payload: "收款码", collection_code_payload: "收款码",

@@ -72,5 +72,12 @@ export function safeCheckoutUrl(value: string): string | null {
 }
 
 export function backupIntervalLabel(seconds: number): string {
-  return seconds % 86400 === 0 ? "每 " + seconds / 86400 + " 天" : seconds % 3600 === 0 ? "每 " + seconds / 3600 + " 小时" : "每 " + seconds + " 秒";
+  return "每 " + durationLabel(seconds);
+}
+
+export function durationLabel(seconds: number): string {
+  if (seconds > 0 && seconds % 86400 === 0) return seconds / 86400 + " 天";
+  if (seconds > 0 && seconds % 3600 === 0) return seconds / 3600 + " 小时";
+  if (seconds > 0 && seconds % 60 === 0) return seconds / 60 + " 分钟";
+  return seconds + " 秒";
 }

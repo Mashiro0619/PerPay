@@ -12,7 +12,8 @@ import { PageHeaderActions } from "@/components/page-header-actions";
 import { RefreshButton } from "@/components/refresh-button";
 import { ErrorNotice, QueryView } from "@/components/request-state";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { apiErrorMessage } from "@/lib/api-errors";
 import { Item, ItemContent, ItemDescription, ItemGroup, ItemTitle } from "@/components/ui/item";
 
 export default function AuditDetail() {
@@ -44,11 +45,20 @@ function AuditDetailView({ source, eventId }: { source: string; eventId: string 
               <AuditRecordType event={data} />
             </div>
           </CardHeader>
-          <CardContent><DetailSection title="操作信息" headingLevel={3}><DetailFields density="comfortable" items={[
+          <CardContent>
+            {data.outcome === "FAILURE" && <Alert variant="destructive" className="mb-4">
+              <AlertTitle>失败原因</AlertTitle>
+              <AlertDescription>{typeof data.details.reason === "string" && data.details.reason
+                ? data.details.reason : typeof data.details.error_code === "string"
+                  ? apiErrorMessage(data.details.error_code, null, data.http_status ?? 500) : "这条历史记录未保存具体原因。"}</AlertDescription>
+            </Alert>}
+            <DetailSection title="操作信息" headingLevel={3}><DetailFields density="comfortable" items={[
             [data.is_aggregate ? "排序时间" : "发生时间", <AuditTime value={data.occurred_at} />],
             ["执行者", <AuditActor event={data} />],
             ["关联网站", <AuditSite event={data} deleted={metadata.data?.data.sites.some(site => site.site_id === data.site_id && site.deleted) ?? false} />],
-            ["操作对象", auditSubjectLabel(data.subject_type)],
+            ["操作对象", data.subject_type === "alipay_account" && data.subject_id
+              ? <Link global to={"/settings/accounts/" + encodeURIComponent(data.subject_id)} className="list-primary-link">查看收款账号</Link>
+              : auditSubjectLabel(data.subject_type)],
           ]} /></DetailSection></CardContent>
         </Card>
         <AuditAggregation event={data} />
