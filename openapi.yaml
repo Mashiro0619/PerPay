@@ -5203,6 +5203,9 @@ paths:
                   $ref: "#/components/schemas/ResourceId"
                 type:
                   $ref: "#/components/schemas/AdminWorkItemTypeFilter"
+                resource_id:
+                  allOf: [{ $ref: "#/components/schemas/ResourceId" }]
+                  description: 精确指定一条提醒，type 必须为具体提醒类型。
                 q:
                   type: string
                   maxLength: 100
@@ -8121,6 +8124,9 @@ components:
         api_client_id: { type: string, description: "Captured site filter; part of operation idempotency." }
         operation_id: { $ref: '#/components/schemas/ResourceId' }
         type: { $ref: '#/components/schemas/AdminWorkItemTypeFilter' }
+        resource_id:
+          allOf: [{ $ref: '#/components/schemas/ResourceId' }]
+          description: 精确指定一条提醒。使用时 type 必须为具体提醒类型，重试保留相同编号。
         q:
           type: string
           maxLength: 100
@@ -8139,6 +8145,7 @@ components:
             operation_id: { $ref: '#/components/schemas/ResourceId' }
             type: { $ref: '#/components/schemas/AdminWorkItemTypeFilter' }
             ignored_count: { type: integer, minimum: 0 }
+            resource_id: { $ref: '#/components/schemas/ResourceId' }
             q: { type: string, maxLength: 100, description: Normalized nonempty keyword recorded for this operation. }
     RestoreWorkItemEnvelope:
       type: object
@@ -10192,7 +10199,9 @@ components:
           description: >-
             Optional administrator note. Omitted, null, empty and whitespace-only values
             are stored as null and share the same idempotent request. Nonempty notes
-            must be trimmed and contain no Unicode control characters.
+            must be trimmed and contain no Unicode control characters. Reconfirming a
+            disputed order requires a nonempty review reason; refunded orders cannot
+            be reconfirmed. Each new confirmation retains earlier matches and reversals.
         order_id: { $ref: '#/components/schemas/ResourceId' }
         ledger_entry_id: { $ref: '#/components/schemas/ResourceId' }
     LedgerConflictType:

@@ -39,8 +39,10 @@ export const ignoreAllWorkItemsSchema = z
     api_client_id: siteClientIdSchema.optional(),
     type: z.enum(ADMIN_WORK_ITEM_TYPES),
     q: z.string().transform(normalizeKeyword).optional(),
+    resource_id: adminOperationIdSchema.optional(),
   })
-  .strict();
+  .strict()
+  .refine(input => !input.resource_id || input.type !== "ALL", { message: "忽略单条提醒时请选择具体类型", path: ["type"] });
 export const restoreWorkItemSchema = z
   .object({ operation_id: adminOperationIdSchema })
   .strict();
@@ -384,6 +386,7 @@ export interface IgnoreAllResult {
   readonly type: AdminWorkItemType;
   readonly ignored_count: number;
   readonly q?: string;
+  readonly resource_id?: string;
 }
 export function ignoreAllAdminWorkItems(
   database: AppDatabase,
@@ -396,6 +399,7 @@ export function ignoreAllAdminWorkItems(
     type: parsed.type,
     ...(parsed.api_client_id ? { api_client_id: parsed.api_client_id } : {}),
     ...(q ? { q } : {}),
+    ...(parsed.resource_id ? { resource_id: parsed.resource_id } : {}),
   });
   return database.write((connection) => {
     if (context.expectedClientId !== undefined && parsed.api_client_id !== context.expectedClientId) {
@@ -416,9 +420,10 @@ export function ignoreAllAdminWorkItems(
           "SELECT kind, item_id FROM work_items WHERE ignored = 0 AND actionable = 1 AND (? = 'ALL' OR kind = ?) " +
           (search.where ? "AND " + search.where : "") +
           (parsed.api_client_id ? " AND order_id IN (SELECT order_id FROM payment_orders WHERE api_client_id = ?)" : "") +
+          (parsed.resource_id ? " AND item_id = ?" : "") +
           " ORDER BY kind, item_id",
       )
-      .all(parsed.type, parsed.type, ...search.parameters, ...(parsed.api_client_id ? [parsed.api_client_id] : [])) as Array<{
+      .all(parsed.type, parsed.type, ...search.parameters, ...(parsed.api_client_id ? [parsed.api_client_id] : []), ...(parsed.resource_id ? [parsed.resource_id] : [])) as Array<{
       kind: AdminWorkItemKind;
       item_id: string;
     }>;
@@ -429,6 +434,7 @@ export function ignoreAllAdminWorkItems(
       ignored_count: members.length,
       ...(parsed.api_client_id ? { api_client_id: parsed.api_client_id } : {}),
       ...(q ? { q } : {}),
+      ...(parsed.resource_id ? { resource_id: parsed.resource_id } : {}),
     };
     recordAdminOperation(connection, {
       operationId: parsed.operation_id,

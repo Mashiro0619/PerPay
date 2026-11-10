@@ -12,6 +12,7 @@ import { eventExplanation, isHistoricalException } from "@/lib/detail-summary";
 import { dateTime } from "@/lib/format";
 import { label } from "@/lib/labels";
 import { StatusBadge, OrderStatusBadge, paymentBasisDescription } from "@/components/business-status";
+import { DisputedOrderActions } from "@/components/detail/disputed-order-actions";
 import { ListDateTime, ListMoney } from "@/components/list-primitives";
 import { CopyValue } from "@/components/copy-value";
 import { QueryView } from "@/components/request-state";
@@ -68,7 +69,7 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
     {active.map(match => <MatchCard key={match.payment_match_id} match={match} embedded />)}
     {!active.length && <DetailSection title="收款关联记录">
       <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2" data-order-association-prompt>
-        <p className="text-sm text-muted-foreground">尚未关联收款。</p>
+        <p className="text-sm text-muted-foreground">{order.payment.status === "DISPUTED" ? "原收款关联已撤销，请继续核对付款凭证。" : "尚未关联收款。"}</p>
         {order.payment.status === "UNPAID" && <AssociateIncomeAction orderId={order.order_id} orderLabel={order.product_name} />}
       </div>
     </DetailSection>}
@@ -90,6 +91,7 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
     </div>
     <DetailSections label="订单详情内容" sections={[
       { id: "overview", label: "概况", content: <>
+        {order.payment.status === "DISPUTED" && <DisputedOrderActions order={order} />}
         <DetailSection title="订单信息">
           <DetailFields wide={["商品名称", "订单备注"]} items={[
             ["商户订单号", <CopyValue value={order.merchant_order_no} label="复制商户订单号" />],

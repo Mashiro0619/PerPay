@@ -1,6 +1,7 @@
 import { assertSiteOrder, assertSiteLedger } from "../sites/admin-scope.ts";
 import { readManualCandidates, type ManualCandidateQuery, type ManualCandidatePage } from "./manual-candidates.ts";
 import { hasSettledPaymentIdentity, settledPaymentIdentitySql } from "./payment-identity.ts";
+import { manualOrderEligibilitySql } from "./manual-eligibility.ts";
 import { normalizeListQuery, MATCH_SORT_FIELDS, EXCEPTION_SORT_FIELDS, type MatchSort, type ExceptionSort, type ListQuery, type ListPosition } from "../shared/list-query.ts";
 import { listKeyset, listSearch } from "../database/list-query.ts";
 import { randomUUID } from "node:crypto";
@@ -629,8 +630,8 @@ export class ReconciliationStore {
         entry.direction !== "CREDIT" ||
         entry.currency !== order.currency ||
         !["UNALLOCATED", "CANDIDATE", "CONFLICT"].includes(entry.state) ||
-        order.payment_status !== "UNPAID" ||
-        order.payment_basis !== "NONE" ||
+        !connection.prepare(`SELECT 1 FROM payment_orders AS orders WHERE orders.order_id = ? AND ${manualOrderEligibilitySql("orders")}`).get(order.order_id) ||
+        (order.payment_status === "DISPUTED" && reason === null) ||
         hasSettledPaymentIdentity(connection, entry.ledger_entry_id) ||
         !orderUsesProviderAccount(connection, order.order_id, entry.provider_account_key)
       ) {
@@ -731,6 +732,9 @@ export class ReconciliationStore {
         paymentMatchId,
         now,
       );
+      if (order.payment_status === "DISPUTED") {
+        resolveOrderDisputes(connection, operation, paymentMatchId, now);
+      }
       return decisionResult(connection, operation, paymentMatchId, false);
     });
   }
@@ -1929,6 +1933,34 @@ function readExceptionClassificationHistory(
       input.orderId,
       input.candidateId,
     ) as unknown as ExceptionRow[];
+}
+
+function resolveOrderDisputes(
+  connection: DatabaseSync,
+  operation: FinancialOperation,
+  paymentMatchId: string,
+  now: number,
+): void {
+  const outstanding = connection.prepare(`SELECT DISTINCT ledger_entry_id FROM financial_exceptions
+    WHERE order_id = ? AND status = 'OPEN' AND exception_type = 'RECONCILIATION_CONFLICT'
+      AND json_extract(details_json, '$.reason') = 'settlement_reversed'`)
+    .all(operation.orderId) as { ledger_entry_id: string | null }[];
+  const resolution = JSON.stringify({ resolution: "dispute_reconfirmed", payment_match_id: paymentMatchId });
+  connection.prepare(`UPDATE financial_exceptions
+    SET status = 'RESOLVED', resolution_operation_id = ?, resolution_json = ?, resolution_fingerprint = ?, resolved_at = ?
+    WHERE order_id = ? AND status = 'OPEN' AND exception_type = 'RECONCILIATION_CONFLICT'
+      AND json_extract(details_json, '$.reason') = 'settlement_reversed'`)
+    .run(operation.financialOperationId, resolution, financialExceptionResolutionFingerprint(resolution), now, operation.orderId);
+  for (const previous of outstanding) {
+    if (!previous.ledger_entry_id || previous.ledger_entry_id === operation.ledgerEntryId || hasSettledPaymentIdentity(connection, previous.ledger_entry_id)) continue;
+    const entry = requireLedgerEntry(connection, previous.ledger_entry_id);
+    ensureException(connection, {
+      providerAccountKey: entry.provider_account_key, exceptionType: "UNMATCHED_CREDIT",
+      ledgerEntryId: entry.ledger_entry_id, orderId: null, candidateId: null,
+      contextKey: operation.financialOperationId,
+      details: { reason: "disputed_order_reconfirmed_with_another_payment" }, now,
+    });
+  }
 }
 
 function resolveEntryExceptions(

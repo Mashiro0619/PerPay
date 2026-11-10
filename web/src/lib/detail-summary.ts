@@ -132,6 +132,7 @@ export function exceptionResolution(
   const labels: Record<string, string> = {
     auto_settled: "已由系统建立收款关联。",
     manually_settled: "已由管理员建立收款关联。",
+    dispute_reconfirmed: "已重新核对付款凭证并确认本订单收款。",
     superseded_by_settlement: "该流水已关联到另一订单，相关异常已结束。",
   };
   if (resolution && labels[resolution]) return labels[resolution];

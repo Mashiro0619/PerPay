@@ -568,7 +568,7 @@ export function ExceptionCard({
   const canAssociate =
     !retired &&
     exception.status === "OPEN" &&
-    ((!exception.order_id && !knownOrder) || payment === "UNPAID") &&
+    ((!exception.order_id && !knownOrder) || payment === "UNPAID" || (payment === "DISPUTED" && !(order && "refund_mark" in order && order.refund_mark.marked))) &&
     (!exception.ledger_entry_id ||
       (entry?.direction === "CREDIT" &&
         ["UNALLOCATED", "CANDIDATE", "CONFLICT"].includes(entry.state)));
@@ -592,6 +592,7 @@ export function ExceptionCard({
         <CardAction className="flex max-w-full flex-wrap items-center justify-end gap-2">
           {!overlay && <StatusBadge value={exception.reminder_ignored ? "NONE" : exception.status} label={exceptionStateLabel(exception)} />}
           {canAssociate && <AssociateIncomeAction
+            actionLabel={payment === "DISPUTED" ? "重新核对并确认收款" : "人工关联收款"}
             orderId={order?.order_id ?? exception.order_id ?? ""}
             ledgerId={exception.ledger_entry_id ?? ""}
             orderLabel={order?.product_name}
@@ -711,6 +712,7 @@ export function ExceptionCard({
       {canAssociate && (
         <CardFooter>
           <AssociateIncomeAction
+            actionLabel={payment === "DISPUTED" ? "重新核对并确认收款" : "人工关联收款"}
             orderId={order?.order_id ?? exception.order_id ?? ""}
             ledgerId={exception.ledger_entry_id ?? ""}
             orderLabel={order?.product_name}

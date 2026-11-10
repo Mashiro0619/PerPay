@@ -322,6 +322,7 @@ export type IgnoreAllWorkItemsRequest = {
     api_client_id?: string;
     operation_id: ResourceId;
     type: AdminWorkItemTypeFilter;
+    resource_id?: ResourceId;
     q?: string;
 };
 export type IgnoreAllWorkItemsEnvelope = {
@@ -330,6 +331,7 @@ export type IgnoreAllWorkItemsEnvelope = {
         operation_id: ResourceId;
         type: AdminWorkItemTypeFilter;
         ignored_count: number;
+        resource_id?: ResourceId;
         q?: string;
     };
 };
@@ -4349,6 +4351,7 @@ export type SiteIgnoreAllAdministratorWorkItemsData = {
     body: {
         operation_id: ResourceId;
         type: AdminWorkItemTypeFilter;
+        resource_id?: ResourceId;
         q?: string;
     };
     headers?: {

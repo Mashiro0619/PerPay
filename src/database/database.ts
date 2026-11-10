@@ -1,6 +1,7 @@
 import { HealthProbeCache } from "../infrastructure/health-probe-cache.ts";
 import { readAdminAccess } from "../settings/admin-access.ts";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { reconfirmedOrderResolutionSql } from "../reconciliation/dispute-schema.ts";
 import {
   closeSync,
   createReadStream,
@@ -2043,7 +2044,15 @@ function countReconciliationDomainViolations(connection: DatabaseSync): number {
                     AND replacement.status = 'SETTLED'
                )
              ) OR
-             orders.payment_status != 'DISPUTED'
+             (orders.payment_status != 'DISPUTED' AND NOT (
+               orders.payment_status = 'CONFIRMED' AND EXISTS (
+                 SELECT 1 FROM payment_matches AS replacement
+                   JOIN financial_operations AS operation ON operation.financial_operation_id = replacement.created_by_operation_id
+                  WHERE replacement.order_id = payment_match.order_id AND replacement.status = 'SETTLED'
+                    AND operation.operation_type = 'MANUAL_SETTLEMENT' AND operation.reason IS NOT NULL
+                    AND operation.created_at >= resolution.created_at
+               )
+             ))
            )
          )`,
     "reconciliation match",
@@ -2414,7 +2423,8 @@ function countReconciliationDomainViolations(connection: DatabaseSync): number {
                     resolution.operation_type NOT IN (
                       'AUTO_SETTLEMENT', 'MANUAL_SETTLEMENT', 'RECORD_REFUND'
                     ) OR
-                    (exception.ledger_entry_id IS NOT NULL AND resolution.ledger_entry_id IS NOT exception.ledger_entry_id) OR
+                    (exception.ledger_entry_id IS NOT NULL AND resolution.ledger_entry_id IS NOT exception.ledger_entry_id
+                      AND NOT ${reconfirmedOrderResolutionSql("exception", "resolution")}) OR
                     (
                       exception.order_id IS NOT NULL AND
                       resolution.order_id IS NOT exception.order_id AND

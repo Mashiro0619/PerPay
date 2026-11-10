@@ -2,6 +2,7 @@ import type { DatabaseSync, SQLInputValue } from "node:sqlite";
 import { listSearch } from "../database/list-query.ts";
 import { siteClientIdSchema } from "../sites/model.ts";
 import { settledPaymentIdentitySql } from "./payment-identity.ts";
+import { manualOrderEligibilitySql } from "./manual-eligibility.ts";
 import {
   ListQueryError,
   normalizeKeyword,
@@ -94,10 +95,7 @@ export function readManualCandidates(
   }
   const id = orders ? "o.order_id" : "l.ledger_entry_id";
   const time = orders ? "o.created_at" : "l.occurred_at";
-  const predicates = [
-    "o.payment_status = 'UNPAID'",
-    "o.payment_basis = 'NONE'",
-  ];
+  const predicates = [manualOrderEligibilitySql("o")];
   const parameters: SQLInputValue[] = [];
   let from = "payment_orders o";
   if (paired) {

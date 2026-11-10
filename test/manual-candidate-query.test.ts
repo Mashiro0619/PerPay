@@ -123,7 +123,7 @@ function withProjection(operation: (db: DatabaseSync) => void): void {
     db.exec(`
       CREATE TABLE payment_orders (order_id TEXT PRIMARY KEY, api_client_id TEXT, collection_profile_id TEXT,
         currency TEXT, payment_status TEXT, payment_basis TEXT, payable_amount_cents INTEGER,
-        created_at INTEGER, eligible_from INTEGER, expires_at INTEGER, merchant_order_no TEXT, product_name TEXT);
+        created_at INTEGER, eligible_from INTEGER, expires_at INTEGER, merchant_order_no TEXT, product_name TEXT, refund_status TEXT DEFAULT 'NONE');
       CREATE TABLE amount_slots (order_id TEXT NOT NULL UNIQUE, occupied_from INTEGER NOT NULL, released_at INTEGER);
       CREATE INDEX amount_slots_order_interval_idx ON amount_slots(order_id, occupied_from, released_at);
       CREATE TABLE ledger_entries (ledger_entry_id TEXT PRIMARY KEY, direction TEXT, currency TEXT, state TEXT,
@@ -132,6 +132,8 @@ function withProjection(operation: (db: DatabaseSync) => void): void {
       CREATE TABLE collection_profile_provider_accounts (profile_id TEXT, provider_account_key TEXT);
       INSERT INTO collection_profile_provider_accounts VALUES ('profile', 'provider');
       CREATE TABLE payment_matches (ledger_entry_id TEXT, order_id TEXT, status TEXT);
+      CREATE TABLE admin_refund_marks (order_id TEXT, version INTEGER);
+      CREATE TABLE admin_refund_mark_events (order_id TEXT, version INTEGER, marked INTEGER);
       CREATE TABLE match_candidates (ledger_entry_id TEXT, order_id TEXT);
       CREATE TABLE financial_exceptions (ledger_entry_id TEXT, order_id TEXT);
       CREATE TABLE ledger_conflicts (existing_ledger_entry_id TEXT, status TEXT);
@@ -141,7 +143,7 @@ function withProjection(operation: (db: DatabaseSync) => void): void {
 }
 
 function order(db: DatabaseSync, value: number, site = "site_a"): void {
-  db.prepare("INSERT INTO payment_orders VALUES (?, ?, 'profile', 'CNY', 'UNPAID', 'NONE', 10001, 900, 1000, 2000, ?, 'candidate')").run(id(value), site, id(value));
+  db.prepare("INSERT INTO payment_orders VALUES (?, ?, 'profile', 'CNY', 'UNPAID', 'NONE', 10001, 900, 1000, 2000, ?, 'candidate', 'NONE')").run(id(value), site, id(value));
 }
 function slot(db: DatabaseSync, value: number, occupied: number, released: number | null): void {
   db.prepare("INSERT INTO amount_slots VALUES (?, ?, ?)").run(id(value), occupied, released);

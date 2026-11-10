@@ -8,6 +8,7 @@ import { ACTIVITY_SCHEMA_SQL } from "../audit/activity-schema.ts";
 import { createHash } from "node:crypto";
 import { EPAY_WEBHOOK_SCHEMA_SQL } from "../notifications/epay-schema.ts";
 import { INGEST_RETENTION_SCHEMA_SQL } from "../ledger/retention-schema.ts";
+import { DISPUTE_RECONFIRMATION_SCHEMA_SQL } from "../reconciliation/dispute-schema.ts";
 
 export interface Migration {
   readonly version: number;
@@ -5037,4 +5038,5 @@ export const migrations: readonly Migration[] = [
   { version: 41, name: "site_epay_credentials_and_orders", sql: EPAY_SCHEMA_SQL },
   { version: 42, name: "epay_notification_protocols", sql: EPAY_WEBHOOK_SCHEMA_SQL },
   { version: 43, name: "bounded_ingest_history", sql: INGEST_RETENTION_SCHEMA_SQL },
+  { version: 44, name: "review_and_reconfirm_disputed_orders", sql: DISPUTE_RECONFIRMATION_SCHEMA_SQL },
 ] as const;

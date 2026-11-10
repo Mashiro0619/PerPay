@@ -16,28 +16,31 @@ export function AssociateIncomeAction({
   ledgerId = "",
   orderLabel,
   ledgerLabel,
+  actionLabel = "人工关联收款",
 }: {
   orderId?: string;
   ledgerId?: string;
   orderLabel?: string;
   ledgerLabel?: string;
+  actionLabel?: string;
 }) {
   const { clientId } = useWorkspace();
   const [open, setOpen] = useState(false);
   const [saved, setSaved] = useState(false);
   const setMessage = useSuccessToast();
   const finalFocus = useRef<HTMLElement | null>(null);
-  if (clientId && !orderId) return <Link global to="/reconciliation">请从本站订单发起关联，或到「对账（全部网站）」处理。</Link>;
+  if (clientId && !orderId) return <Link global to={ledgerId ? "/reconciliation/transactions/" + encodeURIComponent(ledgerId) : "/reconciliation"}>到全部网站处理{ledgerId ? "这笔流水" : "收款关联"}</Link>;
   return (
     <>
       <Button
+        className="h-auto min-h-8 min-w-0 max-w-full whitespace-normal py-1.5"
         disabled={saved}
         onClick={(event) => {
           finalFocus.current = event.currentTarget;
           setOpen(true);
         }}
       >
-        人工关联收款
+        {actionLabel}
       </Button>
       {open && (
         <FinancialDialog

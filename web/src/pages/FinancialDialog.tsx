@@ -159,9 +159,12 @@ export function FinancialDialog({
   const needsRefresh =
     save.conflict || !!save.recovery || recheckedConflict.current;
   const directionValid = preview.data?.ledger.direction === "CREDIT";
+  const disputed = preview.data?.order.payment.status === "DISPUTED";
+  const refunded = !!preview.data?.order.refund_mark.marked ||
+    (!!preview.data && preview.data.order.refund.status !== "NONE");
   const stateValid =
-    preview.data?.order.payment.status === "UNPAID" &&
-    preview.data.order.payment.basis === "NONE" &&
+    !!preview.data && !refunded &&
+    ((preview.data.order.payment.status === "UNPAID" && preview.data.order.payment.basis === "NONE") || disputed) &&
     ["UNALLOCATED", "CANDIDATE", "CONFLICT"].includes(
       preview.data.ledger.state,
     );
@@ -200,7 +203,7 @@ export function FinancialDialog({
       readEvidence(orderId, ledgerId);
       return;
     }
-    const error = operationReasonError(reason, { required: false });
+    const error = operationReasonError(reason, { required: disputed });
     setValidation(error);
     if (error) {
       reasonField.current?.focus();
@@ -322,6 +325,10 @@ export function FinancialDialog({
                 ]} />
                 <OrderFacts order={preview.data.order} linked={false} />
                 <LedgerFacts entry={preview.data.ledger} />
+                {disputed && !refunded && <Alert>
+                  <AlertCircle />
+                  <AlertDescription>核对付款人、交易凭证与金额后填写理由。确认后将重新确认本订单收款，并发送新的收款通知。</AlertDescription>
+                </Alert>}
                 {!directionValid && (
                   <Alert variant="destructive">
                     <AlertCircle />
@@ -334,7 +341,7 @@ export function FinancialDialog({
                   <Alert>
                     <AlertCircle />
                     <AlertDescription>
-                      订单或流水状态已变化，请关闭后刷新。
+                      {refunded ? "本订单已有退款记录。请先核实并处理退款记录，再重新确认收款。" : "订单或流水状态已变化，请关闭后刷新。"}
                     </AlertDescription>
                   </Alert>
                 )}
@@ -348,7 +355,7 @@ export function FinancialDialog({
                   </Alert>
                 )}
                 <Field data-invalid={!!validation}>
-                  <FieldLabel htmlFor="financial-reason">操作理由（可选）</FieldLabel>
+                  <FieldLabel htmlFor="financial-reason">{disputed ? "核对理由" : "操作理由（可选）"}</FieldLabel>
                   <Textarea
                     ref={reasonField}
                     id="financial-reason"
@@ -452,7 +459,7 @@ export function FinancialDialog({
                   : save.recovery
                     ? "重试上一次操作"
                     : preview.data
-                      ? "确认关联收款"
+                      ? disputed ? "重新确认收款" : "确认关联收款"
                       : "查看关联信息"}
               </Button>
             )}
