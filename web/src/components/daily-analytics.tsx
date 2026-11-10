@@ -1,19 +1,15 @@
-import { useId, useState } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
 import type { SystemAnalytics } from "@/api/client";
 import { count } from "@/lib/format";
 import { buildDailyReport, dailyDateLabel, dailyWeekday, type DailyDay } from "@/lib/daily-analytics";
 import { useListSize } from "@/hooks/use-list-size";
 import { ListIdentity, ListMoney, ListSummary, ListSummaryField } from "@/components/list-primitives";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Empty, EmptyHeader, EmptyTitle } from "@/components/admin-empty";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Item, ItemGroup } from "@/components/ui/item";
-import { Pagination, PaginationContent, PaginationItem } from "@/components/ui/pagination";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
-const PAGE_SIZE = 10;
+const LOADING_ROWS = 10;
 
 type DailyAnalyticsProps = {
   analytics: SystemAnalytics | undefined;
@@ -21,18 +17,6 @@ type DailyAnalyticsProps = {
   pending: boolean;
   scopeKey?: string;
 };
-
-export function DailyAnalytics(props: DailyAnalyticsProps) {
-  const available = !props.pending ? props.analytics : undefined;
-  const scopeKey = props.scopeKey ?? "all";
-  const [period, setPeriod] = useState({ scopeKey, range: props.range, from: available?.from, to: available?.to });
-  // Keep the last valid dates through loading/errors. Scope, range or Beijing
-  // midnight changes reset pagination; ordinary refreshes retain the current page.
-  if (period.scopeKey !== scopeKey || period.range !== props.range || (available && (period.from !== available.from || period.to !== available.to))) {
-    setPeriod({ scopeKey, range: props.range, from: available?.from, to: available?.to });
-  }
-  return <DailyReport key={JSON.stringify(period)} {...props} />;
-}
 
 function DailyDate({ day, today, includeYear }: { day: DailyDay; today: string; includeYear: boolean }) {
   return (
@@ -57,15 +41,11 @@ function DailyAmountBar({ day, maximum }: { day: DailyDay; maximum: number }) {
   );
 }
 
-function DailyReport({ analytics, pending }: DailyAnalyticsProps) {
+export function DailyAnalytics({ analytics, pending }: DailyAnalyticsProps) {
   const { ref, isSummary } = useListSize();
-  const daysId = useId();
   const report = analytics && !pending ? buildDailyReport(analytics) : null;
-  const [page, setPage] = useState(1);
-  const totalDays = report?.days.length ?? 0;
-  const pageCount = Math.max(1, Math.ceil(totalDays / PAGE_SIZE));
-  const currentPage = Math.min(page, pageCount);
-  const days = report?.days.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE) ?? [];
+  const days = report?.days ?? [];
+  const totalDays = days.length;
   const hasDays = totalDays > 0;
   const includeYear = !!report && report.days[0]?.date.slice(0, 4) !== report.days.at(-1)?.date.slice(0, 4);
 
@@ -98,10 +78,10 @@ function DailyReport({ analytics, pending }: DailyAnalyticsProps) {
         </dl>
       ) : null}
 
-      <div id={daysId}>
+      <div>
         {pending ? (
           <div className="daily-report-loading" aria-hidden="true">
-            {Array.from({ length: PAGE_SIZE }, (_, index) => <Skeleton key={index} className="h-9 w-full" />)}
+            {Array.from({ length: LOADING_ROWS }, (_, index) => <Skeleton key={index} className="h-9 w-full" />)}
           </div>
         ) : hasDays && report ? (
           isSummary ? (
@@ -143,24 +123,8 @@ function DailyReport({ analytics, pending }: DailyAnalyticsProps) {
 
       <div className="daily-report-footer">
         <p role="status" aria-live="polite" aria-atomic="true" className="daily-report-status">
-          {pending ? "正在读取每日数据…" : !analytics ? "等待统计数据" : pageCount > 1 ? `第 ${currentPage}/${pageCount} 页 · 共 ${totalDays} 天` : `共 ${totalDays} 天`}
+          {pending ? "正在读取每日数据…" : !analytics ? "等待统计数据" : `共 ${totalDays} 天`}
         </p>
-        {!pending && pageCount > 1 && (
-          <Pagination className="m-0 w-auto justify-end" aria-label="每日数据分页" aria-controls={daysId}>
-            <PaginationContent>
-              <PaginationItem>
-                <Button size="sm" variant="outline" type="button" disabled={currentPage <= 1} onClick={() => setPage(currentPage - 1)}>
-                  <ChevronLeft data-icon="inline-start" />上一页
-                </Button>
-              </PaginationItem>
-              <PaginationItem>
-                <Button size="sm" variant="outline" type="button" disabled={currentPage >= pageCount} onClick={() => setPage(currentPage + 1)}>
-                  下一页<ChevronRight data-icon="inline-end" />
-                </Button>
-              </PaginationItem>
-            </PaginationContent>
-          </Pagination>
-        )}
       </div>
     </div>
   );
