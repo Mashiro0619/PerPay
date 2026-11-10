@@ -14,7 +14,7 @@ import { SecretViewDialog } from "@/components/secret-view-dialog";
 import { ErrorNotice, Loading } from "@/components/request-state";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Switch } from "@/components/ui/switch";
 import { Spinner } from "@/components/ui/spinner";
@@ -297,13 +297,13 @@ function IntegrationContent({ site, siteDirty = false, disabled = false, showCli
           {credential(protocol === "epay_v1" ? "epay_v1" : "epay_merchant")}
           {protocol === "epay_v2" && <>{credential("epay_platform", true)}{credential("epay_platform")}</>}
         </FieldGroup>}
+      <div className="flex min-w-0 flex-wrap gap-2">
+        <a data-external-link href={documentation} target="_blank" rel="noopener noreferrer"
+          className={buttonVariants({ variant: "outline" })}><ExternalLink data-icon="inline-start" />接入文档</a>
+        <Link to={sitePath + "/orders"} className={buttonVariants({ variant: "outline" })}>查看网站订单</Link>
+        <Link to={sitePath + "/notifications"} className={buttonVariants({ variant: "outline" })}>查看通知记录</Link>
+      </div>
     </CardContent>
-    <CardFooter className="flex flex-wrap gap-2">
-      <a data-external-link href={documentation} target="_blank" rel="noopener noreferrer"
-        className={buttonVariants({ variant: "outline" })}><ExternalLink data-icon="inline-start" />接入文档</a>
-      <Link to={sitePath + "/orders"} className={buttonVariants({ variant: "outline" })}>查看网站订单</Link>
-      <Link to={sitePath + "/notifications"} className={buttonVariants({ variant: "outline" })}>查看通知记录</Link>
-    </CardFooter>
     <SecretViewDialog open={viewing !== null} title={viewing?.publicOnly ? "平台公钥" : viewing ? secretLabels[viewing.purpose] : "查看密钥"}
       pending={pendingRead !== null} error={readError} onClose={hideSecret} finalFocus={() => viewTrigger.current}
       onRetry={() => { if (viewing) void read(viewing.purpose, viewing.publicOnly); }}
