@@ -8,7 +8,7 @@ import { Link } from "@/navigation";
 import { useOverlayContext } from "@/lib/overlay-context";
 import { OverlayActions } from "@/components/overlay-actions";
 import { dateTime, money, safeCheckoutUrl } from "@/lib/format";
-import { StatusBadge } from "@/components/business-status";
+import { OrderStatusBadge } from "@/components/business-status";
 import { DetailFields } from "@/components/detail/DetailPrimitives";
 import { RecordTools } from "@/components/detail/RecordTools";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
@@ -150,10 +150,7 @@ export function TestPaymentResult({
       : Clock3;
   const badges = verified && !confirmed && (
     <div className="flex flex-wrap items-center gap-2">
-      <StatusBadge value={order.payment.status} />
-      {!confirmed && order.checkout.status !== "OPEN" && (
-        <StatusBadge value={order.checkout.status} />
-      )}
+      <OrderStatusBadge payment={order.payment.status} checkout={order.checkout.status} />
     </div>
   );
   const fields: Array<[string, ReactNode]> = [

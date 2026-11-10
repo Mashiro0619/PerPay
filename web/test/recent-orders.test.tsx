@@ -46,6 +46,16 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe("overview order progress", () => {
+  it.each([390, 1280])("shows ended unpaid orders clearly at %s px", width => {
+    mobileMedia(width);
+    mount([
+      { ...recent, order_id: "expired", product_name: "过期订单", payment: { ...recent.payment, status: "UNPAID" }, checkout: { ...recent.checkout, status: "EXPIRED" } },
+      { ...recent, order_id: "closed", product_name: "关闭订单", payment: { ...recent.payment, status: "UNPAID" }, checkout: { ...recent.checkout, status: "CLOSED" } },
+    ]);
+    expect(screen.getByText("已过期 · 未付款")).toBeVisible();
+    expect(screen.getByText("已关闭 · 未付款")).toBeVisible();
+    expect(screen.queryByText("待付款", { exact: true })).not.toBeInTheDocument();
+  });
   it("shows order identity, one matching amount, payment and independent notification status without reading details", () => {
     const fetch = vi.fn();
     vi.stubGlobal("fetch", fetch);
@@ -192,7 +202,7 @@ describe("overview order progress", () => {
     if (receipt === "omitted") Reflect.deleteProperty(withoutReceipt, "received_amount_cents");
     mount([withoutReceipt]);
     expect(screen.getByText("通知状态未知")).toBeVisible();
-    expect(screen.getByText("待付款")).toBeVisible();
+    expect(screen.getByText("已过期 · 未付款")).toBeVisible();
     expect(screen.queryByText(/收银台/)).not.toBeInTheDocument();
     expect(screen.getByLabelText("应付金额 ¥1.01")).toBeVisible();
     expect(screen.getAllByLabelText(/^(应付|实收)金额 /)).toHaveLength(1);

@@ -4,7 +4,7 @@ import { AlipayAccountIdentity } from "@/components/alipay-account-identity";
 import type { AdminOrderSummary } from "@/api/client";
 import { Link } from "@/navigation";
 import type { ListQueryControl } from "@/lib/list-query";
-import { StatusBadge } from "@/components/business-status";
+import { OrderStatusBadge, StatusBadge } from "@/components/business-status";
 import {
   BusinessTable,
   type BusinessColumn,
@@ -28,10 +28,9 @@ function OrderStatus({ order, includeCheckout = true }: { order: AdminOrderSumma
   return (
     <div className="business-cell-stack flex flex-col items-start gap-1.5">
       <div className="business-cell-badges flex flex-wrap gap-1">
-        <StatusBadge value={order.payment.status} />
-        {order.refund_mark.marked && <StatusBadge value="ADMIN_REFUND_MARK" />}
+        <OrderStatusBadge payment={order.payment.status} checkout={order.checkout.status} refundMarked={order.refund_mark.marked} />
       </div>
-      {includeCheckout && order.payment.status !== "CONFIRMED" && <span className="text-xs text-muted-foreground">{checkoutNames[order.checkout.status]}</span>}
+      {includeCheckout && order.payment.status === "DISPUTED" && <span className="text-xs text-muted-foreground">{checkoutNames[order.checkout.status]}</span>}
     </div>
   );
 }
@@ -60,6 +59,7 @@ function OrderSummary({ order, scoped }: { order: AdminOrderSummary; scoped: boo
             </Link>
           </ListIdentity>
           <dl className="order-summary-metadata">
+            <div><dt>商户订单号</dt><dd className="list-code" title={order.merchant_order_no}>{order.merchant_order_no}</dd></div>
             {!scoped && <div>
               <dt className="sr-only">网站</dt>
               <dd><SiteIdentity clientId={order.api_client_id} name={order.site_name} /></dd>
@@ -123,12 +123,9 @@ export function DataTable({
       summaryDefault: true,
       cell: (order, context) => (
         <ListIdentity
+          reference={!context.isColumnVisible("merchant_order_no") && <span className="list-code" title={order.merchant_order_no}><span className="sr-only">商户订单号：</span>{order.merchant_order_no}</span>}
           meta={
             <ListMeta>
-              <span className="inline-flex min-w-0 flex-wrap items-baseline gap-x-1">
-                <span>商户订单号（业务网站）：</span>
-                <span className="list-code" title={order.merchant_order_no}>{order.merchant_order_no}</span>
-              </span>
               {!clientId && (
                 <SiteIdentity clientId={order.api_client_id} name={order.site_name} />
               )}

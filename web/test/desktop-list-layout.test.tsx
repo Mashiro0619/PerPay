@@ -459,11 +459,11 @@ describe("desktop business list composition", () => {
     expect(JSON.parse(localStorage.getItem("perpay.table-columns.v2.administrator-ledger")!)).toEqual({ order: false });
   });
 
-  it("keeps main identities compact while retaining full merchant numbers in embedded overview rows", async () => {
+  it("keeps merchant order numbers visible in compact and embedded order rows", async () => {
     pageResponse([longOrder]);
     const view = mount("/orders", <Orders />);
     const table = await screen.findByRole("table");
-    expect(table.querySelector('tbody [data-column-id="identity"]')).not.toHaveTextContent(longOrder.merchant_order_no);
+    expect(table.querySelector('tbody [data-column-id="identity"]')).toHaveTextContent(longOrder.merchant_order_no);
     expect(table).toHaveAttribute("data-density", "compact");
     view.unmount();
     render(

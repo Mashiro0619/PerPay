@@ -16,10 +16,12 @@ export function ListRowPresentation({ compact, children }: { compact: boolean; c
 /** Shared typography for tables, overview rows and record summaries. */
 export function ListIdentity({
   children,
+  reference,
   meta,
   description,
 }: {
   children: ReactNode;
+  reference?: ReactNode;
   meta?: ReactNode;
   description?: ReactNode;
 }) {
@@ -27,6 +29,7 @@ export function ListIdentity({
   return (
     <div className="list-identity">
       <ItemTitle className="list-identity-title">{children}</ItemTitle>
+      {reference && <div className="list-identity-meta">{reference}</div>}
       {!compact && meta && <div className="list-identity-meta">{meta}</div>}
       {!compact && description && <div className="list-identity-description">{description}</div>}
     </div>

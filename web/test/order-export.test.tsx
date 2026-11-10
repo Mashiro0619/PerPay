@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi } from "vitest";
 import { OrderExport } from "../src/components/order-export";
@@ -23,7 +23,9 @@ describe("order export", () => {
       />,
     );
     await userEvent.click(screen.getByRole("button", { name: "导出 CSV" }));
-    expect(await screen.findByText(/请先选择创建日期范围/)).toBeVisible();
+    expect(await screen.findByRole("dialog", { name: "导出订单" })).toBeVisible();
+    fireEvent.change(screen.getByLabelText("开始日期"), { target: { value: "" } });
+    await userEvent.click(screen.getByRole("button", { name: "下载 CSV" }));
     expect(fetch).not.toHaveBeenCalled();
   });
   it("sends applied filters with CSRF and downloads all results with a BOM", async () => {
@@ -46,6 +48,9 @@ describe("order export", () => {
       .mockImplementation(() => {});
     render(<OrderExport query={query} payment="CONFIRMED" checkout="OPEN" />);
     await userEvent.click(screen.getByRole("button", { name: "导出 CSV" }));
+    expect(screen.getByLabelText("开始日期")).toHaveValue(query.created_from);
+    expect(screen.getByLabelText("结束日期")).toHaveValue(query.created_to);
+    await userEvent.click(screen.getByRole("button", { name: "下载 CSV" }));
     await waitFor(() => expect(create).toHaveBeenCalled());
     const request = new Request(
       ...(fetch.mock.calls[0] as [RequestInfo, RequestInit]),
@@ -87,6 +92,7 @@ describe("order export", () => {
       <OrderExport query={query} payment={undefined} checkout={undefined} />,
     );
     await userEvent.click(screen.getByRole("button", { name: "导出 CSV" }));
+    await userEvent.click(screen.getByRole("button", { name: "下载 CSV" }));
     expect(await screen.findByText(/10,000/)).toBeVisible();
     expect(fetch).toHaveBeenCalledOnce();
   });
@@ -104,12 +110,11 @@ describe("order export", () => {
     await user.click(more);
     await user.click(await screen.findByRole("menuitem", { name: "导出 CSV" }));
     await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "下载 CSV" }));
     const request = fetch.mock.calls[0]![0] as Request;
     expect(request.signal.aborted).toBe(false);
     expect(create).not.toHaveBeenCalled();
-    await user.click(more);
-    expect(await screen.findByRole("menuitem", { name: /导出 CSV/ })).toHaveAttribute("aria-disabled", "true");
-    await user.keyboard("{Escape}");
+    expect(screen.getByRole("button", { name: /正在导出/ })).toBeDisabled();
     await act(async () => finish(new Response("csv", { headers: { "content-type": "text/csv;charset=utf-8" } })));
     await waitFor(() => expect(create).toHaveBeenCalledOnce());
     expect(click).toHaveBeenCalledOnce();
@@ -127,6 +132,7 @@ describe("order export", () => {
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "更多订单操作" }));
     await user.click(await screen.findByRole("menuitem", { name: "导出 CSV" }));
+    await user.click(screen.getByRole("button", { name: "下载 CSV" }));
     const request = fetch.mock.calls[0]![0] as Request;
     view.rerender(<OrderExport menu query={{ ...query, q: "新关键词" }} payment={undefined} checkout={undefined} />);
     expect(request.signal.aborted).toBe(true);

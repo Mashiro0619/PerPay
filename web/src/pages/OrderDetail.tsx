@@ -11,7 +11,7 @@ import { Link, useDetailBack } from "@/navigation";
 import { eventExplanation, isHistoricalException } from "@/lib/detail-summary";
 import { dateTime } from "@/lib/format";
 import { label } from "@/lib/labels";
-import { StatusBadge, paymentBasisDescription } from "@/components/business-status";
+import { StatusBadge, OrderStatusBadge, paymentBasisDescription } from "@/components/business-status";
 import { ListDateTime, ListMoney } from "@/components/list-primitives";
 import { CopyValue } from "@/components/copy-value";
 import { QueryView } from "@/components/request-state";
@@ -82,7 +82,7 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
   </>;
   return <>
     <div className="detail-record-summary flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2" role="group" aria-label="PerPay 收款状态">
-      <StatusBadge value={order.payment.status} />
+      <OrderStatusBadge payment={order.payment.status} checkout={order.checkout.status} refundMarked={order.refund_mark.marked} />
       <span className="inline-flex items-baseline gap-1 text-sm"><span className="text-muted-foreground">应付</span><ListMoney value={order.payable_amount_cents} /></span>
       <span className="inline-flex items-baseline gap-1 text-sm"><span className="text-muted-foreground">实收</span><ListMoney value={order.received_amount_cents} /></span>
       <ListDateTime value={order.created_at} inline />
@@ -107,7 +107,7 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
         <RefundMarkPanel key={order.order_id} order={order} includeOrderTools footerActions={
           <a className={buttonVariants({ variant: "outline", size: "sm" })}
             href={"/api/admin/v1" + (clientId ? "/sites/" + encodeURIComponent(clientId) : "") + "/orders/" + encodeURIComponent(order.order_id) + "/checkout"}
-            target="_blank" rel="noopener noreferrer" title="在新标签页打开收银台">打开收银台<ExternalLink data-icon="inline-end" /></a>
+            target="_blank" rel="noopener noreferrer" title="在新标签页查看收银台">{order.payment.status === "UNPAID" && order.checkout.status === "OPEN" ? "打开收银台" : "查看收银台结果"}<ExternalLink data-icon="inline-end" /></a>
         } />
         {order.refund.status !== "NONE" && <DetailFields items={[["历史退款（只读）", <StatusBadge value={order.refund.status} />]]} />}
       </> },

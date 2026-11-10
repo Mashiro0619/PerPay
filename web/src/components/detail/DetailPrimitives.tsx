@@ -9,7 +9,7 @@ import { ListDateTime, ListMoney } from "@/components/list-primitives";
 import { cn } from "@/lib/utils";
 import { CopyValue } from "@/components/copy-value";
 import { useOverlayContext } from "@/lib/overlay-context";
-import { StatusBadge, paymentBasisDescription } from "@/components/business-status";
+import { OrderStatusBadge, paymentBasisDescription } from "@/components/business-status";
 import { ErrorNotice, Loading } from "@/components/request-state";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -259,6 +259,7 @@ export function OrderFacts({
 }) {
   const payment =
     "payment" in order ? order.payment.status : order.payment_status;
+  const checkout = "checkout" in order ? order.checkout.status : order.checkout_status;
   const basis = paymentBasisDescription("payment" in order ? order.payment.basis : order.payment_basis);
   if (density === "comfortable") return <Item className="items-start" data-detail-order-summary>
     <ItemContent className="min-w-0 gap-4">
@@ -266,7 +267,7 @@ export function OrderFacts({
         <ItemTitle className="line-clamp-none whitespace-normal wrap-anywhere" title={order.product_name}>
           {linked ? <Link to={"/orders/" + order.order_id}>{order.product_name}</Link> : order.product_name}
         </ItemTitle>
-        <ItemActions><StatusBadge value={payment} /></ItemActions>
+        <ItemActions><OrderStatusBadge payment={payment} checkout={checkout} refundMarked={"refund_mark" in order && order.refund_mark.marked} /></ItemActions>
         {basis && <span className="text-sm text-muted-foreground">{basis}</span>}
       </ItemHeader>
       <DetailFields density="comfortable" layout={layout} items={[
@@ -301,7 +302,7 @@ export function OrderFacts({
       <ItemActions className="flex-col items-end">
         <div className="flex items-baseline gap-2"><span className="record-list-meta">应付</span><ListMoney value={order.payable_amount_cents} label="应付金额" /></div>
         <div className="flex items-baseline gap-2"><span className="record-list-meta">实收</span><ListMoney value={order.received_amount_cents} label="实收金额" secondary /></div>
-        <StatusBadge value={payment} />
+        <OrderStatusBadge payment={payment} checkout={checkout} refundMarked={"refund_mark" in order && order.refund_mark.marked} />
       </ItemActions>
     </Item>
   );

@@ -172,7 +172,7 @@ test.describe("mobile consecutive record rows", () => {
       await page.route(manifest.origin + "/api/admin/v1/orders/" + original.order_id, route => route.fulfill({ json: { data: { ...original, merchant_order_no: merchantOrderNo } } }));
       await show(page, manifest.origin, "/orders?q=" + encodeURIComponent(original.product_name.slice(0, 24)), 200);
       const order = page.locator('[data-business-row="' + original.order_id + '"]');
-      await expect(order.getByText(merchantOrderNo, { exact: true })).toHaveCount(0);
+      await expect(order.getByText(merchantOrderNo, { exact: true })).toBeVisible();
       await order.locator("a[data-row-link]").tap();
       const reference = page.locator("[data-overlay-content]").getByText(merchantOrderNo, { exact: true });
       await expect(reference).toBeVisible();

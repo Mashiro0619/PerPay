@@ -112,13 +112,16 @@ export function exportOrders(
     parameters.push(now, input.checkout_status);
   }
   let includeWebsite = false;
+  let includeAccount = false;
   const rows = database.read((db) => {
     includeWebsite = db.prepare("SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'sites'").get() !== undefined;
+    includeAccount = db.prepare("SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'alipay_accounts'").get() !== undefined;
     return db
       .prepare(
         `SELECT orders.api_client_id, ${includeWebsite ? "(SELECT json_extract(configuration, '$.name') FROM sites WHERE client_id = orders.api_client_id)" : "NULL"} AS site_name, orders.merchant_order_no, orders.order_id, orders.product_name,
       orders.requested_amount_cents, orders.payable_amount_cents, orders.received_amount_cents,
       orders.currency, orders.payment_status, ${checkout} AS checkout_status, orders.created_at,
+      ${includeAccount ? "orders.alipay_account_id, (SELECT name FROM alipay_accounts WHERE account_id = orders.alipay_account_id)" : "NULL AS alipay_account_id, NULL"} AS alipay_account_name,
       (SELECT MAX(e.occurred_at) FROM order_events e WHERE e.order_id = orders.order_id AND e.event_type = 'PAYMENT_CONFIRMED') AS confirmed_at
     FROM payment_orders AS orders WHERE ${where.join(" AND ")} ORDER BY ${sort.orderBy} LIMIT ?`,
       )
@@ -130,18 +133,19 @@ export function exportOrders(
     "商户订单号（业务网站）",
     "内部订单编号（PerPay）",
     "商品",
-    "下单金额",
-    "应付金额",
-    "实收金额",
+    "下单金额（元）",
+    "应付金额（元）",
+    "实收金额（元）",
     "币种",
     "付款状态",
     "收银台状态",
-    "创建时间",
+    "创建时间（北京时间）",
     "PerPay 确认时间",
     ...(includeWebsite ? ["业务网站 ID", "业务网站名称"] : []),
+    ...(includeAccount ? ["收款账号 ID", "收款账号名称"] : []),
   ];
   const payment: Record<string, string> = {
-    UNPAID: "待付款",
+    UNPAID: "未付款",
     CONFIRMED: "收款已确认",
     DISPUTED: "收款有争议",
   };
@@ -167,6 +171,7 @@ export function exportOrders(
         timestamp(row.created_at),
         timestamp(row.confirmed_at),
         ...(includeWebsite ? [String(row.api_client_id), String(row.site_name ?? "")] : []),
+        ...(includeAccount ? [String(row.alipay_account_id ?? ""), String(row.alipay_account_name ?? "")] : []),
       ]),
     ]
       .map((row) => row.map(csvCell).join(","))

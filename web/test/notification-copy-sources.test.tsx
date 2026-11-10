@@ -103,8 +103,9 @@ describe("order and notification copy follows its actual source", () => {
   it("labels the website merchant number in an order list without substituting its internal ID", () => {
     mobileMedia(390);
     mount(<DataTable data={[paidOrder]} />);
-    expect(screen.getByText("商户订单号（业务网站）：")).toBeVisible();
-    expect(screen.getByText(paidOrder.merchant_order_no)).toHaveAttribute("title", paidOrder.merchant_order_no);
+    expect(screen.getByText(/^商户订单号(?:（业务网站）)?[：:]?$/)).toBeInTheDocument();
+    expect(screen.getByText(paidOrder.merchant_order_no)).toBeVisible();
+    expect(screen.getByRole("link", { name: paidOrder.product_name })).toHaveAttribute("href", "/orders/" + paidOrder.order_id);
     expect(screen.queryByText(paidOrder.order_id)).not.toBeInTheDocument();
   });
 

@@ -93,7 +93,7 @@ test.describe("compact list record navigation", () => {
       const trigger = row.locator("a[data-row-link]");
       await expect(trigger).toBeVisible();
       await expect(trigger).toHaveText(original.product_name);
-      await expect(row.getByText(merchantOrderNo, { exact: true })).toHaveCount(0);
+      await expect(row.getByText(merchantOrderNo, { exact: true })).toBeVisible();
       await expect(row.getByRole("button", { name: "展开信息", exact: true })).toHaveCount(0);
       const listUrl = page.url();
       await trigger.tap();

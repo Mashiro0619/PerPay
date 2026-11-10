@@ -446,14 +446,14 @@ describe("responsive order semantics", () => {
     expect(
       within(cells[0]!).queryByText("收银台开放中"),
     ).not.toBeInTheDocument();
-    expect(within(cells[3]!).getByText("收银台开放中")).toBeInTheDocument();
+    expect(within(cells[3]!).queryByText("收银台开放中")).not.toBeInTheDocument();
     media.resize(390);
     const mobileSummary = within(screen.getByRole("listitem"));
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
     expect(mobileSummary.getByText("待付款")).toBeInTheDocument();
     expect(
-      mobileSummary.getByText("收银台开放中"),
-    ).toBeInTheDocument();
+      mobileSummary.queryByText("收银台开放中"),
+    ).not.toBeInTheDocument();
     expect(
       mobileSummary.getByTitle(dateTime(order.created_at) + "（北京时间）"),
     ).toHaveAttribute("datetime", new Date(order.created_at).toISOString());

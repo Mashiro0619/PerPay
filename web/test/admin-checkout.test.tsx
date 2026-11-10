@@ -23,16 +23,16 @@ function mount() {
 }
 describe("administrator checkout entry", () => {
   it.each<[CheckoutStatus, PaymentStatus, string]>([
-    ["OPEN", "UNPAID", "收银台开放中"],
-    ["CLOSED", "UNPAID", "收银台已关闭"],
-    ["EXPIRED", "UNPAID", "收银台已过期"],
-    ["OPEN", "CONFIRMED", "可查看收银台"],
-    ["OPEN", "DISPUTED", "收银台开放中"],
-    ["CLOSED", "CONFIRMED", "可查看收银台"],
-    ["CLOSED", "DISPUTED", "收银台已关闭"],
+    ["OPEN", "UNPAID", "打开收银台"],
+    ["CLOSED", "UNPAID", "查看收银台结果"],
+    ["EXPIRED", "UNPAID", "查看收银台结果"],
+    ["OPEN", "CONFIRMED", "查看收银台结果"],
+    ["OPEN", "DISPUTED", "查看收银台结果"],
+    ["CLOSED", "CONFIRMED", "查看收银台结果"],
+    ["CLOSED", "DISPUTED", "查看收银台结果"],
   ])(
     "links to the authenticated existing checkout for %s / %s without changing state",
-    async (checkoutStatus, paymentStatus) => {
+    async (checkoutStatus, paymentStatus, actionLabel) => {
       const requests: Request[] = [];
       const snapshot = {
         ...order,
@@ -58,14 +58,14 @@ describe("administrator checkout entry", () => {
         }),
       );
       mount();
-      const link = await screen.findByRole("link", { name: "打开收银台" });
+      const link = await screen.findByRole("link", { name: actionLabel });
       expect(link).toHaveAttribute(
         "href",
         "/api/admin/v1/orders/" + orderId + "/checkout",
       );
       expect(link).toHaveAttribute("target", "_blank");
       expect(link).toHaveAttribute("rel", "noopener noreferrer");
-      expect(link).toHaveAttribute("title", "在新标签页打开收银台");
+      expect(link).toHaveAttribute("title", "在新标签页查看收银台");
       const information = screen.getByRole("region", { name: "订单信息" });
       const checkout = within(information).getByText("收银台状态").closest("div")!;
       expect(within(checkout).getByText({ OPEN: "开放中", CLOSED: "已关闭", EXPIRED: "已过期" }[checkoutStatus])).toBeVisible();
@@ -86,7 +86,7 @@ describe("administrator checkout entry", () => {
     mount();
     expect(await screen.findByRole("alert")).toBeVisible();
     expect(
-      screen.queryByRole("link", { name: "打开收银台" }),
+      screen.queryByRole("link", { name: /打开收银台|查看收银台结果/ }),
     ).not.toBeInTheDocument();
   });
 });

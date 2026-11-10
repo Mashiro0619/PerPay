@@ -3,7 +3,7 @@ import { Link } from "@/navigation";
 import { useWorkspace } from "@/workspace";
 import { useListSize } from "@/hooks/use-list-size";
 import { BusinessTable, type BusinessColumn } from "@/components/business-table";
-import { StatusBadge } from "@/components/business-status";
+import { OrderStatusBadge, StatusBadge } from "@/components/business-status";
 import {
   ListDateTime,
   ListIdentity,
@@ -39,8 +39,7 @@ function OrderAmounts({ order }: { order: AdminOrderSummary }) {
 function PaymentResult({ order }: { order: AdminOrderSummary }) {
   return (
     <div className="overview-record-stack business-cell-stack">
-      <StatusBadge value={order.payment.status} />
-      {order.refund_mark.marked && <StatusBadge value="ADMIN_REFUND_MARK" />}
+      <OrderStatusBadge payment={order.payment.status} checkout={order.checkout.status} refundMarked={order.refund_mark.marked} />
     </div>
   );
 }

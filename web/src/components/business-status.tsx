@@ -67,3 +67,17 @@ export function paymentBasisDescription(basis: string): string | null {
   if (basis === "MANUAL") return "管理员人工关联";
   return null;
 }
+
+export function OrderStatusBadge({ payment, checkout, refundMarked = false }: {
+  payment: string;
+  checkout: string;
+  refundMarked?: boolean;
+}) {
+  const ended = payment === "UNPAID" && (checkout === "EXPIRED" || checkout === "CLOSED");
+  return <>
+    {ended
+      ? <StatusBadge value={checkout} label={checkout === "EXPIRED" ? "已过期 · 未付款" : "已关闭 · 未付款"} />
+      : <StatusBadge value={payment} />}
+    {refundMarked && <StatusBadge value="ADMIN_REFUND_MARK" />}
+  </>;
+}
