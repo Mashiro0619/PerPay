@@ -1,7 +1,7 @@
 import { useMemo, type MouseEvent } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { parsePath, useLocation } from "react-router";
-import { api, result } from "@/api/client";
+import { api, ApiError, result } from "@/api/client";
 import { useNavigationWorkspace, useWorkspaceNavigation } from "@/workspace";
 import { actualPageAddress, isGlobalNavigationPage, switchWorkspaceHref } from "@/lib/navigation-selection";
 import { siteChoiceLabel } from "@/lib/site-choice-label";
@@ -40,6 +40,7 @@ export function useWorkspaceSwitcher(enabled: boolean) {
     getNextPageParam: (page) => page.page.next_cursor ?? undefined,
   });
   const currentSite = site?.data?.data;
+  const siteMissing = site?.error instanceof ApiError && site.error.status === 404 && site.error.code === "site_not_found";
   const entries = useMemo(() => {
     const loaded = new Map<string, SiteMenuEntry>();
     for (const page of sites.data?.pages ?? []) {
@@ -47,15 +48,16 @@ export function useWorkspaceSwitcher(enabled: boolean) {
         if (!loaded.has(value.client_id)) loaded.set(value.client_id, value);
       }
     }
-    if (clientId && currentSite && loaded.has(clientId)) loaded.set(clientId, currentSite);
+    if (clientId && siteMissing) loaded.delete(clientId);
+    else if (clientId && currentSite && loaded.has(clientId)) loaded.set(clientId, currentSite);
     const values = [...loaded.values()];
-    if (clientId && !loaded.has(clientId)) {
+    if (clientId && !siteMissing && !loaded.has(clientId)) {
       values.unshift(currentSite ?? { client_id: clientId, configuration: { name: clientId } });
     }
     return values;
-  }, [sites.data, clientId, currentSite]);
+  }, [sites.data, clientId, currentSite, siteMissing]);
   const selectedEntry = entries.find(value => value.client_id === clientId);
-  const selectedName = selectedEntry ? siteChoiceLabel(selectedEntry, entries) : "全部网站";
+  const selectedName = siteMissing ? "网站不存在" : selectedEntry ? siteChoiceLabel(selectedEntry, entries) : "全部网站";
   const switching = pending.switching && pending.selectedClientId !== clientId;
   const pendingEntry = entries.find(value => value.client_id === pending.selectedClientId);
   const pendingName = pendingEntry ? siteChoiceLabel(pendingEntry, entries) : pending.selectedClientId ?? "全部网站";
