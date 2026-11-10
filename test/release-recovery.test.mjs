@@ -39,9 +39,18 @@ function fixture(change = {}) {
   steps.push({ name: 'Publish the GitHub Release', conclusion: 'skipped' });
   if (change.failedScan) steps.find(step => step.name.startsWith('Scan the arm64')).conclusion = 'failure';
   const run = { name: 'Release', path: '.github/workflows/release.yml', event: 'push', head_branch: 'v0.2.0', repository: { full_name: 'Mashiro0619/PerPay' }, status: 'completed', conclusion: 'failure', head_sha: revision };
+  const workflow = parse(readFileSync(new URL('../.github/workflows/release.yml', import.meta.url), 'utf8'));
+  const jobs = [
+    { name: 'verify', conclusion: change.failedChecks ? 'failure' : 'success' },
+    ...workflow.jobs.ui.strategy.matrix.shard.map(shard => ({
+      name: workflow.jobs.ui.name.replace('${{ matrix.shard }}', String(shard)), conclusion: 'success',
+    })),
+    { name: 'publish', conclusion: 'failure', steps },
+  ];
+  change.changeJobs?.(jobs);
   const api = new Map([
     ['actions/runs/123', run],
-    ['actions/runs/123/jobs?filter=latest&per_page=100', { total_count: 2, jobs: [{ name: 'verify', conclusion: change.failedChecks ? 'failure' : 'success' }, { name: 'publish', conclusion: 'failure', steps }] }],
+    ['actions/runs/123/jobs?filter=latest&per_page=100', { total_count: jobs.length, jobs }],
     ['git/ref/tags/v0.2.0', { ref: 'refs/tags/v0.2.0', object: { type: 'tag', sha: tagObject } }],
     ['git/tags/' + tagObject, { tag: 'v0.2.0', message: change.unsignedTag ? 'unsigned' : '发布 v0.2.0\n-----BEGIN SSH SIGNATURE-----', object: { type: 'commit', sha: change.movedTag ? 'd'.repeat(40) : revision } }],
     ['releases/latest', { draft: false, prerelease: false, tag_name: change.newerRelease ? 'v0.3.0' : 'v0.1.0', body: change.unattested ? 'no digest' : image + ':0.1.0@' + oldDigest }],
@@ -92,6 +101,26 @@ test('recovery promotes only the exact scanned image and leaves fixed version ta
   assert.equal(writes.length, 1);
   assert.equal(writes[0].url, 'https://ghcr.io/v2/mashiro0619/perpay/manifests/latest');
 });
+
+for (const [name, changeJobs] of [
+  ['a missing UI shard', jobs => jobs.splice(2, 1)],
+  ['all missing UI shards', jobs => jobs.splice(1, 3)],
+  ['a failed UI shard', jobs => { jobs[2].conclusion = 'failure'; }],
+  ['a skipped UI shard', jobs => { jobs[2].conclusion = 'skipped'; }],
+  ['a cancelled UI shard', jobs => { jobs[2].conclusion = 'cancelled'; }],
+  ['a duplicate UI shard replacing another shard', jobs => { jobs[2].name = jobs[1].name; }],
+  ['an extra UI shard', jobs => jobs.push({ name: 'Release UI 4/3', conclusion: 'success' })],
+  ['an extra unrelated job', jobs => jobs.push({ name: 'additional-check', conclusion: 'success' })],
+  ['a duplicate verification job', jobs => jobs.push({ name: 'verify', conclusion: 'success' })],
+  ['a duplicate publication job', jobs => jobs.push({ ...jobs.at(-1) })],
+]) {
+  test('recovery rejects ' + name + ' before registry access', async () => {
+    const state = fixture({ changeJobs });
+    await assert.rejects(recoverLatest(state.options, state.fetchImpl));
+    assert.equal(state.calls.length, 2);
+    assert.ok(state.calls.every(call => call.url.startsWith('https://api.github.com/')));
+  });
+}
 
 for (const [name, change] of [
   ['failed security scanning', { failedScan: true }],

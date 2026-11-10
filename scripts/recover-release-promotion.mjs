@@ -8,6 +8,7 @@ const IMAGE = 'ghcr.io/mashiro0619/perpay';
 const REGISTRY = 'https://ghcr.io/v2/mashiro0619/perpay';
 const DIGEST = /^sha256:[a-f0-9]{64}$/;
 const ACCEPT = 'application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json';
+const REQUIRED_UI_JOBS = ['Release UI 1/3', 'Release UI 2/3', 'Release UI 3/3'];
 const REQUIRED_STEPS = [
   'Build the untagged amd64 image',
   'Build the untagged arm64 image',
@@ -31,10 +32,14 @@ export function validateRecoverySource(run, jobs, version) {
   assert.equal(run.status, 'completed');
   assert.equal(run.conclusion, 'failure');
   assert.match(run.head_sha, /^[a-f0-9]{40}$/);
-  assert.equal(jobs.length, 2);
+  assert.deepEqual(jobs.map(job => job.name).sort(), ['verify', 'publish', ...REQUIRED_UI_JOBS].sort(),
+    'Recovery requires verify, publish, and all three release UI jobs exactly once');
   const verify = jobs.find(job => job.name === 'verify');
   const publish = jobs.find(job => job.name === 'publish');
   assert.equal(verify?.conclusion, 'success');
+  for (const name of REQUIRED_UI_JOBS) {
+    assert.equal(jobs.find(job => job.name === name)?.conclusion, 'success', name + ' did not pass');
+  }
   assert.equal(publish?.conclusion, 'failure');
   assert.deepEqual(publish.steps.filter(step => step.conclusion === 'failure').map(step => step.name), [
     'Promote the validated image to latest',
