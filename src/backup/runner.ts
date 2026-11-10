@@ -57,6 +57,7 @@ import {
 
 const BACKUP_STATE_VERSION = 2;
 const RETRY_DELAY_MILLISECONDS = 5 * 60 * 1_000;
+const POLICY_REFRESH_MILLISECONDS = 30_000;
 const RESTORE_CONFIRMATION_ARGUMENT = "--confirm-replace-current-database";
 const REBUILD_STATE_ARGUMENT = "--rebuild-state";
 const QUARANTINE_UNREADABLE_ARGUMENT = "--quarantine-unreadable-current";
@@ -523,11 +524,16 @@ async function schedule(config: BackupConfig, operations: BackupOperations, acti
             })}\n`);
           }
           reconcileBeforeDelay = false;
+          // Retention can take time; select the next deadline from the policy
+          // that is current after it finishes.
+          continue;
         }
         const delayMilliseconds = nextScheduledDelayMilliseconds(activeConfig, Date.now());
         if (delayMilliseconds > 0) {
-          await waitFor(delayMilliseconds, controller.signal);
-          if (controller.signal.aborted) break;
+          // A policy saved during the wait may move the deadline in either
+          // direction. Re-read it before deciding whether to start a cycle.
+          await waitFor(Math.min(delayMilliseconds, POLICY_REFRESH_MILLISECONDS), controller.signal);
+          continue;
         }
         const result = await runTrackedCycle(activeConfig, operations, controller.signal, activity);
         process.stdout.write(`${JSON.stringify({

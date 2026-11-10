@@ -160,6 +160,70 @@ function fakeOperations(
 }
 
 describe("local backup state and scheduling", () => {
+  for (const change of [
+    { name: "shortens", initialSeconds: 86_400, nextSeconds: 3_600, beforeChange: 7_200_000, beforeDue: 0, untilDue: 30_000 },
+    { name: "extends", initialSeconds: 3_600, nextSeconds: 86_400, beforeChange: 1_800_000, beforeDue: 1_800_000, untilDue: 82_800_000 },
+  ]) {
+    it(`${change.name} a sleeping schedule using the saved policy and its retention count`, async context => {
+      context.mock.timers.enable({ apis: ["Date", "setTimeout"], now: Date.parse("2026-11-10T00:00:00Z") });
+      const config = { ...configuration(), intervalMilliseconds: change.initialSeconds * 1_000 };
+      const policy = new DatabaseSync(join(config.dataDirectory, "perpay.sqlite3"));
+      policy.exec(`CREATE TABLE runtime_configuration (
+        singleton_key INTEGER PRIMARY KEY, backup_interval_seconds INTEGER, backup_keep_count INTEGER
+      )`);
+      policy.prepare("INSERT INTO runtime_configuration VALUES (1, ?, 7)").run(change.initialSeconds);
+      const createdWith: BackupConfig[] = [];
+      const fake = fakeOperations(config, {
+        async create(current) {
+          createdWith.push(current);
+          return fakeBackup(config);
+        },
+      });
+      const advance = async (milliseconds: number) => {
+        context.mock.timers.tick(milliseconds);
+        await new Promise<void>(resolve => setImmediate(resolve));
+      };
+      let running: Promise<number> | undefined;
+      const initialSignalListeners = process.listenerCount("SIGTERM");
+      try {
+        await runTrackedCycle(config, fake.operations);
+        createdWith.length = 0;
+        {
+          running = runBackupCommand(["schedule"], {
+            PERPAY_DATA_DIR: config.dataDirectory,
+            PERPAY_BACKUP_DIR: config.backupDirectory,
+          }, fake.operations);
+          await advance(0);
+          await advance(change.beforeChange);
+          assert.equal(createdWith.length, 0);
+          policy.prepare("UPDATE runtime_configuration SET backup_interval_seconds = ?, backup_keep_count = 20").run(change.nextSeconds);
+          if (change.beforeDue > 0) {
+            await advance(change.beforeDue);
+            assert.equal(createdWith.length, 0, "extending the interval must cancel the old deadline");
+          }
+          await advance(change.untilDue);
+          assert.equal(createdWith.length, 1);
+          assert.equal(createdWith[0]!.intervalMilliseconds, change.nextSeconds * 1_000);
+          assert.equal(createdWith[0]!.keepCount, 20);
+          assert.equal(fake.calls.at(-1), `prune:${config.backupDirectory}:20`);
+          process.emit("SIGTERM");
+          assert.equal(await running, 0);
+          running = undefined;
+          await advance(2 * 86_400_000);
+          assert.equal(createdWith.length, 1, "stopping a sleeping scheduler prevents further backups");
+        }
+        assert.equal(process.listenerCount("SIGTERM"), initialSignalListeners);
+      } finally {
+        if (running) {
+          process.emit("SIGTERM");
+          await running;
+        }
+        policy.close();
+        context.mock.timers.reset();
+      }
+    });
+  }
+
   for (const flags of [
     ["--quarantine-unreadable-current"],
     ["--rebuild-state", "--quarantine-unreadable-current"],
