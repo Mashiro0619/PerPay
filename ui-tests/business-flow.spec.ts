@@ -73,6 +73,7 @@ async function createAccount(page: Page, fixture: BusinessFixture, info: TestInf
   await page.getByRole("link", { name: "添加支付宝账号", exact: true }).click();
   const overlay = page.getByRole("dialog", { name: "支付宝账号", exact: true });
   const name = `连续验收收款账号 ${width}`;
+  await expect(overlay.getByRole("tab", { name: "基本信息", exact: true })).toHaveAttribute("aria-selected", "true");
   await overlay.getByRole("textbox", { name: "账号名称", exact: true }).fill(name);
   await page.keyboard.press("Escape");
   const discard = page.getByRole("alertdialog", { name: "放弃未保存的修改？", exact: true });
@@ -105,7 +106,13 @@ async function createAccount(page: Page, fixture: BusinessFixture, info: TestInf
   await screenshot(page, info, "01-account-validation-recovery");
 
   await platformKey.fill(fixture.platformPublicKey);
-  await selectTab(overlay, "收款码");
+  const applicationChecked = page.waitForResponse(response => new URL(response.url()).pathname === `/api/admin/v1/alipay-accounts/${account.id}/check` && response.request().method() === "POST");
+  await overlay.getByRole("button", { name: "保存并检查", exact: true }).click();
+  expect((await applicationChecked).ok()).toBe(true);
+  await expect(overlay.getByText("连接检查通过", { exact: true })).toBeVisible();
+  await expect(overlay.getByText("待补充：收款码", { exact: true })).toBeVisible();
+  await overlay.getByRole("button", { name: "继续配置收款码", exact: true }).click();
+  await expect(overlay.getByRole("tab", { name: "收款码", exact: true })).toHaveAttribute("aria-selected", "true");
   await overlay.getByRole("textbox", { name: "支付宝收款码内容", exact: true }).fill(fixture.collectionCode);
   const checked = page.waitForResponse(response => new URL(response.url()).pathname === `/api/admin/v1/alipay-accounts/${account.id}/check` && response.request().method() === "POST");
   await overlay.getByRole("button", { name: "保存并检查", exact: true }).click();
@@ -132,21 +139,33 @@ async function createSite(page: Page, fixture: BusinessFixture, info: TestInfo, 
   expect(created.status()).toBe(201);
   const site = (await created.json()).data as Site;
   expect(site.configuration.collection?.accounts.map(selected => selected.account_id)).toEqual([account.id]);
-  await expect.poll(() => new URL(page.url()).searchParams.get("overlay")).toBe(`/sites/${site.client_id}/edit?section=basic`);
-  await selectTab(overlay, "接入与通知");
+  expect(site.secrets).toEqual({ api_secret: false, webhook_secret: false });
+  await expect.poll(() => new URL(page.url()).searchParams.get("overlay")).toBe(`/sites/${site.client_id}/edit?section=integration`);
+  await expect(overlay.getByRole("tab", { name: "接入与通知", exact: true })).toHaveAttribute("aria-selected", "true");
+  const protocols = overlay.getByRole("group", { name: "接入协议", exact: true });
+  await expect(protocols.getByRole("button", { name: "原生 API", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(protocols.getByRole("button", { name: "易支付 V1", exact: true })).toBeVisible();
+  await expect(protocols.getByRole("button", { name: "易支付 V2", exact: true })).toBeVisible();
+  for (const label of [" API 密钥", "通知签名密钥"]) {
+    await expect(overlay.getByRole("button", { name: "轮换" + label, exact: true })).toHaveCount(0);
+    await expect(overlay.getByRole("button", { name: "查看" + label, exact: true })).toHaveCount(0);
+  }
   for (const name of ["API 密钥", "通知签名密钥"]) {
-    const actionName = "轮换" + (name === "API 密钥" ? " " : "") + name;
+    const label = (name === "API 密钥" ? " " : "") + name;
+    const actionName = "生成" + label;
     await overlay.getByRole("button", { name: actionName, exact: true }).click();
     const confirm = page.getByRole("alertdialog", { name: actionName + "？", exact: true });
-    const rotated = page.waitForResponse(response => new URL(response.url()).pathname.includes(`/sites/${site.client_id}/secrets/`) && new URL(response.url()).pathname.endsWith("/actions/rotate") && response.request().method() === "POST");
-    await confirm.getByRole("button", { name: "确认轮换", exact: true }).click();
-    expect((await rotated).ok()).toBe(true);
+    const generated = page.waitForResponse(response => new URL(response.url()).pathname.includes(`/sites/${site.client_id}/secrets/`) && new URL(response.url()).pathname.endsWith("/actions/rotate") && response.request().method() === "POST");
+    await confirm.getByRole("button", { name: "生成密钥", exact: true }).click();
+    expect((await generated).ok()).toBe(true);
     const key = page.getByRole("dialog", { name, exact: true });
     await expect(key.getByRole("textbox", { name, exact: true })).not.toHaveValue("");
     await key.getByRole("button", { name: "关闭", exact: true }).click();
     await expect(key).toHaveCount(0);
+    await expect(overlay.getByRole("button", { name: "查看" + label, exact: true })).toBeEnabled();
+    await expect(overlay.getByRole("button", { name: "轮换" + label, exact: true })).toBeEnabled();
   }
-  await overlay.getByRole("textbox", { name: "通知地址前缀", exact: true }).fill(fixture.notificationOrigin);
+  await overlay.getByRole("textbox", { name: "通知域名", exact: true }).fill(fixture.notificationOrigin);
   await overlay.getByRole("switch", { name: "开启通知", exact: true }).check();
   await overlay.getByRole("button", { name: "高级设置", exact: true }).click();
   await overlay.getByRole("spinbutton", { name: "最多发送次数", exact: true }).fill("2");
@@ -161,7 +180,7 @@ async function createSite(page: Page, fixture: BusinessFixture, info: TestInfo, 
   await screenshot(page, info, "03-site-configured");
   await closeOverlay(page);
   const row = page.locator("[data-business-row]").filter({ has: page.getByRole("link", { name, exact: true }) });
-  await row.getByRole("link", { name: "进入后台", exact: true }).click();
+  await row.getByRole("link", { name: "查看网站总览", exact: true }).click();
   await expect.poll(() => new URL(page.url()).pathname).toBe("/admin/sites/" + site.client_id);
   return stored;
 }
@@ -259,6 +278,7 @@ async function notifyBusinessOrder(page: Page, fixture: BusinessFixture, info: T
   await resend.getByRole("button", { name: "确认重新发送", exact: true }).click();
   expect((await redelivered).ok()).toBe(true);
   await expect(resend).toHaveCount(0);
+  await expect(overlay.getByRole("heading", { name: "通知详情", exact: true })).toBeVisible();
   await fixture.dispatchNotification();
   await overlay.getByRole("button", { name: "刷新", exact: true }).click();
   await expect(overlay.getByText("通知已确认", { exact: true }).first()).toBeVisible();
@@ -272,6 +292,9 @@ async function notifyBusinessOrder(page: Page, fixture: BusinessFixture, info: T
   expect(stored.received_amount_cents).toBe(stored.payable_amount_cents);
   expect(stored.notification.notify_url).toBe(fixture.notificationUrl);
   await screenshot(page, info, "08-business-notification-recovered");
+  await overlay.getByRole("button", { name: "关闭对话框", exact: true }).click();
+  await expect(overlay.getByRole("heading", { name: "订单信息", exact: true })).toBeVisible();
+  await expect(overlay.getByText(merchantOrderNo, { exact: true })).toBeVisible();
   await closeOverlay(page);
   return { order: stored, deliveries };
 }
@@ -404,9 +427,81 @@ async function reconcileUnmatchedIncome(page: Page, fixture: BusinessFixture, in
   expect(reversedOrder.reconciliation.matches[0]!.resolution_operation?.reason).toBe(reversalReason);
   expect(new Set(afterReversal.deliveries.map(item => item.event.event_type))).toEqual(new Set(["PAYMENT_CONFIRMED", "PAYMENT_DISPUTED"]));
   expect(new Set(afterReversal.deliveries.map(item => item.event.event_id)).size).toBe(2);
+  const dispute = afterReversal.exceptions.find(item => item.exception_type === "RECONCILIATION_CONFLICT" && item.status === "OPEN")!;
+  expect(dispute).toBeDefined();
   await screenshot(page, info, "09d-reversal-persisted");
   await closeOverlay(page);
-  return { order: reversedOrder, settledPayment: stored.payment, ledgerEntryId: unmatched.ledgerEntryId, exceptionId: unmatched.exceptionId };
+
+  await navigateSidebar(page, "订单");
+  await page.getByRole("searchbox", { name: "订单关键词搜索", exact: true }).fill(merchantOrderNo);
+  await page.getByRole("button", { name: "搜索", exact: true }).click();
+  await page.locator(`a[data-row-link][href*="${manualOrder.order_id}"]`).click();
+  const disputeActions = overlay.getByRole("region", { name: "争议处理", exact: true });
+  await expect(disputeActions).toBeVisible();
+  const reviewAction = disputeActions.getByRole("button", { name: "重新核对并确认收款", exact: true });
+  await expectReachable(reviewAction);
+  await screenshot(page, info, "09e-disputed-order-next-actions");
+  await reviewAction.click();
+  await manual.getByRole("searchbox", { name: /^搜索(共享)?收入流水$/ }).fill(unmatched.ledgerEntryId);
+  await manual.getByRole("button", { name: "搜索", exact: true }).click();
+  await manual.getByRole("button", { name: /^选择(共享)?收入流水：/ }).click();
+  const reviewSubmit = manual.getByRole("button", { name: "重新确认收款", exact: true });
+  const reviewReasonField = manual.getByRole("textbox", { name: "核对理由", exact: true });
+  await expect(reviewSubmit).toBeEnabled();
+  await expect(manual).toContainText(merchantOrderNo);
+  await reviewSubmit.click();
+  await expect(reviewReasonField).toHaveAttribute("aria-invalid", "true");
+  await expect(reviewReasonField).toBeFocused();
+  const rejectedReview = await fixture.apiSnapshot({ orderId: manualOrder.order_id });
+  expect(rejectedReview.orders[0]!.payment.status).toBe("DISPUTED");
+  expect(rejectedReview.orders[0]!.reconciliation.matches).toHaveLength(1);
+  expect(new Set(rejectedReview.deliveries.map(item => item.event.event_id)).size).toBe(2);
+  const reviewReason = "连续验收：补齐付款人及交易凭证，复核后确认该款属于原订单";
+  await reviewReasonField.fill(reviewReason);
+  await expectReachable(reviewSubmit);
+  await screenshot(page, info, "09f-disputed-payment-review");
+  const reviewTitleBox = await manual.getByRole("heading", { name: "人工关联收款", exact: true }).boundingBox();
+  const reviewBox = await manual.boundingBox();
+  expect(reviewTitleBox?.y).toBeGreaterThanOrEqual(reviewBox!.y);
+  const reconfirmedResponse = page.waitForResponse(response => new URL(response.url()).pathname.endsWith("/settlements/manual") && response.request().method() === "POST");
+  await reviewSubmit.click();
+  expect((await reconfirmedResponse).ok()).toBe(true);
+  await expect(manual).toHaveCount(0);
+  await expect(overlay.getByRole("region", { name: "争议处理", exact: true })).toHaveCount(0);
+  await expect(overlay.getByRole("group", { name: "PerPay 收款状态", exact: true }).getByText("收款已确认", { exact: true })).toBeVisible();
+  // 此前已投递一次，原确认、撤销与重新确认三个事件还剩两条；夹具每次只推进一条真实投递。
+  for (let remaining = 2; remaining > 0; remaining--) {
+    const dispatched = await fixture.dispatchNotification();
+    expect(dispatched).toMatchObject({ processed: true, status: "ACKNOWLEDGED" });
+  }
+  await overlay.getByRole("button", { name: "刷新", exact: true }).click();
+  const afterReview = await fixture.apiSnapshot({ orderId: manualOrder.order_id });
+  const reviewedOrder = afterReview.orders[0]!;
+  expect(reviewedOrder.payment).toMatchObject({ status: "CONFIRMED", basis: "MANUAL" });
+  expect(reviewedOrder.received_amount_cents).toBe(stored.received_amount_cents);
+  expect(reviewedOrder.reconciliation.matches).toHaveLength(2);
+  const originalMatch = reviewedOrder.reconciliation.matches.find(match => match.payment_match_id === stored.reconciliation.matches[0]!.payment_match_id)!;
+  const reviewedMatch = reviewedOrder.reconciliation.matches.find(match => match.status === "SETTLED")!;
+  expect(originalMatch.status).toBe("REVERSED");
+  expect(originalMatch.resolution_operation?.reason).toBe(reversalReason);
+  expect(reviewedMatch.payment_match_id).not.toBe(originalMatch.payment_match_id);
+  expect(reviewedMatch.ledger_entry_id).toBe(unmatched.ledgerEntryId);
+  expect(reviewedMatch.creation_operation?.reason).toBe(reviewReason);
+  expect(afterReview.exceptions.find(item => item.exception_id === dispute.exception_id)?.status).toBe("RESOLVED");
+  const activeReminders = await readData<Array<{ resource_id: string }>>(page, fixture.origin, `/api/admin/v1/work-items?type=FINANCIAL_EXCEPTION&q=${manualOrder.order_id}`);
+  expect(activeReminders).toHaveLength(0);
+  expect(afterReview.deliveries).toHaveLength(3);
+  expect(afterReview.deliveries.filter(item => item.event.event_type === "PAYMENT_CONFIRMED")).toHaveLength(2);
+  expect(afterReview.deliveries.filter(item => item.event.event_type === "PAYMENT_DISPUTED")).toHaveLength(1);
+  expect(afterReview.deliveries.every(item => item.delivery.status === "ACKNOWLEDGED")).toBe(true);
+  expect(new Set(afterReview.deliveries.map(item => item.event.event_id)).size).toBe(3);
+  for (const previous of afterReversal.deliveries) {
+    expect(afterReview.deliveries.some(item => item.event.event_id === previous.event.event_id && item.delivery.delivery_id === previous.delivery.delivery_id)).toBe(true);
+  }
+  await screenshot(page, info, "09g-dispute-reconfirmed-and-notified");
+  await closeOverlay(page);
+  return { order: reviewedOrder, reversedOrder, originalMatch, reviewedMatch, settledPayment: stored.payment,
+    ledgerEntryId: unmatched.ledgerEntryId, exceptionId: unmatched.exceptionId, disputeExceptionId: dispute.exception_id };
 }
 
 for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
@@ -430,7 +525,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
         const site = await test.step("Create a website, assign its account and configure signed integration", () => createSite(page, fixture, info, account, viewport.width));
         const testOrder = await test.step("Create a website test order and confirm it through simulated external income", () => createAndPayTestOrder(page, fixture, info, site, viewport.width));
         const business = await test.step("Find the signed business order in the UI and recover its failed callback", () => notifyBusinessOrder(page, fixture, info, site, viewport.width));
-        const manual = await test.step("Resolve a real unmatched-income exception through manual association", () => reconcileUnmatchedIncome(page, fixture, info, site, account, viewport.width));
+        const manual = await test.step("Associate income, reverse it, then review and reconfirm the disputed order", () => reconcileUnmatchedIncome(page, fixture, info, site, account, viewport.width));
         const audit = await test.step("Follow the business order into the real audit trail", () => traceAudit(page, fixture, info, business.order, site));
         const persisted = await fixture.apiSnapshot();
         expect(new Set([testOrder.order_id, business.order.order_id, manual.order.order_id]).size).toBe(3);
@@ -440,8 +535,9 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
         const verifiedAudit: AuditEventDetail[] = [];
         for (const [action, order, operation] of [
           ["financial.auto_settlement", business.order, business.order.reconciliation.matches[0]!.creation_operation!],
-          ["financial.manual_settlement", manual.order, manual.order.reconciliation.matches[0]!.creation_operation!],
-          ["financial.reverse_settlement", manual.order, manual.order.reconciliation.matches[0]!.resolution_operation!],
+          ["financial.manual_settlement", manual.order, manual.originalMatch.creation_operation!],
+          ["financial.reverse_settlement", manual.order, manual.originalMatch.resolution_operation!],
+          ["financial.manual_settlement", manual.order, manual.reviewedMatch.creation_operation!],
         ] as const) {
           const event = persisted.audit.find(event => event.action === action && event.subject_id === operation.financial_operation_id);
           expect(event, action).toBeDefined();
@@ -467,11 +563,13 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
           },
           manualOrder: {
             id: manual.order.order_id, merchantOrderNo: manual.order.merchant_order_no,
-            paymentBeforeReversal: manual.settledPayment, paymentAfterReversal: manual.order.payment,
-            ledgerEntryId: manual.ledgerEntryId, resolvedExceptionId: manual.exceptionId,
-            matchStatus: manual.order.reconciliation.matches[0]!.status,
-            creationOperation: manual.order.reconciliation.matches[0]!.creation_operation,
-            reversalOperation: manual.order.reconciliation.matches[0]!.resolution_operation,
+            paymentBeforeReversal: manual.settledPayment, paymentAfterReversal: manual.reversedOrder.payment,
+            paymentAfterReview: manual.order.payment,
+            ledgerEntryId: manual.ledgerEntryId, resolvedExceptionId: manual.exceptionId, resolvedDisputeId: manual.disputeExceptionId,
+            matches: manual.order.reconciliation.matches.map(match => ({ id: match.payment_match_id, status: match.status })),
+            creationOperation: manual.originalMatch.creation_operation,
+            reversalOperation: manual.originalMatch.resolution_operation,
+            reviewOperation: manual.reviewedMatch.creation_operation,
             notifications: persisted.deliveries.filter(item => item.event.order_id === manual.order.order_id)
               .map(item => ({ eventId: item.event.event_id, type: item.event.event_type, deliveryId: item.delivery.delivery_id, status: item.delivery.status })),
           },
