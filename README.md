@@ -43,9 +43,9 @@
 
 ## 界面预览
 
-| 一级：全部网站 | 二级：网站后台 |
+| 全部网站总览 | 单网站收款概览 |
 | --- | --- |
-| ![全部网站汇总](docs/screenshots/dashboard-light.png) | ![网站后台](docs/screenshots/workspace-site.png) |
+| ![全部网站的今日指标、收款趋势与待处理事项](docs/screenshots/dashboard-light.png) | ![单网站的收款指标、趋势与最近订单](docs/screenshots/workspace-site.png) |
 
 创建业务网站时填写名称、选择收款账号，并可选填客户端 ID。详细步骤见[多网站管理](docs/multi-site.md)。
 
