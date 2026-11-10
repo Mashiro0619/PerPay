@@ -283,6 +283,8 @@ function addConfirmation(connection: DatabaseSync, clientId: string, orderId: st
     VALUES (?, ?, ?, 'CONFIRMED', 'CLOSED', ?)
   `).run(orderId, clientId, createdAt, amount);
   connection.prepare("INSERT INTO order_events VALUES (?, 'PAYMENT_CONFIRMED', ?)").run(orderId, occurredAt);
+  connection.prepare("INSERT INTO outbox_events VALUES (?, 'PAYMENT_CONFIRMED', ?, ?, ?)")
+    .run(orderId, orderId, occurredAt, JSON.stringify({ received_amount_cents: amount }));
 }
 
 function withFixture(operation: (database: AppDatabase, connection: DatabaseSync) => void): void {
@@ -315,7 +317,7 @@ function withFixture(operation: (database: AppDatabase, connection: DatabaseSync
         next_attempt_at INTEGER, last_error_code TEXT, dead_lettered_at INTEGER, created_at INTEGER,
         updated_at INTEGER, predecessor_delivery_id TEXT
       );
-      CREATE TABLE outbox_events (outbox_event_id TEXT PRIMARY KEY, event_type TEXT, aggregate_id TEXT);
+      CREATE TABLE outbox_events (outbox_event_id TEXT PRIMARY KEY, event_type TEXT, aggregate_id TEXT, created_at INTEGER, payload_json TEXT);
       CREATE TABLE collection_profiles (profile_id TEXT PRIMARY KEY, provider_account_key TEXT);
       CREATE TABLE collection_profile_provider_accounts (profile_id TEXT PRIMARY KEY, provider_account_key TEXT);
       CREATE TABLE admin_work_item_states (kind TEXT, item_id TEXT, ignored INTEGER, updated_at INTEGER, operation_id TEXT);

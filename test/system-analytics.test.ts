@@ -113,6 +113,8 @@ describe("system analytics", () => {
             .run(orderId, record.timestamp, record.amount);
           connection.prepare(`INSERT INTO order_events VALUES (?, 'PAYMENT_CONFIRMED', ?)`)
             .run(orderId, record.timestamp);
+          connection.prepare(`INSERT INTO outbox_events VALUES (?, 'PAYMENT_CONFIRMED', ?, ?)`)
+            .run(orderId, record.timestamp, JSON.stringify({ received_amount_cents: record.amount }));
           connection.prepare("INSERT INTO webhook_deliveries(created_at,status) VALUES (?, ?)")
             .run(record.timestamp, record.status);
         }
@@ -159,6 +161,7 @@ function withFixture(operation: (database: AppDatabase, connection: DatabaseSync
         received_amount_cents INTEGER
       );
       CREATE TABLE order_events (order_id TEXT NOT NULL, event_type TEXT NOT NULL, occurred_at INTEGER NOT NULL);
+      CREATE TABLE outbox_events (aggregate_id TEXT NOT NULL, event_type TEXT NOT NULL, created_at INTEGER NOT NULL, payload_json TEXT NOT NULL);
       CREATE TABLE webhook_targets(target_id TEXT PRIMARY KEY, api_client_id TEXT);
       CREATE TABLE webhook_deliveries (target_id TEXT, created_at INTEGER NOT NULL, status TEXT NOT NULL);
       CREATE TABLE financial_exceptions (order_id TEXT, status TEXT NOT NULL, exception_type TEXT NOT NULL);

@@ -115,13 +115,16 @@ function readAnalytics(
       AND (? IS NULL OR api_client_id = ?)
   `).get(now, start, end, clientId, clientId) as Record<string, number | bigint | null>;
 
+  // Every confirmation has an immutable outbox snapshot, including historical
+  // orders created before websites existed. A later re-confirmation can change
+  // the order's current received amount without changing earlier daily totals.
   const confirmations = connection.prepare(`
     SELECT COUNT(*) AS count,
-           COALESCE(SUM(orders.received_amount_cents), 0) AS amount_cents
-      FROM order_events AS events
-      JOIN payment_orders AS orders ON orders.order_id = events.order_id
+           COALESCE(SUM(json_extract(events.payload_json, '$.received_amount_cents')), 0) AS amount_cents
+      FROM outbox_events AS events
+      JOIN payment_orders AS orders ON orders.order_id = events.aggregate_id
      WHERE events.event_type = 'PAYMENT_CONFIRMED'
-       AND events.occurred_at >= ? AND events.occurred_at < ?
+       AND events.created_at >= ? AND events.created_at < ?
        AND (? IS NULL OR orders.api_client_id = ?)
   `).get(start, end, clientId, clientId) as unknown as AmountRow;
 
@@ -159,13 +162,13 @@ function readAnalytics(
          AND (? IS NULL OR api_client_id = ?)
        GROUP BY date
     ), confirmation_daily AS (
-      SELECT strftime('%Y-%m-%d', events.occurred_at / 1000, 'unixepoch', '+08:00') AS date,
+      SELECT strftime('%Y-%m-%d', events.created_at / 1000, 'unixepoch', '+08:00') AS date,
              COUNT(*) AS confirmations,
-             COALESCE(SUM(orders.received_amount_cents), 0) AS confirmed_amount_cents
-        FROM order_events AS events
-        JOIN payment_orders AS orders ON orders.order_id = events.order_id
+             COALESCE(SUM(json_extract(events.payload_json, '$.received_amount_cents')), 0) AS confirmed_amount_cents
+        FROM outbox_events AS events
+        JOIN payment_orders AS orders ON orders.order_id = events.aggregate_id
        WHERE events.event_type = 'PAYMENT_CONFIRMED'
-         AND events.occurred_at >= ? AND events.occurred_at < ?
+         AND events.created_at >= ? AND events.created_at < ?
          AND (? IS NULL OR orders.api_client_id = ?)
        GROUP BY date
     ), notification_daily AS (

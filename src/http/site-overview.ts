@@ -5,10 +5,10 @@ import { WORK_ITEMS_CTE } from "./admin-work-items.ts";
 import { decodeListCursor, encodeListCursor } from "./list-cursor.ts";
 
 const CONFIRMATION_TOTALS_SQL = `
-    SELECT o.api_client_id, count(*) AS n, sum(o.received_amount_cents) AS amount
-      FROM order_events e JOIN payment_orders o ON o.order_id = e.order_id
+    SELECT o.api_client_id, count(*) AS n, sum(json_extract(e.payload_json, '$.received_amount_cents')) AS amount
+      FROM outbox_events e JOIN payment_orders o ON o.order_id = e.aggregate_id
      WHERE e.event_type = 'PAYMENT_CONFIRMED'
-       AND e.occurred_at >= ? AND e.occurred_at < ?
+       AND e.created_at >= ? AND e.created_at < ?
 `;
 
 export function siteOverview(database: AppDatabase, values: URLSearchParams, now = Date.now()) {
