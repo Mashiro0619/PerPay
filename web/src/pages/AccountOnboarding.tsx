@@ -9,6 +9,8 @@ import { AlipayAccountDetail, AlipayAccountList } from "./AlipayAccounts";
 import CreateSite from "./CreateSite";
 import { QueryView } from "@/components/request-state";
 import { TestPaymentButton } from "@/components/test-payment-provider";
+import { SitePicker } from "@/components/site-picker";
+import { useCurrentTestPayment } from "@/lib/test-payment-request";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
@@ -226,6 +228,7 @@ export function AccountOnboarding({
                   </>
                 )}
                 {current.id === "check" && (
+                  <>
                   <Card>
                     <CardHeader>
                       <CardTitle>检查实际收款流程</CardTitle>
@@ -249,6 +252,8 @@ export function AccountOnboarding({
                       </Link>
                     </CardContent>
                   </Card>
+                  <BusinessIntegrationSteps initialSiteId={createdSiteId ?? sites.data?.data[0]?.client_id ?? ""} />
+                  </>
                 )}
                 <div
                   className="flex flex-wrap items-center justify-between gap-3 [&_:is(a,button)]:h-auto [&_:is(a,button)]:min-h-9 [&_:is(a,button)]:max-w-full [&_:is(a,button)]:whitespace-normal"
@@ -292,5 +297,36 @@ export function AccountOnboarding({
         )}
       </QueryView>
     </div>
+  );
+}
+
+function BusinessIntegrationSteps({ initialSiteId }: { initialSiteId: string }) {
+  const payment = useCurrentTestPayment();
+  const [clientId, setClientId] = useState(payment.clientId || initialSiteId);
+  useEffect(() => {
+    if (payment.clientId) setClientId(payment.clientId);
+  }, [payment.clientId]);
+  const sitePath = "/sites/" + encodeURIComponent(clientId);
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>完成业务联调</CardTitle>
+        <CardDescription>
+          管理员测试订单用于检查收款与账号分配。接下来请从业务网站签名下单，并核对通知回执或主动查单结果。
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        <SitePicker value={clientId} onChange={setClientId} />
+        {clientId && <div className="flex flex-wrap gap-2">
+          <Link to={sitePath + "/edit?section=integration"} className={buttonVariants({ variant: "outline" })}>配置网站接入</Link>
+          <Link to={sitePath + "/orders"} className={buttonVariants({ variant: "outline" })}>查看网站订单</Link>
+          <Link to={sitePath + "/notifications"} className={buttonVariants({ variant: "outline" })}>查看通知记录</Link>
+        </div>}
+        <div className="flex flex-wrap gap-2">
+          <a data-external-link href="https://github.com/Mashiro0619/PerPay/blob/main/docs/integration-quickstart.md" target="_blank" rel="noopener noreferrer" className={buttonVariants({ variant: "outline" })}>原生 API 接入文档</a>
+          <a data-external-link href="https://github.com/Mashiro0619/PerPay/blob/main/docs/epay-integration.md" target="_blank" rel="noopener noreferrer" className={buttonVariants({ variant: "outline" })}>易支付接入文档</a>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
