@@ -87,7 +87,7 @@ describe("maintenance documentation version contract", () => {
     const current = readFileSync(new URL("../docs/releases/unreleased.md", import.meta.url), "utf8");
     assert.ok(current.includes(APP_VERSION));
     assert.ok(current.includes(`(v${APP_VERSION}.md)`));
-    assert.ok(maintenance.includes("当前源码版本为 `" + APP_VERSION + "`"));
+    assert.ok(maintenance.includes(APP_VERSION + " 的数据库结构版本为"));
     assert.ok(notes.includes(`ghcr.io/mashiro0619/perpay:${APP_VERSION}`));
     // Compatibility details live in the maintenance guide linked by release notes.
     // The migration catalog and supported range are checked below.
@@ -99,7 +99,7 @@ describe("maintenance documentation version contract", () => {
 
   it("documents the current migration catalog and runtime compatibility rather than an old release", () => {
     const latest = Math.max(...migrations.map((migration) => migration.version));
-    const documented = /最新数据库 schema 为 (\d+)，运行兼容范围为 (\d+)—(\d+)/.exec(maintenance);
+    const documented = /数据库结构版本为 (\d+)，兼容的结构版本为 (\d+)—(\d+)/.exec(maintenance);
     assert.ok(documented, "maintenance must state the current schema and runtime compatibility");
     assert.equal(Number(documented[1]), latest);
     assert.equal(Number(documented[2]), DATABASE_COMPATIBILITY.minimum);
