@@ -112,6 +112,7 @@ export class BackupCycleError extends Error {
 
 interface BackupState {
   readonly version: typeof BACKUP_STATE_VERSION;
+  /** Current policy acknowledged by the backup process, independent of backup age. */
   readonly intervalMilliseconds: number | null;
   readonly keepCount: number | null;
   readonly lastAttemptAt: number | null;
@@ -510,10 +511,18 @@ async function schedule(config: BackupConfig, operations: BackupOperations, acti
     while (!controller.signal.aborted) {
       const activeConfig = withCurrentPolicy(config);
       try {
-        if (reconcileBeforeDelay) {
+        const state = readBackupState(activeConfig.backupDirectory);
+        if (
+          reconcileBeforeDelay ||
+          state.intervalMilliseconds !== activeConfig.intervalMilliseconds ||
+          state.keepCount !== activeConfig.keepCount
+        ) {
+          reconcileBeforeDelay = false;
           try {
             await activity.run("backup.retention", {}, () => reconcileBackupRetention(activeConfig, operations, controller.signal),
               { summarize: count => ({ deleted_backups: count }) });
+            // Re-read the policy after retention before selecting a deadline.
+            continue;
           } catch (error) {
             if (controller.signal.aborted) break;
             process.stderr.write(`${JSON.stringify({
@@ -523,10 +532,6 @@ async function schedule(config: BackupConfig, operations: BackupOperations, acti
               ...backupErrorDetails(error),
             })}\n`);
           }
-          reconcileBeforeDelay = false;
-          // Retention can take time; select the next deadline from the policy
-          // that is current after it finishes.
-          continue;
         }
         const delayMilliseconds = nextScheduledDelayMilliseconds(activeConfig, Date.now());
         if (delayMilliseconds > 0) {
@@ -640,7 +645,14 @@ export async function reconcileBackupRetention(
       state.backupRequired ||
       state.backupName === null ||
       state.instanceId === null
-    ) return 0;
+    ) {
+      writeBackupState(config.backupDirectory, Object.freeze({
+        ...state,
+        intervalMilliseconds: config.intervalMilliseconds,
+        keepCount: config.keepCount,
+      }));
+      return 0;
+    }
     const now = Math.max(Date.now(), startedAt);
     try {
       const retention = operations.prune(
@@ -669,8 +681,11 @@ export async function reconcileBackupRetention(
       }
       state = Object.freeze({
         ...state,
-        lastErrorAt: null,
-        lastErrorStage: null,
+        // Policy reconciliation only resolves retention failures. A failed
+        // backup or verification still needs its scheduled retry to succeed.
+        ...(state.lastErrorStage === "retention"
+          ? { lastErrorAt: null, lastErrorStage: null }
+          : {}),
       });
       writeBackupState(config.backupDirectory, state);
       return retention.deleted.length;

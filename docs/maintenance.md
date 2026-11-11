@@ -105,6 +105,8 @@ docker compose --profile maintenance run --rm --no-deps --entrypoint node mainte
 
 备份保存在 `perpay-backups` 卷，周期和保留数量在后台“系统设置 → 自动备份”调整。
 
+备份任务在正常等待时每 30 秒读取一次策略变化，持有备份锁完成保留数量对账后确认新策略。下一次备份时间和副本过期阈值随已采纳间隔调整，最近成功备份时间保留为实际完成时间。调长间隔后的正常等待会保持健康；对账或备份失败仍显示对应原因。
+
 ```sh
 docker compose --profile maintenance run --rm maintenance list-backups
 ```
