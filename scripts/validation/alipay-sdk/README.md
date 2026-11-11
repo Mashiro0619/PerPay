@@ -2,55 +2,72 @@
 
 # 支付宝官方 SDK 适配验证
 
-阶段 1 已通过。官方 SDK 可通过公开 Dispatcher 接口使用 PerPay 传输层，完成请求签名与响应验签，并向现有查账和密钥检查入口提供所需数据。
+本目录保存检查 SDK 请求和响应规则的用例、模拟数据，以及迁移时保留的独立参考适配器。应用的查账、连接检查和密钥验证已经使用 [SdkAlipayLedgerProvider](../../../src/infrastructure/alipay/sdk-provider.ts)；日常开发入口见[开发导航](../../../docs/development/README.md)。
 
 ## 运行
 
-在本目录执行以下命令。需要项目支持的 Node.js 24 和本机回环连接权限。
+这组用例已接入现有的 [Node 测试入口](../../../test/alipay-sdk.test.mjs)，CI 运行 `npm run check` 时会执行。修改 SDK 适配或传输逻辑时，也可单独运行。
+
+先在仓库根目录安装项目依赖，再执行独立验证：
 
 ```sh
-npm ci --ignore-scripts
-npm test
+npm ci
+npm --prefix scripts/validation/alipay-sdk ci --ignore-scripts
+npm --prefix scripts/validation/alipay-sdk test
 ```
 
-固定依赖为 `alipay-sdk 4.14.0`、`urllib 4.9.1`，传递依赖 `undici 7.30.2` 由本目录锁文件固定。SDK 的 npm 包来源指向支付宝官方仓库，发布产物完整性记录在锁文件中。`urllib 4.9.1` 修复重定向携带敏感请求头的已知漏洞，适配器同时阻止重定向。
+需要比较迁移时的原型时，Linux/macOS 在仓库根目录运行：
 
-默认测试正式 TypeScript 适配器。设置 `PERPAY_SDK_PROTOTYPE=true` 可复现独立原型，用于核对迁移前后的行为。
+```sh
+PERPAY_SDK_PROTOTYPE=true npm --prefix scripts/validation/alipay-sdk test
+```
+
+Windows PowerShell 使用：
+
+```powershell
+$env:PERPAY_SDK_PROTOTYPE = 'true'
+npm --prefix scripts/validation/alipay-sdk test
+Remove-Item Env:PERPAY_SDK_PROTOTYPE
+```
+
+默认检查应用实际使用的 TypeScript 适配器；设置上述环境变量后，只有这组用例会改用参考适配器。用例会生成 RSA 密钥，启动本机 HTTP 服务，并在系统临时目录创建 SQLite 数据库；自定义临时目录见[开发准备](../../../docs/development/README.md#开始开发)。
+
+本目录固定使用 `alipay-sdk 4.14.0`、`urllib 4.9.1`，间接依赖的版本由 [package-lock.json](package-lock.json)固定。应用实际使用的依赖以仓库根 [package.json](../../../package.json)及其锁文件为准。
 
 ## 实现
 
-原型 `provider.mjs` 与正式 `src/infrastructure/alipay/sdk-provider.ts` 均调用官方 SDK 的普通 `curl`。每次请求使用独立 Dispatcher，将 SDK 已签名的请求交给 `NodeV3Transport`，保留收到的原始响应，再交给 SDK 验签。账务字段与分页由现有解析函数处理。
+请求经过以下路径：
 
-传输层继续承担 DNS、连接、取消、整体截止时间和响应大小限制。迁移收益主要是将支付宝协议签名、验签交给官方维护，正式迁移仍需保留传输层及这层适配代码。
+1. 官方 SDK 的普通 `curl` 生成并签名支付宝请求。
+2. 每次请求创建独立 [SdkTransportDispatcher](../../../src/infrastructure/alipay/sdk-dispatcher.ts)，通过公开的 agent/Dispatcher 接口交给 [NodeV3Transport](../../../src/infrastructure/alipay/node-transport.ts)。
+3. 传输层保存原始响应，再由 SDK 验签；PerPay 按字段、金额和分页规则严格解析账单。
+4. 查账服务把流水、原始响应等来源记录、验签状态和错误分类保存到原有账本。
 
-`fixture.mjs` 使用随机合成 RSA 密钥、本机 HTTP 服务和临时 SQLite。测试通过传输层的既有测试注入点把连接指向回环地址，实际经过 SDK、HTTP 请求和账本入库流程。
+传输层负责 DNS、连接、处理调用方取消、限制整次请求时间和控制重定向，同时将正文限制在 2 MiB、响应头限制在 16 KiB。保存收到的原始字节，便于重新核对签名和账单内容；`signatureVerified` 分别表示验签成功、失败或尚未完成。
 
-## 验证结果
+[provider.mjs](provider.mjs)是独立参考实现，[fixture.mjs](fixture.mjs)提供模拟响应。应用适配器与参考原型接收相同的用例输入，便于比较请求、返回结果和错误处理。
 
-2026-11-07 阶段 1 完成 29 项原型测试及 91 项既有相关测试。正式迁移补充 PKCS1 与 KeyObject 密钥格式测试，共 30 项契约测试通过，并通过服务端类型检查和构建。
+<a id="验证结果"></a>
 
-正式迁移的完整本地检查结果如下。
+## 现有检查范围
 
-- 最终 `npm run check` 的后端通过 1566 项，Windows 环境跳过 3 项 POSIX 权限测试，其中包含 30 项 SDK 契约测试。账号隔离、换钥、停止、历史证据和实际密钥检查相关回归均通过。
-- `PERPAY_SDK_PROTOTYPE=true` 对照原型同样通过 30 项契约测试。
-- 版本检查、OpenAPI 检查、服务端与前端类型检查、管理端与收银台构建、服务端构建通过。`npm audit --audit-level=high` 报告 0 个漏洞。
-- 最终前端通过 2334 项。原有 `site-overview-layout` 断言已按 `auto-fit` 布局修正，完整 `npm run check` 与 `npm run build` 通过。
+现有用例检查以下情况。记录运行结果时，一并保存这次的命令输出、源码提交和环境信息。
 
-| 契约 | 验证结果 |
+| 检查类别 | 现有用例检查内容 |
 | --- | --- |
-| 请求签名及参数 | 模拟服务验证 SDK 签名，核对路径、窗口、分页、应用及请求 ID |
-| 响应验签 | 正常、篡改、缺失、错误、重复签名和证书身份均有用例 |
-| 原始证据 | 保留正文空白、重复响应头和未知字段，成功与验签失败均写入真实账本存储 |
-| 错误分类 | 401、403、429、500、302、非 JSON 错误及 Retry-After 按现有契约处理 |
-| 请求控制 | DNS 截止时间、读取超时、外部取消、2 MiB 正文上限、响应头超限及 socket 关闭通过 |
-| 并发及竞态 | 独立请求、单请求取消、传输完成后取消均保留正确结果或证据 |
-| 密钥格式 | PKCS8、PKCS1 和 KeyObject 均使用相同应用身份正确签名 |
-| 账务消费 | 2000 条满页、分页异常、空首页、真实密钥检查、真实采集入库通过 |
+| 请求签名及参数 | SDK 签名、查询路径、时间范围、分页、应用标识和请求 ID |
+| 响应验签 | 正常、篡改、缺失、错误、重复签名及证书身份 |
+| 原始响应保存 | 正文空白、重复响应头、未知字段，以及验签失败后能否查看原始记录 |
+| 错误分类 | 401、403、429、500、302、非 JSON 错误和 Retry-After |
+| 请求控制 | DNS 截止时间、读取超时、外部取消、正文与响应头超限、连接释放 |
+| 并发及取消时机 | 多个请求是否相互独立，取消其中一个请求是否影响其他请求，以及传输完成后取消能否保留已收到的响应 |
+| 密钥格式 | PKCS8、PKCS1 和 KeyObject |
+| 账单解析与保存 | 2000 条满页、分页异常、空首页、密钥检查，以及模拟账单经采集逻辑保存到数据库 |
 
-复核修复了两处证据丢失路径。未知 SDK 异常和传输完成后的取消会保留已收到的响应。候选明确拒绝非 `identity` 内容编码，避免 urllib 自动解压改变待验签内容，并记录未验签的原始证据。
+遇到无法分类的 SDK 异常，或在传输完成后取消请求时，仍保留已经收到的响应。响应使用非 `identity` 内容编码时会被拒绝，避免解压改变需要验签的原文。每种情况的预期结果见 [provider.test.mjs](provider.test.mjs)。
 
 ## 迁移状态
 
-源码中的运行时查账、连接检查和密钥验证已接入正式 TypeScript SDK 适配器。旧 Provider、签名和验签实现已移至 `test/fixtures/alipay-legacy-*.ts`，生产代码保留账务解析、密钥格式检查和有界传输。按用户要求，后续易支付工作连续完成。真实小额收款作为单独操作验收记录。
+运行时查账、连接检查和密钥验证均已使用应用适配器。旧协议实现保留在 `test/fixtures/alipay-legacy-*.ts`，用于对照请求和响应规则；应用继续执行账务解析、密钥格式检查，以及响应大小和时间限制。
 
-独立 SDK 迁移沿用原数据库结构和账号配置，迁移前提交为 `91af37b`。后续易支付版本已升级至数据库结构 42，回退旧版本时须同时使用匹配的迁移前备份，并核对备份后新增的交易记录。
+SDK 适配沿用账号配置和原有账本接口。回退版本时，按[维护说明](../../../docs/maintenance.md)选择与数据库结构版本（schema）相匹配的程序和备份。实际小额付款还需核对支付宝流水、订单确认和业务通知结果，按[支付宝配置指南](../../../docs/alipay-setup.md)另行操作。

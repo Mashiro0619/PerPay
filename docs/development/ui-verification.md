@@ -2,63 +2,109 @@
 
 # 开发验证
 
-以下命令在仓库根目录执行。先安装依赖并完成 `npm run build`；构建、`npm run check` 与浏览器验证依次运行，避免浏览器读取到正在清理的 `web-dist`。架构约束见[前端开发](../../web/README.md#后台交互约束)。
+日常开发以相关类型检查、构建和人工核对为主。本文说明怎样启动预览、拍摄 README 截图，以及按需运行已有的浏览器和 Linux 检查。命令在仓库根目录执行，环境准备见[开始开发](README.md#开始开发)，界面规则见[后台操作规则](../../web/README.md#后台交互约束)。
 
 ## 本地预览
 
 ```sh
 npm run build
-npm run demo:preview
+npm run demo:preview -- --interactive
 ```
 
-打开 `http://127.0.0.1:6192/admin/`，演示密码为 `123456`。预览使用独立临时库、随机主密钥、合成订单与非付款二维码，只绑定回环地址；Ctrl+C 退出时清理临时数据。更新代码后停止旧进程、重新构建并在原端口启动，不以刷新页面或叠加端口代替重启。
+打开 `http://127.0.0.1:6192/admin/`，密码为 `123456`。预览会生成独立的临时数据库、随机主密钥和示例订单，二维码不能用于付款，服务只监听本机回环地址。按 Ctrl+C 退出时，清理这次创建的临时数据库。
 
 | 参数 | 用途 |
 | --- | --- |
-| `--interactive` | 允许管理员 API 修改临时数据，验证保存、校验及版本冲突 |
-| `--official-updates` | 仅允许真实 GitHub 官方版本元数据查询 |
-| `--port 6192` | 显式指定本地端口 |
+| 不加参数 | 只读预览，可以登录、退出；导出仍需通过鉴权等检查 |
+| `--interactive` | 允许管理员 API 修改临时数据，用于检查保存、字段校验、配置冲突和删除操作 |
+| `--official-updates` | 实际向 GitHub 查询公开发布的版本 |
+| `--port 6192` | 指定本轮预览端口 |
 
-参数放在 `npm run demo:preview --` 后。默认只读，仅允许登录、退出及受保护导出；两种模式都不启动支付宝查账或通知传输，公开收银台仍受演示限制，健康状态为模拟。需要热更新时，将 `PERPAY_DEV_API_URL` 设为预览地址，再运行 `npm run dev:admin`。
+参数放在 `npm run demo:preview --` 后。预览中的健康状态由模拟数据给出，查账和通知由本地模拟代码返回结果，公开收银台不能进行真实付款。需要前端热更新时，按 [Vite 开发步骤](../../web/README.md#开发与构建)连接这个临时后端。
 
-启动日志的 `featured` 定位完整收款与通知证据订单，`scenarios.lifecycle`、`financial`、`ledger`、`notifications` 提供本次对象 ID。通过页面或日志定位，不硬编码编号、网站名称和日期；重启会生成新 ID 和会话。造数及只读边界回归为 `test/preview-demo.test.ts`、`test/preview-scenarios.test.ts`。
+启动日志中的 `featured` 指向带有完整收款和通知记录的示例订单；`scenarios.lifecycle`、`financial`、`ledger` 和 `notifications` 列出其他示例记录的编号。按页面和这次启动的日志查找记录；重启后从新日志取编号，并重新登录。临时库重建后首次登录回到全部网站总览，同一次预览中再次登录则保留原页面。
 
-预览重建临时库后，各浏览器标签页首次登录会回到全部网站总览，清除地址中的旧网站、记录和弹窗上下文。同一轮预览再次登录时保留原页面。
+修改源码后，依次停止旧预览、完成构建、在原端口重启。截图和操作核对均使用这次重启后的产物。
+
+## 日常手工核对
+
+先执行对应类型检查和构建，再按改动检查下面的操作。
+
+| 改动类型 | 核对内容 |
+| --- | --- |
+| 布局、文案或样式 | 桌面与窄屏、明暗主题、长内容和放大文字下能否读清；能否用键盘选中控件、滚动到全部内容 |
+| 表单与设置 | 保存、取消、字段错误；切换分组后是否保留未保存内容；刷新失败、版本冲突、请求尚未完成或结果不明时怎样继续 |
+| 列表与详情 | 筛选、排序、翻页；打开与关闭详情；直接打开详情地址后刷新；浏览器前进后退；关闭后焦点是否回到原控件 |
+| 多网站操作 | 请求是否使用正确网站编号，全局与本站数据是否区分；切换或删除网站后，查询、保存和侧栏选择是否仍正确 |
+| 付款与通知展示 | 下单金额、应付与实收、付款截止、收款确认、通知接收结果和重试原因 |
+| 收银台 | 服务端首屏（SSR）、浏览器接管交互（hydration）、无脚本刷新、二维码操作、到期与结束状态、返回商家 |
+
+布局检查可以使用 200% 文字和较矮窗口；README 展示截图使用下一节的统一比例。核对流水来源时，展开“核对凭据”或“支付宝交易编号”，同时检查完整编号、来源标签和复制入口。
+
+人工核对时记下源码提交、构建版本、浏览器、页面地址、操作步骤和结果。遇到失败，保留截图和错误信息；实际支付宝小额付款、业务网站接收通知和实体设备操作，各自记录对应结果。
+
+## README 截图
+
+1. **固定桌面规格。** CSS 视口宽 1280，使用 DPR 2、浅色主题和 100% 页面缩放。当前总览图高 980、订单图高 952；调整高度时让画面下沿落在完整卡片或记录之间。展开侧栏“业务网站”，确保示例网站列表完整可见，再确认筛选和当前网站范围。
+2. **使用当前界面和演示数据。** 新建独立的只读预览，网站、商品和付款人明确标注“示例”，商户订单号、支付宝流水号与支付宝交易号使用 `DEMO_` 前缀。不要导入真实数据库、账号、凭据或账单。等待字体、数据和图表加载完成，加载占位消失，页面动效结束后再截取。
+3. **每张只截一屏。** 截取浏览器当前可见的区域，保持文字与控件的原始比例。长页面选择能说明功能的位置，分别截取；不用全页长图缩小后充当一屏截图。
+4. **检查成图。** 核对标题、数字、字段、边缘和图表是否完整，避免鼠标提示、残留菜单、加载中状态或意外选中文本遮挡内容。成图应能按 README 实际显示宽度清楚阅读。
+5. **分别全宽展示。** 两张图各用独立的 Markdown 图片段落，按正文可用宽度显示。不要放进并排表格或窄列，也不要为了塞进同一行缩小图片。
+
+选定成图保存到 README 引用的素材目录；未选用的截图、拍摄参数和核对记录保存到独立工作目录。重新拍摄时沿用同一规格和取景位置，便于比较界面变化。
 
 ## 浏览器回归
 
-流水与付款来源断言保留当前交互：手机流水主链接显示付款人，完整流水号位于记录元数据；订单中的“核对凭据”和流水中的“支付宝交易编号”先展开再核对。弹窗几何检查约束布局滚动容器，原生多行文本框的内部滚动单独验证键盘可达性，不计为第二个布局滚动区。
-
-首次安装 Chromium，完成构建后选择所需范围：
+下面是已有的 Playwright 检查命令，可在 CI 或需要检查指定功能时运行。先安装 Chromium，再完成构建；用例运行期间不要重新构建或清理构建目录。
 
 ```sh
 npx playwright install chromium
+npm run build
 npm run test:ui -- --project core
-npm run test:ui:full
 ```
 
-`core` 运行核心与专项流程，`full` 运行完整页面矩阵。单项可用 `npm run test:ui -- ui-tests/business-flow.spec.ts --project core`；夹具和 Playwright 类型检查为 `npm run typecheck:ui`。列表查询性能可分别运行 `scripts/benchmark-admin-queries.ts` 和 `scripts/benchmark-manual-candidates.ts`，使用 Node 的 `--experimental-strip-types`，它们不验证财务写入。
+`core` 检查核心流程和指定功能；需要遍历全部页面时，使用 `npm run test:ui:full`。运行单个文件可用 `npm run test:ui -- ui-tests/business-flow.spec.ts --project core`；测试环境和数据代码的类型检查命令为 `npm run typecheck:ui`。
 
-用例自行启动独立临时实例；只读场景、受控响应场景和真实领域写入场景应分别说明。连续业务流程使用实际 Hono、SQLite、签名与领域服务，仅模拟外部支付宝与通知接收端；测试订单、带回调业务订单和人工处理订单是不同对象，不能混为一笔交易。
+用例会创建独立临时实例。下单到通知的连续流程使用应用实际的 Hono、SQLite、签名和业务服务，支付宝和通知接收方则由测试代码模拟。检查时继续使用应用原有的 CSP、网站／账号归属检查，以及防止财务操作重复执行的幂等规则。
 
-布局变更检查桌面和窄屏、明暗主题、长内容、200% 文字、键盘焦点及滚动可达性；交互变更检查深链接刷新、前进后退、网站范围、未保存草稿、并发冲突、离线及未知结果恢复。收银台另测无脚本和 hydration。使用生产 CSP，不通过隐藏错误、强制点击或放宽策略使验收通过。
+浏览器缓存可通过 `PLAYWRIGHT_BROWSERS_PATH` 指定。输出位置由 [playwright.config.ts](../../playwright.config.ts) 决定：`PERPAY_UI_OUTPUT_DIR` 指定完整目录；未设置时使用 `.ui-audit/runs/<运行名>/`，运行名可通过 `PERPAY_UI_RUN` 设置。每次运行使用独立目录，结束后用 `node scripts/summarize-ui-run.mjs <输出目录>` 汇总结果。失败时的操作轨迹（trace）、截图，以及 axe 提出的人工复核项，都保存在这次运行的记录中。
 
-产物默认写入 `.ui-audit/runs/`，可用环境变量 `PERPAY_UI_RUN` 指定运行目录名，或用 `PERPAY_UI_OUTPUT_DIR` 指向其他磁盘上的完整输出目录。临时数据库位置由系统临时目录配置决定。运行后执行 `node scripts/summarize-ui-run.mjs <输出目录>` 汇总已有证据。保留实际源码／构建摘要、浏览器、视口、截图及失败 trace；不将产物提交到源码库。axe 未确定项需人工复核，动效需可重复操作或录屏。
+<a id="现有-ci-与专项入口"></a>
+
+## CI 与其他检查命令
+
+| 入口 | 当前执行范围 |
+| --- | --- |
+| [ci.yml](../../.github/workflows/ci.yml) | `npm run check`、依赖审计，以及分片运行的 Chromium `core` |
+| [release.yml](../../.github/workflows/release.yml) | 发布版本、OpenAPI、类型、测试、构建、依赖审计和 Chromium `core`；发布流程见工作流 |
+| [container-validation.yml](../../.github/workflows/container-validation.yml) | Linux amd64/arm64 存储、Compose、备份与恢复验证 |
+| [支付宝 SDK 接口检查](../../scripts/validation/alipay-sdk/README.md) | 检查应用实际使用的 SDK 适配器如何发请求、验签、保存原始响应和控制传输；包含在已有 Node 测试入口中 |
+| [易支付客户端兼容检查](../../scripts/validation/epay/README.md) | 按需在独立环境中，用固定版本的 PHP/Go SDK 和 New API 实际请求 PerPay |
+| [调用端 Demo](../../examples/node-client/README.md) | 原生、V1、V2 的业务接入与接收端行为 |
+| 查询性能脚本 | `scripts/benchmark-admin-queries.ts`、`scripts/benchmark-manual-candidates.ts`，测量对应查询的执行时间 |
+
+列表性能脚本通过 Node 的 `--experimental-strip-types` 运行。根据改动选择已有专项，不把整套自动化命令作为每次日常开发的前置步骤。
 
 ## Linux 升级与进程恢复
 
-使用 [Linux 验证脚本](../../scripts/validation/run-linux-validation.mjs)，宿主需满足 [package.json](../../package.json) 的 Node.js 版本范围，并能运行 Docker 的 Linux 容器。先从待验证的源码分别构建本地基线与候选镜像；脚本不构建或拉取镜像。镜像架构须匹配 Docker 引擎的 `linux/amd64` 或 `linux/arm64`，具有 `org.opencontainers.image.version` 和 40 位提交 SHA 的 `org.opencontainers.image.revision` 标签。历史基线固定为 RC1/schema 38；候选升级、备份恢复及存储验证使用 [版本声明](../../src/version.ts) 中的 `DATABASE_COMPATIBILITY.maximum`，并由镜像内夹具严格核对实际结构版本。
+[run-linux-validation.mjs](../../scripts/validation/run-linux-validation.mjs) 使用预先构建的本地 Linux 镜像。宿主需要项目支持的 Node.js 和 Docker；镜像架构与 Docker 引擎匹配，并包含版本及 40 位提交 SHA 的 OCI 标签。
 
-将以下镜像名替换为已构建的本地标签：
+升级起点固定为 RC1，其数据库结构版本（schema）为 38；被检查的新版本使用 [DATABASE_COMPATIBILITY.maximum](../../src/version.ts) 中的结构版本。将以下标签替换为已构建的镜像，并按需调整输出目录：
 
 ```sh
-node scripts/validation/run-linux-validation.mjs --phase=all --rc1-image=perpay-validation:rc1 --candidate-image=perpay-validation:candidate --output=.scratch/linux-validation
+node scripts/validation/run-linux-validation.mjs --phase=all --rc1-image=perpay-validation:rc1 --candidate-image=perpay-validation:candidate --output=./.scratch/linux-validation
 ```
 
-`--phase=upgrade` 仅验证升级、备份与恢复；`--phase=recovery` 仅验证候选镜像的中断恢复，此时可省略 `--rc1-image`。`--scenarios` 接受逗号分隔的恢复场景名，取值见脚本的 `scenarios` 列表。
+| 参数 | 用途 |
+| --- | --- |
+| `--phase=all` | 运行升级、恢复与存储相关检查 |
+| `--phase=upgrade` | 升级、备份与匹配版本恢复 |
+| `--phase=recovery` | 检查新版本镜像在进程被中断后能否恢复，可省略 RC1 镜像 |
+| `--phase=storage` | 存储专项，与容器 CI 对应 |
+| `--scenarios=...` | 选择逗号分隔的恢复场景，名称见脚本中的 `scenarios` |
 
-脚本为每轮生成唯一标识、临时密钥和独立卷，所有容器使用 `network none`、只读根文件系统及受限权限，并核对角色挂载。只允许访问本轮隔离标记对应的数据，不挂载生产卷。成功后按双重标签核对并清理自己创建的容器和卷；失败时保留资源清单，需核对所属者与本轮运行标签后人工清理。输出保留在指定目录。
+脚本为每次运行生成唯一标识、临时密钥和独立数据卷，只操作带有这次运行标识的容器和卷。容器使用 `network none`、只读根文件系统和受限权限，生产数据卷不参与检查。成功后清理这次创建的资源；失败时保留资源清单供排查，输出保留在指定目录。
 
-升级验证先核对原业务身份和审计链，再执行业务推进、真实备份及匹配版本恢复。中断验证等待支付事务、通知 claim／ACK 或审计 spool 的精确边界握手后发出 SIGKILL，检查退出码与自然租约恢复；不通过 SQL 修改业务状态或租约制造成功。
+升级检查先核对原有网站等标识和审计哈希链，再继续执行业务操作、备份与恢复。中断检查会在保存付款事务、领取通知任务（claim）、处理通知确认响应（ACK），或写入审计暂存文件（spool）的指定步骤发送 SIGKILL，强制结束进程；随后检查任务占用记录（租约）和进程能否正确恢复。记录结果时，写明实际检查了哪个步骤。
 
-公开分享 `result.json` 前核对内容；`private-run.json` 含本轮隔离密钥，不分享或提交。数据库和领域服务是实际镜像代码，外部支付宝与通知接收端为模拟；进程中断恢复不等于断电、真实外网传输或生产实例验收。Chromium 手机仿真也不等于实体设备验收。
+`result.json` 保存检查结果，`resources.json` 列出这次运行创建的资源；`private-run.json` 含临时密钥，留在本地核对。

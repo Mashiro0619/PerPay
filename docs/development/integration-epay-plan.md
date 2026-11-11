@@ -1,38 +1,33 @@
 <!-- SPDX-License-Identifier: MIT -->
 
-# 支付宝 SDK 迁移与网站接入工作计划
+<a id="支付宝-sdk-迁移与网站接入工作计划"></a>
 
-2026-11-07 · 开发与本地联调完成 · 源码版本 `1.0.0-rc.4`，数据库结构 42
+# 支付宝 SDK 与易支付接入设计
 
-按本轮最新要求，SDK 迁移与旧实现清理、易支付 V1/V2、接入助手、Demo、SDK 互操作和 New API 联调连续完成。真实小额付款另记操作验收，开发与本地验证持续推进。结果见[支付宝 SDK 验证](../../scripts/validation/alipay-sdk/README.md)及[易支付联调验证](../../scripts/validation/epay/README.md)。
+本文说明当前代码怎样调用支付宝 SDK、兼容易支付、保存网站密钥和发送通知。业务接入步骤见[易支付指南](../epay-integration.md)，开发入口见[开发导航](README.md)。依赖版本以 [package.json](../../package.json)为准，数据库结构版本（schema）及兼容范围以 [src/version.ts](../../src/version.ts)为准。
 
-## 交付目标
+<a id="交付目标"></a>
 
-先验证并迁移支付宝官方 SDK，减少请求、签名和验签的维护工作。随后完成接入助手和易支付兼容，让自建网站下载配置后快速接入，让已有易支付插件的系统能通过 PerPay 完成收款。
+## 当前能力
 
-官方 SDK 负责支付宝通信与协议处理，PerPay 负责账单解析、证据保存、订单匹配和业务通知。正式替换以适配验证通过为前提。
-
-网站接入同时支持原生协议、易支付 V1 和 V2，提供包含密钥的完整配置下载。V2 商户私钥由后台加密保存，支持重复下载。易支付交付覆盖支付宝网页收款、查单、付款通知和返回商家。
-
-工作内容覆盖以下三部分。
-
-1. 验证官方 SDK 能否接好查账、验签、超时和原始证据。
-2. 验证通过后迁移查账与密钥检查入口，完成独立回归。
-3. 固定易支付协议与 SDK 样例，开发兼容接口、接入助手并完成联调。
+- 支付宝通信使用官方 Node.js SDK。SDK 负责请求签名和响应验签，PerPay 负责连接、超时和取消，解析账单、保存原始响应并进行对账。
+- 网站可使用原生协议、易支付 V1 或 V2，共用收款账号分配、应付金额、收银台和订单状态。
+- 易支付覆盖支付宝网页收款、查单、商户统计、付款通知和返回商家。
+- 接入助手可以开启或关闭协议、查看和更换密钥、复制配置并打开文档。管理 API 还可以按协议导出 Demo 配置。
 
 ## 资料依据
 
-支付宝迁移以官方 Node.js SDK 为依据。易支付采用部署站文档、发布的 PHP SDK 与实际下游客户端交叉核对。
+PerPay 支持哪些参数和行为，以应用实际代码为准；用外部 SDK 发请求、验签和解析回调，检查它们能否正常配合使用。
 
 | 来源 | 用途 |
 | --- | --- |
-| [支付宝官方 Node.js SDK](https://github.com/alipay/alipay-sdk-nodejs-all)、[调用实现](https://github.com/alipay/alipay-sdk-nodejs-all/blob/master/src/alipay.ts)、[配置类型](https://github.com/alipay/alipay-sdk-nodejs-all/blob/master/src/types.ts) | 确定 SDK 的公开接口、验签行为和适配范围 |
-| [ezfp V1 文档](https://www.ezfp.cn/doc_old.html)、[V2 下单](https://www.ezfp.cn/doc/pay_create.html)、[查单](https://www.ezfp.cn/doc/pay_query.html)、[通知](https://www.ezfp.cn/doc/pay_notify.html) | 路径、字段、返回码和通知格式 |
-| [全日付文档](https://alldaypay.cn/docs/?p=create)、[签名说明](https://alldaypay.cn/docs/?p=rsa) | 核对必填项、时间戳及签名规则 |
-| [ezfp SDK](https://www.ezfp.cn/doc/sdk.html)、[v8jisu SDK](https://pay.v8jisu.cn/doc/sdk.html)、[godpay SDK](https://godpay.top/doc/sdk.html) | 用 PHP V1.3、V2.0 客户端验证请求和响应 |
-| [New API](https://github.com/QuantumNous/new-api)、[go-epay v0.0.5](https://github.com/Calcium-Ion/go-epay/tree/v0.0.5/epay) | 核对真实下单参数，验证充值和订阅接入 |
+| [支付宝官方 Node.js SDK](https://github.com/alipay/alipay-sdk-nodejs-all)、[调用实现](https://github.com/alipay/alipay-sdk-nodejs-all/blob/master/src/alipay.ts) | 请求接口、签名、验签与 Dispatcher 适配 |
+| [ezfp V1](https://www.ezfp.cn/doc_old.html)、[V2 下单](https://www.ezfp.cn/doc/pay_create.html)、[查单](https://www.ezfp.cn/doc/pay_query.html)、[通知](https://www.ezfp.cn/doc/pay_notify.html) | 路径、字段、返回码和回调格式 |
+| [全日付签名说明](https://alldaypay.cn/docs/?p=rsa) | RSA、时间戳及参数规则 |
+| PHP V1.3、V2.0 SDK 与 [go-epay v0.0.5](https://github.com/Calcium-Ion/go-epay/tree/v0.0.5/epay) | 独立生成请求、解析回调与验签 |
+| [New API](https://github.com/QuantumNous/new-api) | 下游充值、订阅及重复通知处理 |
 
-三站 V2 SDK 的核心代码相同，按一组来源记录。实现时固定 SDK 下载地址、版本和 SHA-256，并固定 New API 的测试提交。已核对的 V2 `EpayCore.class.php` SHA-256 为 `161fffe3c68998f539bf4253d4cd274e69aaf1f4b1df30bfe8578eac4d1c94b5`。
+PHP 下载地址、文件校验值、容器摘要和 New API 固定提交集中保存在[易支付客户端兼容检查](../../scripts/validation/epay/README.md)。支付宝 SDK 适配器和参考原型使用哪些输入、应返回什么结果，见 [SDK 验证](../../scripts/validation/alipay-sdk/README.md)。
 
 ### 易支付协议规则
 
@@ -40,119 +35,125 @@
 | --- | --- | --- |
 | 页面下单 | GET/POST `/submit.php` | GET/POST `/api/pay/submit` |
 | API 下单 | POST `/mapi.php` | POST `/api/pay/create` |
-| 单笔查询 | `/api.php?act=order`，支持 GET/POST | POST `/api/pay/query` |
-| 商户信息与订单列表 | `/api.php?act=query`、`act=orders` | `/api/merchant/info`、`/api/merchant/orders`，均为 POST |
+| 单笔查询 | GET/POST `/api.php?act=order` | POST `/api/pay/query` |
+| 商户信息与列表 | `/api.php?act=query`、`act=orders` | POST `/api/merchant/info`、`/api/merchant/orders` |
 | 请求编码 | UTF-8 表单 | UTF-8 表单 |
-| 签名 | 下单参数排序后追加密钥，计算小写 MD5。查询使用 `pid+key` | RSA-SHA256，Base64 编码。请求使用商户私钥，响应与通知使用平台私钥 |
-| 成功返回 | 本轮下单与查询接口 `code=1` | `code=0` |
+| 鉴权 | 下单参数排序后追加商户密钥，计算小写 MD5；查询使用 `pid` 和 `key` | 商户私钥生成 RSA-SHA256 签名，Base64 编码 |
+| 响应与回调 | 按 V1 返回格式；回调使用 V1 商户密钥签名 | 平台私钥签名，商户使用平台公钥验证 |
+| 成功返回码 | 下单和查询接口 `code=1` | `code=0` |
 | 支付状态 | `0` 未支付、`1` 已支付 | `0` 未支付、`1` 已支付 |
-| 时间戳 | 按 V1 字段约定 | Unix 秒，允许前后 300 秒，每次通知重试重新签名 |
-| 付款通知与同步返回 | GET，成功状态 `TRADE_SUCCESS` | GET，成功状态 `TRADE_SUCCESS`，带时间戳与签名 |
-| 异步回执 | 文本 `success` | 文本 `success` |
+| 时间戳 | 按 V1 字段约定 | Unix 秒，允许前后 300 秒 |
+| 付款通知与同步返回 | GET，`TRADE_SUCCESS` | GET，`TRADE_SUCCESS`，带时间戳及签名 |
+| 通知接收成功的响应 | HTTP 2xx，正文去除首尾空白后为 `success` | 同左 |
 
-验签先使用收到的原始参数值，随后转换金额等业务字段。签名排除 `sign`、`sign_type` 和协议规定的空值，保留字符串 `"0"`。V1 保留纯空格值，V2 跳过 trim 后为空的值。V2 下单和单笔查询采用平铺响应。订单列表采用顶层 `data` 数组，按 PHP SDK 的规则排除数组参与签名。[签名规则](https://www.ezfp.cn/doc/sign_note.html) · [列表接口](https://pay.lanfucai.com/doc/merchant_orders.html)
+先用收到的参数原文验签，再转换金额等业务字段。`sign`、`sign_type` 和协议约定的空值不参加签名，字符串 `"0"` 仍参加。V1 保留纯空格值；V2 排除按 PHP `trim` 规则判断为空的值，其他值仍保留原文。V2 下单与单笔查询把结果字段直接放在响应顶层；列表则放在顶层 `data` 数组中，该数组按 PHP SDK 规则不参加顶层签名。实现见 [protocol.ts](../../src/epay/protocol.ts)。
 
-### 易支付兼容选择
+<a id="易支付兼容选择"></a>
 
-- 页面下单允许省略 `type`，进入支付宝收银台。API 下单要求 `type=alipay`。V2 API 下单支持 `method=web/jump`，返回 `pay_type=jump` 和 PerPay 收银台地址。
-- V1 页面下单要求 `return_url`，V1 API 下单与 V2 下单允许省略。通知地址必填，并与返回地址分别校验网站配置的 HTTPS 来源。
-- 接受 `device` 等标量扩展参数，并纳入原始验签。数组、重复参数名及 GET/POST 同名参数冲突返回参数错误。
-- 为避免未编码签名串产生字段歧义，拒绝参数名中的 `&`、`=` 和参数值中的 `&`。此项列为 PerPay 的接入约束，与 `go-epay v0.0.5` 对齐。中文、空格、`+`、值中的 `=`、字面量 `%26` 纳入编码测试。[客户端规则](https://github.com/Calcium-Ion/go-epay/blob/v0.0.5/epay/util.go)
-- 商品名按协议限制保存为最多 127 个 UTF-8 字节，先验签，再按完整字符截断。同一订单重试仍比较原始业务内容。单号使用字符串，并沿用现有商户单号字符校验。
-- 双单号查单优先使用 `trade_no`。V1 列表按 `page` 分页，V2 按 `offset` 分页，`limit` 默认 20、最大 50。查询与统计仅覆盖当前网站的兼容订单。
-- 异步回执采用 HTTP 2xx 且去除首尾空白后等于 `success`。其余回执进入现有失败分类和重试流程。
-- 退款、代付、结算及其他支付方式返回明确的不支持错误。商户信息展示网站订单统计，直收模式的余额为 `0.00`、结算关闭、结算资料为空。
+### 易支付接口处理规则
 
-## 实施内容
+- 页面下单可省略 `type`，进入支付宝收银台；API 下单要求 `type=alipay`。V2 API 接受 `method=web/jump`，返回 `pay_type=jump` 和 PerPay 收银台地址。
+- V1 页面下单要求 `return_url`；V1 API 和 V2 下单允许省略。通知地址必填，通知与返回地址分别匹配该网站保存的 HTTPS 来源。
+- `device` 等扩展字段只要是单个值，也参加验签。数组、重复参数和 GET/POST 同名参数冲突会返回参数错误。
+- 签名把字段直接拼成 `key=value&key=value`，不会重新编码每个字段。参数名含 `&`、`=`，或参数值含 `&` 时，同一段文本可能有多种拆分方式，因此拒绝这些内容；规则与 go-epay v0.0.5 一致。
+- 商品名先验签，再按完整字符截取至 127 个 UTF-8 字节；重试比较原始业务内容。单号保持字符串。
+- 查单同时传入 `trade_no` 和 `out_trade_no` 时，优先使用 `trade_no`。V1 列表按 `page`、V2 按 `offset` 分页，`limit` 默认 20、最大 50；每个网站只能查询自己的订单和统计。
+- 回调地址中已有的固定查询参数与协议参数一起签名。接受回调地址前，检查名称是否重复、是否与协议字段重名，以及 PHP 解码是否会改变参数名。
+- 退款、代付、结算和其他支付方式返回不支持错误。商户信息提供网站订单统计；直收模式的余额为 `0.00`，结算关闭。
+
+<a id="实施内容"></a>
+
+## 实现结构
 
 ### 支付宝官方 SDK 适配验证
 
-当前审阅源码标注版本为 `4.14.0`。普通 `curl` 成功结果返回解析后的数据、HTTP 状态和 trace ID。`curlStream` 提供响应流，但跳过响应验签。公开调用选项提供超时和 agent，外部取消、大小限制及原始证据需要实际验证。配置中的 `urllib` 参数已被忽略。[官方调用源码](https://github.com/alipay/alipay-sdk-nodejs-all/blob/master/src/alipay.ts) · [官方配置定义](https://github.com/alipay/alipay-sdk-nodejs-all/blob/master/src/types.ts)
+应用实际使用的适配器调用 SDK 的普通 `curl`。每次请求创建独立的 Dispatcher（请求转发对象），将 SDK 已签名的请求交给 PerPay 的 `NodeV3Transport`。PerPay 先保存原始响应，再交由 SDK 验签，最后解析账单。这样既使用官方的签名规则，也留下可供核对的原始响应。
 
-- 核对官方 npm 发布产物与已审阅源码，固定评估版本、依赖锁及源码依据，建立使用临时数据库和模拟支付宝响应的隔离原型。
-- 在现有 `LedgerProvider.queryPage()` 后实现 SDK 候选适配器。优先验证 SDK 公开的 agent/dispatcher 扩展能否同时取得原始响应和控制请求生命周期，使用标准 JSON 调用完成 SDK 验签。
-- 对已收到的成功及失败响应，取得原始字节、完整响应头、HTTP 状态、trace ID 和验签状态。原始证据直接来自传输层，成功响应先完成 SDK 验签，再由 PerPay 严格解析账务数据。HTTP 错误响应按未验签证据记录，尚未收到响应的传输失败记录请求标识和错误。
-- 覆盖 DNS、连接和响应读取的整体超时、外部 `AbortSignal` 取消、流式 2 MiB 正文上限、16 KiB 响应头上限，以及中断后的连接释放和有界部分响应保存。
-- 将 SDK 错误映射到现有错误分类，覆盖 401、403、429、5xx、`Retry-After`、非 JSON 错误响应、缺签名、错误签名及取消。准确保存 `signatureVerified` 的成功、失败、未知三种状态。
-- 用相同响应样本对照现有实现，检查分页、字符串金额、原始字段、空页、重复头、非法 UTF-8、重复 JSON 字段和证据指纹。成功门槛同时覆盖后台查账与保存配置后的密钥检查。
+| 模块 | 职责 |
+| --- | --- |
+| [sdk-provider.ts](../../src/infrastructure/alipay/sdk-provider.ts) | 调用 SDK，把验签结果和错误转换成 PerPay 使用的状态，再进入账务解析 |
+| [sdk-dispatcher.ts](../../src/infrastructure/alipay/sdk-dispatcher.ts) | 在 SDK 与 PerPay 传输接口之间转发请求，处理取消和超时 |
+| [node-transport.ts](../../src/infrastructure/alipay/node-transport.ts) | DNS、连接、读取响应，并限制正文和响应头大小 |
+| [provider.ts](../../src/infrastructure/alipay/provider.ts) | 严格账单解析、金额、分页和字段校验 |
+| [ledger/](../../src/ledger/) | 把流水和来源记录保存到数据库，维护正常查账与历史补查进度 |
 
-完成条件为原型源码、契约对照表和测试结果齐全，原始证据、SDK 验签、传输控制及错误分类通过，生产接入使用 SDK 公开接口。
+保存的原始记录包含响应正文、响应头、HTTP 状态、trace ID 和验签状态。正文上限为 2 MiB，响应头上限为 16 KiB。请求失败、被取消或超过大小限制时，也记录当时已经收到并保留的响应信息；还没完成验签时，验签状态记为未知。
 
-### 正式迁移支付宝调用
+<a id="正式迁移支付宝调用"></a>
 
-- 固定已验证的 SDK 版本和适配实现，按账号创建客户端。复用现有 App ID、私钥及支付宝公钥配置，明确 PKCS8/PKCS1 的转换，并校验换钥后的客户端生命周期。
-- 同时接入运行时查账、保存配置后的连接检查和密钥验证启用流程。应用身份变更、轮换密钥、服务重载和停止时，正确取消在途请求并释放资源。账号暂停后仍需查账的历史订单纳入生命周期回归。
-- 通过现有 `LedgerProvider` 输出账务页、原始证据和统一错误。账单解析、分页检查与账本证据校验由 PerPay 执行，正常查账和异常结果都能进入现有记录页面。
-- 完成既有 provider、transport、账号配置、密钥轮换和账本测试，并补齐适配验证发现的回归场景。先验证模拟完整链路，再由用户操作小额收款，核对实际流水和查账记录。
-- 清理已被 SDK 替代的生产签名、验签代码，保留已验证的有界传输。测试夹具需要的独立签名能力保留为测试工具。将这次迁移作为独立变更交付，记录版本、依赖及回退步骤。
+### 查账、连接检查与密钥验证
 
-完成条件为查账与密钥检查统一使用 SDK，账号生命周期和原始证据回归通过，迁移结果可独立复核。
+运行时，每个账号通过 SDK 适配器查账；[密钥验证](../../src/settings/provider-key-verification.ts)和账号连接检查也使用同一实现。账号配置重新加载、更换密钥或停止运行时，取消仍在进行的请求。
 
-### 固定易支付协议与测试样例
+正常查账和历史补查分别记录进度。正常查账完成本轮开始时确定的时间范围后，才更新最近查账成功时间；历史补查成功不会刷新这个时间。账号能否接收新订单，仍取决于正常账单是否需要继续追赶、是否出现故障、首次查账是否完成，以及结果是否超过有效期。
 
-- 将上述规则落实为接口参数表和固定测试向量，覆盖请求、响应、通知、同步返回及错误响应。
-- 准备 PHP 8.3 测试容器，启用 OpenSSL 和 cURL，并使用现有 Go 环境运行固定版本客户端。SDK 作为外部测试调用方运行。
-- 用两套 PHP SDK 和 `go-epay v0.0.5` 交叉检查签名，锁定空值、零值、编码、密钥格式和时间戳边界。
+旧签名和 Provider 实现保留在测试代码中，用来比较协议处理结果；应用实际运行时继续执行账务解析、密钥格式检查，以及响应大小和时间限制。
 
-完成条件为协议表、SDK 版本及测试向量齐全，能够独立生成请求和验证签名。
+<a id="固定易支付协议与测试样例"></a>
+
+<a id="协议与互操作依据"></a>
+
+### 协议规则与客户端检查
+
+[协议实现](../../src/epay/protocol.ts)负责处理表单参数、MD5/RSA 签名、以秒计的时间戳和回调 URL 编码。[客户端兼容检查脚本](../../scripts/validation/epay/README.md)使用固定版本的 PHP SDK、Go SDK 和 New API，实际生成请求、查询订单、接收通知并处理返回商家。编码样例包含中文、空格、`+`、值中的 `=`、字面量 `%26` 和零值。
 
 ### 网站配置、密钥与数据迁移
 
-- 新增网站易支付配置，包含固定数字 PID、默认开启的 V1/V2 接单开关和配置版本。建站时自动生成密钥，启动时补齐尚未初始化的历史网站，保留已保存的开关与凭据。PID 绑定稳定网站编号，删除网站后保留占用。
-- 每站分别管理 V1 密钥、V2 商户密钥对和 V2 平台密钥对，复用现有加密、显式查看、轮换及审计机制。首版由后台生成密钥。
-- 新增兼容订单附表，保存协议、数字格式的 `trade_no`、透传 `param`、原始业务请求指纹及原始商家返回地址。兼容信息与核心订单在同一事务提交。
-- 扩展通知协议标识、按协议选择密钥的逻辑及发送证据。同步更新数据库约束、触发器、完整性检查和备份恢复验证，历史记录按原生协议解释。通知成功的 HTTP 状态约束按协议分派，原生使用 200，易支付接受带有效回执的 2xx。
+每个网站有固定的数字商户号 PID、V1/V2 接单开关和独立配置版本。新网站默认生成 V1 商户密钥、V2 商户密钥对及平台密钥对；启动时为尚未初始化易支付的旧网站补齐这些内容，保留已有配置和密钥。PID 与固定网站编号对应，更换公开客户端 ID 不会改变 PID；删除网站后也不再把旧 PID 分配给其他网站。
 
-完成条件为已有数据库可升级，新旧订单、凭据和通知均通过完整性检查。
+密钥按网站加密保存，查看、更换和导出接口都要检查权限并留下审计记录。易支付订单的补充表保存所用协议、数字 `trade_no`、原样传递的 `param`、用于识别原请求内容的摘要，以及商家返回地址；这些信息与核心订单在同一数据库事务中保存。
+
+通知记录保存协议标识和密钥版本；历史原生记录按原有算法解释。数据库约束、迁移和兼容范围见 [database/](../../src/database/)与[版本声明](../../src/version.ts)。
 
 ### 下单、查单、通知与返回商家
 
-- 将通过鉴权的兼容请求转入现有网站订单服务，复用账号分配、金额槽、收银台和对账。通知准入按对应协议凭据检查。
-- 以稳定网站身份和业务单号去重。相同业务内容重试返回原订单，金额、回调地址、透传内容或协议变化时返回冲突。跨原生与兼容入口共用业务单号唯一约束。
-- 对外 `money` 使用商品原价。商品 10 元、实际应付 10.03 元时，回调返回 10 元，收银台与对账使用 10.03 元。
-- 付款确认映射为成功状态，其他付款状态映射为未支付。仅确认事件生成成功通知，投递前再次核对订单状态，撤销确认后终止待发的旧成功通知并记录原因。
-- 扩展 `WebhookTransport`，支持原生 POST JSON 和易支付 GET。通知队列按协议编码、签名和判断回执，发送证据包含 HTTP 方法、最终查询参数、正文指纹及密钥版本。历史原生记录按原版本算法校验，兼容通知记录实际发送请求的指纹，复用租约、退避、死信及人工重发。
-- 收银台通过令牌授权的站内返回入口读取最新付款状态。确认付款后签名跳转，其他状态返回商家时携带原始返回地址参数。下单时拒绝回调地址已有查询参数与协议字段重名，静态查询参数与最终协议参数共同签名。
-- 密钥轮换后，新请求和后续投递使用对应协议的新密钥。关闭 V1/V2 接单开关后，历史订单仍支持查询、同步返回及通知投递，通知暂停沿用网站现有开关。
+易支付请求通过鉴权后，进入现有的网站订单服务，使用相同的账号分配、金额占用、收银台和对账流程。固定网站编号与商户订单号共同确定一笔业务订单：按原内容重试会返回原订单，修改金额、地址、透传内容或协议后重试则返回冲突。同一网站内，原生和易支付接口共用一套商户单号，不能各自创建一笔同号订单。
 
-完成条件为 V1、V2 均走通下单、查账确认、查单、通知和返回商家，重复与并发请求保持一致结果。
+易支付对外 `money` 使用下单金额。例如商品原价 10.00 元、应付 10.03 元时，易支付查询和回调仍返回 10.00 元，收银台和对账使用 10.03 元。
+
+当前收款已确认时，易支付接口返回支付成功；其他收款状态返回未支付。只有付款确认事件能生成易支付成功通知。自动发送或手动重发前，都重新检查原确认事件；确认撤销后，停止发送该事件的成功通知。后来重新确认收款时，使用新生成的确认事件。
+
+发送通知时，按协议选择 HTTP 方法、签名和成功响应格式：原生 POST JSON 要求约定的 HTTP 200 JSON 回执，易支付 GET 接受正文为 `success` 的 2xx 响应。每次 V2 发送都重新生成时间戳和签名。队列继续记录任务由谁处理（租约）、失败后等多久再试（退避）、每次发送结果及人工重发记录。
+
+收银台先访问 PerPay 内部的返回接口，用收银台令牌授权并读取最新收款状态。已确认付款时，在商家返回地址附加协议参数和签名后跳转；其他状态使用原商家地址。这个内部跳转支持配置允许的本机回环 HTTP 实例，商家通知地址和返回地址的来源仍须通过 HTTPS 校验。
+
+轮换后，新请求与后续投递使用新密钥。关闭 V1/V2 接单开关只影响新订单，历史查询、返回和通知继续按网站配置处理；通知暂停由网站通知开关控制。
 
 ### 接入助手与 Demo
 
-- 在“网站设置 → 接入与通知”提供原生、V1、V2 三种接入说明、完整配置下载和简短调用示例。
-- 使用服务端公开地址及最新保存的网站配置生成文件。配置未保存、凭据或通知来源缺失时，定位需要处理的设置。
-- 每份 `.env` 明确写入 `PAYMENT_PROTOCOL`、`DEMO_NOTIFY_URL`、可选 `DEMO_RETURN_URL`、`DEMO_PORT` 和按网站及协议区分的 `DEMO_DATA_DIR`。原生导出 `PERPAY_URL`、`PERPAY_CLIENT_ID`、`PERPAY_API_SECRET`、`PERPAY_WEBHOOK_SECRET`。易支付导出 `EPAY_URL`、`EPAY_PID`，V1 另含 `EPAY_V1_KEY`，V2 另含 `EPAY_MERCHANT_PRIVATE_KEY`、`EPAY_PLATFORM_PUBLIC_KEY`。易支付网关以 `/` 结尾，RSA 密钥按 SDK 接受的单行 Base64 输出。
-- 下载通过管理员受保护的 POST 接口完成，记录导出动作，设置 `no-store`。配置和密钥在同一快照读取，明文在浏览器仅保留到下载完成或页面退出。
-- 扩展现有 Node Demo，通过 `PAYMENT_PROTOCOL=native/epay_v1/epay_v2` 选择模式，默认 `native`。三种模式共用现有订单展示和持久化记录。
-- Demo 数据目录绑定实例、网站身份及协议，原生使用稳定网站编号，易支付使用固定 PID。切换网站或协议时使用独立目录，轮换同一网站的密钥后继续使用已有记录。
-- Demo 的通知路径统一为 `/webhooks/perpay`，按协议接受 POST JSON 或 GET 参数。新增 `/return` 处理同步返回，配置下载支持填写完整的 `DEMO_NOTIFY_URL`、可选 `DEMO_RETURN_URL`，分别校验其已保存来源。
-- 联调步骤依次为下载配置、启动 Demo、创建订单、完成付款、核对通知结果。提供当前网站订单和通知记录入口。
+[网站接入助手](../../web/src/components/site-integration-assistant.tsx)展示原生、V1、V2 三种协议和所需密钥，提供查看、复制、更换密钥和文档入口，并可打开该网站的订单与通知记录。在同一网站的不同编辑分组之间切换时，保留尚未保存的协议设置。
 
-完成条件为下载的配置能被对应 Demo 模式直接读取，错误能定位到具体设置或操作。
+需要整份 Demo 配置时，可调用 `POST /api/admin/v1/sites/:clientId/integration/export`。接口检查网站和易支付配置的版本、通知地址与返回地址的来源，再从同一数据库快照读取配置和密钥，避免拿到不同时间的设置；结果是带下载文件名的 `.env`。
 
-### 接口文档与交付验收
+| 配置 | 导出字段 |
+| --- | --- |
+| 通用 | `PAYMENT_PROTOCOL`、`DEMO_NOTIFY_URL`、`DEMO_RETURN_URL`、`DEMO_PORT`、`DEMO_DATA_DIR` |
+| 原生 | `PERPAY_URL`、`PERPAY_CLIENT_ID`、`PERPAY_API_SECRET`、`PERPAY_WEBHOOK_SECRET` |
+| 易支付通用 | `EPAY_URL`、`EPAY_PID` |
+| V1 | `EPAY_V1_KEY` |
+| V2 | `EPAY_MERCHANT_PRIVATE_KEY`、`EPAY_PLATFORM_PUBLIC_KEY` |
 
-- 新增管理接口 `GET/PUT /api/admin/v1/sites/:clientId/epay`，写入携带配置版本。密钥操作沿用现有 `secrets/.../actions/view|rotate` 结构，增加易支付密钥用途。
-- 新增 `POST /api/admin/v1/sites/:clientId/integration/export`，接收协议、网站及易支付配置版本、Demo 回调和返回地址，响应下载文件。管理端系统状态增加 `public_origin`。
-- 同步更新 OpenAPI、生成类型、快速接入说明、Demo README 和版本变更记录，说明实际支持的接口及兼容选择。
+[Node Demo](../../examples/node-client/README.md)通过 `PAYMENT_PROTOCOL=native/epay_v1/epay_v2` 选择模式，不同实例、网站和协议使用各自的数据目录。通知入口接受原生 POST JSON 或易支付 GET，返回入口处理顾客从收银台回到商家页面的请求。联调时从业务端创建订单，再核对付款状态、通知接收结果，以及是否已完成充值或发货。
 
-## 验收清单
+<a id="接口文档与交付验收"></a>
 
-- [x] 官方 SDK 评估版本及发布产物固定，原型取得完整原始证据并由 SDK 完成验签，实际证明公开扩展点满足接入要求。
-- [x] 官方 SDK 适配通过缺签名、错误签名、非法响应、非 2xx 错误、限流、整体超时、取消、正文和响应头超限测试。
-- [x] 后台查账、连接检查、密钥验证启用、账号隔离、换钥及服务停止均通过回归，历史证据可读取和验证。
-- [ ] SDK 迁移的用户小额收款验证完成，原始流水、订单确认和查账记录对应一致，迁移单独验收。
-- [x] PHP V1.3、V2.0 SDK 完成请求生成、查单、通知与同步返回验签，Go SDK 完成下单和验签。实际执行各 SDK，记录版本与结果。
-- [x] New API 的充值、订阅两条入口通过隔离实例联调，覆盖同步和异步任一先到、重复通知，以及业务只履约一次。
-- [x] 覆盖中文、零值、空格、`+&=%`、扩展字段、重复参数、金额精度、时间戳边界、平铺响应及列表数组签名规则。
-- [x] 覆盖并发重复下单、金额冲突、尾差、过期、撤销确认、通知重试、进程重启、人工重发和密钥轮换。
-- [x] 覆盖网站隔离、公开客户端 ID 更换、PID 稳定、接单开关、通知暂停、旧数据库升级和备份恢复。
-- [x] 浏览器验证协议切换、完整配置下载、缺项提示、未保存修改、并发版本变化、切换网站及窄屏布局。
-- [x] 运行 `npm run check`、`npm run build`、Demo 测试和相关 Playwright 用例，按[开发验证](ui-verification.md)执行。
-- [ ] 模拟支付宝流水的集成结果与用户操作的真实小额付款分别记录，真实付款验证完整收款及通知链路。
+### 接口与维护入口
 
-源码、数据库迁移、模拟账单联调与浏览器检查连续完成，真实小额付款记录在独立操作验收项。
+- `GET/PUT /api/admin/v1/sites/:clientId/epay` 读取和保存协议开关，写入携带配置版本。
+- `POST .../secrets/epay_v1|epay_merchant|epay_platform/actions/view|rotate` 显式查看或轮换凭据。
+- `POST .../integration/export` 导出当前协议的 Demo 配置；公开地址使用服务端 `public_origin`。
+- 管理接口接受什么请求、返回什么字段，定义在 [OpenAPI](../../openapi.yaml)。修改后通过 `npm run api:types` 更新客户端，并同步[易支付指南](../epay-integration.md)与 Demo。
 
-最终后端 1566 项、前端 2334 项通过，Windows 跳过 3 项 POSIX 权限测试。真实后端浏览器用例在 1440、390、320px 共 3 项通过，覆盖配置保存、密钥轮换、三协议下载、版本冲突和跨网站切换。截图位于 `.ui-audit/runs/2026-11-06T18-47-48-523Z`。完整检查日志位于 `.scratch/epay-final-check.log`，构建日志位于 `.scratch/epay-final-build.log`。
+<a id="验收清单"></a>
 
-默认开启调整另通过 12 项存储与初始化回归、17 项 HTTP 与通知回归、8 项接入助手单元测试及 3 项真实浏览器测试。新默认凭据完成 New API 充值与订阅四组联调。完整后端复核中 1573 项通过、3 项因平台跳过，历史展示升级用例的审计断言更新后，所在 9 项测试全部通过。对应日志为 `.scratch/epay-defaults-check.log`，浏览器截图位于 `.ui-audit/runs/2026-11-07T03-29-07-828Z`。
+## 验证依据
+
+| 维护内容 | 核对入口 |
+| --- | --- |
+| SDK 签名、响应、取消与原始记录 | [SDK 接口用例](../../scripts/validation/alipay-sdk/README.md) |
+| V1/V2 编码、查单、通知与返回 | [固定 SDK 和业务系统兼容检查](../../scripts/validation/epay/README.md) |
+| 接入界面、草稿、密钥与网站切换 | [开发验证](ui-verification.md#日常手工核对) |
+| 数据库升级、备份和恢复 | [Linux 专项](ui-verification.md#linux-升级与进程恢复) |
+| 实际收款、发货或开通服务 | [支付宝配置](../alipay-setup.md)及[业务接入](../epay-integration.md) |
+
+日常改动先完成相应类型检查、构建和人工核对。已有自动化在 CI 或需要检查指定功能时运行。每次记录所用源码、依赖版本、环境和实际结果，通过数量以这次输出为准。
