@@ -5,12 +5,8 @@
 export type PreviewIdentitySeries = 10 | 20 | 30 | 40;
 
 const BEIJING_OFFSET = 8 * 3_600_000;
-const PAYERS = [
-  "陈*安", "林*宁", "周*晴", "吴*帆", "王*涵", "赵*航",
-  "许*言", "沈*然", "徐*悦", "宋*予", "唐*琳", "何*辰",
-  "郑*昕", "苏*禾", "蒋*宇", "韩*彤", "程*远", "叶*瑶",
-  "陆*文", "顾*嘉", "邓*晨", "梁*清", "方*妍", "谢*舟",
-] as const;
+const DAY = 86_400_000;
+const PAYER_COUNT = 24;
 
 function sequenceDigits(sequence: number, width: number): string {
   if (!Number.isSafeInteger(sequence) || sequence < 1 || sequence > 999_999) {
@@ -22,29 +18,38 @@ function sequenceDigits(sequence: number, width: number): string {
 function identityParts(now: number, series: PreviewIdentitySeries) {
   if (!Number.isSafeInteger(now) || now < 0) throw new RangeError("Preview identity time is invalid");
   if (![10, 20, 30, 40].includes(series)) throw new RangeError("Preview identity series is invalid");
-  const stamp = new Date(now + BEIJING_OFFSET).toISOString().slice(0, 19).replace(/\D/g, "");
-  if (stamp.length !== 14) throw new RangeError("Preview identity time must have a four-digit year");
-  return { stamp, series: String(series) };
+  const date = new Date(now + BEIJING_OFFSET).toISOString().slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new RangeError("Preview identity time must have a four-digit year");
+  const day = Math.floor((now + BEIJING_OFFSET) / DAY).toString(36).toUpperCase().padStart(3, "0");
+  return { day, series: String(series) };
 }
 
-/** Beijing creation time + source series + business sequence; always kept as a string. */
+/** Compact Beijing day + source series + sequence; visibly synthetic and unique across fixture dates. */
 export function previewOrderNumber(now: number, sequence: number, series: PreviewIdentitySeries = 10): string {
   const identity = identityParts(now, series);
-  return identity.stamp + identity.series + sequenceDigits(sequence, 6);
+  return "DEMO_ORDER_" + identity.series + "_" + identity.day + sequenceDigits(sequence, 6);
 }
 
 export function previewLedgerNumber(now: number, sequence: number, series: PreviewIdentitySeries = 10): string {
   const identity = identityParts(now, series);
-  return identity.stamp + identity.series + sequenceDigits(sequence, 8);
+  return "DEMO_LEDGER_" + identity.series + "_" + identity.day + sequenceDigits(sequence, 6);
 }
 
 export function previewTradeNumber(now: number, sequence: number, series: PreviewIdentitySeries = 10): string {
   const identity = identityParts(now, series);
-  return identity.stamp.slice(0, 8) + "2200" + identity.series + identity.stamp.slice(8) + sequenceDigits(sequence, 8);
+  return "DEMO_TRADE_" + identity.series + "_" + identity.day + sequenceDigits(sequence, 6);
 }
 
-/** Masked, invented payer names repeat deterministically without referring to real accounts. */
+/** Numbered fictional people retain the preview's varied, recurring payer identities. */
 export function previewPayer(sequence: number): string {
   sequenceDigits(sequence, 6);
-  return PAYERS[(sequence - 1) % PAYERS.length]!;
+  return "示例付款人 " + sequenceDigits((sequence - 1) % PAYER_COUNT + 1, 3);
+}
+
+export function previewProductName(value: string): string {
+  return value.startsWith("示例商品·") ? value : "示例商品·" + value;
+}
+
+export function previewDescription(value: string): string {
+  return value.trim() === "" || value.startsWith("示例") ? value : "示例说明：" + value;
 }

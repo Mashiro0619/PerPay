@@ -12,7 +12,7 @@ import type { ReconciliationStore } from "../src/reconciliation/store.ts";
 import type { SettingsAuditContext } from "../src/settings/store.ts";
 import type { SiteSnapshot } from "../src/sites/model.ts";
 import type { SiteStore } from "../src/sites/store.ts";
-import { previewLedgerNumber, previewOrderNumber, previewPayer, previewTradeNumber } from "./preview-identities.ts";
+import { previewDescription, previewLedgerNumber, previewOrderNumber, previewPayer, previewProductName, previewTradeNumber } from "./preview-identities.ts";
 
 export interface NotificationScenarioContext {
   readonly orders: OrderService;
@@ -89,11 +89,11 @@ export function seedNotificationScenarios(context: NotificationScenarioContext):
     const price = ORDER_PRICES_CENTS[number - 1];
     assert.ok(price !== undefined, "Every notification scenario needs an explicit typical product price");
     const order = context.orders.forSite(clientId).create(createOrderRequestSchema.parse({
-      idempotency_key: "preview-notification-" + key,
+      idempotency_key: "DEMO_NOTIFICATION_REQUEST_" + key,
       merchant_order_no: previewOrderNumber(context.getNow(), number, 30),
-      product_name: productName,
+      product_name: previewProductName(productName),
       amount_cents: price,
-      note,
+      note: previewDescription(note),
       ...(notify ? { notify_url: origin + "/api/payments/perpay" } : {}),
     })).order;
     scenarioOrders[key] = order.orderId;
@@ -111,11 +111,11 @@ export function seedNotificationScenarios(context: NotificationScenarioContext):
         raw: {
           account_log_id: id, amount, direction: "CREDIT", occurred_at: occurredAt,
           alipay_order_no: tradeNumber, merchant_order_no: order.merchantOrderNo,
-          trans_memo: productName, other_account: payer, synthetic: true,
+          trans_memo: order.productName, other_account: payer, synthetic: true,
         },
         accountLogId: id, occurredAt, amount, direction: "CREDIT",
         alipayOrderNo: tradeNumber, merchantOrderNo: order.merchantOrderNo,
-        transMemo: productName, otherAccount: payer,
+        transMemo: order.productName, otherAccount: payer,
       }] },
       evidence: {
         httpStatus: 200, headers: { "alipay-request-id": id },
@@ -161,7 +161,7 @@ export function seedNotificationScenarios(context: NotificationScenarioContext):
     const body = Buffer.from(JSON.stringify(result.kind === "ack" ? {
       schema: "perpay:webhook-ack:v1", ack: true,
       event_id: claimed.event.eventId, delivery_id: claimed.delivery.deliveryId,
-    } : result.invalidAck ? { success: true, message: "付款状态已更新" } : { error: "synthetic_receiver_failure" }));
+    } : result.invalidAck ? { success: true, message: "示例付款状态已更新" } : { error: "synthetic_receiver_failure" }));
     const httpStatus = result.kind === "ack" ? 200 : result.status;
     const ack = assessWebhookAck({
       status: httpStatus, contentType: "application/json; charset=utf-8",
@@ -189,7 +189,7 @@ export function seedNotificationScenarios(context: NotificationScenarioContext):
   function replay(key: string, predecessor: WebhookDelivery, reason: string): WebhookDelivery {
     const replayed = webhooks.replay({
       expectedClientId: clientId, redeliveryId: randomUUID(), deliveryId: predecessor.deliveryId,
-      actorId: audit.actorId, reason, activeAllowedOrigin: origin, now: context.getNow(),
+      actorId: audit.actorId, reason: previewDescription(reason), activeAllowedOrigin: origin, now: context.getNow(),
       requestId: audit.requestId, remoteAddressHash: audit.remoteAddressHash,
     });
     assert.equal(replayed.replayed, false);

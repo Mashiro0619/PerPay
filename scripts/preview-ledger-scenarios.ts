@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import type { AccountLogDetail } from "../src/infrastructure/alipay/types.ts";
 import type { LedgerStore } from "../src/ledger/store.ts";
 import { PRODUCTION_PROVIDER_ENDPOINT } from "../src/settings/model.ts";
-import { previewLedgerNumber, previewTradeNumber } from "./preview-identities.ts";
+import { previewDescription, previewLedgerNumber, previewPayer, previewTradeNumber } from "./preview-identities.ts";
 
 const providerTime = (time: number) => new Date(time + 8 * 3_600_000).toISOString().slice(0, 19).replace("T", " ");
 
@@ -16,7 +16,7 @@ function record(ledger: LedgerStore, providerAccountKey: string, details: Accoun
   const observed = ledger.recordPage({ ingestRunId: run.ingestRunId,
     page: { pageNo: 1, pageSize: details.length, totalSize: details.length, hasMore: false, details },
     evidence: { httpStatus: 200, headers: { "x-perpay-synthetic": "true" },
-      body: JSON.stringify({ synthetic: true, details }), traceId: "preview-ledger-source", signatureVerified: true }, now });
+      body: JSON.stringify({ synthetic: true, details }), traceId: "DEMO_LEDGER_SOURCE", signatureVerified: true }, now });
   assert.ok(observed.normalized.every(result => result.kind === "created"));
   ledger.completeIngestRun({ ingestRunId: run.ingestRunId, now });
   return details.map(detail => ledger.getLedgerEntry(providerAccountKey, detail.accountLogId!)!);
@@ -26,17 +26,17 @@ function record(ledger: LedgerStore, providerAccountKey: string, details: Accoun
 export function seedHistoricalLedgerSource(ledger: LedgerStore, capturedAt: number) {
   const occurredAt = capturedAt - 27 * 86_400_000;
   const details: AccountLogDetail[] = [
-    { memo: "图书采购退款", amount: "49.00", payer: "许*然" },
-    { memo: "办公用品采购尾款", amount: "731.29", payer: "林*宁" },
+    { memo: "图书采购退款", amount: "49.00", payer: previewPayer(1) },
+    { memo: "办公用品采购尾款", amount: "731.29", payer: previewPayer(2) },
   ].map((item, index) => {
     const fields = { accountLogId: previewLedgerNumber(occurredAt, index + 1, 40),
       occurredAt: new Date(occurredAt).toISOString(), amount: item.amount, direction: "CREDIT",
       alipayOrderNo: previewTradeNumber(occurredAt, index + 1, 40), merchantOrderNo: null,
-      transMemo: item.memo, otherAccount: item.payer };
+      transMemo: previewDescription(item.memo), otherAccount: item.payer };
     return { ...fields, raw: { ...fields, synthetic: true } };
   });
   ledger.bindProviderIdentity({ providerAccountKey: "preview-historical", providerKind: "alipay",
-    endpoint: PRODUCTION_PROVIDER_ENDPOINT, externalAccountId: "2026000000000002" }, occurredAt);
+    endpoint: PRODUCTION_PROVIDER_ENDPOINT, externalAccountId: "DEMO_APP_02" }, occurredAt);
   const entries = record(ledger, "preview-historical", details, occurredAt);
   return { details, entries };
 }

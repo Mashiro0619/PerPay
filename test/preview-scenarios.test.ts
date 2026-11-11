@@ -109,8 +109,8 @@ describe("complete local preview scenarios", () => {
         assert.equal(ordersById.size, orders.length, "Pagination must not duplicate orders");
         assert.equal(new Set(orders.map(order => order.merchant_order_no)).size, orders.length, "Preview merchant order numbers must be unique");
         for (const order of orders) {
-          assert.match(order.merchant_order_no, /^\d{22}$/u, "Merchant order numbers must use numeric business identifiers");
-          assert.doesNotMatch(order.product_name, /演示|示例|联调|DEMO-/iu, "Products must use business names rather than scenario labels");
+          assert.match(order.merchant_order_no, /^DEMO_ORDER_[1-4]0_[A-Z0-9]{3,5}\d{6}$/u, "Preview merchant order numbers must remain visibly synthetic");
+          assert.match(order.product_name, /^示例商品·/u, "Preview products must carry an example label");
         }
         assert.equal(orders[0]?.order_id, preview.featured, "The first order must demonstrate complete payment and notification evidence");
         for (const id of Object.values(preview.scenarios.sites)) assert.ok(siteIds.has(id));
@@ -124,7 +124,7 @@ describe("complete local preview scenarios", () => {
         let confirmed = 0;
         let received = 0;
         for (const site of sites) {
-          assert.doesNotMatch(site.configuration.name, /演示|示例|联调|DEMO-/iu, "Websites must use business names rather than scenario labels");
+          assert.match(site.configuration.name, /^示例网站/u, "Preview websites must carry an example label");
           const base = "/api/admin/v1/sites/" + site.client_id;
           const scoped = await all<AdminOrderSummary>(base + "/orders");
           assert.deepEqual(new Set(scoped.map(order => order.order_id)), new Set(orders.filter(order => order.api_client_id === site.client_id).map(order => order.order_id)));

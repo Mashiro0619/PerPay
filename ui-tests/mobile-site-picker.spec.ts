@@ -32,9 +32,9 @@ test.describe("payment site identity stays readable with enlarged text", () => {
       const dialog = page.getByRole("dialog", { name: "测试收款", exact: true });
       const picker = dialog.getByRole("combobox", { name: "业务网站", exact: true });
       await picker.click();
-      await page.getByRole("option", { name: "青禾生活馆", exact: true }).click();
+      await page.getByRole("option", { name: "示例网站·财务场景", exact: true }).click();
       const value = picker.locator('[data-slot="select-value"]');
-      await expect(value).toHaveText("青禾生活馆");
+      await expect(value).toHaveText("示例网站·财务场景");
       await picker.evaluate(element => element.scrollIntoView({ block: "center", inline: "nearest" }));
       await page.clock.runFor(100);
       await expectTouchTarget(picker);

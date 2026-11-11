@@ -15,7 +15,7 @@ import type { FinancialExceptionType } from "../src/reconciliation/model.ts";
 import type { ReconciliationStore } from "../src/reconciliation/store.ts";
 import type { SettingsAuditContext } from "../src/settings/store.ts";
 import type { SiteSnapshot } from "../src/sites/model.ts";
-import { previewLedgerNumber, previewOrderNumber, previewPayer, previewTradeNumber } from "./preview-identities.ts";
+import { previewDescription, previewLedgerNumber, previewOrderNumber, previewPayer, previewProductName, previewTradeNumber } from "./preview-identities.ts";
 
 const MINUTE = 60_000;
 const providerTime = (time: number) => new Date(time + 8 * 3_600_000).toISOString().slice(0, 19).replace("T", " ");
@@ -56,11 +56,11 @@ export function seedFinancialScenarios(context: FinancialScenarioContext): Finan
   function create(key: string, productName: string, amountCents: number, note: string): OrderProjection {
     advance();
     const order = orders.create(createOrderRequestSchema.parse({
-      idempotency_key: "preview-financial-" + key,
+      idempotency_key: "DEMO_FINANCIAL_REQUEST_" + key,
       merchant_order_no: previewOrderNumber(getNow(), ++orderSequence, 20),
-      product_name: productName,
+      product_name: previewProductName(productName),
       amount_cents: amountCents,
-      note,
+      note: previewDescription(note),
       ...(site.configuration.notification_origin ? {
         notify_url: site.configuration.notification_origin + "/api/payments/perpay",
       } : {}),
@@ -87,7 +87,7 @@ export function seedFinancialScenarios(context: FinancialScenarioContext): Finan
       direction: "CREDIT",
       alipayOrderNo: identity.alipayOrderNo,
       merchantOrderNo: null,
-      transMemo: memo,
+      transMemo: previewDescription(memo),
       otherAccount: identity.payer,
       ...overrides,
     };
@@ -138,7 +138,7 @@ export function seedFinancialScenarios(context: FinancialScenarioContext): Finan
     return reconciliation.settleManually({
       financialOperationId: randomUUID(), expectedClientId: site.clientId,
       orderId: order.orderId, ledgerEntryId: credit.ledgerEntryId,
-      actorId: audit.actorId, reason, now: advance(),
+      actorId: audit.actorId, reason: reason === null ? null : previewDescription(reason), now: advance(),
     });
   }
 
@@ -205,7 +205,7 @@ export function seedFinancialScenarios(context: FinancialScenarioContext): Finan
   reconciliation.reverseSettlement({
     financialOperationId: randomUUID(), expectedClientId: site.clientId,
     paymentMatchId: inferred.result.paymentMatchId, actorId: audit.actorId,
-    reason: "付款人表示该笔款项用于另一订单，撤销原关联，等待补充付款凭证。", now: advance(),
+    reason: previewDescription("付款人表示该笔款项用于另一订单，撤销原关联，等待补充付款凭证。"), now: advance(),
   });
   manifest.exceptions.disputedInferred = reconciliation.financialExceptionsForOrder(inferredDispute.orderId)
     .find(item => item.exceptionType === "RECONCILIATION_CONFLICT")!.exceptionId;
@@ -217,7 +217,7 @@ export function seedFinancialScenarios(context: FinancialScenarioContext): Finan
   reconciliation.reverseSettlement({
     financialOperationId: randomUUID(), expectedClientId: site.clientId,
     paymentMatchId: wrongClaim.paymentMatch.paymentMatchId, actorId: audit.actorId,
-    reason: "客户补充的付款凭证对应另一订单，撤销本次关联。", now: advance(),
+    reason: previewDescription("客户补充的付款凭证对应另一订单，撤销本次关联。"), now: advance(),
   });
   manifest.exceptions.disputedManual = reconciliation.financialExceptionsForOrder(manualDispute.orderId)
     .find(item => item.exceptionType === "RECONCILIATION_CONFLICT")!.exceptionId;
@@ -257,11 +257,11 @@ export function seedFinancialScenarios(context: FinancialScenarioContext): Finan
     automatic(order, key);
     const marked = setAdminRefundMark(database, order.orderId, {
       operation_id: randomUUID(), version: 0, marked: true,
-      note: clear ? "售后记录显示退款已处理，登记退款标记，等待凭证复核。" : "已核对退货签收及线下退款凭证，登记退款完成。",
+      note: previewDescription(clear ? "售后记录显示退款已处理，登记退款标记，等待凭证复核。" : "已核对退货签收及线下退款凭证，登记退款完成。"),
     }, { ...audit, expectedClientId: site.clientId, now: advance() });
     if (clear) setAdminRefundMark(database, order.orderId, {
       operation_id: randomUUID(), version: marked.refund_mark.version, marked: false,
-      note: "复核发现退款凭证属于另一张订单，撤销本订单的退款标记。",
+      note: previewDescription("复核发现退款凭证属于另一张订单，撤销本订单的退款标记。"),
     }, { ...audit, expectedClientId: site.clientId, now: advance() });
   }
 
@@ -292,10 +292,10 @@ export function seedFinancialScenarios(context: FinancialScenarioContext): Finan
   const unmatched = entry("unmatched", 73_129, "办公用品采购尾款");
   exception("unmatched", unmatched, "UNMATCHED_CREDIT");
   for (const [key, amount, memo, recipient] of [
-    ["expense", 8_900, "云主机月度服务费", "青屿云服务"],
-    ["partialRefundDebit", 3_200, "商品售后退差价", "周*然"],
+    ["expense", 8_900, "云主机月度服务费", "示例收款方 001"],
+    ["partialRefundDebit", 3_200, "商品售后退差价", previewPayer(25)],
     ["fullRefundDebit", 24_801, "空气循环扇退货退款", ledgerIdentities.get("refundMarked")!.payer],
-    ["providerReversalDebit", 1_780, "支付平台交易冲正", "支付平台结算账户"],
+    ["providerReversalDebit", 1_780, "支付平台交易冲正", "示例收款方 002"],
   ] as const) {
     const debit = entry(key, amount, memo, { direction: "DEBIT", otherAccount: recipient });
     assert.equal(reconciliation.reconcileEntry(debit.ledgerEntryId, advance()).kind, "ignored");
@@ -315,7 +315,7 @@ export function seedFinancialScenarios(context: FinancialScenarioContext): Finan
     if (resolved) ledger.resolveConflict({
       conflictOperationId: randomUUID(), conflictId: conflict.conflict.conflictId,
       action: "KEEP_EXISTING", ...audit,
-      reason: "已与支付平台核对交易凭证，实收金额以首次返回的原始流水为准，后续金额变更不入账。", now: advance(),
+      reason: previewDescription("已与支付平台核对交易凭证，实收金额以首次返回的原始流水为准，后续金额变更不入账。"), now: advance(),
     });
   }
 
@@ -324,7 +324,7 @@ export function seedFinancialScenarios(context: FinancialScenarioContext): Finan
     ["invalidAmount", { amount: "12.345" }],
     ["invalidTimestamp", { occurredAt: "2026-02-30 12:00:00" }],
     ["invalidDirection", { direction: "UNKNOWN" }],
-    ["invalidShape", { transMemo: "采购清单：竹木桌面收纳盒、抽屉分隔板、文件托盘；".repeat(150) }],
+    ["invalidShape", { transMemo: "示例采购清单：竹木桌面收纳盒、抽屉分隔板、文件托盘；".repeat(150) }],
     ["isolatedAcknowledged", { amount: "not-a-number" }],
   ] as const) {
     const result = record(detail(key, 1_234, "办公用品采购款", overrides)).normalized[0];
@@ -333,7 +333,7 @@ export function seedFinancialScenarios(context: FinancialScenarioContext): Finan
     if (key === "isolatedAcknowledged") ledger.resolveConflict({
       conflictOperationId: randomUUID(), conflictId: result.conflict.conflictId,
       action: "ACKNOWLEDGE_ISOLATED", ...audit,
-      reason: "支付平台确认该笔流水的金额格式有误，暂不入账，原始记录留存待复核。", now: advance(),
+      reason: previewDescription("支付平台确认该笔流水的金额格式有误，暂不入账，原始记录留存待复核。"), now: advance(),
     });
   }
 
@@ -355,7 +355,7 @@ export function seedFinancialScenarios(context: FinancialScenarioContext): Finan
   ledger.resolveConflict({
     conflictOperationId: randomUUID(), conflictId: endedConflict.conflict.conflictId,
     action: "ACKNOWLEDGE_ISOLATED", ...audit,
-    reason: "支付平台返回的金额精度有误，该条原始流水继续隔离，已完成复核记录。", now: advance(),
+    reason: previewDescription("支付平台返回的金额精度有误，该条原始流水继续隔离，已完成复核记录。"), now: advance(),
   });
 
   // Repeated observation of the same request with a different response is a

@@ -183,9 +183,9 @@ test.describe("compact mobile button visuals and separate touch targets", () => 
       await expect(display).toHaveCount(0);
       await expect(more).toBeFocused();
 
-      await keyword.fill("轻账");
+      await keyword.fill("桌面软件");
       await search.click();
-      await expect.poll(() => new URL(page.url()).searchParams.get("q")).toBe("轻账");
+      await expect.poll(() => new URL(page.url()).searchParams.get("q")).toBe("桌面软件");
       await record(page, info, { evidence: "browser touch viewport", buttonScale: { requestedWidth: width, searchGeometry, filterTap, moreTap, modeGeometry, compactGeometry, comfortableGeometry, doneGeometry } });
 
       await page.goto(manifest.origin + manifest.checkouts.open!);

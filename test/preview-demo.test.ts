@@ -50,12 +50,12 @@ describe("isolated documentation preview", () => {
         .filter(order => !scenarioOrderIds.has(String(order.order_id)));
       const names = new Set(historyOrders.map(order => String(order.product_name)));
       assert.equal(names.size, 8, "Ordinary business history must retain all eight product categories");
-      for (const name of names) assert.doesNotMatch(name, /演示|示例|联调|DEMO-/iu);
+      for (const name of names) assert.match(name, /^示例商品·/u);
       const payers = demo.database.read(connection => connection.prepare("SELECT DISTINCT other_account FROM ledger_entries WHERE other_account IS NOT NULL").all());
       assert.ok(payers.length >= 8, "Receipt history must include varied payer identities");
       for (const payer of payers) {
         assert.ok(String(payer.other_account).trim().length > 0);
-        assert.doesNotMatch(String(payer.other_account), /演示|示例|付款人\s*\d|DEMO-/iu);
+        assert.match(String(payer.other_account), /^示例(?:付款人|收款方) \d{3}$/u);
       }
       assert.equal((await app.request("/api/admin/v1/orders")).status, 401);
       const blockedRequests = [

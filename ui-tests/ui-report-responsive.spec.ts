@@ -136,9 +136,9 @@ for (const layout of [{ width: 320, height: 560, text: 200 }, { width: 640, heig
       expect(searchGeometry.input.right).toBeLessThanOrEqual(searchGeometry.scroll.right + 1);
       const searchRequests: string[] = [];
       page.on('request', request => { if (request.url().includes('/manual/orders?')) searchRequests.push(new URL(request.url()).searchParams.get('q') ?? ''); });
-      await input.fill('轻账');
+      await input.fill('桌面软件');
       await input.press('Enter');
-      await expect.poll(() => searchRequests).toContain('轻账');
+      await expect.poll(() => searchRequests).toContain('桌面软件');
       await record(page, info, { feature: 'manual-search-reflow', layout, searchGeometry });
       await screenshot(page, info, `manual-search-${layout.width}-${layout.text}`);
 

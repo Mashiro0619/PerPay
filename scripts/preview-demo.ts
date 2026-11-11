@@ -33,7 +33,7 @@ import type { SiteSnapshot } from "../src/sites/model.ts";
 import { seedFinancialScenarios } from "./preview-financial-scenarios.ts";
 import { seedNotificationScenarios } from "./preview-notification-scenarios.ts";
 import { seedCurrentLedgerSourceCopies, seedHistoricalLedgerSource } from "./preview-ledger-scenarios.ts";
-import { previewLedgerNumber, previewOrderNumber, previewPayer, previewTradeNumber } from "./preview-identities.ts";
+import { previewDescription, previewLedgerNumber, previewOrderNumber, previewPayer, previewProductName, previewTradeNumber } from "./preview-identities.ts";
 
 export const DEMO_QR_TEXT = "PerPay documentation demo - NOT A PAYMENT CODE";
 const DAY = 86_400_000;
@@ -41,13 +41,13 @@ const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 const HISTORY_DAYS = 90;
 const PRODUCTS = [
-  ["云栈笔记专业版 · 月度订阅", 1900],
+  ["笔记软件月度订阅", 1900],
   ["简约图标素材包 · 商用授权", 2900],
-  ["云栈笔记专业版 · 年度订阅", 9900],
-  ["云栈笔记专业版 · 季度订阅", 4900],
-  ["星河会员 · 月度订阅", 3900],
-  ["轻账桌面版 · 终身授权", 12900],
-  ["星河会员 · 年度订阅", 19900],
+  ["笔记软件年度订阅", 9900],
+  ["笔记软件季度订阅", 4900],
+  ["月度会员", 3900],
+  ["桌面软件永久授权", 12900],
+  ["年度会员", 19900],
   ["插画素材扩展包 · 商用授权", 5900],
 ] as const;
 const PRODUCT_MIX = [0, 1, 1, 2, 3, 3, 4, 4, 5, 6, 7, 7];
@@ -105,16 +105,16 @@ export async function createPreviewDemo(options: { port?: number; now?: number; 
     settings.initialize();
     const ledger = new LedgerStore(db);
     const historicalLedger = seedHistoricalLedgerSource(ledger, capturedAt);
-    const audit = { actorId: "admin", requestId: "documentation-fixture", remoteAddressHash: "0".repeat(64) };
+    const audit = { actorId: "admin", requestId: "DEMO_SETUP_REQUEST", remoteAddressHash: "0".repeat(64) };
     const application = generateKeyPairSync("rsa", { modulusLength: 2048 });
     const platform = generateKeyPairSync("rsa", { modulusLength: 2048 });
     const accounts = settings.accountService()!;
-    // Use official source identities; temporary stores and the offline app
-    // isolate this fixture, and no provider or notification transport is created.
+    // The local schema accepts explicit DEMO application IDs. Fresh temporary
+    // keys and offline services keep these source identities inside this fixture.
     const account = await accounts.create({
-      name: "演示收款账号", enabled: true,
-      code_payload: "https://qr.alipay.com/perpay-documentation-no-real-payment",
-      environment: "PRODUCTION", app_id: "2026000000000001",
+      name: "示例收款账号", enabled: true,
+      code_payload: "https://qr.alipay.com/DEMO_NOT_A_PAYMENT_CODE",
+      environment: "PRODUCTION", app_id: "DEMO_APP_01",
       private_key: application.privateKey.export({ format: "pem", type: "pkcs8" }).toString(),
       platform_public_key: platform.publicKey.export({ format: "pem", type: "spki" }).toString(),
     }, audit);
@@ -154,13 +154,13 @@ export async function createPreviewDemo(options: { port?: number; now?: number; 
       return sites.update(site.clientId, { revision: webhook.site.revision,
         configuration: { ...webhook.site.configuration, notifications_enabled: true } }, audit, now);
     }
-    const demoSites = [createSite("云栈软件商店"), createSite("星河会员中心")];
-    const financialSite = createSite("青禾生活馆", { origin: "https://finance.example.com" });
-    const notificationSite = createSite("拾光数字商店", { origin: "https://callbacks.example.com" });
-    const pausedSite = createSite("山岚设计素材", { origin: "https://archive.example.com" });
-    const unconfiguredSite = createSite("橙页创意商店", { credentials: false, acceptingOrders: false, origin: null });
-    const noNotificationSite = createSite("松果知识铺", { notifications: false, origin: null });
-    const limitedSite = createSite("白帆数码商城", { pendingOrderLimit: 2 });
+    const demoSites = [createSite("示例网站 A"), createSite("示例网站 B")];
+    const financialSite = createSite("示例网站·财务场景", { origin: "https://finance.example.com" });
+    const notificationSite = createSite("示例网站·通知场景", { origin: "https://callbacks.example.com" });
+    const pausedSite = createSite("示例网站·已暂停", { origin: "https://archive.example.com" });
+    const unconfiguredSite = createSite("示例网站·待配置", { credentials: false, acceptingOrders: false, origin: null });
+    const noNotificationSite = createSite("示例网站·无通知", { notifications: false, origin: null });
+    const limitedSite = createSite("示例网站·容量限制", { pendingOrderLimit: 2 });
     const orders = new OrderService(db, () => settings.instanceSnapshot(), () => liveStarted === null ? now : liveNow(), sites, undefined, { accounts: () => accounts.store().snapshots(), available: () => true });
     orders.initialize();
     const reconciliation = new ReconciliationStore(db);
@@ -221,14 +221,14 @@ export async function createPreviewDemo(options: { port?: number; now?: number; 
       site?: SiteSnapshot; productName?: string; amountCents?: number; note?: string; returnUrl?: boolean;
     } = {}) {
       const [defaultProduct, defaultAmount] = PRODUCTS[productIndex % PRODUCTS.length]!;
-      const product = options.productName ?? defaultProduct;
+      const product = previewProductName(options.productName ?? defaultProduct);
       const amount = options.amountCents ?? defaultAmount;
       const site = options.site ?? demoSites[sequence % demoSites.length]!;
       const siteOrders = orders.forSite(site.clientId);
       const order = siteOrders.create(createOrderRequestSchema.parse({
-        idempotency_key: "readme-" + ++sequence,
+        idempotency_key: "DEMO_ORDER_REQUEST_" + ++sequence,
         merchant_order_no: previewOrderNumber(now, sequence, 10),
-        product_name: product, amount_cents: amount, note: options.note ?? "数字商品，授权及下载入口通过订单页提供。",
+        product_name: product, amount_cents: amount, note: previewDescription(options.note ?? "数字商品，授权及下载入口通过订单页提供。"),
         ...(notify ? { notify_url: site.configuration.notification_origin + "/api/payments/perpay" } : {}),
         ...(options.returnUrl ? { return_url: site.configuration.return_origin + "/orders/complete" } : {}),
       })).order;
@@ -254,7 +254,7 @@ export async function createPreviewDemo(options: { port?: number; now?: number; 
     };
     assertIntegrity("website setup");
 
-    // Seed real order/payment events in chronological order. The daily basket
+    // Generate synthetic order/payment events through the domain services. The daily basket
     // varies deterministically by date, weekday, product mix and a gentle trend.
     // Morning history leaves expired unpaid slots clear before afternoon cases.
     const history: { at: number; product: number; status: "paid" | "closed" | "expired"; notify: boolean }[] = [];
@@ -312,7 +312,7 @@ export async function createPreviewDemo(options: { port?: number; now?: number; 
 
     advanceTo(midnight - 9 * DAY + 14 * HOUR);
     lifecycle.pausedSiteHistory = create(4, "paid", true, "ACKNOWLEDGED", {
-      site: pausedSite, productName: "山岚字体库 · 月度授权",
+      site: pausedSite, productName: "字体素材月度授权",
     }).orderId;
     sites.update(pausedSite.clientId, { revision: pausedSite.revision,
       configuration: { ...pausedSite.configuration, accepting_orders: false } }, audit, now);
@@ -324,11 +324,11 @@ export async function createPreviewDemo(options: { port?: number; now?: number; 
     lifecycle.noNotificationRequested = create(2, "paid", false, "ACKNOWLEDGED").orderId;
     advanceTo(midnight - 5 * DAY + 14 * HOUR);
     lifecycle.largeAmount = create(6, "paid", true, "ACKNOWLEDGED", {
-      productName: "云栈协作空间 · 团队年度订阅（10 人）", amountCents: 99_900,
+      productName: "团队协作年度订阅（10 人）", amountCents: 99_900,
     }).orderId;
     advanceTo(midnight - 4 * DAY + 14 * HOUR);
     lifecycle.smallAmount = create(0, "paid", true, "ACKNOWLEDGED", {
-      productName: "云栈笔记 · 新用户试用", amountCents: 1,
+      productName: "笔记软件试用", amountCents: 1,
     }).orderId;
     advanceTo(midnight - 3 * DAY + 14 * HOUR);
     const failed = create(4, "paid", true, "PERMANENT_FAILURE");
@@ -349,7 +349,7 @@ export async function createPreviewDemo(options: { port?: number; now?: number; 
     now += 1000;
     reconciliation.reverseSettlement({ financialOperationId: randomUUID(), expectedClientId: disputed.apiClientId,
       paymentMatchId: disputedMatch.paymentMatchId, actorId: audit.actorId,
-      reason: "付款凭证与订单归属不一致，先撤销原收款关联，待核对付款人后重新确认。", now });
+      reason: previewDescription("付款凭证与订单归属不一致，先撤销原收款关联，待核对付款人后重新确认。"), now });
     while (deliver(disputed.apiClientId)) now += 250;
     lifecycle.disputed = disputed.orderId;
     setNow(capturedAt - 10 * MINUTE);
@@ -370,7 +370,7 @@ export async function createPreviewDemo(options: { port?: number; now?: number; 
     }).orderId;
     setNow(capturedAt - 5 * MINUTE);
     lifecycle.longDescription = create(3, "open", true, "ACKNOWLEDGED", {
-      productName: "云栈协作空间 · 团队效率扩展包（含日历同步、项目模板、跨时区协作与自动提醒） / Team Productivity Pack",
+      productName: "团队协作扩展包（含日历同步、项目模板、跨时区协作与自动提醒） / Example Team Productivity Pack",
       note: "交付范围：团队日历同步、项目模板与自动提醒扩展。授权适用于当前工作区的现有成员，新成员可由管理员分配访问权限。"
         + "资料迁移按创建时间保留原文件夹结构，重复文件由管理员确认后再合并。若购买前已有有效订阅，新增权益从当前订阅结束后开始计算。"
         + "工作区名称与账单联系人可以在设置页更新，变更不会影响已创建的项目或成员权限。导入前请保留原始资料副本，大型附件可分批上传。"
@@ -408,10 +408,10 @@ export async function createPreviewDemo(options: { port?: number; now?: number; 
         httpMethod: "GET", route: "/api/v1/orders/:orderId", httpStatus: 200, aggregate: true, count, durationMs, occurredAt: sampleMinute + offset });
     }
     activity.record({ action: "http.request", sourceType: "HTTP", actorType: "ANONYMOUS", outcome: "FAILURE",
-      sourceAddress: "198.51.100.28", userAgent: "curl/8.12.0", httpMethod: "GET", route: "/api/public/v1/checkouts/:token",
+      sourceAddress: "198.51.100.28", userAgent: "PerPayDemo/1.0 curl/8.12.0", httpMethod: "GET", route: "/api/public/v1/checkouts/:token",
       httpStatus: 404, durationMs: 4, occurredAt: capturedAt - 4 * MINUTE, details: { error_code: "checkout_not_found" } });
     activity.record({ action: "http.request", sourceType: "HTTP", actorType: "ADMIN", actorId: "admin",
-      sourceAddress: "203.0.113.16", userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/140.0.0.0",
+      sourceAddress: "203.0.113.16", userAgent: "PerPayDemo/1.0 Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/140.0.0.0",
       httpMethod: "POST", route: "/api/admin/v1/system/ledger/scan", httpStatus: 202, durationMs: 8, occurredAt: capturedAt - 2 * MINUTE - 1000 });
     activity.record({ action: "ledger.scan", sourceType: "BACKGROUND", actorType: "SYSTEM", actorId: "ledger.scan", durationMs: 840,
       subjectType: "provider_account", subjectId: providerAccountKey, occurredAt: capturedAt - 2 * MINUTE,

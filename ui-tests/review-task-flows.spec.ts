@@ -17,7 +17,7 @@ test("mobile reconciliation keeps the associated order and collection account id
       expect(await term.evaluate(element => getComputedStyle(element).clipPath)).toBe("none");
     }
     await expect(row.getByRole("link", { name: /^查看订单：/ })).toBeVisible();
-    await expect(row.getByText("演示收款账号", { exact: true })).toBeVisible();
+    await expect(row.getByText("示例收款账号", { exact: true })).toBeVisible();
     expect(await row.evaluate(element => element.scrollWidth > element.clientWidth + 1)).toBe(false);
     await page.screenshot({ path: info.outputPath(`ledger-order-account-${width}-${font}.png`) });
   }
@@ -31,7 +31,7 @@ test("settings summaries expose account identity and stored allowlist without ed
     await page.setViewportSize({ width, height: 900 });
     await page.goto(manifest.origin + "/admin" + path);
     const summary = page.locator("[data-site-collection-summary]");
-    await expect(summary.getByText("演示收款账号", { exact: true })).toBeVisible();
+    await expect(summary.getByText("示例收款账号", { exact: true })).toBeVisible();
     await expect(summary.getByText(/^账号 ID：/)).toBeVisible();
     expect(await page.getByRole("dialog").count()).toBe(0);
     await page.screenshot({ path: info.outputPath(`collection-summary-${width}.png`) });
