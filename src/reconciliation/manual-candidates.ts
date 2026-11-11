@@ -2,7 +2,7 @@ import type { DatabaseSync, SQLInputValue } from "node:sqlite";
 import { listSearch } from "../database/list-query.ts";
 import { siteClientIdSchema } from "../sites/model.ts";
 import { settledPaymentIdentitySql } from "./payment-identity.ts";
-import { manualOrderEligibilitySql } from "./manual-eligibility.ts";
+import { manualOrderEligibilitySql, manualProviderAccountEligibilitySql } from "./manual-eligibility.ts";
 import {
   ListQueryError,
   normalizeKeyword,
@@ -110,7 +110,7 @@ export function readManualCandidates(
       "l.currency = o.currency",
       "l.state IN ('UNALLOCATED', 'CANDIDATE', 'CONFLICT')",
       "NOT " + settledPaymentIdentitySql(connection, "l"),
-      "EXISTS (SELECT 1 FROM collection_profile_provider_accounts p WHERE p.profile_id = o.collection_profile_id AND p.provider_account_key = l.provider_account_key)",
+      manualProviderAccountEligibilitySql(connection, "o", "l"),
     );
     if (query.view === "recommended")
       predicates.push("l.amount_cents = o.payable_amount_cents");

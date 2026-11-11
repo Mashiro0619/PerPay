@@ -1,7 +1,7 @@
 import { assertSiteOrder, assertSiteLedger } from "../sites/admin-scope.ts";
 import { readManualCandidates, type ManualCandidateQuery, type ManualCandidatePage } from "./manual-candidates.ts";
 import { hasSettledPaymentIdentity, settledPaymentIdentitySql } from "./payment-identity.ts";
-import { manualOrderEligibilitySql } from "./manual-eligibility.ts";
+import { manualOrderEligibilitySql, manualProviderAccountEligibilitySql } from "./manual-eligibility.ts";
 import { normalizeListQuery, MATCH_SORT_FIELDS, EXCEPTION_SORT_FIELDS, type MatchSort, type ExceptionSort, type ListQuery, type ListPosition } from "../shared/list-query.ts";
 import { listKeyset, listSearch } from "../database/list-query.ts";
 import { randomUUID } from "node:crypto";
@@ -633,7 +633,7 @@ export class ReconciliationStore {
         !connection.prepare(`SELECT 1 FROM payment_orders AS orders WHERE orders.order_id = ? AND ${manualOrderEligibilitySql("orders")}`).get(order.order_id) ||
         (order.payment_status === "DISPUTED" && reason === null) ||
         hasSettledPaymentIdentity(connection, entry.ledger_entry_id) ||
-        !orderUsesProviderAccount(connection, order.order_id, entry.provider_account_key)
+        !manualOrderUsesProviderAccount(connection, order.order_id, entry.ledger_entry_id)
       ) {
         throw new ReconciliationError("match_state_conflict", "manual settlement facts are not eligible");
       }
@@ -2194,22 +2194,19 @@ function requireOrderDecision(connection: DatabaseSync, orderId: string): OrderD
   return row;
 }
 
-function orderUsesProviderAccount(
+function manualOrderUsesProviderAccount(
   connection: DatabaseSync,
   orderId: string,
-  providerAccountKey: string,
+  ledgerEntryId: string,
 ): boolean {
   return connection
     .prepare(
       `SELECT 1 AS present
          FROM payment_orders AS orders
-         JOIN collection_profiles AS profile
-           ON profile.profile_id = orders.collection_profile_id
-         JOIN collection_profile_provider_accounts AS profile_provider
-           ON profile_provider.profile_id = profile.profile_id
-        WHERE orders.order_id = ? AND profile_provider.provider_account_key = ?`,
+         JOIN ledger_entries AS entry ON entry.ledger_entry_id = ?
+        WHERE orders.order_id = ? AND ${manualProviderAccountEligibilitySql(connection, "orders", "entry")}`,
     )
-    .get(orderId, providerAccountKey) !== undefined;
+    .get(ledgerEntryId, orderId) !== undefined;
 }
 
 function updateOrderPayment(
