@@ -103,7 +103,7 @@ export function useQrDownload(
           target.height = 0;
           canvas.current = null;
           setBusy(false);
-          setMessage("已发起 PNG 下载");
+          setMessage("已发起 PNG 下载。手机付款请将图片保存到相册，或截图后在支付宝扫一扫中从相册选择。");
           timer.current = setTimeout(() => {
             if (url.current) URL.revokeObjectURL(url.current);
             url.current = null;
