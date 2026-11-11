@@ -821,7 +821,7 @@ describe("LedgerIngestService", () => {
       }).run("long-interval-compensation");
 
       assert.equal(compensation.status, "PARTIAL");
-      assert.equal(compensation.errorCode, "normal_continuation");
+      assert.equal(compensation.errorCode, "compensation_continuation");
       assert.equal(compensation.normalCompleted, false);
       assert.equal(store.getRun(compensation.ingestRunId ?? "")?.scanKind, "COMPENSATION_1H");
       assert.equal(compensationProvider.requests.length, 1);

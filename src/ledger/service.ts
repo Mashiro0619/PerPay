@@ -355,9 +355,13 @@ export class LedgerIngestService {
             duplicateEntries,
             isolatedDetails,
             conflicts,
-            errorCode: normalPending
-              ? "normal_continuation"
-              : compensationPending ? "compensation_continuation" : null,
+            // A successful compensation pass can need another normal poll,
+            // but it does not invalidate the normal coverage already recorded.
+            errorCode: continuationPending
+              ? run.scanKind === "NORMAL" && normalPending
+                ? "normal_continuation"
+                : "compensation_continuation"
+              : null,
             retryAfterSeconds: null,
             retryable: false,
             normalCompleted: run.scanKind === "NORMAL" && !normalPending,
@@ -378,7 +382,9 @@ export class LedgerIngestService {
         duplicateEntries,
         isolatedDetails,
         conflicts,
-        errorCode: "request_budget_exhausted",
+        errorCode: run.scanKind === "NORMAL"
+          ? "request_budget_exhausted"
+          : "compensation_continuation",
         retryAfterSeconds: null,
         retryable: false,
         normalCompleted: false,

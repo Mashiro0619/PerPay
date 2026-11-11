@@ -214,8 +214,8 @@ export class RuntimeController {
     const lastSuccessAt = health?.lastSuccessAt ?? null;
     const ready = Boolean(account?.enabled && account.configured && health &&
       !this.#accountTransitions.has(accountId) && !this.#transitioning && !this.#stopped && health.state !== "stopped" &&
-      // Historical compensation can continue after the normal scan has reached
-      // its safe tail. Its progress must not suspend otherwise fresh collection.
+      // Compensation progress preserves the last completed normal coverage.
+      // The scheduler retains normal catch-up and actual errors separately.
       (health.lastErrorCode === null || health.lastErrorCode === "compensation_continuation") &&
       isFresh(lastSuccessAt, this.#clock(), account.provider!.maximumSuccessAgeMilliseconds));
     return { state: this.#accountTransitions.has(accountId) ? "transitioning" : health?.state ?? "unconfigured",

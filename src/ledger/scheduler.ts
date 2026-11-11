@@ -76,6 +76,7 @@ export class LedgerIngestScheduler {
   #lastAttemptAt: number | null = null;
   #lastSuccessAt: number | null = null;
   #lastErrorCode: string | null = null;
+  #normalContinuationCode: "normal_continuation" | "request_budget_exhausted" | null = null;
   #consecutiveFailures = 0;
   #recordRecovery = false;
 
@@ -190,20 +191,22 @@ export class LedgerIngestScheduler {
       .then((result) => {
         if (result.status === "SKIPPED" || result.errorCode === "scan_aborted") {
           this.#state = previousState;
-        } else if (result.status === "COMPLETED") {
-          this.#state = "healthy";
-          // The scan covers its starting safe tail; request time still ages it.
-          this.#lastSuccessAt = attemptStartedAt;
-          this.#lastErrorCode = null;
-          this.#consecutiveFailures = 0;
-          this.#recordRecovery = false;
-        } else if (result.status === "PARTIAL") {
-          this.#state = "catching_up";
-          this.#lastErrorCode = result.errorCode;
-          this.#consecutiveFailures = 0;
+        } else if (result.status === "COMPLETED" || result.status === "PARTIAL") {
           if (result.normalCompleted) {
+            // Only a normal scan reaching its starting safe tail renews
+            // collection freshness. Completing compensation never renews it.
             this.#lastSuccessAt = attemptStartedAt;
+            this.#normalContinuationCode = null;
+          } else if (result.errorCode === "normal_continuation" || result.errorCode === "request_budget_exhausted") {
+            this.#normalContinuationCode = result.errorCode;
           }
+          // A compensation turn may interleave while normal catch-up remains.
+          // Keep that admission barrier until a normal scan reaches the tail.
+          this.#lastErrorCode = this.#normalContinuationCode ?? result.errorCode;
+          this.#state = result.status === "PARTIAL" || this.#normalContinuationCode !== null
+            ? "catching_up" : "healthy";
+          this.#consecutiveFailures = 0;
+          if (this.#state === "healthy") this.#recordRecovery = false;
         } else {
           this.#state = "degraded";
           this.#lastErrorCode = result.errorCode;
