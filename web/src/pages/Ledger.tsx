@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { alipayAccountsQuery } from "@/lib/alipay-accounts";
+import { accountChoiceLabel, alipayAccountsQuery } from "@/lib/alipay-accounts";
 import { AlipayAccountIdentity } from "@/components/alipay-account-identity";
 import { Link2, RefreshCw } from "lucide-react";
 import { useSearchParams } from "react-router";
@@ -68,7 +68,7 @@ export function LedgerList({ onManual }: { onManual?: (trigger: HTMLButtonElemen
   });
   useLedgerListPosition(!!query.data && !query.isPlaceholderData && !query.isFetching);
   const listFilters: ListFilter[] = [
-    { key: "alipay_account_id", label: "收款账号", value: search.get("alipay_account_id") ?? "", options: [{ value: "", label: "全部收款账号" }, ...(accounts.data?.data.map(account => ({ value: account.id, label: account.name })) ?? [])] },
+    { key: "alipay_account_id", label: "收款账号", value: search.get("alipay_account_id") ?? "", options: [{ value: "", label: "全部收款账号" }, ...(accounts.data?.data.map(account => ({ value: account.id, label: accountChoiceLabel(account, accounts.data.data) })) ?? [])] },
     { key: "association_status", label: "关联状态", value: search.get("association_status") ?? "", options: associationOptions },
     { key: "direction", label: "收支方向", value: direction, defaultValue: DEFAULT_LEDGER_DIRECTION, options: directionOptions },
     { key: "state", label: "PerPay 处理状态", value: search.get("state") ?? "", options: stateOptions },

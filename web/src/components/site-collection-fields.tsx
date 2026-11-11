@@ -1,6 +1,7 @@
 import { useId } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
+  accountChoiceLabel,
   alipayAccountsQuery,
   type AlipayAccount,
   type SiteCollection,
@@ -34,21 +35,6 @@ const modes = [
   ["RANDOM", "随机"],
   ["WEIGHTED", "按权重"],
 ] as const;
-
-function accountChoiceLabel(account: AlipayAccount, accounts: readonly AlipayAccount[]): string {
-  const duplicates = accounts.filter(item => item.name === account.name);
-  if (duplicates.length < 2) return account.name;
-  if (account.app_id && duplicates.every(item => item.id === account.id || item.app_id !== account.app_id)) {
-    return `${account.name} · App ID ${account.app_id}`;
-  }
-  // Drafts and historical accounts may lack a distinct application identity.
-  // Follow website choices: reveal only enough stable ID to distinguish them.
-  const compact = (id: string, length: number) => id.replace(/^alipay_/, "").slice(0, length);
-  let length = 8;
-  const collides = () => duplicates.some(item => item.id !== account.id && compact(item.id, length) === compact(account.id, length));
-  while (length < account.id.length && collides()) length += 4;
-  return account.name + " · " + (collides() ? account.id : compact(account.id, length));
-}
 
 export function SiteCollectionFields({
   value,

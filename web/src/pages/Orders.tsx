@@ -1,5 +1,5 @@
 import { ListLayout, ListToolbarPart } from "@/components/list-layout";
-import { alipayAccountsQuery } from "@/lib/alipay-accounts";
+import { accountChoiceLabel, alipayAccountsQuery } from "@/lib/alipay-accounts";
 import { useState } from "react";
 import { SitePicker } from "@/components/site-picker";
 import { useWorkspace } from "@/workspace";
@@ -255,7 +255,7 @@ function OrderPage({
   const [search] = useSearchParams();
   const accountId = search.get("alipay_account_id") ?? undefined;
   const accounts = useQuery(alipayAccountsQuery);
-  const accountOptions = [{ value: "", label: "全部收款账号" }, ...(accounts.data?.data.map(account => ({ value: account.id, label: account.name })) ?? [])];
+  const accountOptions = [{ value: "", label: "全部收款账号" }, ...(accounts.data?.data.map(account => ({ value: account.id, label: accountChoiceLabel(account, accounts.data.data) })) ?? [])];
   const listQuery = useListQuery(ORDER_SORT_FIELDS, "created_at", "desc", true);
   const orders = useQuery(ordersQuery(clientId, listQuery, pagination.cursor, payment, checkout, accountId));
   return (

@@ -9,6 +9,19 @@ export type { SiteCollection } from "@/api/client";
 
 export type AlipayAccount = AccountResponse;
 
+export function accountChoiceLabel(account: AlipayAccount, accounts: readonly AlipayAccount[]): string {
+  const duplicates = accounts.filter(item => item.name === account.name);
+  if (duplicates.length < 2) return account.name;
+  if (account.app_id && duplicates.every(item => item.id === account.id || item.app_id !== account.app_id)) {
+    return `${account.name} · App ID ${account.app_id}`;
+  }
+  const compact = (id: string, length: number) => id.replace(/^alipay_/, "").slice(0, length);
+  let length = 8;
+  const collides = () => duplicates.some(item => item.id !== account.id && compact(item.id, length) === compact(account.id, length));
+  while (length < account.id.length && collides()) length += 4;
+  return account.name + " · " + (collides() ? account.id : compact(account.id, length));
+}
+
 export const alipayAccountsKey = ["alipay-accounts"] as const;
 export const alipayAccountKey = (id: string) =>
   [...alipayAccountsKey, id] as const;
