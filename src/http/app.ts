@@ -571,6 +571,10 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
         systemName: checkout?.display?.name ?? publicSystemName(dependencies),
         helpUrl: checkout?.display ? checkout.display.helpUrl : publicCheckoutHelp(dependencies),
       checkoutToken: token,
+      internalReturnUrl: new URL(
+        `/api/public/v1/checkouts/${encodeURIComponent(token)}/return`,
+        dependencies.config.publicOrigin,
+      ).href,
       checkout,
       showProductName: checkout?.display?.showProductName ?? checkoutProductNameVisible(dependencies),
       qrImageUrl: checkout?.paymentInstructions === null || checkout === null

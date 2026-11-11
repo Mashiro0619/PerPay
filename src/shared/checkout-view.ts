@@ -46,6 +46,7 @@ export interface CheckoutInitial {
     retryAfterSeconds: number | null;
   } | null;
   apiUrl: string;
+  internalReturnUrl?: string;
   qrUrl: string;
   qrAvailable: boolean;
   serverTime: number;
@@ -123,11 +124,14 @@ export function checkoutMoney(cents: number) {
     String(cents % 100).padStart(2, "0")
   );
 }
-export function merchantReturnUrl(value: unknown): string | null {
+export function merchantReturnUrl(value: unknown, internalReturnUrl?: string): string | null {
   if (typeof value !== "string" || !value) return null;
   try {
     const url = new URL(value);
-    return url.protocol === "https:" &&
+    // The server constructs this exact checkout relay from its configured origin.
+    // External merchant URLs still require HTTPS.
+    return (url.protocol === "https:" ||
+      (url.protocol === "http:" && value === internalReturnUrl)) &&
       !url.username &&
       !url.password &&
       !url.hash
@@ -141,7 +145,7 @@ const record = (value: unknown): Record<string, unknown> =>
   value && typeof value === "object" ? (value as Record<string, unknown>) : {};
 const amount = (value: unknown): value is number =>
   typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
-export function parseCheckoutPayload(payload: unknown): CheckoutViewOrder {
+export function parseCheckoutPayload(payload: unknown, internalReturnUrl?: string): CheckoutViewOrder {
   const value = record(record(payload).data),
     checkout = record(value.checkout),
     payment = record(value.payment),
@@ -176,7 +180,7 @@ export function parseCheckoutPayload(payload: unknown): CheckoutViewOrder {
     product_name: value.product_name,
     currency: "CNY",
     requested_amount_cents: value.requested_amount_cents,
-    return_url: merchantReturnUrl(value.return_url),
+    return_url: merchantReturnUrl(value.return_url, internalReturnUrl),
     payment_instructions:
       value.payment_instructions === null
         ? null

@@ -26,6 +26,7 @@ export interface CheckoutPageInput {
   readonly systemName?: string;
   readonly helpUrl?: string | null;
   readonly checkoutToken: string;
+  readonly internalReturnUrl?: string;
   readonly checkout: PublicCheckoutProjection | null;
   readonly qrImageUrl: string | null;
   readonly initialError: CheckoutPageInitialError | null;
@@ -76,6 +77,7 @@ export function renderCheckoutPage(input: CheckoutPageInput): string {
     demoMode: input.demoMode ?? false,
     showProductName: input.showProductName !== false,
     apiUrl: missing ? "" : checkoutApiPath(input.checkoutToken),
+    ...(input.internalReturnUrl ? { internalReturnUrl: input.internalReturnUrl } : {}),
     qrUrl: missing
       ? ""
       : (input.qrImageUrl ?? checkoutQrPath(input.checkoutToken)),
@@ -87,7 +89,7 @@ export function renderCheckoutPage(input: CheckoutPageInput): string {
           requested_amount_cents: order.requestedAmountCents,
           currency: order.currency,
           product_name: input.showProductName === false ? "" : order.productName,
-          return_url: merchantReturnUrl(order.returnUrl),
+          return_url: merchantReturnUrl(order.returnUrl, input.internalReturnUrl),
           payment_instructions: order.paymentInstructions
             ? {
                 payable_amount_cents:

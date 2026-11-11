@@ -288,7 +288,7 @@ export function createCheckoutController(initial: CheckoutInitial) {
       }
       const payload = await response.json();
       if (!current()) return;
-      const order = parseCheckoutPayload(payload);
+      const order = parseCheckoutPayload(payload, initial.internalReturnUrl);
       const date = Date.parse(response.headers.get("date") ?? "");
       if (Number.isFinite(date)) {
         serverTime = date + 1000 + Math.max(0, mono() - start);

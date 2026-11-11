@@ -125,7 +125,7 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
     "DISPUTED",
     "UNAVAILABLE",
   ].includes(state.visual)
-    ? merchantReturnUrl(order?.return_url)
+    ? merchantReturnUrl(order?.return_url, initial.internalReturnUrl)
     : null;
   const helpUrl = checkoutHelpUrl(order?.display ? order.display.help_url : initial.helpUrl);
   const retryAllowed =
