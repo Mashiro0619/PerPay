@@ -13,7 +13,7 @@ describe("deployment configuration", () => {
   it("loads the minimal deployment configuration with port 6190 defaults", () => {
     const config = loadConfig({ PERPAY_MASTER_KEY: MASTER_KEY });
 
-    assert.equal(config.host, "0.0.0.0");
+    assert.equal(config.host, "127.0.0.1");
     assert.equal(config.port, 6190);
     assert.equal(config.publicOrigin, "http://localhost:6190");
     assert.equal(config.secureCookies, false);

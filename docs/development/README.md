@@ -16,6 +16,8 @@ npm run demo:preview -- --interactive
 
 访问 `http://127.0.0.1:6192/admin/`，密码为 `123456`。预览使用临时库和合成数据，允许修改后台配置；支付宝和业务通知使用离线实现。前端热更新见[前端开发](../../web/README.md#开发与构建)，浏览器及 Linux 验证见[开发验证](ui-verification.md)。
 
+直接运行源码或 `node dist/main.js` 时，默认监听 `127.0.0.1:6190`。需要其他监听地址时显式设置 `PERPAY_HOST`。Docker 镜像设置 `PERPAY_HOST=0.0.0.0`，标准 Compose 将宿主端口绑定到 `127.0.0.1`，供宿主反向代理或本机访问。
+
 测试夹具和预览通过系统临时目录创建数据库。需要指定磁盘时，在启动 Node 前设置 `TMPDIR`（Linux/macOS）或 `TEMP`、`TMP`（Windows），并确保目录已经存在。构建输出为 `dist/`、`web-dist/`。
 
 ## 从问题定位源码

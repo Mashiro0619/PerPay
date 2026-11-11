@@ -29,7 +29,7 @@ const MASTER_KEY_HEX_LENGTH = MASTER_KEY_BYTES * 2;
 const masterKeyHexPattern = /^[0-9a-fA-F]{64}$/;
 
 const rawDeploymentConfigSchema = z.object({
-  PERPAY_HOST: z.string().trim().min(1).default("0.0.0.0"),
+  PERPAY_HOST: z.string().trim().min(1).default("127.0.0.1"),
   PERPAY_PORT: z.coerce.number().int().min(1).max(65535).default(6190),
   PERPAY_DATA_DIR: z.string().trim().min(1).default("./data"),
   PERPAY_BACKUP_DIR: z.string().trim().min(1).default("/backups"),
