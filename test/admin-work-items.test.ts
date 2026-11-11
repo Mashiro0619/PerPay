@@ -798,7 +798,8 @@ function createSchema(connection: DatabaseSync): void {
       product_name TEXT NOT NULL DEFAULT 'Fixture order',
       requested_amount_cents INTEGER NOT NULL DEFAULT 1000,
       payable_amount_cents INTEGER NOT NULL DEFAULT 1001,
-      received_amount_cents INTEGER
+      received_amount_cents INTEGER,
+      payment_status TEXT NOT NULL DEFAULT 'UNPAID'
     );
     CREATE TABLE order_events (
       order_id TEXT NOT NULL,
@@ -808,11 +809,23 @@ function createSchema(connection: DatabaseSync): void {
     CREATE TABLE outbox_events (
       outbox_event_id TEXT PRIMARY KEY,
       aggregate_id TEXT NOT NULL,
-      event_type TEXT NOT NULL
+      event_type TEXT NOT NULL,
+      financial_operation_id TEXT
+    );
+    CREATE TABLE payment_matches (
+      payment_match_id TEXT PRIMARY KEY,
+      created_by_operation_id TEXT NOT NULL,
+      status TEXT NOT NULL
+    );
+    CREATE TABLE webhook_targets (
+      target_id TEXT PRIMARY KEY,
+      target_format TEXT NOT NULL,
+      target_url TEXT NOT NULL
     );
     CREATE TABLE webhook_deliveries (
       delivery_id TEXT PRIMARY KEY,
       outbox_event_id TEXT NOT NULL,
+      target_id TEXT NOT NULL,
       predecessor_delivery_id TEXT,
       status TEXT NOT NULL,
       attempt_count INTEGER NOT NULL,
@@ -876,10 +889,10 @@ function seedFixture(connection: DatabaseSync): void {
     "INSERT INTO collection_profiles(profile_id, provider_account_key) VALUES (?, ?)",
   ).run("profile-fallback", "legacy-generation");
   connection.prepare(
-    "INSERT INTO payment_orders(order_id, collection_profile_id) VALUES (?, ?)",
+    "INSERT INTO payment_orders(order_id, collection_profile_id, payment_status) VALUES (?, ?, 'CONFIRMED')",
   ).run(IDS.orderLinked, "profile-linked");
   connection.prepare(
-    "INSERT INTO payment_orders(order_id, collection_profile_id) VALUES (?, ?)",
+    "INSERT INTO payment_orders(order_id, collection_profile_id, payment_status) VALUES (?, ?, 'DISPUTED')",
   ).run(IDS.orderFallback, "profile-fallback");
   connection.prepare(
     "INSERT INTO outbox_events(outbox_event_id, aggregate_id, event_type) VALUES (?, ?, ?)",
@@ -888,11 +901,15 @@ function seedFixture(connection: DatabaseSync): void {
     "INSERT INTO outbox_events(outbox_event_id, aggregate_id, event_type) VALUES (?, ?, ?)",
   ).run("outbox-fallback", IDS.orderFallback, "PAYMENT_DISPUTED");
 
+  connection.prepare(
+    "INSERT INTO webhook_targets(target_id, target_format, target_url) VALUES (?, 'NATIVE_JSON_V1', ?)",
+  ).run("fixture-native", "https://shop.example.com/notify");
+
   const insertDelivery = connection.prepare(`
     INSERT INTO webhook_deliveries(
-      delivery_id, outbox_event_id, predecessor_delivery_id, status, attempt_count,
+      delivery_id, outbox_event_id, target_id, predecessor_delivery_id, status, attempt_count,
       next_attempt_at, last_error_code, dead_lettered_at, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, 'fixture-native', ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   insertDelivery.run(
     IDS.retryNewest, "outbox-linked", null, "RETRY_WAIT", 1,
