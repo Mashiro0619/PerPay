@@ -692,8 +692,10 @@ function SiteEditor({
           }}
         />
       )}
-      {saved && visible("integration") && <SiteIntegrationAssistant site={saved} siteDirty={dirty || requiresReview}
-        disabled={busy} showClientId={false} onReloadSite={() => reload.mutate()} selectedProtocol={protocol} onProtocolChange={setProtocol} />}
+      {saved && (tabbed || visible("integration")) && <div hidden={!visible("integration")}>
+        <SiteIntegrationAssistant site={saved} siteDirty={dirty || requiresReview}
+          disabled={busy} showClientId={false} onReloadSite={() => reload.mutate()} selectedProtocol={protocol} onProtocolChange={setProtocol} />
+      </div>}
       {saved && visible("integration") && protocol === "native" && (
         <Card>
           <CardHeader>
