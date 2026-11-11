@@ -611,6 +611,14 @@ export async function reconcileBackupRetention(
     } catch (error) {
       throw asBackupError("state", error);
     }
+    // Policy reconciliation cannot resolve an earlier backup failure or move
+    // its retry deadline, even when recovery or retention also fails.
+    const pendingFailure =
+      state.lastErrorAt !== null &&
+      state.lastErrorStage !== "retention" &&
+      (state.lastSuccessAt === null || state.lastErrorAt >= state.lastSuccessAt)
+        ? { lastErrorAt: state.lastErrorAt, lastErrorStage: state.lastErrorStage }
+        : null;
     const startedAt = Date.now();
     const latestRecordedAt = latestStateTimestamp(state);
     if (latestRecordedAt !== null && startedAt < latestRecordedAt) {
@@ -619,8 +627,7 @@ export async function reconcileBackupRetention(
         ...state,
         intervalMilliseconds: config.intervalMilliseconds,
         keepCount: config.keepCount,
-        lastErrorAt: failedAt,
-        lastErrorStage: "state",
+        ...(pendingFailure ?? { lastErrorAt: failedAt, lastErrorStage: "state" as const }),
       });
       writeBackupState(config.backupDirectory, state);
       throw asBackupError(
@@ -635,8 +642,10 @@ export async function reconcileBackupRetention(
         ...state,
         intervalMilliseconds: config.intervalMilliseconds,
         keepCount: config.keepCount,
-        lastErrorAt: Math.max(Date.now(), startedAt),
-        lastErrorStage: "state",
+        ...(pendingFailure ?? {
+          lastErrorAt: Math.max(Date.now(), startedAt),
+          lastErrorStage: "state" as const,
+        }),
       });
       writeBackupState(config.backupDirectory, state);
       throw asBackupError("state", error);
@@ -671,12 +680,6 @@ export async function reconcileBackupRetention(
         retainedCount: retention.retainedCount,
       });
       if (retention.blocked.length > 0) {
-        state = Object.freeze({
-          ...state,
-          lastErrorAt: Math.max(Date.now(), now),
-          lastErrorStage: "retention",
-        });
-        writeBackupState(config.backupDirectory, state);
         throw new Error("backup retention contains files requiring explicit cleanup");
       }
       state = Object.freeze({
@@ -695,8 +698,7 @@ export async function reconcileBackupRetention(
         ...state,
         intervalMilliseconds: config.intervalMilliseconds,
         keepCount: config.keepCount,
-        lastErrorAt: failedAt,
-        lastErrorStage: "retention",
+        ...(pendingFailure ?? { lastErrorAt: failedAt, lastErrorStage: "retention" as const }),
       });
       writeBackupState(config.backupDirectory, state);
       throw asBackupError("retention", error);
@@ -723,7 +725,9 @@ export function nextScheduledDelayMilliseconds(
   const interruptedAttempt =
     state.lastAttemptAt !== null &&
     (state.lastSuccessAt === null || state.lastAttemptAt > state.lastSuccessAt) &&
-    (state.lastErrorAt === null || state.lastErrorAt < state.lastAttemptAt);
+    (state.lastErrorAt === null || state.lastErrorAt < state.lastAttemptAt ||
+      // Older reconciliation could overwrite an unfinished backup's error.
+      state.lastErrorStage === "retention");
   if (interruptedAttempt) {
     return Math.max(
       0,

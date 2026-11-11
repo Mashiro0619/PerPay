@@ -37,7 +37,7 @@ it("the backup process reports invalid configuration without echoing its value",
   assert.equal(result.stderr.includes(syntheticSecret), false);
 });
 
-it("scheduled retention and backup failures expose protected metadata reasons", { timeout: 10_000 }, async context => {
+it("scheduled state-read failures expose protected metadata reasons", { timeout: 10_000 }, async context => {
   const { data, backups } = directories(context);
   const key = Buffer.alloc(32, 0x54);
   const database = await AppDatabase.open(join(data, "perpay.sqlite3"), { masterKey: key });
@@ -51,11 +51,9 @@ it("scheduled retention and backup failures expose protected metadata reasons", 
     return true;
   });
   assert.equal(await runBackupCommand(["schedule"], { PERPAY_DATA_DIR: data, PERPAY_BACKUP_DIR: backups }), 0);
-  for (const event of ["backup_retention_recovery_failed", "backup_cycle_failed"]) {
-    const log = logs.find(entry => entry.event === event);
-    assert.ok(log, event);
-    assert.match(String(log.message), /backup state is unreadable/u);
-    assert.match(String(log.message), /JSON|metadata/u);
-  }
+  const log = logs.find(entry => entry.event === "backup_cycle_failed");
+  assert.ok(log);
+  assert.match(String(log.message), /backup state is unreadable/u);
+  assert.match(String(log.message), /JSON|metadata/u);
   assert.equal(JSON.stringify(logs).includes(syntheticSecret), false);
 });

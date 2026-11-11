@@ -107,6 +107,8 @@ docker compose --profile maintenance run --rm --no-deps --entrypoint node mainte
 
 备份任务在正常等待时每 30 秒读取一次策略变化，持有备份锁完成保留数量对账后确认新策略。下一次备份时间和副本过期阈值随已采纳间隔调整，最近成功备份时间保留为实际完成时间。调长间隔后的正常等待会保持健康；对账或备份失败仍显示对应原因。
 
+新备份或验证失败后按失败重试计划恢复，调整策略期间的清理失败不会延后该计划；仅清理失败时，下一次完整备份仍按正常周期执行。
+
 ```sh
 docker compose --profile maintenance run --rm maintenance list-backups
 ```
