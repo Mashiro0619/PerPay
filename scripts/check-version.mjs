@@ -22,7 +22,6 @@ const versionSchemaMaximum = Object.freeze({
   "1.0.0-rc.2": 40,
   "1.0.0-rc.3": 40,
   "1.0.0-rc.4": 42,
-  "1.0.0-rc.5": 44,
   "1.0.0": 44,
 });
 

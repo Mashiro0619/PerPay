@@ -109,7 +109,7 @@ describe("maintenance documentation version contract", () => {
     const changelog = readFileSync(new URL("../CHANGELOG.md", import.meta.url), "utf8").replaceAll("\r\n", "\n");
     const releaseSection = changelog.split(`## ${APP_VERSION}\n`)[1]?.split(/^## /m)[0];
     assert.ok(releaseSection, "changelog must include the current release");
-    const changelogCompatibility = /本版使用 schema (\d+)，运行兼容范围为 (\d+)—(\d+)/.exec(releaseSection);
+    const changelogCompatibility = /本版的数据库结构版本（schema）为 (\d+)，兼容范围为 (\d+)—(\d+)/.exec(releaseSection);
     assert.ok(changelogCompatibility, "changelog must state the current schema and runtime compatibility");
     assert.equal(Number(changelogCompatibility[1]), latest);
     assert.equal(Number(changelogCompatibility[2]), DATABASE_COMPATIBILITY.minimum);
