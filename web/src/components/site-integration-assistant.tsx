@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useImperativeHandle, useLayoutEffect, useRef, useState, type Ref } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { ExternalLink } from "lucide-react";
 import { ApiError, queryClient, type Site } from "@/api/client";
@@ -24,6 +24,11 @@ import {
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/admin-dialog";
 
+export interface SiteIntegrationControls {
+  discardDraft(): void;
+  isWritePending(): boolean;
+}
+
 interface AssistantProps {
   site: Site;
   siteDirty?: boolean;
@@ -32,6 +37,8 @@ interface AssistantProps {
   onReloadSite: () => void;
   onProtocolChange?: (protocol: IntegrationProtocol) => void;
   selectedProtocol?: IntegrationProtocol;
+  controlsRef?: Ref<SiteIntegrationControls>;
+  onWritePendingChange?: (pending: boolean) => void;
 }
 
 const protocols = [
@@ -69,7 +76,7 @@ export function SiteIntegrationAssistant(props: AssistantProps) {
   </>;
 }
 
-function IntegrationContent({ site, siteDirty = false, disabled = false, showClientId = true, onProtocolChange, selectedProtocol,
+function IntegrationContent({ site, siteDirty = false, disabled = false, showClientId = true, onProtocolChange, selectedProtocol, controlsRef, onWritePendingChange,
   configuration, reading, onReload }: AssistantProps & {
     configuration: SiteEpayConfiguration; reading: boolean; onReload: () => Promise<SiteEpayConfiguration>;
   }) {
@@ -150,6 +157,17 @@ function IntegrationContent({ site, siteDirty = false, disabled = false, showCli
       if (reason instanceof ApiError && reason.status === 409) setRefreshRequired(true);
     },
   });
+  useImperativeHandle(controlsRef, () => ({
+    discardDraft() {
+      clearDraft();
+      setDraft(null);
+    },
+    isWritePending: () => writePending.current || persist.isPending,
+  }), [clearDraft, persist.isPending]);
+  useLayoutEffect(() => {
+    onWritePendingChange?.(persist.isPending);
+    return () => onWritePendingChange?.(false);
+  }, [onWritePendingChange, persist.isPending]);
   const busy = disabled || reading || pendingRead !== null || persist.isPending;
   const blocked = busy || siteDirty || dirty;
   const selected = protocols.find(item => item.value === protocol)!;

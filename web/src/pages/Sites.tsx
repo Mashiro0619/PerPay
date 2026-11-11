@@ -36,7 +36,7 @@ import { accountState, alipayAccountsQuery, type AlipayAccount, type SiteCollect
 import { siteTimeoutError, siteTimeoutSeconds } from "@/lib/site-timeout";
 import { SiteConfigurationConflicts } from "@/components/site-configuration-conflicts";
 import { SiteClientIdChange } from "@/components/site-client-id-change";
-import { SiteIntegrationAssistant } from "@/components/site-integration-assistant";
+import { SiteIntegrationAssistant, type SiteIntegrationControls } from "@/components/site-integration-assistant";
 import { SecretViewDialog } from "@/components/secret-view-dialog";
 import { mergeSiteConfiguration, resolveSiteConflicts, type SiteConflictChoices } from "@/lib/site-configuration";
 import { latestEditorSnapshot, siteEditorKey, siteEditorQueryOptions } from "@/lib/site-editor-query";
@@ -290,6 +290,8 @@ function SiteEditor({
   const dirty = JSON.stringify(draft) !== JSON.stringify(saved?.configuration ?? configuration) ||
     timeoutRaw !== siteTimeoutSeconds((saved?.configuration ?? configuration).policy.notification_delivery.timeout_milliseconds);
   const clearDraft = useDirtyDraft(dirty);
+  const integrationControls = useRef<SiteIntegrationControls>(null);
+  const [integrationWritePending, setIntegrationWritePending] = useState(false);
   const [needsReview, setNeedsReview] = useState(false);
   const [review, setReview] = useState<({ site: Site } & ReturnType<typeof mergeSiteConfiguration>) | null>(null);
   const [choices, setChoices] = useState<SiteConflictChoices>({});
@@ -461,6 +463,9 @@ function SiteEditor({
       if (!saved) return;
       const path = { clientId: saved.client_id };
       if (kind === "delete") {
+        if (integrationControls.current?.isWritePending()) {
+          throw new Error("易支付设置仍在保存，请完成后再删除网站。");
+        }
         deletionConfirmed.current = false;
         const originKey = currentNavigation.current.key;
         await result(
@@ -468,6 +473,8 @@ function SiteEditor({
         );
         deletionConfirmed.current = true;
         const returnToList = mounted.current && currentNavigation.current.key === originKey && !currentNavigation.current.pending;
+        // A confirmed deletion releases only this editor's parent and child drafts.
+        integrationControls.current?.discardDraft();
         clearDraft();
         queryClient.removeQueries({
           queryKey: ["site-editor", saved.client_id],
@@ -479,7 +486,7 @@ function SiteEditor({
         void queryClient.invalidateQueries({ queryKey: ["sites"] });
         void queryClient.invalidateQueries({ queryKey: ["settings"] });
         // Clear shared data even after departure, but never replace a newer navigation.
-        if (returnToList) void navigate("/sites");
+        if (returnToList) void navigate("/sites", { preserveSelectedSite: false });
         return;
       }
       observeSecretRevision(latestEditorSnapshot(saved).site.revision);
@@ -694,7 +701,8 @@ function SiteEditor({
       )}
       {saved && (tabbed || visible("integration")) && <div hidden={!visible("integration")}>
         <SiteIntegrationAssistant site={saved} siteDirty={dirty || requiresReview}
-          disabled={busy} showClientId={false} onReloadSite={() => reload.mutate()} selectedProtocol={protocol} onProtocolChange={setProtocol} />
+          disabled={busy} showClientId={false} onReloadSite={() => reload.mutate()} selectedProtocol={protocol} onProtocolChange={setProtocol}
+          controlsRef={integrationControls} onWritePendingChange={setIntegrationWritePending} />
       </div>}
       {saved && visible("integration") && protocol === "native" && (
         <Card>
@@ -899,7 +907,7 @@ function SiteEditor({
           <CardContent>
             <Button
               variant="destructive"
-              disabled={busy || requiresReview}
+              disabled={busy || requiresReview || integrationWritePending}
               onClick={() => setConfirmation("delete")}
             >
               删除空业务网站
@@ -943,9 +951,10 @@ function SiteEditor({
             <AlertDialogCancel disabled={isSecretConfirmation && action.isPending}>{isSecretConfirmation && action.error ? "关闭" : "取消"}</AlertDialogCancel>
             <AlertDialogAction
               variant={(isSecretConfirmation && !generatingSecret) || confirmation === "delete" ? "destructive" : "default"}
-              disabled={busy || requiresReview || (isSecretConfirmation && !!action.error) || (confirmation === "save" && !!timeoutError)}
+              disabled={busy || requiresReview || (isSecretConfirmation && !!action.error) || (confirmation === "save" && !!timeoutError) || (confirmation === "delete" && integrationWritePending)}
               onClick={event => {
                 if (busy || requiresReview || (confirmation === "save" && timeoutError)) return;
+                if (confirmation === "delete" && integrationControls.current?.isWritePending()) return;
                 const selected = confirmation;
                 if (selected === "api" || selected === "webhook") {
                   event.preventDefault();
