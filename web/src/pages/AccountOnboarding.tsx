@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Navigate, useParams } from "react-router";
-import { api, result } from "@/api/client";
-import { alipayAccountsQuery } from "@/lib/alipay-accounts";
+import { api, queryClient, result } from "@/api/client";
+import { alipayAccountKey, alipayAccountsQuery } from "@/lib/alipay-accounts";
 import { useDraftGuard } from "@/drafts";
 import { Link, useNavigate } from "@/navigation";
 import { AlipayAccountDetail, AlipayAccountList } from "./AlipayAccounts";
@@ -29,8 +29,12 @@ const steps = [
 
 export function AccountOnboarding({
   instanceId,
+  refreshVersion = 0,
+  onRefreshLockChange,
 }: {
   instanceId: string | null;
+  refreshVersion?: number;
+  onRefreshLockChange?: (locked: boolean) => void;
 }) {
   const { step: requested } = useParams();
   const navigate = useNavigate();
@@ -44,6 +48,18 @@ export function AccountOnboarding({
   const [accountId, setAccountId] = useState<string | null>(null);
   const [createSite, setCreateSite] = useState(false);
   const [createdSiteId, setCreatedSiteId] = useState<string | null>(null);
+  const savedAccountId = useRef<string | null>(null);
+  const previousRefreshVersion = useRef(refreshVersion);
+  useLayoutEffect(() => {
+    if (previousRefreshVersion.current === refreshVersion) return;
+    previousRefreshVersion.current = refreshVersion;
+    setCreatedSiteId(null);
+    if (accountId === "new" && savedAccountId.current) {
+      const saved = accounts.data?.data.find(account => account.id === savedAccountId.current);
+      if (saved) queryClient.setQueryData(alipayAccountKey(saved.id), { data: saved });
+      setAccountId(saved?.id ?? null);
+    }
+  }, [refreshVersion, accountId, accounts.data]);
   const accountReady =
     accounts.data?.data.some(
       (account) => account.enabled && account.configured,
@@ -138,11 +154,14 @@ export function AccountOnboarding({
                   </Alert>}
                   {accountId ? (
                     <AlipayAccountDetail
+                      key={accountId + ":" + refreshVersion}
                       accountId={accountId}
+                      onSaved={account => { savedAccountId.current = account.id; }}
+                      onRefreshLockChange={onRefreshLockChange}
                       onBack={() => requestDiscard(() => setAccountId(null))}
                     />
                   ) : (
-                    <AlipayAccountList onSelect={setAccountId} />
+                    <AlipayAccountList onSelect={id => { savedAccountId.current = null; setAccountId(id); }} />
                   )}</>}
                 {current.id === "sites" && (
                   <>
@@ -152,6 +171,8 @@ export function AccountOnboarding({
                     </p>
                     {createSite || !sites.data?.data.length ? (
                       <CreateSite
+                        key={refreshVersion}
+                        onRefreshLockChange={onRefreshLockChange}
                         onCreated={(id) => {
                           setCreatedSiteId(id);
                           setCreateSite(false);

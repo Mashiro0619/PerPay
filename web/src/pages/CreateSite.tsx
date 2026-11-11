@@ -30,7 +30,11 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-export default function CreateSite({ onCreated }: { onCreated?: (clientId: string) => void } = {}) {
+type CreateSiteProps = {
+  onCreated?: (clientId: string) => void;
+  onRefreshLockChange?: (locked: boolean) => void;
+};
+export default function CreateSite({ onCreated, onRefreshLockChange }: CreateSiteProps = {}) {
   const accounts = useQuery(alipayAccountsQuery);
   const defaults = useQuery({
     queryKey: ["site-create-defaults"],
@@ -42,11 +46,11 @@ export default function CreateSite({ onCreated }: { onCreated?: (clientId: strin
   });
   return (
     <QueryView query={defaults}>
-      {(response) => <QueryView query={accounts}>{accountResponse => <CreateSiteForm policy={response.data.policy} accounts={accountResponse.data} onCreated={onCreated} />}</QueryView>}
+      {(response) => <QueryView query={accounts}>{accountResponse => <CreateSiteForm policy={response.data.policy} accounts={accountResponse.data} onCreated={onCreated} onRefreshLockChange={onRefreshLockChange} />}</QueryView>}
     </QueryView>
   );
 }
-function CreateSiteForm({ policy, accounts, onCreated }: { policy: SiteConfiguration["policy"]; accounts: readonly AlipayAccount[]; onCreated?: (clientId: string) => void }) {
+function CreateSiteForm({ policy, accounts, onCreated, onRefreshLockChange }: CreateSiteProps & { policy: SiteConfiguration["policy"]; accounts: readonly AlipayAccount[] }) {
   const overlay = useOverlayContext();
   const formId = useId();
   const [template] = useState(() => structuredClone(policy)),
@@ -84,6 +88,11 @@ function CreateSiteForm({ policy, accounts, onCreated }: { policy: SiteConfigura
       error instanceof ApiError && error.status === 422,
   });
   const clientIdError = clientIdValidation ?? (create.error instanceof ApiError ? create.error.fields.client_id : undefined);
+  const refreshLocked = create.isPending || !!create.recovery;
+  useEffect(() => {
+    onRefreshLockChange?.(refreshLocked);
+    return () => onRefreshLockChange?.(false);
+  }, [onRefreshLockChange, refreshLocked]);
   const isClientIdRejection = !create.recovery && create.error instanceof ApiError
     && (create.error.status === 422 || create.error.status === 409) && !!create.error.fields.client_id;
   useEffect(() => {

@@ -150,10 +150,12 @@ export function AlipayAccountDetail({
   accountId,
   onSaved,
   onBack,
+  onRefreshLockChange,
 }: {
   accountId: string;
   onSaved?: (account: AlipayAccount) => void;
   onBack?: () => void;
+  onRefreshLockChange?: (locked: boolean) => void;
 }) {
   const account = useQuery({
     queryKey: alipayAccountKey(accountId),
@@ -169,6 +171,7 @@ export function AlipayAccountDetail({
       initial={null}
       onSaved={onSaved}
       onBack={onBack}
+      onRefreshLockChange={onRefreshLockChange}
     />
   ) : (
     <QueryView query={account}>
@@ -178,6 +181,7 @@ export function AlipayAccountDetail({
           initial={data}
           onSaved={onSaved}
           onBack={onBack}
+          onRefreshLockChange={onRefreshLockChange}
         />
       )}
     </QueryView>
@@ -251,10 +255,12 @@ export function AlipayAccountEditor({
   initial,
   onSaved,
   onBack,
+  onRefreshLockChange,
 }: {
   initial: AlipayAccount | null;
   onSaved?: (account: AlipayAccount) => void;
   onBack?: () => void;
+  onRefreshLockChange?: (locked: boolean) => void;
 }) {
   const overlay = useOverlayContext();
   const tabbed = !!overlay || !!onBack;
@@ -554,6 +560,11 @@ export function AlipayAccountEditor({
   const saving = save.isPending || creation.isPending;
   const saveError = saved ? save.error : creation.error;
   const busy = saving || key.isPending || remove.isPending || check.isPending || reload.isPending;
+  const refreshLocked = busy || decoding || !!creation.recovery;
+  useEffect(() => {
+    onRefreshLockChange?.(refreshLocked);
+    return () => onRefreshLockChange?.(false);
+  }, [onRefreshLockChange, refreshLocked]);
   const requiresReview = needsReload || review !== null;
   const editingBlocked = busy || requiresReview || !!creation.recovery;
   const navigation = useOperationNavigation(creation.isPending || !!creation.recovery,

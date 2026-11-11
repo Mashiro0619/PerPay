@@ -2,7 +2,7 @@ import { RefreshButton } from "@/components/refresh-button";
 import { PageHeaderActionLink, PageHeaderActions } from "@/components/page-header-actions";
 import { useSystemName } from "@/branding";
 import { TestPaymentButton } from "@/components/test-payment-provider";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useIsFetching, useQuery } from "@tanstack/react-query";
 import {
   BookOpen,
@@ -62,10 +62,18 @@ import { NotificationKeyActions } from "./SecuritySettings";
 import { runtimeErrorMessage, type RuntimeTask } from "@/lib/runtime-copy";
 import { RuntimeErrorDetails } from "@/components/runtime-error-details";
 import { AccountOnboarding } from "./AccountOnboarding";
+import { alipayAccountsKey } from "@/lib/alipay-accounts";
 export default function Onboarding() {
   const [editorVersion, setEditorVersion] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const [activationLocked, setActivationLocked] = useState(false);
+  const [accountFlowLocked, setAccountFlowLocked] = useState(false);
+  const accountFlowLock = useRef(false);
+  const [refreshError, setRefreshError] = useState<Error | null>(null);
+  const onRefreshLockChange = useCallback((locked: boolean) => {
+    accountFlowLock.current = locked;
+    setAccountFlowLocked(locked);
+  }, []);
   const readinessFetching =
     useIsFetching({ queryKey: ["onboarding", "readiness"] }) > 0;
   const { requestDiscard } = useDraftGuard();
@@ -86,13 +94,24 @@ export default function Onboarding() {
   });
   function reload() {
     requestDiscard(() => {
+      if (accountFlowLock.current) return;
       setRefreshing(true);
-      void Promise.all([settings.refetch(), instance.refetch()]).then(
-        ([response]) => {
-          if (!response.isError) setEditorVersion((value) => value + 1);
+      setRefreshError(null);
+      void Promise.all([
+        settings.refetch({ throwOnError: true }),
+        instance.refetch({ throwOnError: true }),
+        queryClient.refetchQueries({ queryKey: alipayAccountsKey, type: "active" }, { throwOnError: true }),
+        queryClient.refetchQueries({ queryKey: ["onboarding", "sites"], type: "active" }, { throwOnError: true }),
+        queryClient.refetchQueries({ queryKey: ["site-create-defaults"], type: "active" }, { throwOnError: true }),
+      ]).then(
+        () => {
+          setEditorVersion((value) => value + 1);
           setRefreshing(false);
         },
-        () => setRefreshing(false),
+        (error: unknown) => {
+          setRefreshError(error instanceof Error ? error : new Error("刷新失败，请重试。"));
+          setRefreshing(false);
+        },
       );
     });
   }
@@ -120,12 +139,14 @@ export default function Onboarding() {
             settings.isFetching ||
             instance.isFetching ||
             readinessFetching ||
-            activationLocked
+            activationLocked ||
+            accountFlowLocked
           } onClick={reload} busy={refreshing ||
             settings.isFetching ||
             instance.isFetching ||
             readinessFetching} />
       </PageHeaderActions>
+      <ErrorNotice scope="page" error={refreshError} retry={reload} />
       <ErrorNotice
         scope="page"
         error={instance.error}
@@ -136,7 +157,8 @@ export default function Onboarding() {
       <QueryView query={settings}>
         {({ data }) => (
           <div className="min-w-0" inert={refreshing} aria-busy={refreshing}>
-            {data.site_mode ? <AccountOnboarding instanceId={instance.data?.data.instance_id ?? null} /> : <OnboardingFlow
+            {data.site_mode ? <AccountOnboarding instanceId={instance.data?.data.instance_id ?? null}
+              refreshVersion={editorVersion} onRefreshLockChange={onRefreshLockChange} /> : <OnboardingFlow
               key={editorVersion}
               settings={data}
               resolvingSettings={settings.isFetching}
