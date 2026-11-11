@@ -2,26 +2,24 @@
 
 # 快速接入 PerPay
 
-在「网站设置 → 接入与通知」的网站接入助手中选择协议，复制服务地址／网关和客户端 ID／商户 PID。原生协议通过「管理 API 与通知密钥」查看所需密钥；易支付 V1 使用商户密钥，V2 使用商户私钥和平台公钥。已有易支付插件的系统可按对应协议配置。[易支付接入说明](epay-integration.md)
+本指南带你用原生 API 完成下单、打开收银台和接收付款通知。已有易支付插件的网站可直接阅读[易支付接入](epay-integration.md)；需要先跑通一个接收端，可使用 [Node.js 调用端示例](../examples/node-client/README.md)。
 
-本文按一次网站支付的顺序接入。完整字段见 [OpenAPI](../openapi.yaml)。需要先验证下单与通知时，可选用 [Node.js 调用端示例](../examples/node-client/README.md)，按 `.env.example` 填写配置后运行。
+先在 PerPay 创建业务网站，配置可用的收款账号，再从「网站设置 → 接入与通知」取得以下参数：
 
-接入前，在 PerPay 创建业务网站，确认收款就绪，并准备以下配置：
-
-| 配置 | 用途 |
+| 参数 | 填写方式 |
 | --- | --- |
-| `PERPAY_URL`、`PERPAY_CLIENT_ID` | PerPay 的来源地址和该业务网站的客户端 ID；地址不带 `/admin`。 |
-| `PERPAY_API_SECRET` | 业务后端签名调用 PerPay，使用后台生成的 32 字节 base64url 密钥。 |
-| 通知密钥、`notification_origin` | 验证通知；通知来源填业务网站的 HTTPS Origin，不带路径。 |
-| `return_origin`（可选） | 允许收银台返回的业务网站来源，与通知来源分别配置。 |
+| `PERPAY_URL` | PerPay 服务地址，如 `https://pay.example.com`，不带 `/admin` 或 `/api`。 |
+| `PERPAY_CLIENT_ID` | 当前网站的客户端 ID。 |
+| `PERPAY_API_SECRET` | 「管理 API 与通知密钥」中的 API 密钥，业务后端用它为请求生成签名。 |
+| 通知密钥 | 同一网站的通知签名密钥，用于业务后端验证收到的签名（验签）。 |
+| `notification_origin` | 接收通知的网站地址，如 `https://shop.example.com`，包含 `https://`、域名和必要的端口，不带路径。 |
+| `return_origin`（可选） | 付款人返回的业务网站地址，填写格式同上。 |
 
-API 密钥和通知密钥用途不同，只保存在业务后端。先配置接收端，再启用该网站的通知。
-
-客户端 ID 可在创建网站时指定，也可在接入设置中更换。更换立即生效，业务端须同步更新 `PERPAY_CLIENT_ID`，重试继续使用原业务单号、幂等键和请求参数。[客户端 ID 与稳定网站编号](multi-site.md#创建与接入)
+API 密钥用于向 PerPay 证明请求来自你的业务后端，通知密钥用于验证 PerPay 发来的通知；两者都保存在业务后端。接收端配置完成后，在 PerPay 开启该网站的通知。更换客户端 ID 时，同步更新业务端配置；已有订单和防止重复下单的记录仍属于原网站。[网站身份与密钥](multi-site.md#创建与接入)
 
 ## 1. 签名
 
-每次 API 请求都重新生成 Unix **秒**时间戳和 32 字节随机 base64url nonce。用解码后的 API 密钥计算 HMAC-SHA256，输出小写十六进制签名。签名原文为以下八行，以 LF 连接，末尾不追加换行：
+每次请求都使用当前 Unix **秒**时间戳，并生成 32 字节随机值，用 base64url 编码后作为 nonce。nonce 每次只能使用一次，用于识别重复发送的请求。将 API 密钥从 base64url 解码为字节，用 HMAC-SHA256 计算以下八行文本的签名；行间使用 LF，末尾没有换行，结果为小写十六进制：
 
 ```text
 PERPAY-HMAC-SHA256
@@ -30,18 +28,17 @@ v1
 规范化的路径和查询字符串
 Unix 秒时间戳
 base64url nonce
-客户端 ID
+当前客户端 ID
 原始请求体的小写 SHA-256
 ```
 
-发送 `X-PerPay-Client-Id`、`X-PerPay-Timestamp`、`X-PerPay-Nonce`、`X-PerPay-Signature-Version: v1`、`X-PerPay-Signature`；JSON 正文使用 `Content-Type: application/json`。GET 的正文按零字节计算摘要。
+发送 `X-PerPay-Client-Id`、`X-PerPay-Timestamp`、`X-PerPay-Nonce`、`X-PerPay-Signature-Version: v1` 和 `X-PerPay-Signature`。JSON 请求使用 `Content-Type: application/json`；GET 以零字节正文计算摘要。服务端允许前后五分钟的时钟偏差。
 
-实现其他语言的签名时，先用[固定签名测试向量](signature-vectors.md)核对原始字节和预期签名。
-
-可以复用已测试的 [PerPayClient](../examples/node-client/perpay.mjs)。以下导入路径按仓库根目录中的 Node.js 模块编写：
+Node.js 可复用 [PerPayClient](../examples/node-client/perpay.mjs)。以下代码的导入路径以仓库根目录为起点：
 
 ```js
 import { PerPayClient, orderSnapshot } from "./examples/node-client/perpay.mjs";
+
 const client = new PerPayClient({
   url: process.env.PERPAY_URL,
   clientId: process.env.PERPAY_CLIENT_ID,
@@ -49,13 +46,11 @@ const client = new PerPayClient({
 });
 ```
 
-该示例使用固定 ASCII 订单路径及 `/api/v1/system/status`，查询字符串固定为空。扩展其他路径时须实现请求目标规范化，签名与发送使用同一份原始正文。[请求签名说明](../USAGE.md#2-请求签名)
-
-示例不自动重试，也未把远端状态和 `Retry-After` 单独暴露给调用者；生产客户端应保留 HTTP 状态、错误码与该响应头，再实现下述重试策略。
+该客户端已经实现下单、按订单 ID 查单和按商户订单号查单所需的签名。这些接口使用固定 ASCII 路径，不带查询参数。自行编写其他语言的客户端，或增加其他路径和查询参数时，按[请求目标规范化规则](../USAGE.md#2-请求签名)处理，并用[固定签名向量](signature-vectors.md)核对每一步的计算结果。
 
 ## 2. 下单
 
-业务后端调用 `POST /api/v1/orders`，首次成功为 HTTP `201`，同一请求的幂等重放为 `200`。先在业务数据库保存商户订单号、幂等键及完整请求参数，再发送请求。例如：
+业务后端先保存商户订单号、幂等键和完整请求参数，再调用 `POST /api/v1/orders`。幂等键用于识别同一次下单，让超时后的重复提交仍返回原订单：
 
 ```json
 {
@@ -68,32 +63,34 @@ const client = new PerPayClient({
 }
 ```
 
-金额使用整数分，`1000` 表示 10.00 元。`notify_url`、`return_url` 是完整 URL，其来源须分别匹配该网站配置；`return_url` 可省略。备注使用可选字段 `note`。
+`amount_cents` 是整数分，`1000` 表示 10.00 元。`notify_url` 和 `return_url` 是完整 URL，来源分别匹配该网站的通知来源和返回来源；`return_url` 可省略。订单备注使用可选字段 `note`。完整字段限制见 [USAGE](../USAGE.md#3-创建订单)。
 
-超时或响应丢失时，先用 `client.getByMerchantNo("SHOP-1001")` 查询；也可用已取得的 `order_id` 调用 `client.getOrder(orderId)`。重试下单保持原单号、幂等键和参数，每次重新签名，不能把未知结果当成失败直接换单。业务侧按错误及 `Retry-After` 退避，设定最大等待时间。
+首次创建返回 HTTP `201`，重复提交相同请求返回原订单和 `200`。超时或响应丢失时，用 `client.getByMerchantNo("SHOP-1001")` 找回订单；已知 `order_id` 时也可用 `client.getOrder(orderId)`。需要重试下单时，保持原单号、幂等键和全部参数，每次重新生成时间戳、nonce 和签名。
 
-具体响应分类见[业务错误码与重试建议](integration-errors.md)。
-
-确认旧单收银台已关闭或过期且仍未付款后，新付款尝试使用新商户订单号和新幂等键。保留旧单及原参数，继续处理旧单后续的合法通知；收银台过期不等于可以忽略迟到的收款确认。
+业务客户端应记录 HTTP 状态、`error.code`、`Retry-After` 和请求编号，再按[错误码与重试规则](integration-errors.md)决定等待多久、是否重试。示例客户端把 PerPay 返回的错误转成可读消息，不自动重试；为它增加自动重试时，还需保留上述响应信息。
 
 ## 3. 跳转收银台
 
-成功响应在 `data.checkout.checkout_url` 给出收银台地址；`PerPayClient` 已取出 `data`。在业务后端的用户下单处理函数中调用，`savedRequest` 为上一步已持久化的请求：
+收银台地址在响应的 `data.checkout.checkout_url` 中；`PerPayClient` 已取出 `data`。在业务后端读取上一步保存的 `savedRequest`：
 
 ```js
 async function openCheckout(savedRequest) {
   const order = await client.createOrder(savedRequest);
   const snapshot = orderSnapshot(order, client.origin);
-  if (!snapshot.checkout_url) throw new Error("订单不能继续付款，请先查询订单状态。");
-  return Response.redirect(snapshot.checkout_url, 303);
+  if (snapshot.checkout_status === "OPEN" && snapshot.payment_status === "UNPAID") {
+    return Response.redirect(snapshot.checkout_url, 303);
+  }
+  return Response.json(snapshot);
 }
 ```
 
-`orderSnapshot` 校验返回订单及收银台来源。付款人在收银台按含识别尾数的准确金额付款；下单金额和实际应付金额可能不同。`return_url` 只是浏览器返回地址，打开返回页或看到前端成功提示都不能作为发货依据。
+`orderSnapshot` 会核对订单数据和收银台来源。付款人按收银台显示的准确金额付款，例如商品 10.00 元，对应应付金额可能是 10.03 元。
+
+`return_url` 用于浏览器返回。业务网站收到返回请求后主动查单，并以服务端的付款状态更新页面；发货和充值由后端确认。
 
 ## 4. 接收通知
 
-把业务网站的 `POST /webhooks/perpay` 交给后端处理，并保留未经解析、重写或解压的原始正文和下列请求头：
+为业务网站设置 `POST /webhooks/perpay` 接收路由，保留原始正文及以下请求头：
 
 ```text
 X-PerPay-Webhook-Version
@@ -105,17 +102,19 @@ X-PerPay-Webhook-Attempt
 X-PerPay-Webhook-Signature
 ```
 
-通知时间戳是 Unix **毫秒**，版本头为 `1`，签名格式为 `v1=<小写十六进制>`。通知会重复、延迟或乱序，接收器需要有限的正文大小与超时。不要在验签前保存成有效业务事件或返回成功 ACK。
+通知版本头为 `1`，时间戳为 Unix **毫秒**，签名为 `v1=<小写十六进制>`。接收路由应限制正文大小和处理超时，并把验签放在 JSON 解析和业务处理之前。
 
 ## 5. 验签并确认接收
 
-复用 [verifyWebhook](../examples/node-client/perpay.mjs)，按 [server.mjs](../examples/node-client/server.mjs) 的顺序读取原始字节、验签，再调用持久化处理。不要对解析后的 JSON 重新序列化来验签。
+使用 [verifyWebhook](../examples/node-client/perpay.mjs) 按以下顺序处理；完整 HTTP 接收方式见 [server.mjs](../examples/node-client/server.mjs)：
 
-通知使用独立通知密钥。HMAC 原文依次为 `perpay:webhook:v1`、key-id、毫秒时间戳、delivery-id、event-id、attempt 和原始正文 SHA-256，以 LF 连接；与 API 请求签名格式不同。
+1. 读取未经重写的原始正文，检查版本、头部格式，以及发送时间与本机时间的偏差。
+2. 选择该网站的通知密钥，验证 HMAC，再解析 JSON。核对正文与头部的 `event_id`、事件类型及订单字段。
+3. 将下一节要求的订单状态和处理记录保存到数据库，提交事务后返回成功回执。
 
-示例校验头部格式、五分钟时间偏差、恒定时间签名比较、正文与头部事件 ID、事件类型及订单字段。轮换期间可配置 `PERPAY_WEBHOOK_KEYS`，按已确认的 key-id 选择新旧密钥；不要从未验签请求自动添加密钥。未知 key-id 或时钟偏差应先修复配置，再由 PerPay 重试。
+通知签名原文依次为 `perpay:webhook:v1`、key-id、毫秒时间戳、delivery-id、event-id、attempt 和原始正文 SHA-256，以 LF 连接。通知密钥也须先从 base64url 解码；不要对解析后的 JSON 重新序列化来验签。
 
-完成下一节的持久化事务后，返回 HTTP `200`、`Content-Type: application/json` 和且仅有以下四个字段。编号必须取自**本次已验签通知**：
+回执使用 HTTP `200`、`Content-Type: application/json`，正文只能包含以下四个字段，编号取自本次已验签通知：
 
 ```js
 const acknowledgement = {
@@ -126,15 +125,23 @@ const acknowledgement = {
 };
 ```
 
-同一事件再次投递也要验签；ACK 的 delivery-id 使用本次值，不能盲目复用旧投递的回执。`204`、普通 `success` 文本或缺字段 JSON 都不是有效 ACK。持久化失败时不要返回成功；`410` 表示明确拒收并终止重试，不能用来表示临时故障。
+成功回执也称 ACK。重复收到通知时仍要验签，并使用本次 `delivery_id` 回执。`204`、纯文本 `success` 或缺字段 JSON 都不是原生通知的有效 ACK。数据库保存失败时应返回临时错误；`410` 表示明确拒收，会终止重试。
 
-## 6. 幂等履约
+更换通知密钥时，可根据 PerPay 后台提供的 key-id 配置新旧两把密钥。示例支持 `PERPAY_WEBHOOK_KEYS`；遇到未知 key-id，或通知时间戳与本机相差超过五分钟时，返回 `503`，修好配置或校准时钟后由 PerPay 重试。[更换密钥的配置](../examples/node-client/README.md#通知密钥轮换与可重试错误)
 
-1. 将已验签通知关联到本站已有业务订单，核对 `order_id`、`merchant_order_no`、金额和币种。以 `event_id` 做持久化去重，重复通知不重复发货或充值。
-2. 在数据库事务中保存事件，按 `order_version` 更新订单，旧版本不能覆盖新状态。同一版本内容冲突时进入核查；可参考 [DemoStore](../examples/node-client/store.mjs) 的事件与版本处理。
-3. 仅在可信的 `CONFIRMED` 状态及业务规则允许时，持久化一条唯一的履约任务，再提交事务并发送 ACK。实际发货或充值由任务执行器按业务订单幂等完成，失败可恢复重试。
-4. `UNPAID` 不履约，`DISPUTED` 进入业务核查；兼容旧 `REFUND_UPDATED`，并单独处理外部退款。管理员退款标记不会自动同步为业务通知。
+<a id="6-幂等履约"></a>
 
-通知迟迟不到时，查看 PerPay 的投递记录，并由业务后端用同一套签名接口补查订单。补查结果也要经过相同的订单版本和履约幂等保护。示例只记录订单和通知，不实际发货、充值或退款。
+## 6. 避免重复发货或开通服务
 
-先在 `examples/node-client` 目录运行 `npm test` 验证合成数据，再按示例 README 配置隔离接收端；真实小额付款由操作人明确确认后进行。完整协议和运行边界继续查阅 [USAGE](../USAGE.md)。
+通知可能重复、延迟或乱序，同一笔业务订单仍应只发货、充值或开通服务一次。把以下操作放进同一个数据库事务，保证它们一起保存成功：
+
+1. 找到本站已有订单，核对 `order_id`、`merchant_order_no`、下单金额和币种。
+2. 用 `event_id` 判断这条通知是否已经处理，再按 `order_version` 更新状态；旧版本不覆盖新版本，同一版本内容冲突时交给管理员核对。
+3. 通知已验签且付款状态为 `CONFIRMED` 时，按业务规则为该订单创建唯一的发货或充值任务；提交事务后发送 ACK。后台执行任务时也按业务订单防止重复处理，并保存执行进度，以便失败后继续。
+4. `UNPAID` 保持等待，`DISPUTED` 交给管理员核对。兼容历史 `REFUND_UPDATED`；新的管理员退款标记不产生业务通知，外部退款由业务系统另行处理。
+
+通知迟迟未到时，查看 PerPay 的通知发送记录，并主动查单。处理查询结果时，同样检查订单版本，防止重复发货或充值，可参考 [DemoStore](../examples/node-client/store.mjs)。
+
+确认旧收银台已关闭或过期且仍未付款后，新的付款尝试使用新的商户订单号和幂等键。保留旧单和原参数，继续处理其后续合法通知；截止前付款的流水仍可能稍后才被发现。
+
+完整响应、事件字段、ACK 和重试策略见 [USAGE](../USAGE.md)，接口字段与类型定义见 [OpenAPI](../openapi.yaml)。

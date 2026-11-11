@@ -117,7 +117,7 @@ describe("maintenance documentation version contract", () => {
   });
 
   it("keeps the integration guide's schema reference aligned with the upgrade guide", () => {
-    const documented = /当前最新 schema 为 (\d+)/.exec(usage);
+    const documented = /当前最新数据库结构版本（schema）为 (\d+)/.exec(usage);
     assert.ok(documented);
     assert.equal(Number(documented[1]), DATABASE_COMPATIBILITY.maximum);
     assert.ok(usage.includes("docs/maintenance.md#固定版本与回滚"));

@@ -2,140 +2,125 @@
 
 # PerPay 使用方法
 
-本文面向需要把网站接入 PerPay 的开发者。多站配置边界、生命周期和接口索引见[多业务网站指南](docs/multi-site.md)。所有 API 密钥和通知签名密钥（下文简称通知密钥）只能保存在网站后端，不能放进浏览器 JavaScript、移动端安装包或公开仓库。
+本文是 PerPay 的配置、原生 API、通知和管理操作参考。首次接入按[快速指南](docs/integration-quickstart.md)完成流程；使用现成支付插件时阅读[易支付接入](docs/epay-integration.md)。
 
-首次接入可先阅读[快速接入指南](docs/integration-quickstart.md)，按签名、下单、跳转、收通知、验签和履约的顺序完成接入。
-
-排查调用问题时参阅[签名测试向量](docs/signature-vectors.md)和[业务错误码与重试建议](docs/integration-errors.md)。
+| 需要做什么 | 文档 |
+| --- | --- |
+| 配置支付宝账号 | [支付宝接入](docs/alipay-setup.md) |
+| 管理多个网站与账号分配 | [多业务网站接入](docs/multi-site.md) |
+| 跑通下单与通知 | [Node.js 调用端示例](examples/node-client/README.md) |
+| 核对签名或排查请求 | [签名向量](docs/signature-vectors.md)、[错误码与重试](docs/integration-errors.md) |
+| 查看接口字段、类型和响应格式 | [OpenAPI](openapi.yaml) |
+| 备份、升级和恢复 | [维护指南](docs/maintenance.md) |
 
 ## 收款方式与适用范围
 
-PerPay 不用在手机上运行监听软件，服务器需持续运行。可以使用支付宝收款码，经营码只是可选形式；也可向订单对应的支付宝账号转账。付款金额须与订单一致，入账流水须能被该账号所配置的开放平台应用查询。后台和收银台仍以二维码展示收款信息。
+PerPay 在服务器上持续查询支付宝账单，根据收款账号、金额和付款时间匹配订单，无需手机监听软件。付款人可以使用收款码，也可以向订单对应的支付宝账号转账；实际金额必须与收银台一致，入账流水须能被该账号配置的开放平台应用查询。经营码是可选形式。
 
-**怎么判断归属：** PerPay 定时从支付宝拉取账单，这个过程称为采集（查账），下文统一称“查账”。系统按金额和付款时间推断流水属于哪个订单；管理员也可核对后人工关联。
-
-**局限是什么：** 静态收款码不提供支付宝官方逐单支付凭证。错付金额、迟到付款和重复付款需要人工核查。收款确认与通知送达分别判断，业务系统须查单或验签通知后再履约。
+静态收款码通过金额和时间推断订单归属，不提供支付宝官方的逐单支付凭证。错付金额、迟付、重复付款或无法唯一匹配的流水需要人工核查。PerPay 分别记录收款状态和通知是否送达。业务后端根据主动查单结果或已验证签名的通知中的付款状态，决定是否发货、充值或开通服务。
 
 ### 查看支付宝流水
 
-管理员可从“全局管理 → 支付宝流水”（`/admin/ledger`）查看各支付宝账号和环境下已采集并规范化的记录。默认查询全部日期，可按收款账号、关键词、收支方向、PerPay 处理状态、北京时间交易日期和金额区间筛选。交易金额按元输入，最多两位小数；管理 API 使用整数分。切换业务网站不改变流水范围。
+从“全局管理 → 对账 → 支付宝流水”（`/admin/reconciliation`）查看各账号已查到并整理完成的流水记录。默认显示全部日期的收入流水，可按账号、关键词、收支方向、处理状态、北京时间交易日期和金额筛选；查看支出时，将“收支方向”切换为“支出”或“全部收支”。界面金额以元填写、最多两位小数，管理 API 使用整数分。
 
-点击流水查看来源版本及关联凭据，点击关联订单进入订单详情；返回时保留原筛选和分页。相同流水跨来源重复采集只展示一次；内容差异及多个生效关联显示异常，撤销关联保留历史。无规范化记录的采集异常可从“账本冲突”查看。刷新只读取本地账本，页面显示最近查账时间，不代表支付宝全部历史或实时到账。
+点击流水可查看不同应用配置查到的记录、收款关联和订单。同一笔流水被不同来源重复查到时合并展示；内容不一致，或同时关联了多个订单时，显示异常。撤销关联后仍可查看历史。格式错误、无法整理为正常流水的记录从“账本冲突”查看。刷新页面会读取本地保存的流水，并显示最近查账时间。
 
-只读管理接口为 `GET /api/admin/v1/ledger/entries` 和 `GET /api/admin/v1/ledger/entries/:ledgerEntryId`，要求管理员登录。日期参数为 `occurred_from/occurred_to`，金额为 `min_amount_cents/max_amount_cents`，默认每页 20 条、最多 100 条；更换筛选应清除原分页游标。完整契约见 [openapi.yaml](openapi.yaml)。
+管理接口为 `GET /api/admin/v1/ledger/entries` 和 `GET /api/admin/v1/ledger/entries/:ledgerEntryId`，需管理员登录。日期参数为 `occurred_from/occurred_to`，金额参数为 `min_amount_cents/max_amount_cents`；默认每页 20 条，最多 100 条，更换筛选后重新分页。
 
 ## 1. 准备配置
 
-首次配置见 [图文教程](docs/alipay-setup.md)，创建订单与回调通知接入可试用 [调用端 Demo](examples/node-client/README.md)。
+打开 `/admin` 创建管理员，按配置向导接入支付宝账号、收款码和业务网站。在网站的“接入与通知”中取得客户端 ID 和所选协议的凭据。API 密钥、通知密钥和商户私钥都保存在业务后端的环境变量或密钥管理器。
 
-先访问 `/admin` 初始化管理员并登录，再按三步完成收款配置：
+原生 API 与通知密钥按网站独立生成。已有密钥可直接查看和使用，重新进入向导无需轮换。通知可在接收端准备完成后启用；未使用通知的网站由后端主动查单。管理员测试收款会创建真实订单，但不会自动生成或启用业务 API 密钥。
 
-1. 打开“系统设置 → 支付宝账号”，新增账号并保存收款码、App ID 和支付宝公钥；在同一页面生成应用密钥或导入已有私钥，把应用公钥上传到对应支付宝应用，点击“保存并检查”。检查失败仍保留保存内容，可修正后重试。创建结果暂时无法确认时，表单保留原请求，点击“重试上一次操作”恢复同一账号。
-2. 创建业务网站并选择收款账号：指定一个、多个等概率随机或按权重分配。只有一个可用账号时自动预选；多个账号时需明确选择。网站策略采用默认模板，API／通知密钥需在网站设置中另行生成。
-3. 等待所选账号查账和自动确认收款就绪，在该网站下试收款并核对实际收款账号。通知和备份在各自设置中配置，备份仍需验证恢复。
+通过管理 API 配置时，按以下顺序操作。写请求需携带已登录的管理员会话，使用 JSON 正文，并通过同源和 CSRF 校验：
 
-**PerPay API 密钥由 PerPay 生成并保管，只用于业务系统调用 PerPay。** 将该网站的客户端 ID 和密钥保存到业务系统后端的 PerPay 接入配置，用于签名请求，PerPay 使用同一密钥验签。客户端 ID 可在创建时自定义，留空自动生成，之后可在网站设置中更换。更换立即生效，业务端须同步更新配置。升级保留的旧业务网站初始使用 `default`。已有密钥可继续使用，重新进入向导无需轮换。
-
-向导完成后，业务 API 仍须通过签名鉴权。未生成密钥时，管理员可在收款就绪后创建真实测试订单；此操作不会自动生成或启用 API 密钥。
-
-**能做什么：** 启用通知时填写业务网站的 HTTPS Origin；跳过通知则由业务后端主动查单。管理员可创建真实小额测试订单：全局后台需要选择业务网站，本站后台固定当前网站，顶部切换器可切换范围。
-
-**哪些事还需确认：** 测试收款不是模拟支付，也不是完成配置的必选项。保存备份策略后仍需验证恢复，并同时保管主密钥卷。
-
-也可直接调用以下管理 API：
-
-1. 通过 `POST /api/admin/v1/setup` 在 JSON 正文中提交 `password`，创建管理员。默认关闭初始化令牌；启用 `PERPAY_SETUP_TOKEN_ENABLED=true` 时，还须从最近一次服务启动日志的 `administrator_setup_required` 事件读取 `setup_token` 并一同提交（Docker 部署执行 `docker compose logs --tail=100 app`）。令牌在管理员创建成功后失效，重启尚未初始化的服务会生成新令牌。初始化后，再通过 `POST /api/admin/v1/session/login` 提交密码登录。令牌只用于初始化，不写进 URL 或业务网站配置。
-2. 使用 `POST /api/admin/v1/alipay-accounts` 新增账号，在 `POST /api/admin/v1/alipay-accounts/:accountId/application-key` 生成应用密钥，再用 `PUT /api/admin/v1/alipay-accounts/:accountId` 保存应用与收款码。`POST .../:accountId/check` 检查已保存内容。应用私钥按账号加密保存，网站 API 密钥仍通过各网站的密钥接口生成。创建支付宝账号的 `POST /api/admin/v1/alipay-accounts` 可携带 UUID v4 `operation_id`。同一编号及相同内容重试返回原账号当前状态；修改内容返回 `409 / alipay_account_creation_conflict`，原账号已删除返回 `404`。省略编号时每次请求创建新账号。
-3. 使用 `POST /api/admin/v1/sites` 创建网站，提交 UUID `operation_id` 和完整 `configuration`，初始 `notifications_enabled` 为 `false`，`configuration.collection` 指定收款账号与分配方式。可先通过 `GET /api/admin/v1/settings/site-defaults` 取得策略模板。可选顶层字段 `client_id` 指定客户端 ID，省略时由服务端生成。响应中的 `client_id` 为稳定网站编号，用于管理路径，`api_client_id` 为当前业务接入 ID。已占用的 ID 返回 `409 / site_client_id_conflict`，字段错误位于 `error.fields.client_id`。重试同一次创建须携带原 `operation_id`、`client_id` 和配置。ID 格式与更换规则详见[多网站管理](docs/multi-site.md#创建与接入)。
-4. 在该网站下调用 `POST /api/admin/v1/sites/:clientId/secrets/api_secret/actions/rotate` 生成 API 密钥；需要通知时，再调用 `POST /api/admin/v1/sites/:clientId/secrets/webhook_secret/actions/rotate` 生成通知密钥。每次携带最新的网站 `revision`，后一次操作使用前一次响应中的版本。密钥只保存到对应网站后端的环境变量或密钥管理器；已有通知密钥可通过 `POST /api/admin/v1/sites/:clientId/secrets/webhook_secret/actions/view` 显式查看，无需轮换。
-5. 使用 `PUT /api/admin/v1/sites/:clientId` 提交最新 `revision` 与完整 `configuration`，设置 `notifications_enabled: true` 和精确 `notification_origin`，例如 `https://shop.example.com`（只填写来源，不填写路径）。需要返回链接时另行填写 `return_origin`；二者相互独立。全局通知写接口已退役，不再代表某个默认网站。
-6. 创建订单时，将 `notify_url` 填成已允许通知来源下的完整地址，例如 `https://shop.example.com/webhooks/perpay`。完整配置字段及并发控制见[多业务网站指南](docs/multi-site.md#管理接口与查询)。
+1. `POST /api/admin/v1/setup` 提交 `password` 创建管理员，再用 `POST /api/admin/v1/session/login` 登录。启用 `PERPAY_SETUP_TOKEN_ENABLED=true` 时，还需提交最近一次启动日志 `administrator_setup_required` 事件中的 `setup_token`；Docker 部署可用 `docker compose logs --tail=100 app` 查看。初始化令牌默认关闭，启用时随未初始化服务重启而更新，管理员创建后失效。
+2. `POST /api/admin/v1/alipay-accounts` 创建账号，再用 `POST /api/admin/v1/alipay-accounts/:accountId/application-key` 生成应用密钥，最后通过 `PUT /api/admin/v1/alipay-accounts/:accountId` 保存应用和收款码。`POST /api/admin/v1/alipay-accounts/:accountId/check` 检查已保存配置。创建时可携带 UUID v4 `operation_id`；相同编号和内容返回原账号，内容不同返回 `409 / alipay_account_creation_conflict`，原账号已删除返回 `404`。省略编号会创建新账号。
+3. `POST /api/admin/v1/sites` 提交 UUID `operation_id`、完整 `configuration` 和可选 `client_id`。先用 `GET /api/admin/v1/settings/site-defaults` 取得策略模板；`configuration.collection` 指定账号和分配方式，初始通知关闭。创建结果中的 `client_id` 是管理路径使用的稳定网站编号，`api_client_id` 是业务认证使用的当前客户端 ID。占用冲突返回 `409 / site_client_id_conflict`，字段错误在 `error.fields.client_id`。重试保持原操作编号、客户端 ID 和配置。
+4. `POST /api/admin/v1/sites/:clientId/secrets/api_secret/actions/rotate` 生成网站 API 密钥；通知密钥使用 `POST /api/admin/v1/sites/:clientId/secrets/webhook_secret/actions/rotate`。每次提交最新网站 `revision`，后一次操作使用前次响应的版本。已有通知密钥可通过 `POST /api/admin/v1/sites/:clientId/secrets/webhook_secret/actions/view` 和正文 `{}` 查看。
+5. `PUT /api/admin/v1/sites/:clientId` 提交最新 `revision` 与完整 `configuration`。启用通知时设置 `notifications_enabled: true` 和精确的 `notification_origin`，如 `https://shop.example.com`。需要浏览器返回链接时，另外配置 `return_origin`。
+6. 创建业务订单时，`notify_url` 填完整回调地址，如 `https://shop.example.com/webhooks/perpay`。地址如何填写、暂停网站或修改配置后如何处理旧订单，见[多网站指南](docs/multi-site.md)。
 
 ### 界面显示
 
-在 **系统设置 → 界面显示** 中，可修改支付系统名称（1–40 个字符，默认 PerPay，保存时去掉首尾空白），用于后台、登录页及无法定位网站时的公开页面。每站收银台名称在“业务网站 → 收银台展示”配置，不随后台名称变化。名称为公开信息，不应填写密码或其他秘密；不修改 API 路径、Cookie、签名标识、订单数据和项目文档链接。保存后当前后台立即更新，其他已打开页面刷新后显示新名称。
+“系统设置 → 界面显示”中的支付系统名称用于后台、登录页和无法定位网站时的公开页面。长度为 1–40 个字符，默认 PerPay，保存时去掉首尾空白。各网站的收银台名称、商品名开关和帮助链接在网站设置中分别配置。
 
-首页面积图、柱状图或折线图为实例外观；收银台商品名称开关和帮助链接在各网站分别设置。展示变更可影响已有收银台，不改写财务快照、收款码历史关联或统计口径。
+图表样式用于整套后台。修改网站的展示设置也会更新旧收银台的外观；订单金额、有效期和收款码仍使用创建时的记录。商品名开关控制页面是否显示商品名，API 与通知始终包含该字段。
 
-商品名称开关只控制收银台显示，不修改订单 API 和通知内容，也不作为数据保密开关。
+帮助链接接受 HTTPS 公网域名地址，配置后在收银台底部显示“商家帮助”，留空可清除。它与付款通知和返回地址分别配置。
 
-商家帮助链接为可选项，配置后在收银台底部显示小字“商家帮助”，未配置则不显示入口，仅接受 HTTPS 公网域名链接，不由服务器访问。留空并保存可清除；返回商家不代表付款成功，业务系统仍应查单或验签通知。
-
-订单配置合法 `return_url` 后，收款确认显示“返回商家”；关闭、过期、争议及保留订单信息的暂不可用页面显示“返回商家处理”。正常待付款不显示返回按钮，无订单数据时不猜测返回地址。返回操作不追加成功参数，也不会自动跳转。
+已配置合法 `return_url` 的订单，在确认收款后显示“返回商家”；关闭、过期、争议及仍有订单信息的暂不可用页面显示“返回商家处理”。付款人点击后返回，待付款时不自动跳转。原生订单打开原返回地址；易支付订单在当前已确认付款时附加签名成功参数，规则见[易支付通知与返回](docs/epay-integration.md#付款通知与返回)。
 
 <a id="收银台结束后查询期"></a>
 
 ### 结束后可查询时长
 
-在 **系统设置 → 高级设置** 中，“结束后可查询时长（秒）”控制收银台结束后公开链接继续提供状态查询的时长，默认 86400 秒。它不延长付款截止时间，也不控制后台迟到账单的查账、确认或人工处理期限；到期只使公开链接失效，不删除订单或后台记录。
+“系统设置 → 高级设置”的“结束后可查询时长（秒）”控制收银台结束后公开链接继续提供状态的时长，默认 86400 秒。字段为 `checkout_terminal_observation_seconds`，在创建订单时保存，修改只影响新订单。
 
-对应 API 字段仍为 `checkout_terminal_observation_seconds`。该值在创建订单时保存，修改设置仅影响新订单，不重写已有订单的查询期限。
+这个期限控制公开链接的有效性。它不延长付款截止时间；到期后订单、后台记录、迟到账单查账和人工处理继续保留。
 
 ### 应用公钥变更
 
-首次生成接口为 `POST /api/admin/v1/alipay-accounts/:accountId/application-key`，提交当前账号的 `revision`；已有密钥不会被此操作替换。明确更换时使用以下管理员接口（均要求管理员会话、同源与 CSRF 校验）：
+首次生成应用密钥使用 `POST /api/admin/v1/alipay-accounts/:accountId/application-key`，提交账号 `revision`；已有密钥不会被替换。更换已接入应用的密钥时：
 
-1. `POST /api/admin/v1/alipay-accounts/:accountId/application-key/regenerate`：提交当前 `revision`、当前 `base_fingerprint` 和新的 UUID `change_id`。首次接入前替换原密钥对；已经接入时只生成加密保存的待启用密钥。重复请求必须保留同一请求体，不会生成另一把密钥。
-2. 从配置响应的 `pending_application_key.public_key` 取得待启用应用公钥，并上传到同一个支付宝应用。`application_public_key` 始终表示 PerPay 当前使用的公钥。
-3. `POST /api/admin/v1/alipay-accounts/:accountId/application-key/activate`：提交最新 `revision`、待启用 `change_id`，以及上传新应用公钥后从同一支付宝应用重新获取的 `platform_public_key`（必填，不允许省略或留空，也不会沿用已保存的旧公钥）。服务端使用待启用私钥做一次有超时上限的只读账单查询并验签，成功后才原子切换密钥；失败不更换当前密钥。该账号的配置版本会在成功启用时递增，内部查账来源代次和历史业务关联不变。
-4. 不再更换时，可调用 `POST /api/admin/v1/alipay-accounts/:accountId/application-key/discard`，提交最新 `revision` 与 `change_id`。这不会撤回支付宝侧的上传；若已上传新公钥，应先在支付宝恢复当前应用公钥，并在 PerPay 的支付宝设置中同步恢复后获取的支付宝公钥。
+1. `POST /api/admin/v1/alipay-accounts/:accountId/application-key/regenerate` 提交当前 `revision`、`base_fingerprint` 和新 UUID `change_id`。系统保存待启用密钥，同一请求重试保持原正文。尚未首次接入时，该操作直接替换初始密钥对。
+2. 把响应中 `pending_application_key.public_key` 上传到同一个支付宝应用。`application_public_key` 仍表示 PerPay 当前使用的公钥。
+3. `POST /api/admin/v1/alipay-accounts/:accountId/application-key/activate` 提交最新 `revision`、待启用 `change_id`，以及上传后从同一应用重新获取的 `platform_public_key`。此公钥必填。PerPay 使用待启用私钥查询账单并验签，成功才切换密钥和递增配置版本，失败保留当前密钥；历史订单来源关联不变。
+4. 放弃变更使用 `POST /api/admin/v1/alipay-accounts/:accountId/application-key/discard`，提交最新 `revision` 和 `change_id`。如果已向支付宝上传新公钥，应先在那里恢复当前应用公钥，并将恢复后取得的支付宝公钥同步回 PerPay。
 
-待启用密钥跨刷新和重启保存；生成、启用和放弃操作进入审计。存在待启用变更时，先完成或放弃变更，再切换应用或生成公钥。当前最新 schema 为 44，升级与回滚按[维护与恢复](docs/maintenance.md#固定版本与回滚)核对兼容范围。
+待启用密钥跨刷新和重启保存，生成、启用和放弃均有审计。存在待启用变更时，先完成或放弃，再切换应用。
+
+当前最新数据库结构版本（schema）为 44，哪些版本可以升级、如何回退，见[固定版本与回滚](docs/maintenance.md#固定版本与回滚)。
 
 <a id="账本采集节奏"></a>
 
 ## 查账节奏
 
-在 **系统设置 → 查账设置** 中配置三个间隔，与支付宝应用配置独立保存；这些是 PerPay 自定义策略，不是支付宝官方参数：
+在“系统设置 → 查账设置”配置以下间隔，决定 PerPay 多久查一次账，各账号独立执行：
 
 | 设置 | 新配置默认值 | 使用时机 |
 | --- | --- | --- |
-| 常规查账间隔（`scan_interval_seconds`） | 60 秒 | 没有有效待支付订单，且收尾期已结束。 |
-| 活跃查账间隔（`active_scan_interval_seconds`） | 8 秒 | 当前共享查账来源仍有未过期的 `OPEN / UNPAID` 订单，或有尚在收尾期的未支付订单。 |
-| 查账最小间隔（`minimum_scan_interval_seconds`） | 8 秒 | 收银台手动核实可以提前请求下一轮，但不得早于上一轮完成后的最小等待时间。 |
+| 常规间隔 `scan_interval_seconds` | 60 秒 | 没有有效待付款订单，且收尾期已结束。 |
+| 活跃间隔 `active_scan_interval_seconds` | 8 秒 | 有未过期的 `OPEN / UNPAID` 订单，或未付款订单仍在收尾期。 |
+| 最小间隔 `minimum_scan_interval_seconds` | 8 秒 | 手动核实可提前申请下一轮，但须等待上一轮完成后的最小间隔。 |
 
-三个间隔均为 5～3600 秒的整数，必须满足 **最小间隔 ≤ 活跃间隔 ≤ 常规间隔**：
+三个间隔均为 5–3600 秒的整数，满足 **最小间隔 ≤ 活跃间隔 ≤ 常规间隔**。查账成功有效时限 `maximum_success_age_seconds` 至少是常规间隔的两倍，新配置默认 120 秒；查账延迟 `safety_lag_seconds` 不超过该有效时限。
 
-- 最小查账间隔不能大于活跃查账间隔。
-- 活跃查账间隔不能大于常规查账间隔；两者相同时保持固定基础频率。
-- 查账有效时限至少要是常规查账间隔的两倍，新配置默认 120 秒。
-- 查账延迟不能超过查账有效时限。
+查账延迟用于等待支付宝记录稳定，每轮只查询指定秒数之前的流水。最近应查的时间段已经查完后，可以一边补查更早的流水，一边继续接单。最近的流水还没查完、查账出错，或上次正常查账成功记录已超过有效时限时，该账号暂停接新单。
 
-查账延迟用于等待支付宝记录稳定，只查询 N 秒前的账单。超过查账有效时限仍未成功查账的账号不参与新单分配。保存后对各账号的任务热更新，无须重启；已有最小等待、限流和失败退避继续生效。
+订单关闭或过期后，仍未支付的订单保留 `max(60 秒, 查账延迟 + 活跃间隔)` 的收尾期。收尾期结束后继续常规查账和历史补扫；已确认到账的订单无需收尾。
 
-更换账号的 App ID 前，已关闭或到期的未付款订单须完成最后复核：该账号的正常查账实际覆盖到付款截止或主动关闭时刻，并完成这次查账之后的对账。查账延迟为 10 秒时，到期后 1 秒发起的查账仍未覆盖最后约 9 秒，需要等查询范围覆盖截止时间后再切换。
+更换账号 App ID 前，已结束的未付款订单须完成最后复核：正常查账覆盖到付款截止或主动关闭时刻，并完成此轮后的对账。例如查账延迟 10 秒，到期后 1 秒的查账还未覆盖最后约 9 秒，需要继续等待。
 
-订单关闭或过期后，仍未支付的订单会保留 `max(60 秒, 查账延迟 + 活跃间隔)` 的自动收尾期，以减少临近结束付款的发现延迟；已确认到账的订单不再需要收尾。同一支付宝账号的订单共享该账号的查账任务，各账号独立运行，重启后从数据库重新判断当前模式。收尾期结束不代表停止查账，常规查账与既有补扫仍会处理迟到流水。
+保存间隔后无需重启，原有最小等待、限流和失败后的重试等待继续生效。间隔从上一轮完成计算到下一轮开始。例如活跃 8 秒、最小 5 秒时，完成后第 4 秒请求核实，最早第 5 秒启动。同账号的网站请求会合并。实际确认收款还需要等待支付宝提供流水，并加上查账延迟和请求耗时，不能直接用查账间隔估算。
 
-**升级不会自动改变已有查账频率：** 从 0.3.2 升级保留三个间隔及持久化调度保护；更早的迁移分别用原常规值初始化活跃间隔、用原活跃值初始化最小间隔，不自动提高请求频率。1.0.0 使用 `PUT /api/admin/v1/settings/collection-policy`，须提交当前实例 `revision` 和完整策略：`timeout_milliseconds`、`scan_interval_seconds`、`active_scan_interval_seconds`、`minimum_scan_interval_seconds`、`safety_lag_seconds`、`maximum_success_age_seconds`。不再通过支付宝接入接口提交查账字段；缺失字段或约束冲突明确报错，不静默调整其他间隔。
+管理接口 `PUT /api/admin/v1/settings/collection-policy` 提交全局设置的 `revision` 和完整策略：`timeout_milliseconds`、`scan_interval_seconds`、`active_scan_interval_seconds`、`minimum_scan_interval_seconds`、`safety_lag_seconds`、`maximum_success_age_seconds`。日志中的 `scan_mode`（`normal/active/tail`）和 `scan_interval_milliseconds` 可用于核对当前采用的查账频率。
 
-间隔按上一轮完成到下一轮开始计算，不是分页请求之间的间隔或到账确认时限。活跃 8 秒、最小 5 秒时，完成后第 4 秒点击核实，最早第 5 秒启动；完成后再按活跃间隔等待 8 秒。同一支付宝账号已有查账任务时复用，使用该账号的多个网站的核实请求合并；最小间隔不抢占补采、分页续采或覆盖限流和失败退避。5 秒查账仍受查账延迟、支付宝流水可见时间与请求耗时影响，新订单不会绕过冷却。查账日志中的 `scan_mode`（`normal / active / tail`）和 `scan_interval_milliseconds` 可用于核对当前模式与基础间隔。
+升级会保留已有查账频率，以及数据库中保存的查账进度和等待记录。较早版本首次增加活跃间隔、最小间隔时，分别沿用当时的常规间隔、活跃间隔，保持原有查账频率。
 
 ### 金额复用冷却与付款截止
 
-在 **业务网站 → 选择网站 → 订单设置** 中直接配置“金额复用冷却（秒）”，默认 600 秒（10 分钟），范围 60～3600 秒。管理 API 字段为 `amount_reuse_cooldown_seconds`；网站配置按完整对象及网站版本保存，修改不追溯改变历史订单。
+在“网站设置 → 订单设置”配置 `amount_reuse_cooldown_seconds`，决定上笔订单结束后，同一应付金额要等多久才能再次分配。默认 600 秒，范围 60–3600 秒。订单创建时保存自己的等待时间，之后修改设置也会按原值处理这笔订单。
 
-- 每笔订单在创建时固定其冷却参数。修改设置及升级 1.0.0 均保留已有快照，不重置历史结束时间、扩展付款窗口或重新确认历史付款。只有早期引入冷却字段的迁移对原本没有该字段的订单初始化 600 秒快照。
-- 主动关闭从关闭时刻计算冷却，自然过期从原定到期时刻计算，不因后台较晚处理过期而重新开始计时。已到账订单也不会提前复用金额。
-- 从小到大选择未占用且满足冷却条件的应付金额；已冷却的较小加价金额优先于从未使用过的较大加价金额。已展示的应付金额不会改变。换码或重启不会清空冷却。
-- **冷却不是补付宽限期。** 在收银台有效期内实际付款、但较晚查账到流水，仍可正常自动确认；关闭或过期后才实际付款，不自动补认原订单，入账仍保留并按现有异常流程处理。
-- 冷却与上面的查账收尾期是不同机制，不新增独立查账任务，也不以反复查询替代归属证据。
+- 主动关闭从关闭时刻计算冷却，自然过期从原定到期时刻计算；后台处理较晚不会重新计时。已付款订单也不会提前释放金额。
+- 分配时从小到大选择可用应付金额，已经展示的金额保持不变。金额占用按收款账号共享，换码或重启不会清空冷却。
+- 截止前实际付款、稍后才查到账单的订单仍可自动确认。关闭或过期后才付款的流水进入异常处理，冷却不是补付宽限期。
+- 冷却用于降低迟付串单概率。金额再次分配后发生的极晚付款仍可能混淆，需结合付款证据核查。
 
-金额池不足时，下单返回 `503 / amount_slots_exhausted` 和 `Retry-After`。业务后端可按该间隔退避重试，保持请求体及幂等键不变，但每次重新生成时间戳、nonce 和签名；应设置业务侧最大等待时间，不无限重试。PerPay 不会自动把失败的下单请求排入后台队列。
+可分配的应付金额全部被占用时，返回 `503 / amount_slots_exhausted` 和 `Retry-After`。业务后端按该间隔有限重试，保留业务参数和幂等键，每次重新签名；下单请求不会在 PerPay 自动排队。
 
-冷却越长，同一标价的可用金额越少。例如有 99 种可用应付金额、5 分钟收银台有效期加 10 分钟冷却，在忽略其他开销的理想情况下，持续容量约为 6.6 单/分钟；不同标价的可能分配的金额也可能重叠。
-
-**静态收款码仍只按金额和时间推断归属，不是订单级支付凭证。** 冷却只能降低迟付串单概率；金额再次使用后发生的极晚付款仍可能混淆，不能把 10 分钟冷却当成完全可靠的订单绑定。
+冷却越长，同一标价的持续接单容量越小。例如假设有 99 种可用应付金额，有效期 5 分钟、冷却 10 分钟，则理想持续容量约为 `99 ÷ 15 = 6.6` 单／分钟。不同标价可分配到的金额也可能重叠。
 
 ### 管理员登录限流
 
-同一 IPv6 /64 网段共享失败次数；IPv4-mapped IPv6 与对应 IPv4 使用同一限流来源。现有的 5 次失败后退避规则保持不变，未受信任的 `X-Forwarded-For` 不能改变来源。
+同一 IPv6 `/64` 网段共享失败计数，IPv4-mapped IPv6 与对应 IPv4 合并计数。连续失败五次后，需要等待一段时间才能再次尝试；未受信任的 `X-Forwarded-For` 不能改变用于限流的来源地址。
 
-匿名密码验证（包括初始化）另有持久化实例预算：突发 10 次，每 5 秒恢复 1 次额度，成功登录和重启不会重置额度。额度不足返回 `429 / auth_rate_limited` 与 `Retry-After`；已登录会话和已认证操作不使用该匿名预算。多来源攻击期间，新登录可能持续受限；公网部署应使用长随机密码，并考虑在反向代理限制管理员入口的访问来源，不要仅依赖应用限流。
+整套服务还共同限制未登录用户的密码验证次数：最多可连续尝试 10 次，每 5 秒补回一次额度。记录保存在数据库，登录成功或重启服务都不会清零。额度不足返回 `429 / auth_rate_limited` 和 `Retry-After`；已登录后的操作不消耗这部分额度。对公网开放管理员入口时，可同时使用长随机密码和反向代理来源限制。
 
 ## 2. 请求签名
 
-每次请求都必须生成新的 Unix 秒时间戳和 32 字节随机 `base64url` nonce。签名原文由以下 8 行组成，换行符必须是 LF：
+原生业务接口使用 HMAC-SHA256。将网站 API 密钥从 base64url 解码为 32 字节；对以下八行 UTF-8 文本计算 HMAC，行间使用 LF，末尾没有换行，输出小写十六进制：
 
 ```text
 PERPAY-HMAC-SHA256
@@ -143,336 +128,353 @@ v1
 大写 HTTP 方法
 规范化 origin-form 路径和查询字符串
 Unix 秒时间戳
-32 字节 base64url nonce
-客户端 ID（当前网站的不可变 ID）
-请求体的小写 SHA-256
+32 字节随机 base64url nonce
+当前网站的客户端 ID
+原始请求体的小写 SHA-256
 ```
 
-请求头为：
+对应请求头：
 
-```text
-X-PerPay-Client-Id
-X-PerPay-Timestamp
-X-PerPay-Nonce
-X-PerPay-Signature-Version
-X-PerPay-Signature
-```
+| 请求头 | 值 |
+| --- | --- |
+| `X-PerPay-Client-Id` | 当前用于业务接入的客户端 ID；更换 ID 后同步更新。 |
+| `X-PerPay-Timestamp` | 当前 Unix 秒时间戳，允许前后 300 秒偏差。 |
+| `X-PerPay-Nonce` | 每次请求新生成的 32 字节随机值，以无填充 base64url 表示，共 43 个字符。 |
+| `X-PerPay-Signature-Version` | `v1`。 |
+| `X-PerPay-Signature` | 64 位小写十六进制 HMAC。 |
 
-示例使用 Node.js 24 内置 `fetch`：
+签名和发送使用同一份原始正文。JSON 请求带 `Content-Type: application/json`；GET 和关闭订单 POST 使用零字节正文，摘要为 `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`。
 
-```js
-import { createHash, createHmac, randomBytes } from "node:crypto";
+### 请求目标规范化
 
-const perpayUrl = process.env.PERPAY_URL ?? "https://pay.example.com";
-const clientId = process.env.PERPAY_CLIENT_ID;
-if (!clientId) throw new Error("请设置业务网站的客户端 ID");
-const secret = Buffer.from(process.env.PERPAY_API_SECRET, "base64url");
+签名目标仅包含路径和查询字符串，不含域名，例如 `/api/v1/orders`。规则如下：
 
-async function perpayRequest(method, target, data) {
-  const body = data === undefined ? Buffer.alloc(0) : Buffer.from(JSON.stringify(data));
-  const timestamp = String(Math.floor(Date.now() / 1000));
-  const nonce = randomBytes(32).toString("base64url");
-  const bodyDigest = createHash("sha256").update(body).digest("hex");
-  const signingText = [
-    "PERPAY-HMAC-SHA256", "v1", method.toUpperCase(), target,
-    timestamp, nonce, clientId, bodyDigest,
-  ].join("\n");
-  const signature = createHmac("sha256", secret).update(signingText).digest("hex");
-  const response = await fetch(new URL(target, perpayUrl), {
-    method,
-    headers: {
-      "content-type": "application/json",
-      "x-perpay-client-id": clientId,
-      "x-perpay-timestamp": timestamp,
-      "x-perpay-nonce": nonce,
-      "x-perpay-signature-version": "v1",
-      "x-perpay-signature": signature,
-    },
-    body: body.length === 0 ? undefined : body,
-  });
-  const result = await response.json();
-  if (!response.ok) throw new Error(`PerPay ${response.status}: ${JSON.stringify(result)}`);
-  return result.data;
-}
-```
+- 目标以单个 `/` 开始，最多 8192 字节，不含片段 `#...`；非 ASCII 字符使用 NFC 形式的 UTF-8 百分号编码。
+- 路径不含空段、`.`、`..` 或编码后的路径分隔符；除根路径外，不以 `/` 结尾。ASCII 保留字符按允许的原字符形式表示，不接受其百分号编码形式。
+- 百分号编码先按 UTF-8 解码，拒绝无效编码、控制字符和非 NFC 文本，再按对应路径／查询字符集编码。十六进制使用大写，无需编码的字符还原，例如 `%41` 还原为 `A`。
+- 查询项写成 `name=value`，名称非空，每项只有一个字面量 `=`；最多 128 项，规范化后的名称不能重复。名称和值仅直接使用非保留字符 `A-Z a-z 0-9 - . _ ~`，其余字符百分号编码。
+- 查询参数按编码后的名称排序，再用 `&` 连接。空格使用 `%20`，字面量 `+` 使用 `%2B`，不使用表单式 `+` 空格编码；无查询时省略 `?`。
 
-签名密钥只在服务端使用。时钟偏差超过允许范围、nonce 重复、请求体被改动或签名路径不一致，都会导致请求被拒绝。
+固定向量包含中文路径、查询排序和正文转义，可用来核对实现：[签名测试向量](docs/signature-vectors.md)。Node.js 接入可复用[示例客户端](examples/node-client/perpay.mjs)；它提供固定 ASCII 路径的下单和查询，扩展通用客户端时需实现上述完整规则。
+
+服务端在处理业务前就将 nonce 记为已使用。每次重试都使用新 nonce、当前时间戳和新签名，业务单号、幂等键和请求参数保持不变。认证失败返回 `401 / api_authentication_failed`，nonce 重复返回 `409 / api_nonce_replayed`。
 
 ## 3. 创建订单
 
-`amount_cents` 使用人民币分，`1000` 表示 10.00 元。`idempotency_key` 必须在同一业务订单的重试中保持不变；金额、商品名称、备注、商户订单号或通知地址变化时不能复用旧幂等键。
+调用 `POST /api/v1/orders`，正文为 JSON，最多 16 KiB。首次创建返回 `201`，重复提交相同请求返回原订单和 `200`。响应位于 `data`，`Location` 指向订单查询路径。
 
-```js
-const order = await perpayRequest("POST", "/api/v1/orders", {
-  idempotency_key: `shop-${yourOrderId}`,
-  merchant_order_no: String(yourOrderNo),
-  amount_cents: 1000,
-  product_name: "商品名称",
-  note: "可选的商户备注",
-  notify_url: "https://shop.example.com/webhooks/perpay",
-  return_url: "https://shop.example.com/orders/result",
-});
-
-// 返回给浏览器，或由网站服务端直接 303 跳转。
-return Response.redirect(order.checkout.checkout_url, 303);
-```
-
-三个链接用途独立，不能互相代替：
-
-| 字段 | 用途 |
-| --- | --- |
-| `notify_url` | 订单可选的服务端通知接收地址。PerPay 向它 POST 签名 JSON，接收端验签、幂等处理并返回 ACK。 |
-| `return_url` | 订单可选的浏览器返回页面。用户点击后打开，PerPay 不向它投递通知；返回不代表付款成功，业务网站仍须服务端查单或验签通知。 |
-| `checkout_help_url` | 显示设置中的可选商家帮助页面，不参与收款确认或通知投递。 |
-
-`notify_url` 与 `return_url` 分别按网站的 `notification_origin`、`return_origin` 校验，不互相回退。未配置相应 origin 时，拒绝携带该 URL 的新订单。修改返回 origin 不改变旧订单地址；通知 origin 修改后，旧目标须重新通过当前策略校验，不会自动改发到新地址。帮助链接不要求与这两个地址同域。
-
-订单响应中的 `data.payment.status` 有以下值：
-
-| 状态 | 含义 |
-| --- | --- |
-| `UNPAID` | 尚未付款或尚未查账到唯一流水。 |
-| `CONFIRMED` | 已自动确认或已由管理员认领。 |
-| `DISPUTED` | 已撤销付款关联，进入争议处理。 |
-
-只有 `CONFIRMED` 才能为用户发货或充值，并需结合订单关闭、过期及业务自身的退款处理规则。`data.refund` 仅保留旧版退款登记状态（`NONE / PARTIAL / FULL`）；新的管理员退款标记不会改变它，也不会通过业务 API 或通知同步给网站。外部退款及对应的发货、权益回收由开发者自行处理。
-
-## 4. 查询订单
-
-使用同一套签名工具调用：
-
-```text
-GET /api/v1/orders/{order_id}
-```
-
-网站服务端应在用户从收银台返回业务网站后主动查询一次，并以 PerPay 服务端的最终状态为准。浏览器跳转结果不能直接视为支付成功。
-
-## 5. 回调通知
-
-PerPay 会向订单的 `notify_url` 发送签名 JSON。通知可能重复、延迟或乱序，网站必须按 `event_id` 做幂等处理，不能按投递次数重复发货、充值或增加余额。
-
-请求头为：
-
-```text
-X-PerPay-Webhook-Version
-X-PerPay-Webhook-Key-Id
-X-PerPay-Webhook-Timestamp
-X-PerPay-Webhook-Delivery-Id
-X-PerPay-Webhook-Event-Id
-X-PerPay-Webhook-Attempt
-X-PerPay-Webhook-Signature
-```
-
-接收端必须先读取原始请求体，再计算摘要和验签。不要先解析 JSON 再重新序列化：字段顺序、空白和编码变化都会使摘要不同。
-
-注意通知的 `X-PerPay-Webhook-Timestamp` 使用 **Unix 毫秒**，与 API 请求签名的 Unix 秒不同。接收端应检查投递时间偏差、正文与请求头的事件 ID 一致性，并在数据库中按事件 ID 去重、按 `order_version` 防止乱序回退。
-
-下面演示 Node.js Fetch 风格的核心验签与 ACK；它不是可直接用于生产的完整接收器。可运行、包含时间校验、持久化去重和订单版本检查的版本见 [调用端示例](examples/node-client/README.md)：
-
-```js
-import { createHash, createHmac, timingSafeEqual } from "node:crypto";
-
-const webhookSecret = Buffer.from(process.env.PERPAY_WEBHOOK_SECRET, "base64url");
-
-export async function receivePerPayWebhook(request) {
-  const body = Buffer.from(await request.arrayBuffer());
-  const headers = request.headers;
-  const version = headers.get("x-perpay-webhook-version");
-  const keyId = headers.get("x-perpay-webhook-key-id");
-  const timestamp = headers.get("x-perpay-webhook-timestamp");
-  const deliveryId = headers.get("x-perpay-webhook-delivery-id");
-  const eventId = headers.get("x-perpay-webhook-event-id");
-  const attempt = headers.get("x-perpay-webhook-attempt");
-  const received = headers.get("x-perpay-webhook-signature");
-
-  if (!version || !keyId || !timestamp || !deliveryId || !eventId || !attempt || !received) {
-    return new Response("invalid webhook headers", { status: 400 });
-  }
-
-  const bodyDigest = createHash("sha256").update(body).digest("hex");
-  const signingText = [
-    "perpay:webhook:v1", keyId, timestamp, deliveryId, eventId, attempt, bodyDigest,
-  ].join("\n");
-  const expected = `v1=${createHmac("sha256", webhookSecret)
-    .update(signingText, "utf8").digest("hex")}`;
-  const valid = received.length === expected.length && timingSafeEqual(
-    Buffer.from(received, "ascii"), Buffer.from(expected, "ascii"),
-  );
-  if (version !== "1" || !valid) {
-    return new Response("invalid webhook signature", { status: 401 });
-  }
-
-  const event = JSON.parse(body.toString("utf8"));
-  // 在数据库事务中按 event.event_id 去重；重复通知直接返回同一个 ACK。
-  await processOnceByEventId(event.event_id, event);
-
-  return Response.json({
-    schema: "perpay:webhook-ack:v1",
-    ack: true,
-    event_id: eventId,
-    delivery_id: deliveryId,
-  });
+```json
+{
+  "idempotency_key": "shop-SHOP-1001",
+  "merchant_order_no": "SHOP-1001",
+  "amount_cents": 1000,
+  "product_name": "商品名称",
+  "note": "可选的商户备注",
+  "notify_url": "https://shop.example.com/webhooks/perpay",
+  "return_url": "https://shop.example.com/orders/result"
 }
 ```
 
-通知 JSON 的固定核心字段包括：
+### 请求字段
+
+| 字段 | 规则 |
+| --- | --- |
+| `idempotency_key` | 必填，1–256 个 UTF-8 字节，无首尾空白和控制字符。同一业务订单重试保持不变。 |
+| `merchant_order_no` | 必填，1–64 个 ASCII 字符，以字母或数字开头，后续可含字母、数字、`.`、`_`、`-`。同一网站内唯一。 |
+| `amount_cents` | 必填，1–9,999,999,998 的整数，单位人民币分；`1000` 为 10.00 元。 |
+| `product_name` | 必填，去除首尾空白后 1–200 个 Unicode 字符，不含控制字符。 |
+| `note` | 可选，最多 500 个 Unicode 字符，不含控制字符；去除首尾空白，空白内容或 `null` 保存为 `null`。 |
+| `notify_url` | 可选，最多 4096 个 UTF-8 字节的完整 HTTPS 通知地址。须已启用本站通知并匹配 `notification_origin`。 |
+| `return_url` | 可选，最多 4096 个 UTF-8 字节的完整 HTTPS 返回地址，匹配独立的 `return_origin`。 |
+
+未知字段会被拒绝。API 凭据决定网站归属，请求不接受网站 ID 作为选择参数。
+
+`notify_url` 用来接收 PerPay POST 发送的签名 JSON，`return_url` 由付款人浏览器打开。两个地址分别使用自己的来源配置；缺少对应来源时，新订单不能提交该 URL。修改返回来源不改变旧订单地址；修改通知来源后，再次发送旧订单通知时，会检查原地址是否仍符合当前设置。收银台帮助链接 `checkout_help_url` 在网站展示设置中配置。
+
+### 响应字段与金额
+
+| `data` 字段 | 含义 |
+| --- | --- |
+| `order_id`、`merchant_order_no` | PerPay UUID 订单 ID、原商户订单号。 |
+| `requested_amount_cents` | 业务下单金额。 |
+| `payable_amount_cents` | 分配后的准确应付金额，含识别尾数。 |
+| `received_amount_cents` | 已记录实收金额，未记录时为 `null`。 |
+| `currency` | `CNY`。 |
+| `product_name`、`note`、`return_url` | 保存后的商品名、备注和返回地址。 |
+| `checkout` | `status`、`token`、`checkout_url`、`state_url`、`expires_at`、`closed_at`。 |
+| `payment` | `status`、`basis` 和 `received_amount_cents`。 |
+| `refund.status` | 历史退款状态 `NONE/PARTIAL/FULL`。 |
+| `notification.notify_url` | 订单通知地址，未设置时为 `null`。 |
+| `created_at`、`updated_at` | ISO 8601 时间字符串。 |
+| `version` | 订单版本，用于防止旧状态覆盖新状态。 |
+
+业务后端保存响应中的订单 ID。只有 `checkout.status=OPEN` 且 `payment.status=UNPAID` 时，才引导付款人进入 `checkout.checkout_url`，可使用 `303` 跳转。收银台链接和令牌用于授权访问该笔订单，应仅交给相应付款人。
+
+下单金额、应付金额和实收金额分别记录。例如下单 10.00 元，分配后应付 10.03 元，付款人须支付 10.03 元。接入端核对商品价格时使用下单金额，判断实际付款时结合付款状态和实收金额。
+
+| `payment.status` | 含义与业务处理 |
+| --- | --- |
+| `UNPAID` | 尚未确认付款，保持等待或继续查单。 |
+| `CONFIRMED` | 已自动匹配或人工确认，可按业务规则发货或充值，同一笔业务订单只处理一次。 |
+| `DISPUTED` | 原付款关联已撤销，交给管理员核对。 |
+
+`payment.basis` 为 `NONE/INFERRED/MANUAL`，分别表示无关联、自动推断、人工确认。收银台状态 `OPEN/EXPIRED/CLOSED` 与付款状态独立：截止前付款可能在收银台结束后才被发现。新的管理员退款标记只在后台记录外部退款声明，不改变 `refund.status`，也不发送业务通知；外部退款和权益回收由业务系统处理。
+
+<a id="幂等与结果未知时恢复"></a>
+
+### 重复请求与下单超时处理
+
+发送前保存商户订单号、幂等键和完整参数。幂等键用来识别同一次下单，相同请求重试会返回同一订单。同一幂等键对应不同参数返回 `idempotency_conflict`，同一商户单号已经存在则返回 `merchant_order_no_conflict`。
+
+网络超时、连接断开或服务端错误时，先按原商户单号查询。重试保持原请求，每次重新签名并遵守 `Retry-After`；不要用新单号掩盖未知结果。确认旧收银台结束且仍未付款后，新的付款尝试使用新单号和新幂等键，旧订单及其后续通知仍需保留。[错误处理详解](docs/integration-errors.md)
+
+## 4. 查询订单
+
+以下接口使用相同的网站 HMAC 认证，正文均为空：
+
+| 方法与路径 | 返回 |
+| --- | --- |
+| `GET /api/v1/orders/{order_id}` | `data` 为完整订单。 |
+| `GET /api/v1/orders/by-merchant-no/{merchant_order_no}` | 用商户订单号找回完整订单，适合下单结果未知的情况。 |
+| `POST /api/v1/orders/{order_id}/actions/close` | 结束收银台并返回当前订单。 |
+| `GET /api/v1/events/{event_id}` | 返回本站历史通知事件，以及事件发生时的订单数据。 |
+| `GET /api/v1/system/status` | 返回本站当前是否能接新订单，以及原因。 |
+
+订单和事件只在所属网站可见，不存在、格式无效或属于其他网站的资源返回 `404`。付款人返回业务网站后，后端主动查单，再更新页面并决定是否安排发货、充值等任务。
+
+关闭接口对仍开放且未到期的收银台置为 `CLOSED`，已到期时置为 `EXPIRED`，已经结束时返回当前状态。关闭不修改付款状态；旧单查询和迟到流水处理继续进行。关闭请求是零字节正文，不发送 `{}`。
+
+事件查询返回 `event_id`、`event_type`、`order_id`、`order_version`、`payload`、`payload_fingerprint` 和 ISO `created_at`。`payload` 保存事件发生时的订单数据；需要了解最新状态时，调用订单查询接口。
+
+状态接口返回 `status=ready/not_ready`、`code`、稳定网站编号 `site_id`、当前客户端 ID `client_id`、`accepting_orders` 和 `notifications_enabled`。HTTP `200` 仍可能表示 `not_ready`；能否创建订单以实际下单响应为准。
+
+## 5. 回调通知
+
+PerPay 向订单的 `notify_url` POST 签名 JSON。通知可能重复、延迟或乱序。业务后端应记录已经处理的事件、检查订单版本，并防止同一笔业务订单重复发货或充值。
+
+### 通知签名
+
+| 请求头 | 内容 |
+| --- | --- |
+| `X-PerPay-Webhook-Version` | `1`。 |
+| `X-PerPay-Webhook-Key-Id` | 本次使用的通知密钥 UUID。 |
+| `X-PerPay-Webhook-Timestamp` | 本次发送的 Unix **毫秒**时间戳。 |
+| `X-PerPay-Webhook-Delivery-Id` | 通知发送任务的 UUID。 |
+| `X-PerPay-Webhook-Event-Id` | 事件 UUID，与正文 `event_id` 一致。 |
+| `X-PerPay-Webhook-Attempt` | 当前发送任务的尝试次数，从 1 开始。 |
+| `X-PerPay-Webhook-Signature` | `v1=` 加 64 位小写十六进制 HMAC。 |
+
+将通知密钥从 base64url 解码，对以下七行 UTF-8 文本计算 HMAC-SHA256，行间 LF、末尾无换行：
+
+```text
+perpay:webhook:v1
+key-id
+Unix 毫秒时间戳
+delivery-id
+event-id
+attempt
+原始通知正文的小写 SHA-256
+```
+
+接收端先读取原始正文，检查头部格式、发送时间与本机时间的偏差，并验证签名，然后再解析 JSON。按 key-id 从自己保存的密钥配置中选取密钥，使用恒定时间比较签名，并核对头部与正文事件 ID。不要对解析后的 JSON 重新序列化来验签。
+
+示例接收端允许发送时间与本机时间相差不超过五分钟，限制正文大小，并在数据库事务中保存结果。实现方式见 [verifyWebhook](examples/node-client/perpay.mjs) 与 [HTTP 接收器](examples/node-client/server.mjs)，更换密钥时的配置见[示例说明](examples/node-client/README.md#通知密钥轮换与可重试错误)。
+
+### 事件正文
+
+当前事件格式为 `perpay:outbox-event:v2`，付款确认示例：
 
 ```json
 {
   "schema": "perpay:outbox-event:v2",
-  "event_id": "evt_...",
+  "event_id": "11111111-1111-4111-8111-111111111111",
   "event_type": "PAYMENT_CONFIRMED",
-  "order_id": "ord_...",
-  "merchant_order_no": "ORDER-20260821-0001",
+  "financial_operation_id": "55555555-5555-4555-8555-555555555555",
+  "order_id": "22222222-2222-4222-8222-222222222222",
+  "merchant_order_no": "SHOP-1001",
   "product_name": "商品名称",
-  "note": "用户名：demo",
+  "note": null,
+  "requested_amount_cents": 1000,
+  "payable_amount_cents": 1003,
+  "received_amount_cents": 1003,
+  "currency": "CNY",
   "payment_status": "CONFIRMED",
   "payment_basis": "INFERRED",
   "refund_status": "NONE",
+  "event_details": {
+    "payment_match_id": "44444444-4444-4444-8444-444444444444",
+    "ledger_entry_id": "66666666-6666-4666-8666-666666666666"
+  },
   "order_version": 2,
-  "occurred_at": 1776700800000
+  "occurred_at": 1794394320000
 }
 ```
 
-通知字段的来源如下；这里的时间和状态均有明确主语：
+| 字段 | 含义 |
+| --- | --- |
+| `schema`、`event_id`、`event_type` | 格式版本、去重标识、事件类型。 |
+| `financial_operation_id` | 产生事件的财务操作编号。 |
+| `order_id`、`merchant_order_no` | PerPay 订单 ID 和业务网站原单号。 |
+| `product_name`、`note` | 创建订单时保存的商品名和备注。 |
+| 三个 `*_amount_cents`、`currency` | 该事件时的下单、应付、实收金额及币种。 |
+| `payment_status`、`payment_basis`、`refund_status` | 该事件时的收款状态、确认方式和历史退款状态。 |
+| `event_details` | 随事件类型变化的收款操作证据。 |
+| `order_version` | 该事件对应的订单版本。 |
+| `occurred_at` | 事件发生时的 Unix 毫秒时间，不是支付宝交易时间或本次发送时间。 |
 
-| 字段 | 含义 | 来源 |
-| --- | --- | --- |
-| `schema` | 通知格式版本 | PerPay |
-| `event_id`、`event_type` | 事件编号与事件类型 | PerPay |
-| `order_id` | 内部订单编号 | PerPay |
-| `merchant_order_no` | 创建订单时传入的商户订单号 | 业务网站 |
-| `product_name`、`note` | 商品名称与订单备注 | 业务网站 |
-| `payment_status`、`payment_basis` | PerPay 的收款状态与收款关联方式 | PerPay |
-| `refund_status` | 历史退款状态 | PerPay |
-| `order_version` | 对外订单版本 | PerPay |
-| `occurred_at` | PerPay 事件时间，不是支付宝交易时间 | PerPay |
+新事件包括 `PAYMENT_CONFIRMED` 和 `PAYMENT_DISPUTED`。历史 `REFUND_UPDATED` 仍会按原流程发送和重试，客户端继续兼容；管理员标记或撤销外部退款不会生成新通知。根据 `schema` 识别格式版本并读取所需字段，同时允许通知将来增加字段。
 
-接收成功必须返回 HTTP `200`、`application/json`，响应体只能包含以下四个字段：
+<a id="持久化与-ack"></a>
+
+### 保存通知并回复成功
+
+接收端在同一个数据库事务中核对本站订单、金额和币种，用 `event_id` 识别重复事件，再按 `order_version` 更新订单数据。付款状态为 `CONFIRMED` 时，才为该业务订单创建唯一的发货或充值任务。旧版本不得覆盖新版本，同一版本内容冲突时交给管理员核对。事务提交成功后才回复成功回执（ACK）。后台任务完成实际发货或充值，并保存执行进度，以便失败后继续。
+
+原生 ACK 必须满足：HTTP `200`、`Content-Type: application/json`（可带 `charset=utf-8`）、未压缩或 `Content-Encoding: identity`，正文只能包含以下四个字段：
 
 ```json
 {
   "schema": "perpay:webhook-ack:v1",
   "ack": true,
-  "event_id": "evt_...",
-  "delivery_id": "delivery_..."
+  "event_id": "11111111-1111-4111-8111-111111111111",
+  "delivery_id": "33333333-3333-4333-8333-333333333333"
 }
 ```
 
-网络和 TLS 证书错误、`201`–`204`、所有 `3xx`、`401`、`403`、`404`、`408`、`409`、`419`、`422`、`425`、`429`、`5xx`，以及 HTTP `200` 下的错误 ACK（不含不支持的压缩编码）都会按配置的退避策略重试。重试仍严格校验证书，不跟随重定向；只有符合上文要求的 HTTP `200` ACK 才算成功。`410` 表示接收端明确拒收，不再重试；来源策略违规（如 `target_address_forbidden`、`webhook_target_not_allowed`）仍是永久失败。达到尝试次数上限后进入死信，不能将自动重试理解为保证送达。
+ID 取自本次已验签请求。自动重试保持事件编号和发送任务编号（`delivery_id`），尝试次数递增；人工重发会创建新的发送任务编号，事件编号保持不变。重复事件也要验签，并用本次 `delivery_id` 回执。`204` 和纯文本 `success` 不是原生 ACK；易支付使用自身的文本 ACK。
 
-新事件为 `PAYMENT_CONFIRMED` 和 `PAYMENT_DISPUTED`；旧版已生成的 `REFUND_UPDATED` 仍保留原语义并按原流程投递、重试，客户端需要继续兼容。管理员标记／撤销退款不会生成事件或重新发送通知。客户端应根据 `schema` 分派并容忍未来增加的字段。
+### 重试与人工重发
+
+| 结果 | PerPay 处理 |
+| --- | --- |
+| 符合上述要求的原生 `200` ACK | 标记已送达。 |
+| 网络、TLS 错误，HTTP `201–204`、`3xx`、`5xx` | 按配置等待后重试；重试仍校验证书，不跟随重定向。 |
+| HTTP `401/403/404/408/409/419/422/425/429` | 按配置等待后重试。 |
+| HTTP `200`，ACK 缺失、格式错误或 ID 不匹配 | 按配置等待后重试。 |
+| HTTP `410`、目标地址策略违规、不支持的响应压缩等永久错误 | 终止自动尝试，保留失败记录。 |
+
+其他未列入重试范围的响应会终止当前发送任务。网站的 `maximum_attempts` 限制总尝试次数，`timeout_milliseconds` 控制单次请求超时。重试间隔从 `retry_base_seconds` 开始逐次增加，并加入随机变化，最长受 `retry_maximum_seconds` 限制。达到次数上限后停止自动重试，管理员查明原因并修复后，可重新发送。
+
+后台为最新且已结束的发送任务提供“重新发送”；正在自动重试，或已有后续重发任务的旧记录，不提供该操作。重发原生通知时，仍发送原事件发生时的订单数据，接收端继续检查事件编号和订单版本。易支付原付款确认已撤销时，对应成功通知停止发送，新的重发请求返回 `409 / webhook_payment_confirmation_revoked`。重新确认付款会创建新的事件和通知。
 
 ## 6. 后台操作与外观
 
 ### 在订单页查看与处理收款
 
-订单详情直接展示收款流水、付款确认方式、人工关联的操作人和理由，以及最新通知结果。精确匹配窗口在“匹配依据”中展开；记录旁的“更多 → 单独打开”仍可定位或分享具体记录。
+订单详情展示收款流水、确认方式、人工关联理由和最新通知结果。“匹配依据”可查看时间窗口，“技术详情”可查看原始字段、编号和指纹，记录旁的“单独打开”用于定位完整证据。
 
-- 收款、异常、通知默认给出可读摘要；原始字段、内部编号和指纹放在“技术详情”。金额推断不是支付平台按商户订单号确认，可能匹配的记录也不等于订单当前已付款。
-- 关联撤销只在实际撤销后展示“撤销时间”。未付款订单的人工关联理由可选；争议订单重新确认时需填写核对理由。已有订单及流水自动带入，确认前读取最新证据。
-- 争议订单详情提供“重新核对并确认收款”和“登记外部退款”。重新确认会创建新的人工关联、收款事件和通知，保留原关联及撤销历史；已被其他订单占用的流水、已有退款记录的订单不能重新确认。使用另一笔流水确认后，原流水仍未归属时继续列为独立待处理收入。
-- 原流水属于其他订单时，从争议处理区选择正确订单关联；暂不能确认时保留争议。外部退款登记后，可逐条忽略已核对的争议提醒；订单历史与争议状态保留。
-- 已忽略和已处理异常归入可展开的“异常历史”。忽略只关闭提醒，不能据此认定原异常已解决。
-- 通知的 HTTP 成功不等于业务已确认，需看 ACK 结果。只有最新且已结束的投递提供重新发送入口；正在自动重试或已有后续投递的旧记录不提供此操作。
-- 未配置通知时仅显示简短说明；未付款且无历史标记的订单不显示退款入口。退款标记只记录外部已完成退款的管理员声明。
-
+- 未付款订单可以人工关联收入，理由可选；争议订单重新确认时必须填写核对理由。
+- 重新确认产生新的关联、收款事件和通知，保留原关联及撤销历史。已被其他订单占用的流水、已有退款记录的订单不能重新确认。
+- 原流水属于其他订单时，先撤销原关联，再关联正确订单。使用另一笔流水确认后，原流水仍未归属的会继续显示为待处理收入。
+- 收款状态、异常处理和通知回执分别查看。候选流水不等于已经收款，HTTP 成功也不等于收到有效 ACK。
+- 已忽略或已处理的异常可在“异常历史”中查看。忽略提醒后，相关记录和订单状态继续保留。
 
 ### 按分类全部忽略提醒
 
-后台 **待处理** 的四个标签分别提供“全部忽略”，确认一次即覆盖当前网站筛选范围内该分类的**所有分页**：
+“待处理”的每个分类提供“全部忽略”，作用于当前网站、分类和关键词范围内的所有分页：
 
-| 标签 | 忽略范围 |
+| 分类 | 范围 |
 | --- | --- |
-| 全部提醒 | 账务异常、账本冲突和通知失败的全部未忽略提醒 |
-| 账务异常 | 仅账务异常 |
-| 账本冲突 | 仅账本冲突 |
-| 通知失败 | 仅通知失败 |
+| 全部提醒 | 全部未忽略的账务异常、账本冲突和通知失败。 |
+| 账务异常 | 仅账务异常。 |
+| 账本冲突 | 仅账本冲突。 |
+| 通知失败 | 仅通知失败。 |
 
-**忽略什么：** 当前分类、业务网站和关键词筛选下的全部提醒，覆盖所有分页。忽略后，它们从默认待处理列表和首页提醒中隐藏；同一通知投递后续继续失败也保持忽略。新提醒和人工重新发送产生的新记录仍按原规则提醒。
+忽略后，记录从默认待处理列表和首页提醒隐藏。同一通知发送任务继续失败时，仍保持忽略；新提醒和人工重发产生的新记录正常提示。忽略提醒会保留相关记录和账务状态，通知重试也会继续。
 
-**不影响什么：** 只关闭提醒，不删除证据、不改变订单或账务状态、不解决冲突，也不停止通知自动重试。查账、自动确认收款、通知和备份的真实故障，以及实际待投递数量仍独立显示。没有提醒不能证明系统运行正常。
+切换到“已忽略”可逐条恢复尚未结束的提醒。已解决的异常、发送成功或已有后续重发任务的通知显示“已结束”，不能恢复。运行状态中的 `work_items` 统计所有未忽略的提醒，不受列表分页或关键词筛选影响。网站页面只统计能确定属于本站的记录，无法确定所属网站的冲突在全局页面查看。
 
-**怎么恢复：** 切换到“已忽略”后逐条恢复，无需重复确认，不提供批量恢复。未结束的提醒会重新出现；已解决的异常或冲突、成功或被后续投递替代的通知显示“已结束”，不能恢复。对账页的“查看已忽略”也进入同一列表。
+普通支出流水继续保存和校验，不参与收款自动确认。历史 `UNMATCHED_DEBIT/UNLINKED_REFUND` 仍可按编号追溯，但不再作为待处理收入提醒；流水冲突、验签和完整性问题继续提示。
 
-运行状态的 `work_items` 与“全部提醒 → 待处理”采用同一全量口径，不受分页和搜索影响；筛选业务网站时只纳入能确定属于该站订单的提醒，未归属冲突保留在全局。原始冲突、异常、失败总数及接口 `status` 保留诊断含义，不随忽略而改写。统计读取失败显示不可用，不当作 0。
-
-普通支出流水继续保存、校验，不参与自动确认收款。历史 `UNMATCHED_DEBIT / UNLINKED_REFUND` 不再进入待处理、默认开放异常列表及计数；仍可按编号追溯，原始状态保留。流水冲突、验签与完整性问题继续按原流程处理。
-
-管理接口（不是业务签名 API）：
-
-| 接口 | 用途 |
+| 管理接口 | 用法 |
 | --- | --- |
-| `GET /api/admin/v1/work-items?type=ALL&visibility=ACTIVE` | 查看未忽略提醒；`visibility=IGNORED` 查看已忽略；游标绑定分类和可见性 |
-| `POST /api/admin/v1/work-items/actions/ignore-all` | 提交 `{ "operation_id": "UUID v4", "type": "ALL" }`；分类也可为 `FINANCIAL_EXCEPTION / LEDGER_CONFLICT / NOTIFICATION_FAILURE` |
-| `POST /api/admin/v1/work-items/{type}/{resourceId}/actions/restore` | 提交操作 UUID，逐条恢复尚未结束的提醒 |
+| `GET /api/admin/v1/work-items?type=ALL&visibility=ACTIVE` | 读取未忽略提醒；`visibility=IGNORED` 读取已忽略记录。 |
+| `POST /api/admin/v1/work-items/actions/ignore-all` | 提交 `operation_id`、`type` 和当前筛选。分类可为 `ALL/FINANCIAL_EXCEPTION/LEDGER_CONFLICT/NOTIFICATION_FAILURE`。 |
+| `POST /api/admin/v1/work-items/{type}/{resourceId}/actions/restore` | 提交操作 UUID，逐条恢复。 |
 
-批量范围以请求进入数据库写事务时仍符合条件的提醒为准；事务之后新增的提醒不受影响。网络超时后复用同一个操作 UUID 和相同参数，会返回原结果，不会顺便忽略后来新增的提醒。一次新的批量操作必须使用新的 UUID；复用 UUID 却改变分类或内容会返回 `409 / admin_operation_conflict`。批次成员、操作人、时间和审计记录会一并提交。
+PerPay 在执行操作的数据库事务中确定本次要忽略哪些提醒，之后新增的提醒留待下次处理。超时重试保留同一 UUID 和参数，会返回原结果；新一批操作使用新 UUID。复用 UUID 却修改内容返回 `409 / admin_operation_conflict`。系统会记录本次处理的范围、操作人和时间。
 
 ### 管理员退款标记
 
-先在 PerPay 之外自行完成退款，再到 **订单详情 → 概览右上角“更多” → 标记已退款**；误标时可以“撤销退款标记”。备注可选，最多 500 字，修改历史记录操作人、时间和备注。
+先在 PerPay 之外完成退款，再从“订单详情 → 更多 → 标记已退款”记录；误标时可撤销。备注可选、最多 500 字，历史保存操作人、时间和备注。该标记是管理员对外部退款的声明，PerPay 不执行退款转账。
 
-> 仅记录管理员已在外部完成退款，PerPay 不执行转账，也未验证退款。
+有实收金额的 `CONFIRMED/DISPUTED` 订单可标记，未付款订单不可标记。标记及撤销使用独立版本，只在管理端列表和详情显示；付款状态、实收金额、历史 `refund.status`、业务订单版本和记账分录保持原值，也不向业务网站发送通知。
 
-只有有实收金额的 `CONFIRMED / DISPUTED` 订单可以标记；未付款订单不能标记。撤销仅撤销这条管理员声明。标记与撤销都不修改付款状态、实收金额、历史退款状态、对外订单版本或记账分录，也不通知业务网站。标记和备注只在管理端订单列表与详情中返回，不出现在业务 API、公开收银台或通知中。
+管理接口 `PUT /api/admin/v1/orders/{orderId}/refund-mark` 提交 `operation_id`、标记 `version`、目标状态 `marked` 和可选 `note`。首次版本为 0；并发冲突返回 `409 / refund_mark_version_conflict`，重新读取后再操作。超时重试保留 UUID、版本和内容。
 
-管理 API 为 `PUT /api/admin/v1/orders/{orderId}/refund-mark`，请求字段为 `operation_id`、独立标记 `version`、目标状态 `marked` 与可选 `note`。尚无标记时版本为 0；并发修改返回 `409 / refund_mark_version_conflict`，需要重新读取，不能静默覆盖。超时重试保留 UUID、版本和内容。
+旧 `POST /api/admin/v1/reconciliation/refunds` 在通过认证和旧格式校验后返回 `410 / refund_recording_retired`。旧退款记录、部分／全额退款状态和既有通知继续保留，不自动转换成新标记。
 
-旧 `POST /api/admin/v1/reconciliation/refunds` 写接口已退役：通过鉴权和旧请求格式校验后返回 `410 / refund_recording_retired`。旧退款记录、部分／全额退款状态和已生成通知保留只读兼容，不自动转换成新标记。人工关联收入功能仍保留。
+人工关联收入使用 `POST /api/admin/v1/reconciliation/settlements/manual`。未付款订单的 `reason` 可省略、为 `null` 或空白，统一保存为 `null`；争议订单重新确认必须填写理由。重试保持原 `financial_operation_id` 和内容，更换理由或关联对象使用新操作编号。
 
-所有上述写接口均要求管理员会话、同源 JSON 和 CSRF 校验，不能使用业务 API 密钥替代。
+同一收款账号更换 App ID 后，管理员仍可将新应用查到的流水关联到旧订单，前提是两者使用同一支付宝环境。管理员需核对付款人、金额和时间；系统还会检查币种、收入方向，以及这笔付款是否已经被使用。自动确认继续按订单原来的应用配置匹配流水。
 
-人工关联接口 `POST /api/admin/v1/reconciliation/settlements/manual` 为未付款订单建联时，`reason` 可省略、填 `null` 或留空；空白内容保存为 `null`。争议订单重新确认必须填写核对理由。首次提交和原操作重试采用相同的空值语义；更换理由或关联对象使用新的操作编号，已完成操作的证据保持原样。非空理由需符合长度及字符校验。
+同一收款账号、同一环境的一笔支付宝付款，最多确认一个订单。不同应用配置查到的重复记录都会保存，已经使用的付款不能再确认另一订单。需要修改归属时，先撤销原关联，再用新操作编号建立关联；两个操作都会保存操作记录和事件。
 
-同一个收款账号更换 App ID 后，同一支付宝环境下的新应用账单可以作为旧订单的人工关联候选。管理员须核对付款人、金额和时间；系统继续检查币种、收入方向及同一付款是否已被使用。自动确认仍按订单原有来源范围处理。
-
-同一收款账号、同一网关环境中的同一支付宝流水最多有一个生效收款关联。更换应用后采集到的历史来源副本继续保留作为证据，已被其他副本关联的付款不会再进入候选，也不能再次确认另一订单。核实需要改关联对象时，先撤销原关联，再通过新的操作编号关联；撤销及重新关联各自保留审计和订单事件。
+以上写接口需携带管理员会话，使用 JSON 正文，并通过同源和 CSRF 校验。涉及多个网站的订单或流水时，在全局对账页面处理，具体规则见[多网站指南](docs/multi-site.md#管理接口的网站范围)。
 
 ### 外观
 
-点击后台侧栏的 **外观**，先选配色，再选 **浅色／深色／跟随系统**，立即生效，无需保存：
+后台侧栏“外观”提供经典蓝、青竹、暖砂、柔紫和石墨配色，每种均支持浅色、深色或跟随系统。选择后立即生效；点击外部、关闭按钮或 Escape 收起，手机先打开导航菜单。
 
-- 配色有经典蓝、青竹、暖砂、柔紫、石墨，每种都有浅色和深色。
-- 点选时面板保持打开；点击外部、关闭按钮或按 Escape 收起。手机先打开导航菜单。
-- 偏好仅保存在当前浏览器，会同步到同源的其他标签页。旧的浅色／深色偏好不变，默认经典蓝＋跟随系统。
-- 登录和初始化页面使用同一外观，不影响公开收银台、表单草稿或任何账务数据。
+偏好保存在当前浏览器，并同步到同源标签页。登录和初始化页面共用该外观，公开收银台按网站展示配置显示。
 
 ### 设置与安全
 
-配置字段在所属分组中直接展示，查账间隔、订单规则、超时、重试及向导备份策略不再放入“高级设置”折叠；通知参数在启用业务通知后直接展示。校验失败会定位对应字段。普通设置未修改时不能重复保存，配置向导仍可保存默认值并继续。离开未保存表单时会确认是否放弃。
+普通设置在所属分组保存，校验失败会定位字段并保留草稿；离开未保存表单时可选择继续编辑或放弃。配置向导可以保存默认值并继续。
 
-实例安全设置保留管理员安全管理；支付宝应用密钥在“系统设置 → 支付宝账号”中分别管理，各网站 API／通知密钥在“业务网站”中分别管理。密钥在独立查看弹窗内读取和复制，关闭弹窗或离开网站编辑页会清除明文。轮换前的警告弹窗说明对应影响，确认后执行。API 密钥轮换后，旧密钥不能用于新的鉴权请求。通知密钥轮换后，新发送和重试的通知使用新密钥，已经发出的请求可能仍使用旧签名；接收端应及时更新验签配置，在过渡期短暂兼容新旧密钥，密钥疑似泄露时停止信任旧密钥。轮换不会自动重发已完成的通知；结果不确定时不要重复轮换，先刷新配置并查看当前密钥。
+管理员安全在系统设置中管理；支付宝应用密钥在账号内管理，网站 API／通知密钥在各网站“接入与通知”管理。密钥查看弹窗关闭或离开编辑页后清除明文。
 
-退出登录及撤销登录会话需要联网。离线时会明确提示操作未提交，保留当前会话和取消入口；恢复连接后需重新确认，页面不会自动执行之前的撤销请求。
+更换 API 密钥后，旧密钥立即失效。更换通知密钥后，后续发送使用新密钥，已经发出的请求可能仍使用旧签名；接收端应及时更新配置，按需要短暂接受新旧两把通知密钥。更换结果未知时，先刷新并查看当前版本，避免重复操作。已结束的发送任务不会因更换密钥自动重发。
 
-修改密码需输入两次，以“修改并重新登录”提交；注销全部会话位于“登录会话”的“更多”中。
+退出登录和撤销会话需要服务端确认。离线时操作不会提交，恢复连接后重新操作。修改密码需输入两次，以“修改并重新登录”提交；“登录会话”的“更多”可注销全部会话。
 
 ## 7. 上线检查
 
-- API 密钥和通知密钥只保存在网站服务端环境变量或密钥管理器。
-- 生产环境使用 HTTPS，`notify_url` 必须位于管理 API 配置的允许来源下，不能依赖重定向。
-- 创建订单遇到网络超时，使用相同幂等键重试，不要重复生成业务订单号。
-- 通知和查询都可能重复或乱序，业务状态更新必须幂等并单向推进。
-- 只有服务端查询或验签通知显示 `CONFIRMED` 时，才执行发货、充值或余额增加。
+上线前确认以下接入行为：
 
-完整字段、错误码和接口契约见 [`openapi.yaml`](openapi.yaml)。
+- 凭据保存在业务后端，公网 HTTPS 回调接收到原始正文和签名头。
+- 创建、查询和浏览器返回显示同一业务订单，并区分下单金额、应付金额和实收金额。
+- 下单响应丢失时能按原商户单号找回订单，重试不会创建第二笔。
+- 通知保存到数据库后才回复成功；重复或乱序通知不会造成重复发货、充值，也不会让旧状态覆盖新状态。
+- 主动查单结果或已验签通知显示 `CONFIRMED` 后，才发货或开通服务；争议、外部退款和旧单迟到通知有明确处理方式。
+- 接收端暂时不可用后，能从通知发送记录定位原因并完成重试或人工重发。
 
+完整字段与状态见 [OpenAPI](openapi.yaml)，部署和备份验收见[维护指南](docs/maintenance.md)。
 
 ## 管理查询与订单导出
 
-概览中的确认金额按 PerPay 的确认时间汇总，每次使用该次确认保存的实收金额。后续撤销及重新确认保留原日期金额，新的确认按其发生日期另行计入。收款确认笔数统计确认次数，包含自动和人工关联，不等于当前收款已确认的订单数；确认金额不是支付宝账单合计。
+概览确认金额按 PerPay 确认事件的发生日期和当次实收金额统计。撤销后重新确认会在新日期增加一次确认，原日期记录保留；确认次数包含自动和人工确认，不等于当前已确认订单数，也不是支付宝账单合计。
 
-- 订单和通知列表只按**创建日期**筛选，日期统一北京时间；通知的创建日期指投递记录创建日期。支持全部、今天、昨天、近 7／30 天和自定义范围。
-- GET 管理订单及通知列表增加可选 `created_from`、`created_to`（`YYYY-MM-DD`）。必须成对，包含起止两天；服务端使用左闭右开时间范围。日期参与游标绑定，切换日期后重置分页，旧链接无日期时行为不变。
-- 订单列表显示 PerPay 确认时间（收款确认事件的记录时间），手机默认隐藏，可从列菜单展开。时间来自最近一次 `PAYMENT_CONFIRMED` 事件，不是支付宝交易发生时间；争议订单仍保留历史确认时间。
-- 在订单列表选择网站、收款账号和创建日期后点击“导出 CSV”，导出当前网站及收款账号范围、关键词、状态、日期与排序的**全部结果**，不是当前页。最多 10,000 条、日期跨度最多 366 天，超限须缩小范围；不导出通知。
-- 接口为 `POST /api/admin/v1/orders/export`，请求包含必填日期及可选 `api_client_id`、`q`、`payment_status`、`checkout_status`、`sort_by`、`sort_order`。订单、通知列表及其分页游标同样绑定网站筛选。使用管理员会话、同源及 CSRF 校验，不使用业务 API 签名；读取请求后复核会话。
-- 文件包含网站名称／稳定网站编号、商户订单号／内部订单编号、商品、下单／应付／实收金额、币种、当前付款／收银台状态、创建／PerPay 确认时间。金额两位小数，空实收不同于零；采用 UTF-8 BOM、CSV 转义和公式注入防护。备注、通知正文、密钥及收银台能力链接不导出。
-- 导出使用单个一致的数据库读取快照，不触发订单到期处理或修改财务记录。它是订单明细，**不是到账日结或净收入报表**；收款已确认也不代表通知已送达。
+订单与通知列表按创建日期筛选，使用北京时间；通知日期指发送任务的创建日期。管理 GET 接口可传成对的 `created_from/created_to`（`YYYY-MM-DD`），包含起止两天。更改网站、账号、日期或其他筛选后重新分页。
 
-配置表单的请求／通知超时以秒显示，通知超时支持 0.001 秒精度，例如 5.123 秒保存为 5123 毫秒；超过 3 位小数时提示错误并阻止保存，不舍入。备份间隔可用秒、小时或天，API 仍使用原有毫秒／秒字段。查账组“采用推荐值”只改草稿，保存后才生效，加载不覆盖旧配置。备份策略保存不表示任务已启动或恢复已验证，参见[启用与验证备份](docs/maintenance.md#启用与验证备份)。
+列表中的 PerPay 确认时间取最近一次 `PAYMENT_CONFIRMED` 事件，争议订单仍保留此历史时间；支付宝实际交易时间在对应流水中查看。
+
+“导出 CSV”导出当前网站、账号、关键词、状态、日期和排序条件下的全部订单，最多 10,000 条、日期跨度最多 366 天，超限时缩小范围。管理接口为 `POST /api/admin/v1/orders/export`：
+
+| 字段 | 要求 |
+| --- | --- |
+| `created_from`、`created_to` | 必填，起止创建日期。 |
+| `api_client_id` | 可选，稳定网站编号；网站路径中由路径确定。 |
+| `alipay_account_id` | 可选，收款账号编号。 |
+| `q` | 可选，订单关键词。 |
+| `payment_status`、`checkout_status` | 可选，收款和收银台状态。 |
+| `sort_by`、`sort_order` | 可选，排序字段与 `asc/desc`。 |
+
+导出使用管理员会话、同源和 CSRF 校验。CSV 包含网站、收款账号、商户与内部订单号、商品、三类金额、币种、当前状态和创建／确认时间。金额保留两位小数，未实收为空；文件采用 UTF-8 BOM、CSV 转义和公式注入防护。备注、通知正文、密钥和收银台令牌不导出。
+
+文件中的所有行使用同一时刻的数据，适合核对订单明细。统计到账情况时应同时查看流水和收款确认记录，通知是否送达则看发送记录。
+
+界面中的请求和通知超时以秒输入，通知支持 0.001 秒精度，例如 5.123 秒保存为 5123 毫秒。备份间隔可按秒、小时或天显示，API 沿用对应毫秒／秒字段。查账“采用推荐值”只更新草稿，保存后生效；备份执行与恢复检查见[启用与验证备份](docs/maintenance.md#启用与验证备份)。
 
 ### 收银台手动核实接口
 
-公开收银台 GET 保持读取状态，不触发查账。浏览器可同源 POST `/api/public/v1/checkouts/{token}/check`，发送 JSON `{}`；需要有效收银台令牌。等待中返回 202 和 Retry-After，终态返回 200；来源限流返回 429，服务不可用返回 503。只读演示拒绝该操作。后续使用普通收银台 GET 获取可选的 `verification`：`WAITING`、`SCANNING`、`RECONCILING`、`COMPLETED`、`FAILED`。进度只属于该订单，重启可失效，业务网站仍以已确认订单或验签通知为支付依据，不能把核实完成当成付款成功。
+公开收银台 GET 读取当前状态。收银台可同源 POST `/api/public/v1/checkouts/{token}/check`，携带有效令牌和 JSON `{}`，申请一次核实：
+
+| HTTP | 含义 |
+| --- | --- |
+| `202` | 正在等待或执行，按 `Retry-After` 等待。 |
+| `200` | 无需继续等待或本轮已结束，读取订单和核实状态。 |
+| `429` | 来源限流，稍后重试。 |
+| `503` | 当前不可用，检查服务状态。 |
+
+后续 GET 可返回 `verification.state`：`WAITING/SCANNING/RECONCILING/COMPLETED/FAILED`。核实进度属于该笔订单，服务重启后可失效；收款结果仍以 `payment.status` 为准，核实完成不等于付款成功。只读演示服务不接受核实操作。
