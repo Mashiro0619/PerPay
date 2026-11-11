@@ -3,12 +3,14 @@ type Worker = Pick<
   SystemStatus["ledger"],
   "enabled" | "state" | "last_error_code" | "consecutive_failures"
 >;
-function workerHealthy(worker: Worker): boolean {
+function workerHealthy(worker: Worker, normalCollectionReady = false): boolean {
+  const compensationProgress = normalCollectionReady && worker.last_error_code === "compensation_continuation";
   return (
     !worker.enabled ||
-    (!worker.last_error_code &&
+    ((!worker.last_error_code || compensationProgress) &&
       worker.consecutive_failures === 0 &&
-      !["degraded", "stopped", "catching_up"].includes(worker.state))
+      !["degraded", "stopped"].includes(worker.state) &&
+      (worker.state !== "catching_up" || compensationProgress))
   );
 }
 /** Presentation only. Never used to authorize payments or reinterpret the server's readiness gate. */
@@ -20,7 +22,7 @@ export function presentSystemStatus(data: SystemStatus) {
     data.ledger.collection_ready &&
     data.reconciliation.confirmation_ready;
   const ledgerHealthy =
-    data.ledger.collection_ready && workerHealthy(data.ledger) &&
+    data.ledger.collection_ready && workerHealthy(data.ledger, data.ledger.collection_ready) &&
     data.ledger.diagnostics?.available !== false &&
     (data.ledger.diagnostics?.consecutive_failures ?? 0) === 0;
   const reconciliationHealthy =

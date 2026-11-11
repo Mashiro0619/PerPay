@@ -214,7 +214,10 @@ export class RuntimeController {
     const lastSuccessAt = health?.lastSuccessAt ?? null;
     const ready = Boolean(account?.enabled && account.configured && health &&
       !this.#accountTransitions.has(accountId) && !this.#transitioning && !this.#stopped && health.state !== "stopped" &&
-      health.lastErrorCode === null && isFresh(lastSuccessAt, this.#clock(), account.provider!.maximumSuccessAgeMilliseconds));
+      // Historical compensation can continue after the normal scan has reached
+      // its safe tail. Its progress must not suspend otherwise fresh collection.
+      (health.lastErrorCode === null || health.lastErrorCode === "compensation_continuation") &&
+      isFresh(lastSuccessAt, this.#clock(), account.provider!.maximumSuccessAgeMilliseconds));
     return { state: this.#accountTransitions.has(accountId) ? "transitioning" : health?.state ?? "unconfigured",
       lastSuccessAt, lastErrorCode: health?.lastErrorCode ?? null, collectionReady: ready };
   }
@@ -258,7 +261,8 @@ export class RuntimeController {
         inFlight: health.some(item => item.inFlight),
         lastAttemptAt: maximumTimestamp(health.map(item => item.lastAttemptAt)),
         lastSuccessAt: maximumTimestamp(health.map(item => item.lastSuccessAt)),
-        lastErrorCode: health.find(item => item.lastErrorCode)?.lastErrorCode ?? null,
+        lastErrorCode: health.find(item => item.lastErrorCode && item.lastErrorCode !== "compensation_continuation")?.lastErrorCode ??
+          health.find(item => item.lastErrorCode)?.lastErrorCode ?? null,
         consecutiveFailures: Math.max(...health.map(item => item.consecutiveFailures)) };
     }
     if (!this.#ledgerScheduler) return disabledLedgerHealth;

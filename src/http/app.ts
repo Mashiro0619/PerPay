@@ -446,7 +446,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     const ready = database.ok && configured && !runtime.transitioning &&
       collection.ready && confirmation.ready;
     const degraded = ready && (
-      isBackgroundHealthDegraded(ledger) ||
+      isBackgroundHealthDegraded(ledger, collection.ready) ||
       isBackgroundHealthDegraded(reconciliation) ||
       isBackgroundHealthDegraded(webhook) ||
       operations.unavailable ||
@@ -2665,7 +2665,7 @@ async function systemStatus(dependencies: AppDependencies, administrator = false
   const ready = database.ok && configured && !runtime.transitioning &&
     collection.ready && confirmation.ready;
   const degraded = ready && (
-    isBackgroundHealthDegraded(ledger) ||
+    isBackgroundHealthDegraded(ledger, collection.ready) ||
     isBackgroundHealthDegraded(reconciliation) ||
     isBackgroundHealthDegraded(webhook) ||
     (backup.enabled && !backup.ok) ||
@@ -2745,12 +2745,13 @@ function isBackgroundHealthDegraded(health: {
   readonly state: string;
   readonly lastErrorCode: string | null;
   readonly consecutiveFailures: number;
-}): boolean {
+}, normalCollectionReady = false): boolean {
+  const compensationProgress = normalCollectionReady && health.lastErrorCode === "compensation_continuation";
   return health.enabled && (
     health.state === "degraded" ||
-    health.state === "catching_up" ||
+    (health.state === "catching_up" && !compensationProgress) ||
     health.state === "stopped" ||
-    health.lastErrorCode !== null ||
+    (health.lastErrorCode !== null && !compensationProgress) ||
     health.consecutiveFailures > 0
   );
 }

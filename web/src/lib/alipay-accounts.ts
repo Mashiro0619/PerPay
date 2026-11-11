@@ -75,12 +75,14 @@ export function accountHealth(account: AlipayAccount): string {
   if (account.environment !== "PRODUCTION") return "不再查账";
   if (!account.configured) return "待完成配置";
   if (!account.health) return "尚未查账";
+  const compensationContinuing = account.health.last_error_code === "compensation_continuation";
   if (
-    account.health.last_error_code ||
+    (account.health.last_error_code && !compensationContinuing) ||
     account.health.state === "degraded" ||
     account.health.state === "failed"
   )
     return "查账异常";
+  if (compensationContinuing) return account.health.collection_ready ? "查账正常 · 历史补扫中" : "历史补扫中";
   if (
     account.health.state === "running" ||
     account.health.state === "catching_up"
