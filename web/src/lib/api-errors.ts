@@ -63,6 +63,8 @@ const messages: Record<string, string> = {
   webhook_delivery_not_found: "找不到此通知记录，请刷新通知列表。",
   webhook_delivery_state_conflict:
     "通知状态已变化，请刷新后核对，避免重复发送。",
+  webhook_payment_confirmation_revoked:
+    "原付款确认已撤销，不能重新发送成功通知，请核对订单当前状态。",
   webhook_operation_conflict: "通知操作与已有请求不一致，请先核对投递记录。",
   webhook_disabled: "通知尚未启用，请检查通知设置。",
   webhook_target_inactive: "通知目标已停用，请核对通知设置后再操作。",

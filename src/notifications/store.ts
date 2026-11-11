@@ -105,6 +105,7 @@ export interface WebhookDeliveryCursor {
 export interface WebhookDeliveryDetail {
   readonly isLatest: boolean;
   readonly latestDeliveryId: string;
+  readonly redeliveryBlockedReason: "payment_confirmation_revoked" | null;
   readonly delivery: WebhookDelivery;
   readonly event: WebhookEvent;
   readonly target: WebhookTargetProjection;
@@ -121,6 +122,7 @@ export type WebhookStoreErrorCode =
   | "webhook_event_not_found"
   | "webhook_operation_conflict"
   | "webhook_delivery_state_conflict"
+  | "webhook_payment_confirmation_revoked"
   | "webhook_disabled"
   | "webhook_target_inactive"
   | "webhook_signing_key_rollback"
@@ -648,12 +650,15 @@ export class WebhookStore {
         return { delivery: mapDelivery(existing), replayed: true };
       }
       const target = connection
-        .prepare(`SELECT allowed_origin, api_client_id, ${LIVE_NOTIFICATION_TARGET} AS live
+        .prepare(`SELECT allowed_origin, api_client_id, target_format, ${LIVE_NOTIFICATION_TARGET} AS live
                     FROM webhook_targets AS target WHERE target_id = ?`)
-        .get(original.target_id) as { allowed_origin: string; api_client_id: string; live: bigint | number } | undefined;
+        .get(original.target_id) as { allowed_origin: string; api_client_id: string; target_format: WebhookTargetFormat; live: bigint | number } | undefined;
       if (!target) throw new Error("webhook delivery target cannot be read");
       if (!Number(target.live)) {
         throw new WebhookStoreError("webhook_delivery_state_conflict", "历史沙箱订单不支持重新发送通知。");
+      }
+      if (redeliveryBlockedReason(connection, target.target_format, original.outbox_event_id)) {
+        throw new WebhookStoreError("webhook_payment_confirmation_revoked", "原付款确认已撤销，不能重新发送成功通知，请核对订单当前状态。");
       }
       // Modern replay reads the owner's current policy inside this transaction.
       // A caller's stale/global origin must never authorize another site's target.
@@ -811,6 +816,7 @@ export class WebhookStore {
       return {
         isLatest: row.latest_delivery_id === row.delivery_id,
         latestDeliveryId: row.latest_delivery_id,
+        redeliveryBlockedReason: redeliveryBlockedReason(connection, row.target_format, row.outbox_event_id),
         delivery: mapDelivery(row),
         event: mapEvent(row),
         target: mapTarget(row),
@@ -879,6 +885,7 @@ export class WebhookStore {
         deliveries: pageRows.map((row) => ({
           isLatest: row.latest_delivery_id === row.delivery_id,
           latestDeliveryId: row.latest_delivery_id,
+          redeliveryBlockedReason: redeliveryBlockedReason(connection, row.target_format, row.outbox_event_id),
           delivery: mapDelivery(row),
           event: mapEvent(row),
           target: mapTarget(row),
@@ -1084,6 +1091,16 @@ interface SigningKeyRow {
   readonly secret_fingerprint: string;
   readonly activated_at: bigint | number;
   readonly retired_at: bigint | number | null;
+}
+
+function redeliveryBlockedReason(
+  connection: DatabaseSync,
+  format: WebhookTargetFormat,
+  eventId: string,
+): WebhookDeliveryDetail["redeliveryBlockedReason"] {
+  return format !== "NATIVE_JSON_V1" && !epayConfirmationActive(connection, eventId)
+    ? "payment_confirmation_revoked"
+    : null;
 }
 
 function readAttemptsByDelivery(

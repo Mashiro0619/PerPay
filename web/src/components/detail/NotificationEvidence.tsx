@@ -79,10 +79,17 @@ export function DeliveryCard({
   const finalFocus = useRef<HTMLElement | null>(null);
   const delivery = detail.delivery;
   const last = latestAttempt(detail.attempts);
+  const confirmationRevoked = detail.redelivery_blocked_reason === "payment_confirmation_revoked" ||
+    delivery.last_error_code === "payment_confirmation_revoked";
   const terminal =
     delivery.status === "ACKNOWLEDGED" || delivery.status === "DEAD_LETTER";
+  const terminated = confirmationRevoked && delivery.status !== "ACKNOWLEDGED";
   const comfortable = density === "comfortable" && !embedded;
-  const statusDescription = !detail.is_latest
+  const statusDescription = confirmationRevoked
+    ? delivery.status === "ACKNOWLEDGED"
+      ? "对方已返回有效确认回执；原付款确认现已撤销"
+      : "原付款确认已撤销，成功通知已终止"
+    : !detail.is_latest
     ? delivery.status === "ACKNOWLEDGED" ? "历史投递 · 对方已返回有效确认回执" : "历史投递"
     : delivery.status === "DEAD_LETTER"
       ? "已停止重试，需要处理"
@@ -101,7 +108,7 @@ export function DeliveryCard({
     <Button
       variant="outline"
       className="w-fit"
-      disabled={sent}
+      disabled={sent || confirmationRevoked}
       onClick={(event) => {
         finalFocus.current = event.currentTarget;
         setSnapshot(detail);
@@ -134,7 +141,7 @@ export function DeliveryCard({
           ? [
               {
                 label: "重新发送",
-                disabled: sent,
+                disabled: sent || confirmationRevoked,
                 onSelect: (trigger) => {
                   finalFocus.current = trigger;
                   setSnapshot(detail);
@@ -161,7 +168,7 @@ export function DeliveryCard({
     ...(delivery.predecessor_delivery_id
       ? [["原投递", <Link to={"/notifications/" + delivery.predecessor_delivery_id}>查看原投递</Link>] as const]
       : []),
-    ...(delivery.next_attempt_at && !terminal
+    ...(delivery.next_attempt_at && !terminal && !confirmationRevoked
       ? [["下次重试", dateTime(delivery.next_attempt_at)] as const]
       : []),
     ...(delivery.acknowledged_at
@@ -177,7 +184,12 @@ export function DeliveryCard({
   const reasonFields = delivery.reason
     ? [["重发理由", delivery.reason] as const]
     : [];
-  const recovery = detail.is_latest && ["DEAD_LETTER", "RETRY_WAIT"].includes(delivery.status) && (
+  const recovery = confirmationRevoked ? (
+    <>
+      {notificationRecoveryHint("payment_confirmation_revoked")}{" "}
+      <Link to={"/orders/" + detail.event.order_id}>查看订单当前状态</Link>
+    </>
+  ) : detail.is_latest && ["DEAD_LETTER", "RETRY_WAIT"].includes(delivery.status) && (
     <>
       {notificationRecoveryHint(delivery.last_error_code ?? last?.error_code ?? null)}{" "}
       <a
@@ -233,7 +245,7 @@ export function DeliveryCard({
         <div className="flex min-w-0 flex-1 basis-64 flex-wrap items-center gap-x-3 gap-y-1" data-notification-summary>
           <div className="flex min-w-0 flex-wrap items-center gap-2" data-detail-summary>
             <CardTitle role="heading" aria-level={2}>{sectionTitle ?? "通知信息"}</CardTitle>
-            <StatusBadge value={delivery.status} />
+            <StatusBadge value={terminated ? "REVERSED" : delivery.status} label={terminated ? "已终止" : undefined} />
           </div>
           <CardDescription>{statusDescription}</CardDescription>
           <CardDescription className="whitespace-nowrap">已尝试 {delivery.attempt_count} 次</CardDescription>
@@ -280,7 +292,7 @@ export function DeliveryCard({
         </CardTitle>
         <CardDescription className="record-list-meta">{statusDescription}</CardDescription>
         <CardDescription className="record-list-meta">{attemptDescription} · 已尝试 {delivery.attempt_count} 次</CardDescription>
-        <CardAction><StatusBadge value={delivery.status} /></CardAction>
+        <CardAction><StatusBadge value={terminated ? "REVERSED" : delivery.status} label={terminated ? "已终止" : undefined} /></CardAction>
       </CardHeader>
       <CardContent className="flex min-w-0 flex-col gap-4">
         {recovery && <p className="text-sm text-muted-foreground">{recovery}</p>}

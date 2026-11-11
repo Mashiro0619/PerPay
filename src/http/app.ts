@@ -3077,6 +3077,7 @@ function webhookStoreStatus(
       return 404;
     case "webhook_operation_conflict":
     case "webhook_delivery_state_conflict":
+    case "webhook_payment_confirmation_revoked":
     case "webhook_disabled":
     case "webhook_target_inactive":
       return 409;
@@ -3096,6 +3097,8 @@ function webhookStoreMessage(code: WebhookStoreError["code"]): string {
       return "重新发送的操作编号已用于不同的通知请求";
     case "webhook_delivery_state_conflict":
       return "通知投递状态已经变化";
+    case "webhook_payment_confirmation_revoked":
+      return "原付款确认已撤销，不能重新发送成功通知，请核对订单当前状态。";
     case "webhook_disabled":
       return "通知功能未启用";
     case "webhook_target_inactive":
@@ -3904,6 +3907,7 @@ function serializeWebhookDeliveryDetail(detail: WebhookDeliveryDetail, siteName:
   return {
     is_latest: detail.isLatest,
     latest_delivery_id: detail.latestDeliveryId,
+    redelivery_blocked_reason: detail.redeliveryBlockedReason,
     delivery: serializeWebhookDelivery(detail.delivery),
     event: serializeWebhookEvent(detail.event),
     target: {

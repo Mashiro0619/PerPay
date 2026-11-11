@@ -3437,6 +3437,8 @@ paths:
         different input or after the source state changes returns HTTP 409. An already-created
         exact replay remains readable after delivery is disabled or the allowed origin changes;
         only creation of a new generation is constrained by the current configuration.
+        EasyPay success events whose payment confirmation was revoked cannot create a new
+        delivery and return `webhook_payment_confirmation_revoked` (HTTP 409).
       x-perpay-requires-same-origin: true
       security:
         - AdminSessionCookie: []
@@ -6118,6 +6120,8 @@ paths:
         replay remains readable after delivery is disabled or the allowed origin
         changes; only creation of a new generation is constrained by the current
         configuration.
+        EasyPay success events whose payment confirmation was revoked cannot create a new
+        delivery and return `webhook_payment_confirmation_revoked` (HTTP 409).
       x-perpay-requires-same-origin: true
       security:
         - AdminSessionCookie: []
@@ -11452,6 +11456,8 @@ components:
       additionalProperties: false
       required: [delivery, event, target, is_latest]
       properties:
+        redelivery_blocked_reason:
+          $ref: '#/components/schemas/WebhookRedeliveryBlockedReason'
         latest_delivery_id:
           type: string
           format: uuid
@@ -11473,6 +11479,8 @@ components:
       additionalProperties: false
       required: [delivery, event, target, attempts, is_latest]
       properties:
+        redelivery_blocked_reason:
+          $ref: '#/components/schemas/WebhookRedeliveryBlockedReason'
         latest_delivery_id:
           type: string
           format: uuid
@@ -11487,6 +11495,10 @@ components:
           type: array
           description: All persisted attempts in ascending attempt-number order.
           items: { $ref: '#/components/schemas/WebhookAttempt' }
+    WebhookRedeliveryBlockedReason:
+      type: [string, 'null']
+      enum: [payment_confirmation_revoked, null]
+      description: 原易支付付款确认已撤销时禁止重发成功通知；null 表示仍需按最新投递状态及网站通知配置判断是否可重发。
     OrderWebhookDeliveryPageEnvelope:
       type: object
       additionalProperties: false
@@ -11729,6 +11741,7 @@ components:
         - validation_failed
         - webhook_delivery_not_found
         - webhook_delivery_state_conflict
+        - webhook_payment_confirmation_revoked
         - webhook_disabled
         - webhook_event_not_found
         - webhook_operation_conflict
@@ -12535,9 +12548,9 @@ components:
     WebhookConflict:
       description: >-
         Notification delivery is disabled, the historical target is no longer active, the
-        delivery state changed, or a redelivery identifier was reused with different input
+        delivery state changed, the EasyPay payment confirmation was revoked, or a redelivery identifier was reused with different input
         (`webhook_disabled`, `webhook_target_inactive`, `webhook_delivery_state_conflict`,
-        or `webhook_operation_conflict`).
+        `webhook_payment_confirmation_revoked`, or `webhook_operation_conflict`).
       content:
         application/json:
           schema: { $ref: '#/components/schemas/ErrorEnvelope' }

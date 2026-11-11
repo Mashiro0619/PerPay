@@ -93,6 +93,7 @@ export const HTTP_ERROR_CODES = Object.freeze([
   "validation_failed",
   "webhook_delivery_not_found",
   "webhook_delivery_state_conflict",
+  "webhook_payment_confirmation_revoked",
   "webhook_disabled",
   "webhook_event_not_found",
   "webhook_operation_conflict",

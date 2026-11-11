@@ -158,6 +158,7 @@ export function latestAttempt(
   );
 }
 const notificationErrorNames: Record<string, string> = {
+  payment_confirmation_revoked: "原付款确认已撤销，成功通知已终止",
   INVALID_ACKNOWLEDGEMENT: "对方的确认回执无效",
   TIMEOUT: "请求超时",
   NETWORK_ERROR: "网络连接失败",
@@ -207,6 +208,7 @@ export function attemptResult(attempt: WebhookAttempt | undefined): string {
 }
 
 export function notificationRecoveryHint(code: string | null): string {
+  if (code === "payment_confirmation_revoked") return "请核对订单当前收款状态；重新确认收款后，系统会为新的确认事件生成通知。";
   if (!code) return "检查业务网站的接收日志，确认可用后再操作。";
   if (code === "lease_expired_outcome_unknown") return "发送结果暂时无法确定，请先核对业务网站的接收记录，避免重复处理。";
   if (code === "ack_event_mismatch" || code === "ack_delivery_mismatch") return "对方返回的确认回执与本次通知不符，请检查通知接收程序。";

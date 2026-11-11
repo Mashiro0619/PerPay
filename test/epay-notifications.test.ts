@@ -357,17 +357,15 @@ test("revoked confirmation permanently stops its retry and administrator replay"
       status: "DEAD_LETTER", total_events: 1, acknowledged_events: 0,
     });
     assert.equal(f.sites.nextNotificationSite(null, f.now()), null);
-    const replay = webhooks.replay({
-      expectedClientId: credentials.siteId, redeliveryId: randomUUID(), deliveryId: first.deliveryId,
+    assert.equal(webhooks.delivery(first.deliveryId)!.redeliveryBlockedReason, "payment_confirmation_revoked");
+    assert.throws(() => webhooks.replay({
+      expectedClientId: credentials.siteId, redeliveryId: randomUUID(), deliveryId: first.deliveryId!,
       actorId: "admin", reason: "重试历史通知", activeAllowedOrigin: origin, now: f.now(),
-    });
-    const replayed = await service.processOne();
-    assert.equal(replayed.deliveryId, replay.delivery.deliveryId);
-    assert.equal(replayed.errorCode, "payment_confirmation_revoked");
+    }), { code: "webhook_payment_confirmation_revoked" });
     assert.equal(requests, 1);
     assert.equal(f.sites.nextNotificationSite(null, f.now()), null);
     assert.equal((await service.processOne()).processed, false);
-    assert.equal(webhooks.listDeliveries({ limit: 10, cursor: null }).deliveries.length, 2);
+    assert.equal(webhooks.listDeliveries({ limit: 10, cursor: null }).deliveries.length, 1);
     assert.equal(f.database.integrityCheck().ok, true);
   } finally { f.close(); }
 });
