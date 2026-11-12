@@ -50,6 +50,9 @@ describe("overview metric keyboard access", () => {
     await user.tab();
     expect(screen.getByRole("link", { name: "3" })).toHaveFocus();
     expect(screen.getByRole("link", { name: "3" })).toHaveAttribute("href", "/sites/site_a/orders?payment=UNPAID&checkout=OPEN");
+    expect(screen.getByRole("link", { name: "3" })).toHaveClass("after:absolute", "after:inset-0");
+    expect(screen.getByText("当前待付款", { exact: true }).querySelector("svg")).toBeInTheDocument();
+    expect(screen.getByText("今日确认金额", { exact: true }).querySelector("svg")).not.toBeInTheDocument();
     await user.tab();
     expect(screen.getByRole("link", { name: "7" })).toHaveFocus();
     expect(screen.getByRole("link", { name: "7" })).toHaveAttribute("href", "/sites/site_a/work-items");

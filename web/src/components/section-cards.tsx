@@ -1,5 +1,7 @@
+import { ArrowUpRight } from "lucide-react";
 import type { SystemAnalytics } from "@/api/client";
 import { count, money } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import { Link } from "@/navigation";
 import {
   Card,
@@ -42,20 +44,43 @@ export function SectionCards({
   return (
     <div className="grid grid-cols-1 gap-4" data-overview-kpis>
       {cards.map((card) => (
-        <Card key={card.title} aria-busy={pending}>
+        <Card
+          key={card.title}
+          aria-busy={pending}
+          className={card.href && !pending ? "group/card relative transition-colors hover:bg-muted/40" : undefined}
+        >
           <CardHeader>
-            <CardDescription title={card.description}>{card.title}</CardDescription>
+            <CardDescription
+              title={card.description}
+              className={card.href ? "flex items-center justify-between gap-1.5" : undefined}
+            >
+              {card.title}
+              {card.href && !pending && (
+                <ArrowUpRight
+                  aria-hidden="true"
+                  className="size-3.5 shrink-0 text-muted-foreground transition-transform group-hover/card:translate-x-0.5 group-hover/card:-translate-y-0.5"
+                />
+              )}
+            </CardDescription>
             <CardTitle
               data-value-length={pending ? undefined : card.value.length}
               tabIndex={pending || card.href || card.value === "—" ? undefined : 0}
               role={card.href ? undefined : "group"}
               aria-label={pending || card.href ? undefined : `${card.title}：${card.value}`}
-              className="overview-metric-value min-w-0 overflow-x-auto text-xl font-semibold whitespace-nowrap tabular-nums focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+              className={cn(
+                "overview-metric-value min-w-0 text-xl font-semibold whitespace-nowrap tabular-nums focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+                !card.href && "overflow-x-auto",
+              )}
             >
               {pending ? (
                 <Skeleton className="h-lh w-3/4" />
               ) : card.href ? (
-                <Link to={card.href}>{card.value}</Link>
+                <Link
+                  to={card.href}
+                  className="after:absolute after:inset-0 group-hover/card:underline"
+                >
+                  {card.value}
+                </Link>
               ) : (
                 card.value
               )}
