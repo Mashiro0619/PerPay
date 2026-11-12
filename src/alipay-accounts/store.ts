@@ -15,7 +15,7 @@ import {
 import { SettingsError, type SettingsAuditContext } from "../settings/store.ts";
 import { SettingsFieldError } from "../settings/validation.ts";
 import { ALIPAY_ACCOUNT_GENERATION_PREFIX, AlipayAccountError, alipayAccountIdSchema, assertProductionAlipayEnvironment, type AlipayAccountSnapshot, type AlipayAccountView } from "./model.ts";
-import { collectionCodeError } from "../shared/collection-code.ts";
+import { collectionCodeError, collectionCodeId } from "../shared/collection-code.ts";
 import { verifyAlipayAccountSecrets } from "./integrity.ts";
 
 type Int = number | bigint;
@@ -133,7 +133,7 @@ export class AlipayAccountStore {
           return;
         }
       }
-      this.#assertUnique(db,id,input.environment,input.app_id);
+      this.#assertUnique(db,id,input);
       const now=Date.now();
       const providerKey=input.app_id?this.#newBinding(db,input,now):null;
       db.prepare(`INSERT INTO alipay_accounts(account_id,revision,name,enabled,code_payload,environment,app_id,provider_account_key,created_at,updated_at)
@@ -150,7 +150,7 @@ export class AlipayAccountStore {
       const current=this.#snapshot(db,this.#revision(db,id,revision));
       assertProductionAlipayEnvironment(current.environment);
       assertProductionAlipayEnvironment(input.environment);
-      this.#assertUnique(db,id,input.environment,input.app_id);
+      this.#assertUnique(db,id,input);
       const identityChanged=current.appId!==input.app_id||current.environment!==input.environment;
       if(identityChanged&&current.pendingApplicationKey) throw new SettingsError("provider_application_key_change_pending","请先启用或放弃待启用密钥，再切换应用。");
       if(current.provider&&input.private_key&&!identityChanged&&parseProviderApplicationPrivateKey(input.private_key).fingerprint!==current.applicationKey?.fingerprint) {
@@ -348,8 +348,15 @@ export class AlipayAccountStore {
     db.prepare("INSERT INTO alipay_account_generations VALUES (?,?,?)").run(key,id,createdAt);
   }
   #advance(db:DatabaseSync,id:string,now:number):void {db.prepare("UPDATE alipay_accounts SET revision=revision+1,updated_at=? WHERE account_id=?").run(now,id);}
-  #assertUnique(db:DatabaseSync,id:string,environment:string,appId:string|null):void {
-    if(appId&&db.prepare("SELECT 1 FROM alipay_accounts WHERE environment=? AND app_id=? AND account_id!=? AND deleted_at IS NULL").get(environment,appId,id)) throw new AlipayAccountError("alipay_account_app_conflict","这个应用已用于另一个支付宝账号，请勿重复添加。");
+  #assertUnique(db:DatabaseSync,id:string,input:AccountWrite):void {
+    if(input.app_id&&db.prepare("SELECT 1 FROM alipay_accounts WHERE environment=? AND app_id=? AND account_id!=? AND deleted_at IS NULL").get(input.environment,input.app_id,id)) throw new AlipayAccountError("alipay_account_app_conflict","这个应用已用于另一个支付宝账号，请勿重复添加。");
+    const codeId = input.code_payload === null ? null : collectionCodeId(input.code_payload);
+    if (codeId === null) return;
+    const accounts = db.prepare(`SELECT name, code_payload FROM alipay_accounts
+      WHERE environment = ? AND account_id != ? AND deleted_at IS NULL AND code_payload IS NOT NULL`)
+      .all(input.environment, id) as Array<{ name: string; code_payload: string }>;
+    const duplicate = accounts.find(account => collectionCodeId(account.code_payload) === codeId);
+    if (duplicate) throw new SettingsFieldError("code_payload", `这个收款码已用于“${duplicate.name}”。更换应用请在该账号中操作。`);
   }
   #sites(db:DatabaseSync,id:string):Array<{client_id:string;name:string}> {
     return db.prepare(`SELECT site.client_id,json_extract(site.configuration,'$.name') AS name FROM sites AS site

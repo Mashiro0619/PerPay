@@ -28,7 +28,7 @@ async function withAccounts(test:(context:{db:AppDatabase;store:AlipayAccountSto
   finally{db.close();assert.ok(resolve(directory).startsWith(resolve(tmpdir())));rmSync(directory,{recursive:true,force:true});}
 }
 const configured=(service:AlipayAccountService,name:string,appId:string)=>service.create({
-  name,app_id:appId,code_payload:code,private_key:privatePem,platform_public_key:platformPem,
+  name,app_id:appId,code_payload:`https://qr.alipay.com/account_${appId}`,private_key:privatePem,platform_public_key:platformPem,
 },keyAudit());
 
 describe("Alipay account configuration",()=>{
