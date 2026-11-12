@@ -238,6 +238,7 @@ export async function runBackupCommand(
   let target: MaintenanceAuditTarget | undefined;
   try {
     const code = await executeBackupCommand(arguments_, environment, operations, activity, value => { target = value; });
+    if (command === "health" && code === 0) return code;
     activity.record({ action, outcome: code === 0 ? "SUCCESS" : "FAILURE", durationMs: Math.max(0, Date.now() - startedAt),
       subjectType: target?.subjectType, subjectId: target?.subjectId,
       details: { ...target?.details, command: action, exit_code: code, rebuild_state: arguments_.includes(REBUILD_STATE_ARGUMENT),
