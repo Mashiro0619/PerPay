@@ -91,12 +91,12 @@ export function AdministratorSessions({ detailSessionId }: { detailSessionId?: s
         case "others": return (await result(api.revokeOtherAdministratorSessions({ body: {} }))).data.revoked_sessions;
       }
     },
-    onSuccess: async (count, completed) => {
+    onSuccess: (count, completed) => {
       if (completed.kind === "logout" || completed.kind === "all") {
         session.forget();
         return;
       }
-      await queryClient.invalidateQueries({ queryKey: administratorSessionsKey });
+      void queryClient.invalidateQueries({ queryKey: administratorSessionsKey });
       setAction(null);
       success(completed.kind === "single" ? "已撤销该登录会话" : count ? `已退出 ${count} 个其他会话` : "没有其他登录会话");
     },
