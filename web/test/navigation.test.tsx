@@ -1,5 +1,6 @@
 // Preload the real chart module outside per-interaction timeouts.
 import "../src/pages/Dashboard";
+import "../src/components/chart-area-interactive";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { onlineManager, QueryClientProvider } from "@tanstack/react-query";

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { SiteOverviewList } from "@/components/site-overview-list";
 import { SystemStatusBoundary } from "@/features/system-status";
 import {
@@ -16,7 +16,6 @@ import {
 } from "@/lib/onboarding";
 import { OverviewWorkItems } from "@/components/overview-work-items";
 import { SectionCards } from "@/components/section-cards";
-import { ChartAreaInteractive } from "@/components/chart-area-interactive";
 import { RecentOrders } from "@/components/recent-orders";
 import { ErrorNotice, QueryView, ReadPausedNotice } from "@/components/request-state";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -31,6 +30,26 @@ import {
   CardDescription,
 } from "@/components/ui/card";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
+
+const ChartAreaInteractive = lazy(() =>
+  import("@/components/chart-area-interactive").then((module) => ({
+    default: module.ChartAreaInteractive,
+  })),
+);
+
+function TrendChartLoading({ range }: { range: number }) {
+  return (
+    <Card className="trend-card @container/card min-w-0" aria-busy="true">
+      <CardHeader className="trend-header">
+        <CardTitle role="heading" aria-level={2}>收款趋势</CardTitle>
+        <CardDescription className="trend-dates">正在读取近 {range} 天…</CardDescription>
+      </CardHeader>
+      <CardContent className="trend-content">
+        <Skeleton className="trend-plot w-full" data-chart-state="loading" />
+      </CardContent>
+    </Card>
+  );
+}
 
 function collectionReadinessReason(ledger: SystemStatus["ledger"]) {
   if (!ledger.enabled || ledger.state === "stopped")
@@ -181,16 +200,20 @@ function DashboardContent() {
             void analytics.refetch();
           }}
         />}
-        {!firstOrder && <ChartAreaInteractive
-          scopeKey={clientId ?? "all"}
-          analytics={data}
-          chartType={
-            settings.data?.data.display?.dashboard_chart_type ?? "AREA"
-          }
-          range={range}
-          onRangeChange={changeRange}
-          pending={!analytics.isPaused && (analytics.isPending || analytics.isPlaceholderData)}
-        />}
+        {!firstOrder && (
+          <Suspense fallback={<TrendChartLoading range={range} />}>
+            <ChartAreaInteractive
+              scopeKey={clientId ?? "all"}
+              analytics={data}
+              chartType={
+                settings.data?.data.display?.dashboard_chart_type ?? "AREA"
+              }
+              range={range}
+              onRangeChange={changeRange}
+              pending={!analytics.isPaused && (analytics.isPending || analytics.isPlaceholderData)}
+            />
+          </Suspense>
+        )}
       </div>
       {!clientId && <SiteOverviewList range={range} />}
       <div className="overview-records" data-work-empty={workEmpty || undefined}>
