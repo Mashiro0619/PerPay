@@ -316,6 +316,11 @@ export function ListQueryToolbar({
                 {primaryControls}
               </div>
             )}
+            {advancedControls.length > 0 && <Button type="button" variant="outline" disabled={busy}
+              aria-expanded={advancedOpen} aria-controls={advancedId} data-list-advanced-trigger
+              onClick={() => setAdvancedOpen(open => !open)}>
+              高级筛选<ChevronDown className={advancedOpen ? "rotate-180" : undefined} data-icon="inline-end" />
+            </Button>}
             {desktopActions && (
               <div
                 className="ml-auto flex shrink-0 items-center gap-2"
@@ -324,13 +329,8 @@ export function ListQueryToolbar({
                 {desktopActions}
               </div>
             )}
-            {advancedControls.length > 0 && <Button type="button" variant="outline" disabled={busy}
-              aria-expanded={advancedOpen} aria-controls={advancedId} data-list-advanced-trigger
-              onClick={() => setAdvancedOpen(open => !open)}>
-              高级筛选<ChevronDown className={advancedOpen ? "rotate-180" : undefined} data-icon="inline-end" />
-            </Button>}
             <Popover open={displayOpen} onOpenChange={setDisplayOpen}>
-              <PopoverTrigger render={<Button type="button" variant="outline" aria-label="列表显示" data-list-display-trigger />}>
+              <PopoverTrigger render={<Button type="button" variant="outline" className={!desktopActions ? "ml-auto" : undefined} aria-label="列表显示" data-list-display-trigger />}>
                 <Columns3 data-icon="inline-start" />显示
               </PopoverTrigger>
               <PopoverContent align="end" className="max-h-[min(36rem,calc(100dvh-2rem))] overflow-y-auto" data-list-display-menu>

@@ -209,6 +209,13 @@ describe("desktop business list composition", () => {
         filters.compareDocumentPosition(actions!) &
           Node.DOCUMENT_POSITION_FOLLOWING,
       ).toBeTruthy();
+      const advanced = row.querySelector("[data-list-advanced-trigger]");
+      if (advanced) {
+        expect(
+          advanced.compareDocumentPosition(actions!) &
+            Node.DOCUMENT_POSITION_FOLLOWING,
+        ).toBeTruthy();
+      }
       if (path === "/orders") {
         expect(screen.queryByRole("button", { name: "测试收款" })).not.toBeInTheDocument();
       }
