@@ -9,6 +9,8 @@ import { useSuccessToast } from "@/components/Feedback";
 import { ErrorNotice, QueryView } from "@/components/request-state";
 import { SitePolicyFields } from "@/components/SitePolicyFields";
 import { siteTimeoutError, siteTimeoutSeconds } from "@/lib/site-timeout";
+import { isOperationResultUnknown, useOperationWait } from "@/hooks/use-operation-wait";
+import { waitForOperation } from "@/lib/operation-timeout";
 import { SiteConfigurationConflicts } from "@/components/site-configuration-conflicts";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -54,6 +56,7 @@ export default function SiteDefaultsPage() {
 
 function DefaultsEditor({ initial }: { initial: DefaultsSnapshot }) {
   const overlay = useOverlayContext();
+  const run = useOperationWait();
   const formId = useId();
   const [section, setSection] = useState("orders");
   const formRef = useRef<HTMLFormElement>(null);
@@ -85,7 +88,8 @@ function DefaultsEditor({ initial }: { initial: DefaultsSnapshot }) {
       if (timeoutError) throw new Error(timeoutError);
       if (!onlineManager.isOnline() || !navigator.onLine)
         throw new Error("网络已断开，模板未提交。恢复连接后请重新提交。");
-      return result(api.updateSiteDefaults({ body: { revision: saved.revision, policy: draft } }));
+      void queryClient.invalidateQueries({ queryKey: defaultsKey, exact: true, refetchType: "none" });
+      return run(signal => result(api.updateSiteDefaults({ body: { revision: saved.revision, policy: draft }, signal })));
     },
     onSuccess: async response => {
       // Publish a completed save even when its editor has been left.
@@ -101,7 +105,8 @@ function DefaultsEditor({ initial }: { initial: DefaultsSnapshot }) {
       setFeedback("模板已保存");
     },
     onError: error => {
-      if (!(error instanceof ApiError) || error.status !== 409 || error.code !== "site_revision_conflict") return;
+      if (!isOperationResultUnknown(error) &&
+          (!(error instanceof ApiError) || error.status !== 409 || error.code !== "site_revision_conflict")) return;
       void queryClient.invalidateQueries({ queryKey: defaultsKey, exact: true, refetchType: "none" });
       if (!mounted.current) return;
       setNeedsReview(true);
@@ -122,7 +127,8 @@ function DefaultsEditor({ initial }: { initial: DefaultsSnapshot }) {
     setReview(null);
     setChoices({});
     save.reset();
-    setFeedback("最新模板已合并，尚未保存");
+    const aligned = JSON.stringify(policy) === JSON.stringify(snapshot.policy) && (timeoutResolved || !siteTimeoutError(timeoutRaw));
+    setFeedback(aligned ? "已重新读取，当前模板与服务器一致。" : "最新模板已合并，尚未保存");
   }
 
   const reload = useMutation({
@@ -133,9 +139,15 @@ function DefaultsEditor({ initial }: { initial: DefaultsSnapshot }) {
         throw new Error("网络已断开，尚未重新读取模板。恢复连接后请重试。");
       const controller = new AbortController();
       reloadController.current = controller;
-      const response = await result(api.getSiteDefaults({ signal: controller.signal }));
-      controller.signal.throwIfAborted();
-      return cacheDefaults(response.data, controller.signal);
+      try {
+        return await waitForOperation(controller, async signal => {
+          const response = await result(api.getSiteDefaults({ signal }));
+          signal.throwIfAborted();
+          return cacheDefaults(response.data, signal);
+        });
+      } finally {
+        if (reloadController.current === controller) reloadController.current = null;
+      }
     },
     onSuccess: snapshot => {
       if (!mounted.current) return;
@@ -148,7 +160,8 @@ function DefaultsEditor({ initial }: { initial: DefaultsSnapshot }) {
 
   const busy = save.isPending || reload.isPending;
   useOverlayCloseGuard(() => busy);
-  const requiresReview = needsReview || !!review || (initial.revision > saved.revision && dirty);
+  const writeResultUnknown = isOperationResultUnknown(save.error);
+  const requiresReview = writeResultUnknown || needsReview || !!review || (initial.revision > saved.revision && dirty);
   useEffect(() => {
     if (busy || initial.revision <= saved.revision) return;
     if (dirty || needsReview) {
@@ -190,9 +203,11 @@ function DefaultsEditor({ initial }: { initial: DefaultsSnapshot }) {
       <ErrorNotice error={reload.error} />
       {requiresReview && (
         <Alert>
-          <AlertTitle>默认模板已变更</AlertTitle>
+          <AlertTitle>{writeResultUnknown ? "默认模板保存结果待确认" : "默认模板已变更"}</AlertTitle>
           <AlertDescription>
-            <p>你的修改已保留。读取最新模板将合并无冲突项，冲突需核对；不会自动保存。</p>
+            <p>{writeResultUnknown
+              ? "输入和操作前的版本已保留。请读取最新模板核对保存结果，再继续修改。"
+              : "你的修改已保留。读取最新模板将合并无冲突项，冲突需核对；不会自动保存。"}</p>
             <Button variant="outline" disabled={busy} onClick={() => reload.mutate()}>
               {reload.isPending ? "正在读取…" : "读取最新模板并核对"}
             </Button>

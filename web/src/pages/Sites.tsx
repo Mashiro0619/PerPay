@@ -34,6 +34,8 @@ import { SitePolicyFields, SiteTextField } from "@/components/SitePolicyFields";
 import { SiteCollectionFields } from "@/components/site-collection-fields";
 import { accountState, alipayAccountsQuery, type AlipayAccount, type SiteCollection } from "@/lib/alipay-accounts";
 import { siteTimeoutError, siteTimeoutSeconds } from "@/lib/site-timeout";
+import { isOperationResultUnknown, useOperationWait } from "@/hooks/use-operation-wait";
+import { waitForOperation } from "@/lib/operation-timeout";
 import { SiteConfigurationConflicts } from "@/components/site-configuration-conflicts";
 import { SiteClientIdChange } from "@/components/site-client-id-change";
 import { SiteIntegrationAssistant, type SiteIntegrationControls } from "@/components/site-integration-assistant";
@@ -215,10 +217,11 @@ export function SiteEditorPage() {
   const { clientId } = useParams();
   return clientId ? <ExistingSiteEditor /> : <CreateSite />;
 }
-async function cacheSite(site: Site): Promise<Site> {
+async function cacheSite(site: Site, signal?: AbortSignal): Promise<Site> {
   // A GET begun before this write must not replace the committed snapshot later.
   await queryClient.cancelQueries({ queryKey: siteEditorKey(site.client_id) });
   await queryClient.cancelQueries({ queryKey: ["workspace-site", site.client_id] });
+  signal?.throwIfAborted();
   const snapshot = latestEditorSnapshot(site);
   queryClient.setQueryData(siteEditorKey(site.client_id), snapshot);
   queryClient.setQueryData<{ data: Site }>(["workspace-site", site.client_id], previous =>
@@ -267,6 +270,7 @@ function SiteEditor({
   tabbed?: boolean;
 }) {
   const overlay = useOverlayContext();
+  const run = useOperationWait();
   const formId = useId();
   const formRef = useRef<HTMLFormElement>(null);
   const [activeSection, setActiveSection] = useState(initialSection);
@@ -414,8 +418,10 @@ function SiteEditor({
     }
   }
   const setFeedback = useSuccessToast();
-  const revisionConflict = (error: unknown) => {
-    if (!isSiteRevisionConflict(error)) return;
+  const requireWriteReview = (error: unknown) => {
+    if (!isSiteRevisionConflict(error) && !isOperationResultUnknown(error)) return;
+    if (saved) void queryClient.invalidateQueries({ queryKey: siteEditorKey(saved.client_id), refetchType: "none" });
+    if (!mounted.current) return;
     setNeedsReview(true);
     setReview(null);
     setChoices({});
@@ -426,19 +432,19 @@ function SiteEditor({
     retry: false,
     mutationFn: async () => {
       if (timeoutError) throw new Error(timeoutError);
-      return (
-      saved
-        ? result(
-            api.updateSite({
-              path: { clientId: saved.client_id },
-              body: { revision: saved.revision, configuration: draft },
-            }),
-          )
-        : Promise.reject(new Error("缺少业务网站身份")));
+      if (!saved) throw new Error("缺少业务网站身份");
+      void queryClient.invalidateQueries({ queryKey: siteEditorKey(saved.client_id), refetchType: "none" });
+      return run(signal => result(api.updateSite({
+        path: { clientId: saved.client_id },
+        body: { revision: saved.revision, configuration: draft },
+        signal,
+      })));
     },
-    onError: revisionConflict,
+    onError: requireWriteReview,
     onSuccess: async (response) => {
       const latest = await cacheSite(response.data);
+      void queryClient.invalidateQueries({ queryKey: ["sites"] });
+      if (!mounted.current) return;
       observeSecretRevision(latest.revision);
       setSaved(response.data);
       setDraft(structuredClone(response.data.configuration));
@@ -447,13 +453,26 @@ function SiteEditor({
       setReview(null);
       clearDraft();
       setFeedback("业务网站配置已保存");
-      void queryClient.invalidateQueries({ queryKey: ["sites"] });
       if (!saved) {
         void queryClient.invalidateQueries({ queryKey: ["settings"] });
         void navigate("/sites/" + response.data.client_id);
       }
     },
   });
+  function completeDeletion(site: Site, originKey: string) {
+    deletionConfirmed.current = true;
+    const returnToList = mounted.current && currentNavigation.current.key === originKey && !currentNavigation.current.pending;
+    // A confirmed deletion releases only this editor's parent and child drafts.
+    integrationControls.current?.discardDraft();
+    clearDraft();
+    queryClient.removeQueries({ queryKey: siteEditorKey(site.client_id) });
+    queryClient.removeQueries({ queryKey: ["workspace-site", site.client_id] });
+    void queryClient.invalidateQueries({ queryKey: ["site-overview"] });
+    void queryClient.invalidateQueries({ queryKey: ["sites"] });
+    void queryClient.invalidateQueries({ queryKey: ["settings"] });
+    // Clear shared data even after departure, but never replace a newer navigation.
+    if (returnToList) void navigate("/sites", { preserveSelectedSite: false });
+  }
   const action = useMutation({
     networkMode: "always",
     retry: false,
@@ -462,31 +481,19 @@ function SiteEditor({
     ): Promise<void> => {
       if (!saved) return;
       const path = { clientId: saved.client_id };
+      void queryClient.invalidateQueries({ queryKey: siteEditorKey(saved.client_id), refetchType: "none" });
       if (kind === "delete") {
         if (integrationControls.current?.isWritePending()) {
           throw new Error("易支付设置仍在保存，请完成后再删除网站。");
         }
         deletionConfirmed.current = false;
         const originKey = currentNavigation.current.key;
-        await result(
-          api.deleteSite({ path, body: { revision: saved.revision } }),
-        );
-        deletionConfirmed.current = true;
-        const returnToList = mounted.current && currentNavigation.current.key === originKey && !currentNavigation.current.pending;
-        // A confirmed deletion releases only this editor's parent and child drafts.
-        integrationControls.current?.discardDraft();
-        clearDraft();
-        queryClient.removeQueries({
-          queryKey: ["site-editor", saved.client_id],
-        });
-        queryClient.removeQueries({
-          queryKey: ["workspace-site", saved.client_id],
-        });
-        void queryClient.invalidateQueries({ queryKey: ["site-overview"] });
-        void queryClient.invalidateQueries({ queryKey: ["sites"] });
-        void queryClient.invalidateQueries({ queryKey: ["settings"] });
-        // Clear shared data even after departure, but never replace a newer navigation.
-        if (returnToList) void navigate("/sites", { preserveSelectedSite: false });
+        try {
+          await run(signal => result(api.deleteSite({ path, body: { revision: saved.revision }, signal })));
+        } catch (error) {
+          if (!(error instanceof ApiError && error.status === 404 && error.code === "site_not_found")) throw error;
+        }
+        completeDeletion(saved, originKey);
         return;
       }
       observeSecretRevision(latestEditorSnapshot(saved).site.revision);
@@ -494,21 +501,24 @@ function SiteEditor({
       secretDisplayRequest.current = displayGeneration;
       secretDisplayMode.current = "rotate";
       setRevealed(null);
-      const response = await result(
+      const response = await run(signal => result(
         kind === "api"
           ? api.rotateSiteApiSecret({
               path,
               body: { revision: saved.revision },
+              signal,
             })
           : api.rotateSiteWebhookSecret({
               path,
               body: { revision: saved.revision },
+              signal,
             }),
-      );
+      ));
       // Publishing this rotation's own revision must keep its returned key valid.
       // A newer snapshot still invalidates the display without cancelling the write.
       observedSecretRevision.current = Math.max(observedSecretRevision.current, response.data.site.revision);
       const latest = await cacheSite(response.data.site);
+      if (!mounted.current) return;
       observeSecretRevision(latest.revision);
       setSaved(response.data.site);
       const superseded = response.data.site.revision < observedSecretRevision.current;
@@ -532,7 +542,8 @@ function SiteEditor({
         : "密钥已生成或轮换，请更新业务网站配置。");
     },
     onError: async (error, kind) => {
-      revisionConflict(error);
+      requireWriteReview(error);
+      if (kind !== "delete" && mounted.current) hideSecret();
       if (saved && kind !== "delete") {
         // Reopening the editor must also reread an operation's uncertain state.
         await queryClient.cancelQueries({ queryKey: siteEditorKey(saved.client_id) });
@@ -551,9 +562,13 @@ function SiteEditor({
     setReview(null);
     setChoices({});
     setNeedsReview(false);
+    const checkedSecret = action.variables === "api" || action.variables === "webhook";
+    const aligned = JSON.stringify(configuration) === JSON.stringify(site.configuration) && (timeoutResolved || !siteTimeoutError(timeoutRaw));
     save.reset();
     action.reset();
-    setFeedback("最新配置已合并，尚未保存");
+    setFeedback(aligned
+      ? checkedSecret ? "已重新读取密钥状态，请查看当前密钥并更新业务网站配置。" : "已重新读取，当前配置与服务器一致。"
+      : "最新配置已合并，尚未保存");
   }
   const reload = useMutation({
     networkMode: "always",
@@ -562,12 +577,28 @@ function SiteEditor({
       if (!saved) throw new Error("缺少业务网站身份");
       const controller = new AbortController();
       reloadController.current = controller;
-      const response = await result(api.getSite({ path: { clientId: saved.client_id }, signal: controller.signal }));
-      controller.signal.throwIfAborted();
-      return cacheSite(response.data);
+      const originKey = currentNavigation.current.key;
+      try {
+        return await waitForOperation(controller, async signal => {
+          try {
+            const response = await result(api.getSite({ path: { clientId: saved.client_id }, signal }));
+            signal.throwIfAborted();
+            return await cacheSite(response.data, signal);
+          } catch (error) {
+            if (error instanceof ApiError && error.status === 404 && error.code === "site_not_found") {
+              signal.throwIfAborted();
+              completeDeletion(saved, originKey);
+              return null;
+            }
+            throw error;
+          }
+        });
+      } finally {
+        if (reloadController.current === controller) reloadController.current = null;
+      }
     },
     onSuccess: site => {
-      if (!mounted.current || !saved) return;
+      if (!site || !mounted.current || !saved) return;
       observeSecretRevision(site.revision);
       const merged = mergeSiteConfiguration(saved.configuration, draft, site.configuration, tabbed ? "all" : section);
       setChoices({});
@@ -577,7 +608,7 @@ function SiteEditor({
   });
   const errors = save.error instanceof ApiError ? save.error.fields : {};
   const busy = save.isPending || action.isPending || reload.isPending || secretReadPending;
-  useOverlayCloseGuard(() => save.isPending || reload.isPending || (action.isPending && !deletionConfirmed.current));
+  useOverlayCloseGuard(() => save.isPending || ((reload.isPending || action.isPending) && !deletionConfirmed.current));
   useEffect(() => {
     if (!tabbed || !(save.error instanceof ApiError)) return;
     const field = Object.keys(save.error.fields)[0] ?? "";
@@ -586,7 +617,8 @@ function SiteEditor({
   useEffect(() => {
     if (!busy && save.error) formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
   }, [section, save.error, busy]);
-  const requiresConfigurationReview = needsReview || !!review || (!!initial && !!saved && initial.revision > saved.revision && dirty);
+  const writeResultUnknown = isOperationResultUnknown(save.error) || isOperationResultUnknown(action.error);
+  const requiresConfigurationReview = writeResultUnknown || needsReview || !!review || (!!initial && !!saved && initial.revision > saved.revision && dirty);
   const requiresSecretReview = action.isError && (action.variables === "api" || action.variables === "webhook");
   const requiresReview = requiresConfigurationReview || requiresSecretReview;
   useEffect(() => {
@@ -675,9 +707,11 @@ function SiteEditor({
       <ErrorNotice error={reload.error} />
       {requiresReview && (
         <Alert>
-          <AlertTitle>{requiresConfigurationReview ? "业务网站配置已变更" : "核对密钥操作结果"}</AlertTitle>
+          <AlertTitle>{writeResultUnknown ? "操作结果待确认" : requiresConfigurationReview ? "业务网站配置已变更" : "核对密钥操作结果"}</AlertTitle>
           <AlertDescription>
-            <p>{requiresConfigurationReview
+            <p>{writeResultUnknown
+              ? "输入和操作前的版本已保留。请读取最新配置核对结果，再继续保存、轮换或删除。"
+              : requiresConfigurationReview
               ? "你的修改已保留。读取最新配置将合并无冲突项，冲突需核对；不会自动保存或重试密钥操作。"
               : "重新读取密钥状态后，可查看已保存的密钥。未保存的配置会保留。"}</p>
             <Button ref={reloadTrigger} variant="outline" disabled={busy} onClick={() => reload.mutate()}>

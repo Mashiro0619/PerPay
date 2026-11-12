@@ -6,6 +6,7 @@ import { api, ApiError, queryClient, result, type AlipayAccountInput } from "@/a
 import { useDirtyDraft, useOperationNavigation } from "@/drafts";
 import { useFixedOperation } from "@/lib/fixed-operation";
 import { useOperationKey } from "@/lib/idempotency";
+import { isOperationResultUnknown, useOperationWait } from "@/hooks/use-operation-wait";
 import { Link, useNavigate } from "@/navigation";
 import {
   accountHealth,
@@ -265,6 +266,7 @@ export function AlipayAccountEditor({
   const overlay = useOverlayContext();
   const tabbed = !!overlay || !!onBack;
   const formId = useId();
+  const runOperation = useOperationWait();
   const navigate = useNavigate();
   const location = useLocation();
   const navigationFeedback = location.state as {
@@ -300,10 +302,9 @@ export function AlipayAccountEditor({
   >(null);
   const [activationKey, setActivationKey] = useState("");
   const [keyChangeId, setKeyChangeId] = useState(() => crypto.randomUUID());
-  const [needsReload, setNeedsReload] = useState(false);
+  const [needsReload, setNeedsReload] = useState<"conflict" | "unknown" | null>(null);
   const [review, setReview] = useState<{ account: AlipayAccount; draft: AccountDraft; conflicts: AccountConflict[] } | null>(null);
   const [choices, setChoices] = useState<Partial<Record<AccountField, "local" | "remote">>>({});
-  const reloadController = useRef<AbortController | null>(null);
   const form = useRef<HTMLFormElement>(null);
   const invalidDraftField = useRef<HTMLElement | null>(null);
   const focusedSaveError = useRef<Error | null>(null);
@@ -313,7 +314,6 @@ export function AlipayAccountEditor({
     mounted.current = true;
     return () => {
       mounted.current = false;
-      reloadController.current?.abort();
     };
   }, []);
   const dirty =
@@ -325,9 +325,11 @@ export function AlipayAccountEditor({
   const clear = useDirtyDraft(dirty);
   const clearActivationDraft = useDirtyDraft(activationKey !== "");
 
-  function handleRevisionConflict(error: Error) {
-    if (error instanceof ApiError && error.code === "alipay_account_revision_conflict") {
-      setNeedsReload(true);
+  function handleWriteError(error: Error) {
+    const unknown = isOperationResultUnknown(error);
+    if (unknown ||
+        (error instanceof ApiError && error.code === "alipay_account_revision_conflict")) {
+      setNeedsReload(unknown ? "unknown" : "conflict");
       setConfirmation(null);
       setSavedMessage("");
     }
@@ -342,7 +344,7 @@ export function AlipayAccountEditor({
     setDraft(configuration);
     if (!keepPrivateKey) setPrivateKey("");
     setKeyChangeId(crypto.randomUUID());
-    setNeedsReload(false);
+    setNeedsReload(null);
     setReview(null);
     setChoices({});
     setConfirmation(null);
@@ -360,14 +362,20 @@ export function AlipayAccountEditor({
     mutationFn: async () => {
       if (!onlineManager.isOnline() || !navigator.onLine)
         throw new Error("网络已断开，恢复连接后请重新读取。");
-      const controller = new AbortController();
-      reloadController.current = controller;
-      const response = await result(api.getAlipayAccount({ path: { accountId: saved!.id }, signal: controller.signal }));
-      controller.signal.throwIfAborted();
-      return response.data;
+      try {
+        const response = await runOperation(signal => result(api.getAlipayAccount({ path: { accountId: saved!.id }, signal })));
+        return response.data;
+      } catch (error) {
+        if (error instanceof ApiError && error.code === "alipay_account_not_found") return null;
+        throw error;
+      }
     },
     onSuccess: (account) => {
       if (!mounted.current) return;
+      if (account === null) {
+        leaveDeletedAccount();
+        return;
+      }
       const base = accountConfiguration(saved);
       const remote = accountConfiguration(account);
       const configuration = { ...remote };
@@ -407,10 +415,11 @@ export function AlipayAccountEditor({
   }
   const check = useMutation({
     networkMode: "always",
+    retry: false,
     onMutate: () => { completedNavigation.current = false; setInitialCheckFailure(undefined); },
     mutationFn: (id: string) => {
       if (historical) throw new Error("此账号仅保留历史记录，请添加已上线应用的支付宝账号。");
-      return result(api.checkAlipayAccount({ path: { accountId: id }, body: {} }));
+      return runOperation(signal => result(api.checkAlipayAccount({ path: { accountId: id }, body: {}, signal })));
     },
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: alipayAccountsKey });
@@ -419,7 +428,8 @@ export function AlipayAccountEditor({
   });
   const save = useMutation({
     networkMode: "always",
-    onError: handleRevisionConflict,
+    retry: false,
+    onError: handleWriteError,
     onMutate: () => { completedNavigation.current = false; },
     mutationFn: async (checkAfter: boolean) => {
       if (historical) throw new Error("此账号仅保留历史记录，请添加已上线应用的支付宝账号。");
@@ -433,12 +443,13 @@ export function AlipayAccountEditor({
         ...(privateKey.trim() ? { private_key: privateKey.trim() } : {}),
       };
       if (!saved) throw new Error("请先创建账号。");
-      const response = await result(
+      const response = await runOperation(signal => result(
         api.updateAlipayAccount({
           path: { accountId: saved.id },
           body: { ...input, revision: saved.revision },
+          signal,
         }),
-      );
+      ));
       return { account: response.data, checkAfter, created: false };
     },
     onSuccess: finishSave,
@@ -480,7 +491,8 @@ export function AlipayAccountEditor({
   });
   const key = useMutation({
     networkMode: "always",
-    onError: handleRevisionConflict,
+    retry: false,
+    onError: handleWriteError,
     onMutate: () => { completedNavigation.current = false; },
     mutationFn: async (
       action: "generate" | "regenerate" | "activate" | "discard",
@@ -489,14 +501,15 @@ export function AlipayAccountEditor({
       if (historical && action !== "discard") throw new Error("此账号仅保留历史记录，请添加已上线应用的支付宝账号。");
       const path = { accountId: saved.id };
       if (action === "generate")
-        return result(
+        return runOperation(signal => result(
           api.generateAlipayAccountApplicationKey({
             path,
             body: { revision: saved.revision },
+            signal,
           }),
-        );
+        ));
       if (action === "regenerate")
-        return result(
+        return runOperation(signal => result(
           api.regenerateAlipayAccountApplicationKey({
             path,
             body: {
@@ -504,19 +517,21 @@ export function AlipayAccountEditor({
               change_id: keyChangeId,
               base_fingerprint: saved.application_key_fingerprint!,
             },
+            signal,
           }),
-        );
+        ));
       const pending = saved.pending_application_key;
       if (!pending) throw new Error("没有待启用的应用密钥。");
       const body = { revision: saved.revision, change_id: pending.change_id };
       return action === "activate"
-        ? result(
+        ? runOperation(signal => result(
             api.activateAlipayAccountApplicationKey({
               path,
               body: { ...body, platform_public_key: activationKey.trim() },
+              signal,
             }),
-          )
-        : result(api.discardAlipayAccountApplicationKey({ path, body }));
+          ))
+        : runOperation(signal => result(api.discardAlipayAccountApplicationKey({ path, body, signal })));
     },
     onSuccess: async ({ data }, action) => {
       setConfirmation(null);
@@ -537,26 +552,36 @@ export function AlipayAccountEditor({
   });
   const remove = useMutation({
     networkMode: "always",
-    onError: handleRevisionConflict,
+    retry: false,
+    onError: handleWriteError,
     onMutate: () => { completedNavigation.current = false; },
-    mutationFn: () =>
-      result(
-        api.deleteAlipayAccount({
-          path: { accountId: saved!.id },
-          body: { revision: saved!.revision },
-        }),
-      ),
-    onSuccess: () => {
-      clear();
-      clearActivationDraft();
-      completedNavigation.current = true;
-      queryClient.removeQueries({ queryKey: alipayAccountKey(saved!.id) });
-      void queryClient.invalidateQueries({ queryKey: alipayAccountsKey });
-      void queryClient.invalidateQueries({ queryKey: ["settings"] });
-      if (onBack) onBack();
-      else void navigate("/settings/accounts");
+    mutationFn: async () => {
+      try {
+        return await runOperation(signal => result(
+          api.deleteAlipayAccount({
+            path: { accountId: saved!.id },
+            body: { revision: saved!.revision },
+            signal,
+          }),
+        ));
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 404 && error.code === "alipay_account_not_found") return null;
+        throw error;
+      }
     },
+    onSuccess: leaveDeletedAccount,
   });
+  function leaveDeletedAccount() {
+    clear();
+    clearActivationDraft();
+    setConfirmation(null);
+    completedNavigation.current = true;
+    queryClient.removeQueries({ queryKey: alipayAccountKey(saved!.id) });
+    void queryClient.invalidateQueries({ queryKey: alipayAccountsKey });
+    void queryClient.invalidateQueries({ queryKey: ["settings"] });
+    if (onBack) onBack();
+    else void navigate("/settings/accounts");
+  }
   const saving = save.isPending || creation.isPending;
   const saveError = saved ? save.error : creation.error;
   const busy = saving || key.isPending || remove.isPending || check.isPending || reload.isPending;
@@ -565,7 +590,7 @@ export function AlipayAccountEditor({
     onRefreshLockChange?.(refreshLocked);
     return () => onRefreshLockChange?.(false);
   }, [onRefreshLockChange, refreshLocked]);
-  const requiresReview = needsReload || review !== null;
+  const requiresReview = needsReload !== null || review !== null;
   const editingBlocked = busy || requiresReview || !!creation.recovery;
   const navigation = useOperationNavigation(creation.isPending || !!creation.recovery,
     () => !creationConfirmed.current && (creation.isBusy() || !!creation.recovery));
@@ -679,9 +704,9 @@ export function AlipayAccountEditor({
         </Button></OverlayActions>
       </>}
       {needsReload && !review && <Alert>
-        <AlertTitle>账号配置已在其他会话中更新</AlertTitle>
+        <AlertTitle>{needsReload === "unknown" ? "操作结果待核对" : "账号配置已在其他会话中更新"}</AlertTitle>
         <AlertDescription>
-          <p>你的修改已保留，重新读取后可继续操作。</p>
+          <p>{needsReload === "unknown" ? "你的输入已保留。请重新读取账号，核对操作是否完成后再继续。" : "你的修改已保留，重新读取后可继续操作。"}</p>
           <Button variant="outline" disabled={busy} onClick={() => reload.mutate()}>{reload.isPending ? "正在读取…" : "重新读取账号"}</Button>
         </AlertDescription>
       </Alert>}
@@ -1114,7 +1139,7 @@ export function AlipayAccountEditor({
           <AlertDialogFooter>
             <AlertDialogCancel disabled={busy}>取消</AlertDialogCancel>
             <AlertDialogAction
-              disabled={busy}
+              disabled={editingBlocked}
               onClick={(event) => {
                 event.preventDefault();
                 if (confirmation === "delete") remove.mutate();

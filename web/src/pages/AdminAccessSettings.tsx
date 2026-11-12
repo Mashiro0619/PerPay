@@ -6,6 +6,7 @@ import { useSuccessToast } from "@/components/Feedback";
 import { OverlayFormActions } from "@/components/overlay-actions";
 import { useOverlayCloseGuard, useOverlayContext } from "@/lib/overlay-context";
 import { useDirtyDraft } from "@/drafts";
+import { isOperationResultUnknown, useOperationWait } from "@/hooks/use-operation-wait";
 import {
   Card,
   CardHeader,
@@ -51,9 +52,11 @@ export function AdminAccessSettings({
   onSaved: (settings: RuntimeSettings, message?: string) => void;
 }) {
   const overlay = useOverlayContext();
+  const wait = useOperationWait();
   const source = useQuery({
     queryKey: ["admin-access-source"],
-    queryFn: ({ signal }) => result(api.getAdminAccessSettings({ signal })),
+    queryFn: ({ signal }) => wait(operationSignal =>
+      result(api.getAdminAccessSettings({ signal: operationSignal })), signal),
     networkMode: "always",
     retry: false,
     refetchOnWindowFocus: false,
@@ -87,8 +90,9 @@ export function AdminAccessSettings({
     mutationFn: async () => {
       if (!onlineManager.isOnline() || !navigator.onLine)
         throw new Error("网络已断开，白名单未提交。恢复连接后请重新提交。");
-      return result(
+      return wait(signal => result(
         api.updateAdminAccessSettings({
+          signal,
           body: {
             revision: draft?.revision ?? initial.revision,
             enabled,
@@ -98,7 +102,7 @@ export function AdminAccessSettings({
                 : text.split(/\r?\n/).map((value) => value.trim()),
           },
         }),
-      );
+      ));
     },
     onSuccess: (response) => {
       setDraft(null);
@@ -106,7 +110,8 @@ export function AdminAccessSettings({
       void source.refetch();
     },
     onError: (error) => {
-      if (error instanceof ApiError && error.code === "settings_revision_conflict")
+      if (isOperationResultUnknown(error) ||
+          (error instanceof ApiError && error.code === "settings_revision_conflict"))
         setNeedsReload(true);
     },
     onSettled: () => setConfirm(false),
@@ -128,6 +133,7 @@ export function AdminAccessSettings({
       return response.data!.data;
     },
     onSuccess: (snapshot) => {
+      void queryClient.invalidateQueries({ queryKey: ["settings"], exact: true });
       const base = draft?.base ?? initial;
       const normalizedText = text.trim() ? text.split(/\r?\n/).map(value => value.trim()).join("\n") : "";
       const baseText = base.cidrs.join("\n");
@@ -165,9 +171,11 @@ export function AdminAccessSettings({
       <CardContent>
         <FieldGroup>
           {needsReload && !review && <Alert>
-            <AlertTitle>配置已在其他会话中更新</AlertTitle>
+            <AlertTitle>{isOperationResultUnknown(save.error) ? "保存结果待确认" : "配置已在其他会话中更新"}</AlertTitle>
             <AlertDescription>
-              <p>你的修改已保留，重新读取后可继续保存。</p>
+              <p>{isOperationResultUnknown(save.error)
+                ? "你的填写已保留。请重新读取并核对服务器规则，再继续保存。"
+                : "你的修改已保留，重新读取后可继续保存。"}</p>
               <Button variant="outline" disabled={busy} onClick={() => reload.mutate()}>
                 {reload.isPending ? "正在读取…" : "重新读取配置"}
               </Button>

@@ -4,6 +4,7 @@ import { ShieldCheck } from "lucide-react";
 import { api, result, type RuntimeSettings } from "@/api/client";
 import { useSession } from "@/auth";
 import { useDirtyDraft } from "@/drafts";
+import { isOperationResultUnknown, useOperationWait } from "@/hooks/use-operation-wait";
 import { Link } from "@/navigation";
 import { MIN_ADMIN_PASSWORD_CHARACTERS, validatePassword } from "@/lib/format";
 import { useOverlayCloseGuard, useOverlayContext } from "@/lib/overlay-context";
@@ -52,8 +53,9 @@ function PasswordForm() {
   const [invalidField, setInvalidField] = useState<
     "password" | "confirmation" | null
   >(null);
-  useDirtyDraft(password !== "" || confirmation !== "");
+  const clearDraft = useDirtyDraft(password !== "" || confirmation !== "");
   const session = useSession();
+  const wait = useOperationWait();
   const submitting = useRef(false);
   const change = useMutation({
     // A password change must never be queued for a later reconnection.
@@ -62,11 +64,12 @@ function PasswordForm() {
     mutationFn: (newPassword: string) => {
       if (!onlineManager.isOnline() || !navigator.onLine)
         throw new Error("网络已断开，密码未提交。恢复连接后请重新提交。");
-      return result(
+      return wait(signal => result(
         api.changeAdministratorPassword({
+          signal,
           body: { new_password: newPassword },
         }),
-      );
+      ));
     },
     onSuccess: () => {
       setPassword("");
@@ -77,10 +80,11 @@ function PasswordForm() {
       submitting.current = false;
     },
   });
+  const resultUnknown = isOperationResultUnknown(change.error);
   useOverlayCloseGuard(() => submitting.current || change.isPending);
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (submitting.current || change.isPending) return;
+    if (submitting.current || change.isPending || resultUnknown) return;
     const error =
       validatePassword(password) ??
       (password !== confirmation ? "两次输入的密码不一致。" : null);
@@ -116,7 +120,7 @@ function PasswordForm() {
           <CardDescription>修改后所有设备都需重新登录。</CardDescription>
         </CardHeader>
         <CardContent>
-          <FieldSet disabled={change.isPending}>
+          <FieldSet disabled={change.isPending || resultUnknown}>
             <FieldGroup>
               <FieldGroup className="settings-fields">
                 <Field data-invalid={invalidField === "password"}>
@@ -183,10 +187,16 @@ function PasswordForm() {
         </CardContent>
         <OverlayFormActions className="justify-end">
           {overlay && <Button type="button" variant="outline" disabled={change.isPending} onClick={() => overlay.requestClose()}>取消</Button>}
+          {resultUnknown && <Button type="button" variant="outline" onClick={() => {
+            setPassword("");
+            setConfirmation("");
+            clearDraft();
+            session.forget();
+          }}>重新登录核对密码</Button>}
           <Button
             form={formId}
             type="submit"
-            disabled={!password || !confirmation || change.isPending}
+            disabled={!password || !confirmation || change.isPending || resultUnknown}
           >
             {change.isPending ? (
               <Spinner aria-hidden="true" data-icon="inline-start" />

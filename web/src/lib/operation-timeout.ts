@@ -1,3 +1,10 @@
+export class OperationTimeoutError extends Error {
+  constructor() {
+    super("等待操作结果超时。停止等待不代表服务端已取消操作。");
+    this.name = "OperationTimeoutError";
+  }
+}
+
 /** Bounds client-side waiting without claiming that a server write was cancelled. */
 export async function waitForOperation<T>(
   operation: AbortController,
@@ -29,7 +36,7 @@ export async function waitForOperation<T>(
       operation.signal.reason instanceof DOMException &&
       operation.signal.reason.name === "TimeoutError"
     )
-      throw new Error("等待操作结果超时。停止等待不代表服务端已取消操作。");
+      throw new OperationTimeoutError();
     throw error;
   } finally {
     window.clearTimeout(timer);
