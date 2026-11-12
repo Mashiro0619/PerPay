@@ -1,0 +1,20 @@
+@import "tailwindcss" source(none);
+@import "tw-animate-css";
+@import "../vendor/shadcn-tailwind.css";
+@import "../styles/theme.css";
+@import "../styles/primitives.css";
+
+/* Keep the public bundle scoped to checkout and its shared components. */
+@source "./";
+@source "../theme.tsx";
+@source "../components/copy-value.tsx";
+@source "../components/ui/alert.tsx";
+@source "../components/ui/badge.tsx";
+@source "../components/ui/button.tsx";
+@source "../components/ui/card.tsx";
+@source "../components/ui/dialog.tsx";
+@source "../components/ui/dropdown-menu.tsx";
+@source "../components/ui/separator.tsx";
+@source "../components/ui/spinner.tsx";
+@source "../components/ui/textarea.tsx";
+@source "../components/ui/tooltip.tsx";

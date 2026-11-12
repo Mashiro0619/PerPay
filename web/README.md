@@ -20,7 +20,10 @@
 | `web/src/api/generated/` | 从 OpenAPI 生成的客户端 |
 | `web/src/checkout/`、`src/shared/checkout-view.ts` | 收银台的服务端渲染、浏览器交互、状态轮询，以及允许向付款人公开的数据 |
 | `src/http/web/`、`src/shared/branding.ts` | HTML、资源加载，以及系统和网站名称的安全转义 |
-| `web/src/styles.css`、`web/public/theme.js` | 公共样式、主题与首屏外观 |
+| `web/src/styles.css` | 后台样式入口，自动扫描后台使用的 Tailwind 类名 |
+| `web/src/styles/theme.css`、`web/src/styles/primitives.css` | 后台与收银台共用的主题、控件和弹窗样式 |
+| `web/src/checkout/styles.css`、`web/src/checkout/checkout-layout.css` | 收银台样式入口与页面布局 |
+| `web/public/theme.js` | 首屏主题与外观偏好 |
 | `web/test/`、`test/`、`ui-tests/` | 已有组件、服务端和浏览器用例 |
 
 ## 开发与构建
@@ -82,6 +85,8 @@ Vite 从后端 HTML 读取是否已初始化，以及公开显示的系统和网
 常规安装和构建直接使用仓库组件。组件接受哪些 props、怎样响应鼠标和键盘、使用什么样式，都以 `web/src/components/ui/` 为准。维护时对照 [components.json](../components.json) 的 `base-nova` 配置，保留 Base UI 的焦点、键盘和弹窗行为。
 
 `web/src/vendor/shadcn-tailwind.css` 保存已固定的 shadcn 样式，来源版本、校验值和许可见 [NOTICE](../NOTICE)。更新时同步这些记录以及已有样式校验；shadcn CLI 作为组件维护工具按需使用，不加入常规运行或构建依赖。
+
+收银台通过 `web/src/checkout/styles.css` 单独生成样式，只扫描收银台目录和其中列出的共用组件。新增共用组件时，把对应文件加入这里的 `@source`；主题和基础控件的调整放到 `web/src/styles/`，并核对后台与收银台的效果。
 
 <a id="后台交互约束"></a>
 

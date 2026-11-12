@@ -1,0 +1,175 @@
+@layer base {
+  * {
+    @apply border-border outline-ring;
+  }
+  body {
+    @apply bg-background text-foreground font-sans;
+    margin: 0;
+    min-width: 320px;
+  }
+  #root,
+  #checkout-root {
+    isolation: isolate;
+  }
+  button,
+  a {
+    touch-action: manipulation;
+  }
+  [hidden] {
+    display: none !important;
+  }
+  h1,
+  h2,
+  h3,
+  h4 {
+    overflow-wrap: anywhere;
+  }
+  pre {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  /* Base UI CSPProvider disables its generated style elements. */
+  .base-ui-disable-scrollbar {
+    scrollbar-width: none;
+  }
+  .base-ui-disable-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+}
+@media (pointer: coarse) {
+  /* Keep compact visuals within independent 40px touch slots. */
+  [class~="group/button"],
+  [data-slot="toggle"],
+  [data-slot="toggle-group-item"] {
+    min-width: 40px;
+    min-height: 32px;
+    margin-block: 4px;
+  }
+  [class~="touch-icon"] {
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
+    margin-inline: 4px;
+  }
+  [class~="group/button"]::before,
+  [data-slot="toggle"]::before,
+  [data-slot="toggle-group-item"]::before,
+  [data-slot="tabs-trigger"]::before {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    /* These outlined controls use a 1px border around the padding box. */
+    width: calc(100% + 2px);
+    height: calc(100% + 2px);
+    min-width: 40px;
+    min-height: 40px;
+    transform: translate(-50%, -50%);
+  }
+  [data-slot="toggle"][data-variant="default"]::before,
+  [data-slot="toggle-group-item"][data-variant="default"]::before {
+    /* The default toggle has no border to include in the generated box. */
+    width: 100%;
+    height: 100%;
+  }
+  [class~="group/button"][type="submit"],
+  :is([data-slot="dialog-footer"], [data-slot="alert-dialog-footer"], [data-slot="sheet-footer"], [data-checkout-actions]) [class~="group/button"] {
+    min-height: 36px;
+    margin-block: 2px;
+  }
+  [data-slot="select-trigger"],
+  [data-slot="input"],
+  input[data-slot="input-group-control"],
+  [data-slot="input-group"] [class~="group/button"],
+  [data-spacing="0"] > [data-slot="toggle-group-item"],
+  [data-slot="sidebar-menu-button"],
+  [data-sidebar="menu-button"],
+  .workspace-site-choice,
+  [data-slot="dropdown-menu-item"],
+  [data-slot="dropdown-menu-sub-trigger"],
+  [data-slot="dropdown-menu-checkbox-item"],
+  [data-slot="dropdown-menu-radio-item"],
+  [data-slot="select-item"],
+  a.list-site-identity,
+  a.list-secondary-link {
+    min-width: 40px;
+    min-height: 40px;
+  }
+  [data-slot="input-group"] [class~="group/button"],
+  [data-spacing="0"] > [data-slot="toggle-group-item"] {
+    margin: 0;
+  }
+  /* Tabs and joined choices are compound controls, with a slot per choice. */
+  [data-slot="tabs-list"] {
+    min-height: max(40px, calc(2rem + 8px));
+    padding-block: 4px;
+  }
+  [data-slot="tabs-trigger"] {
+    min-width: 40px;
+    min-height: 32px;
+    height: max(32px, 2rem);
+  }
+  [data-slot="input-group"] [class~="group/button"]::before,
+  [data-slot="pagination-content"] [class~="group/button"]::before,
+  [data-spacing="0"] > [data-slot="toggle-group-item"]::before,
+  [data-slot="tabs-trigger"]::before {
+    min-width: 0;
+  }
+  [data-spacing="0"] > [data-slot="toggle-group-item"]::before {
+    width: 100%;
+  }
+  [data-slot="input-group"] {
+    height: auto;
+    min-height: 40px;
+  }
+  [data-slot="input-group-addon"][data-align="inline-start"],
+  [data-slot="input-group-addon"][data-align="inline-end"] {
+    padding-block: 0;
+  }
+  /* Preserve separation without imposing roomy spacing on every control. */
+  .site-header > div,
+  .site-header > div > .ml-auto,
+  [data-page-header-actions],
+  [data-settings-tabs-navigation],
+  [data-slot="item-actions"] {
+    gap: 4px;
+  }
+  [data-slot="sidebar-menu"],
+  [data-slot="sidebar-menu-sub"] { gap: 2px; }
+  [data-admin-dialog-body] { padding-top: 4px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+:is([data-slot="input"], [data-slot="textarea"]),
+[data-slot="input-group"]:has([data-slot="input-group-control"]:focus-visible) { --ring: var(--input-ring); }
+a:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+
+/* Copy confirmation decorates only the icon; the text and button stay stable. */
+[data-copy-feedback] { animation: copy-confirm var(--console-motion-fast, 140ms) var(--console-ease, cubic-bezier(0.22, 1, 0.36, 1)); }
+@keyframes copy-confirm { from { transform: scale(0.82); } to { transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) { [data-copy-feedback] { animation: none !important; } }
+
+/* Constrain overlays to the actual visible browser area, including the IME. */
+[data-overlay-viewport="dialog"] {
+  top: calc(var(--overlay-viewport-top, 0px) + var(--overlay-viewport-height, 100dvh) / 2);
+  left: calc(var(--overlay-viewport-left, 0px) + var(--overlay-viewport-width, 100vw) / 2);
+  width: calc(var(--overlay-viewport-width, 100vw) - 2rem);
+  min-width: 0;
+  max-height: calc(var(--overlay-viewport-height, 100dvh) - 2rem);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+[data-overlay-viewport="dialog"] > :not(button) { min-width: 0; }
+[data-overlay-viewport="dialog"] :is([data-slot="dialog-title"], [data-slot="dialog-description"], [data-slot="alert-dialog-description"]) { overflow-wrap: anywhere; }
+[data-overlay-viewport="dialog"] :is([data-slot="dialog-footer"], [data-slot="alert-dialog-footer"]) { min-width: 0; }
+[data-overlay-viewport="dialog"] :is([data-slot="dialog-footer"], [data-slot="alert-dialog-footer"]) button { height: auto; min-height: 2rem; max-width: 100%; padding-block: 0.3125rem; white-space: normal; overflow-wrap: anywhere; }
+@media (pointer: coarse) {
+  [data-overlay-viewport="dialog"] :is([data-slot="dialog-footer"], [data-slot="alert-dialog-footer"]) button { min-height: max(36px, 2rem); }
+}
