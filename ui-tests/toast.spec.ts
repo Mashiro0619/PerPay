@@ -1,4 +1,4 @@
-import type { RuntimeSettings } from "../web/src/api/generated/types.gen";
+import type { RuntimeSettings, Site } from "../web/src/api/generated/types.gen";
 import { test, expect, login, record } from "./fixtures";
 import { audit, screenshot } from "./audit";
 
@@ -6,15 +6,12 @@ for (const width of [390, 1440]) test(`${width}: success notifications remain ac
   await page.setViewportSize({ width, height: 900 });
   await page.emulateMedia({ reducedMotion: "reduce" });
   let settings: RuntimeSettings | undefined;
+  let site: Site | undefined;
+  const sitePath = manifest.routes.find(path => /^\/sites\/[^/]+$/.test(path) && !["/sites/new", "/sites/defaults"].includes(path))!;
   const savedRevisions: number[] = [];
   await page.route("**/api/admin/v1/settings", async route => {
     if (!settings) {
-      const initial: RuntimeSettings = (await (await route.fetch()).json()).data;
-      settings = {
-        ...initial, site_mode: false,
-        completion: { ...initial.completion, api: true },
-        secrets: { ...initial.secrets, api_secret: { configured: true, version: 1, fingerprint: null, masked: "synthetic", updatedAt: null } },
-      };
+      settings = (await (await route.fetch()).json()).data;
     }
     await route.fulfill({ json: { data: settings } });
   });
@@ -26,9 +23,16 @@ for (const width of [390, 1440]) test(`${width}: success notifications remain ac
     await route.fulfill({ json: { data: settings } });
   });
   const secret = "synthetic-toast-dialog-secret";
-  await page.route("**/api/admin/v1/settings/api-key/actions/rotate", async route => {
-    settings = { ...settings!, revision: settings!.revision + 1 };
-    await route.fulfill({ json: { data: { settings, secret, client_id: "default" } } });
+  await page.route("**/api/admin/v1" + sitePath, async route => {
+    if (!site) {
+      const initial: Site = (await (await route.fetch()).json()).data;
+      site = { ...initial, secrets: { ...initial.secrets, api_secret: true, webhook_secret: initial.secrets?.webhook_secret ?? false } };
+    }
+    await route.fulfill({ json: { data: site } });
+  });
+  await page.route("**/api/admin/v1" + sitePath + "/secrets/api_secret/actions/rotate", async route => {
+    site = { ...site!, revision: site!.revision + 1 };
+    await route.fulfill({ json: { data: { site, secret } } });
   });
   await login(page, manifest);
   await page.goto(manifest.origin + "/admin/settings/display");
@@ -79,15 +83,16 @@ for (const width of [390, 1440]) test(`${width}: success notifications remain ac
   await expect(success).toBeHidden();
 
   await page.clock.resume();
-  await page.goto(manifest.origin + "/admin/settings/security");
+  await page.goto(manifest.origin + "/admin" + sitePath + "/settings/integration");
+  await page.getByRole("link", { name: "编辑接入与通知", exact: true }).click();
   await page.evaluate(() => delete document.documentElement.dataset.perpayDemo);
-  const trigger = page.getByRole("button", { name: "API 密钥操作", exact: true });
+  const trigger = page.getByRole("button", { name: "轮换 API 密钥", exact: true });
   await trigger.click();
-  await page.getByRole("menuitem", { name: "轮换 API 密钥", exact: true }).click();
   await page.getByRole("button", { name: "确认轮换", exact: true }).click();
-  const keyDialog = page.getByRole("dialog", { name: "新的API 密钥", exact: true });
-  await expect(keyDialog.getByText(secret, { exact: true })).toBeVisible();
-  const notification = page.getByRole("dialog", { name: "API 密钥已更新，请同步业务服务端。", exact: true });
+  const keyDialog = page.getByRole("dialog", { name: "API 密钥", exact: true });
+  const keyContent = keyDialog.getByRole("textbox", { name: "API 密钥", exact: true });
+  await expect(keyContent).toHaveValue(secret);
+  const notification = page.getByRole("dialog", { name: "密钥已生成或轮换，请更新业务网站配置。", exact: true });
   await expect(notification).toBeVisible();
   await expect(notification).toHaveAttribute("aria-modal", "false");
   // Visibility can precede the entrance animation's final position.
@@ -96,14 +101,13 @@ for (const width of [390, 1440]) test(`${width}: success notifications remain ac
     return element.contains(document.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2));
   }), { message: "the notification lands above the key dialog" }).toBe(true);
   // Test F6 after the dialog's initial autofocus has completed.
-  await expect(keyDialog.getByRole("button", { name: "复制新的API 密钥", exact: true })).toBeFocused();
+  await expect(keyContent).toBeFocused();
   await page.keyboard.press("F6");
   await expect(page.getByRole("region", { name: "提示", exact: true })).toBeFocused();
   await page.keyboard.press("Tab");
   await expect(notification).toBeFocused();
   await page.clock.runFor(5000);
   await expect(notification).toBeVisible();
-  const keyContent = keyDialog.getByRole("textbox", { name: "密钥内容", exact: true });
   await expect(keyContent).toHaveValue(secret);
   await expect.poll(() => keyContent.evaluate(element => {
     const bounds = element.getBoundingClientRect();
@@ -119,9 +123,9 @@ for (const width of [390, 1440]) test(`${width}: success notifications remain ac
   await expect(notification.getByRole("button", { name: "关闭提示", exact: true })).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(notification).toBeHidden();
-  await expect(keyDialog.getByText(secret, { exact: true })).toBeVisible();
+  await expect(keyContent).toHaveValue(secret);
   await expect.poll(() => keyDialog.evaluate(element => element.contains(document.activeElement))).toBe(true);
-  await keyDialog.getByRole("button", { name: "完成", exact: true }).click();
+  await keyDialog.getByRole("button", { name: "关闭", exact: true }).click();
   await expect(keyDialog).toBeHidden();
   await expect(trigger).toBeFocused();
 });

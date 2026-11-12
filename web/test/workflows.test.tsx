@@ -19,7 +19,7 @@ import { ReasonDialog } from "../src/components/ReasonDialog";
 import { DetailFields } from "../src/components/detail/DetailPrimitives";
 import { AssociateIncomeAction } from "../src/components/detail/FinancialActions";
 import { FinancialDialog } from "../src/pages/FinancialDialog";
-import { PasswordEditorPage, SecuritySettings } from "../src/pages/SecuritySettings";
+import { PasswordEditorPage } from "../src/pages/SecuritySettings";
 import Settings, { SettingsEditorOverlay } from "../src/pages/Settings";
 import {
   apiError,
@@ -362,9 +362,6 @@ describe("administrator authentication", () => {
 
 describe("concise settings copy", () => {
   it.each([
-    "provider",
-    "collection",
-    "notifications",
     "security",
     "backup",
     "advanced",
@@ -385,10 +382,6 @@ describe("concise settings copy", () => {
       screen.queryByText(/基于配置版本|配置版本 \d|页面不会在后台覆盖/),
     ).not.toBeInTheDocument();
     expect(screen.queryByText("未保存")).not.toBeInTheDocument();
-    if (section === "collection") {
-      expect(screen.queryByLabelText("支付宝收款码内容")).not.toBeInTheDocument();
-      expect(screen.getByRole("link", { name: /编辑/ })).toHaveAttribute("href", "/settings/collection/edit");
-    }
     if (section === "backup") {
       expect(
         screen.getByRole("link", { name: /编辑/ }),
@@ -789,56 +782,5 @@ describe("state-changing workflows", () => {
     expect(execute.mock.calls[0]!.slice(0, 2)).toEqual(
       execute.mock.calls[1]!.slice(0, 2),
     );
-  });
-
-  it("clears revealed secrets when the tab becomes hidden", async () => {
-    const configured = {
-      ...settings,
-      secrets: {
-        ...settings.secrets,
-        api_secret: {
-          configured: true,
-          version: 1,
-          fingerprint: "a".repeat(64),
-          masked: "test…secret",
-          updatedAt: 0,
-        },
-      },
-    };
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () =>
-        json({ data: { name: "api_secret", value: "ephemeral-test-secret" } }),
-      ),
-    );
-    const user = userEvent.setup();
-    renderPage(<SecuritySettings settings={configured} onSaved={vi.fn()} />);
-    await user.click(
-      screen.getByRole("button", { name: "查看PerPay API 密钥" }),
-    );
-    expect(
-      screen.getByText(
-        "60 秒后或离开此标签页时，弹窗关闭并清除页面明文；密钥仍可再次查看。",
-      ),
-    ).toBeVisible();
-    expect(await screen.findByText("ephemeral-test-secret")).toBeVisible();
-    expect(localStorage.length).toBe(0);
-    expect(sessionStorage.length).toBe(0);
-    const original = Object.getOwnPropertyDescriptor(document, "hidden");
-    try {
-      Object.defineProperty(document, "hidden", {
-        configurable: true,
-        value: true,
-      });
-      fireEvent(document, new Event("visibilitychange"));
-      await waitFor(() =>
-        expect(
-          screen.queryByText("ephemeral-test-secret"),
-        ).not.toBeInTheDocument(),
-      );
-    } finally {
-      if (original) Object.defineProperty(document, "hidden", original);
-      else Reflect.deleteProperty(document, "hidden");
-    }
   });
 });

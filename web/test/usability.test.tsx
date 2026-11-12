@@ -24,7 +24,6 @@ import { queryClient } from "../src/api/client";
 import {
   configuredThrough,
   mountOnboarding,
-  syntheticSecret,
   systemStatus,
 } from "./onboarding-fixture";
 import themeSource from "../public/theme.js?raw";
@@ -187,44 +186,6 @@ describe("official record action menus", () => {
   });
 });
 describe("short feedback and safe settings", () => {
-  it("keeps field requirements without repeated provider and key-copy instructions", async () => {
-    mountOnboarding({ stage: 4, path: "/settings/provider/edit" });
-    expect(await screen.findByLabelText("应用 ID（App ID）")).toBeVisible();
-    expect(screen.getByLabelText("支付宝公钥")).toHaveAccessibleDescription(
-      "从支付宝应用的接口加签设置复制。",
-    );
-    expect(
-      screen.queryByText(
-        "应用公钥上传至支付宝；支付宝公钥填在下方，两者不能混用。",
-      ),
-    ).not.toBeInTheDocument();
-    expect(screen.queryByText("上传至支付宝开放平台")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "查看应用公钥" })).toBeVisible();
-  });
-  it("keeps disabled notification consequences only while notifications are disabled", () => {
-    const settings = configuredThrough(4);
-    settings.notifications!.enabled = false;
-    render(
-      <QueryClientProvider client={queryClient}>
-        <MemoryRouter>
-          <SettingsEditor
-            section="notifications"
-            settings={settings}
-            onSaved={vi.fn()}
-          />
-        </MemoryRouter>
-      </QueryClientProvider>,
-    );
-    expect(screen.getByText("通知未启用，网站需主动查单。")).toBeVisible();
-    fireEvent.click(screen.getByRole("switch", { name: "启用通知" }));
-    expect(
-      screen.queryByText("通知未启用，网站需主动查单。"),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.getByLabelText("通知地址前缀"),
-    ).toHaveAccessibleDescription("例如 https://shop.example.com，不含端口或路径。");
-    expect(screen.queryByText(/签名密钥在/)).not.toBeInTheDocument();
-  });
   it("keeps normal runtime status concise without duplicate summaries or explanatory detail controls", async () => {
     const view = mountOnboarding({ stage: 4, path: "/system" });
     const table = await screen.findByRole("table", { name: "运行环节" });
@@ -379,40 +340,6 @@ describe("short feedback and safe settings", () => {
     fireEvent.change(field, { target: { value: String(configuredThrough(4).collection_policy!.maximum_success_age_seconds) } });
     expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
     expect(view.writes()).toHaveLength(0);
-  });
-  it("never prefetches a secret on hover or appearance changes and reads only once per explicit view", async () => {
-    const control = theme();
-    const view = mountOnboarding({ stage: 4, path: "/settings/security" });
-    const user = userEvent.setup();
-    const viewKey = await screen.findByRole("button", {
-      name: "查看PerPay API 密钥",
-    });
-    await user.hover(viewKey);
-    act(() => {
-      control.setPreference("dark");
-    });
-    expect(view.writes()).toHaveLength(0);
-    await user.click(viewKey);
-    expect(await screen.findByText(syntheticSecret)).toBeVisible();
-    expect(view.writes()).toHaveLength(1);
-    act(() => {
-      control.setPreference("light");
-    });
-    expect(view.writes()).toHaveLength(1);
-    expect(
-      JSON.stringify(
-        queryClient
-          .getQueryCache()
-          .getAll()
-          .map((query) => query.state.data),
-      ),
-    ).not.toContain(syntheticSecret);
-    await user.click(
-      within(screen.getByRole("dialog")).getByRole("button", {
-        name: /^关闭$/,
-      }),
-    );
-    expect(screen.queryByText(syntheticSecret)).not.toBeInTheDocument();
   });
   it("keeps business reminders in navigation and shows actual runtime queues without raw diagnostic totals", async () => {
     mountOnboarding({

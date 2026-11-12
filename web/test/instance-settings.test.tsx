@@ -71,10 +71,9 @@ describe("website-aware instance settings", () => {
     expect(view.writes[0]).toEqual({ revision: expect.any(Number), system_name: "实例后台", dashboard_chart_type: "BAR" });
   });
 
-  it("explains the retired notification page and links to websites", async () => {
-    mount("/settings/notifications");
-    expect(await screen.findByText("通知设置已迁移")).toBeVisible();
-    expect(screen.getByRole("link", { name: "前往业务网站配置通知" })).toHaveAttribute("href", "/sites");
+  it("redirects the retired notification page to websites", async () => {
+    const view = mount("/settings/notifications");
+    await waitFor(() => expect(view.router.state.location.pathname).toBe("/sites"));
     expect(screen.queryByRole("switch", { name: "启用通知" })).not.toBeInTheDocument();
   });
 

@@ -13,11 +13,10 @@ import {
   type RuntimeSettings,
   type SystemStatus,
 } from "../src/api/client";
-import { apiError, json, settings } from "./fixtures";
+import { alipayAccount, apiError, json, settings } from "./fixtures";
 import { matchesTestMedia } from "./media-query";
 
 export const instanceId = "onboarding-test-instance";
-export const syntheticSecret = "synthetic-onboarding-key-not-a-real-secret";
 export function configuredThrough(stage: number): RuntimeSettings {
   const value = structuredClone(settings);
   for (const name of Object.keys(value.secrets) as Array<
@@ -49,20 +48,6 @@ export function configuredThrough(stage: number): RuntimeSettings {
   value.secrets.provider_public_key.configured = stage >= 2;
   return completion(value);
 }
-export function pendingApplicationKey(value = configuredThrough(4)): RuntimeSettings {
-  return {
-    ...value,
-    pending_application_key: {
-      change_id: "00000000-0000-4000-8000-000000000001",
-      public_key: "synthetic-pending-application-public-key",
-      fingerprint: "b".repeat(64),
-      app_id: value.provider!.app_id,
-      environment: value.provider!.environment,
-      created_at: "2026-09-27T00:00:00Z",
-    },
-  };
-}
-
 function completion(value: RuntimeSettings): RuntimeSettings {
   value.completion = {
     application_key: value.application_public_key !== null,
@@ -153,8 +138,6 @@ export function mountOnboarding(
     stage?: number;
     path?: string;
     signedIn?: boolean;
-    pendingKey?: boolean;
-    notificationKey?: boolean;
     viewportWidth?: number;
     status?: (settings: RuntimeSettings) => SystemStatus;
     handle?: (request: Request) => Response | Promise<Response> | undefined;
@@ -178,17 +161,14 @@ export function mountOnboarding(
       removeEventListener: vi.fn(),
     })),
   );
-  let saved = options.pendingKey ? pendingApplicationKey() : configuredThrough(options.stage ?? 0);
-  if (options.notificationKey) {
-    saved.notifications = { ...saved.notifications!, enabled: true, allowed_origin: "https://business.example" };
-    saved.secrets.webhook_secret = { ...saved.secrets.webhook_secret!, configured: true, version: 1 };
-  }
+  let saved = configuredThrough(options.stage ?? 0);
   let signedIn = options.signedIn ?? true;
   const fetchMock = vi.fn(async (request: Request) => {
     const override = options.handle?.(request);
     if (override !== undefined) return override;
     const url = new URL(request.url);
     const endpoint = url.pathname;
+    if (endpoint === "/api/admin/v1/alipay-accounts") return json({ data: (options.stage ?? 0) >= 2 ? [alipayAccount] : [] });
     if (endpoint === "/api/admin/v1/sessions") return json({ data: [] });
     if (endpoint === "/api/admin/v1/sites/overview") {
       const days = Number(url.searchParams.get("range") ?? 30);
@@ -261,88 +241,17 @@ export function mountOnboarding(
     if (endpoint.endsWith("/orders") || endpoint.endsWith("/work-items"))
       return json({ data: [], page: { next_cursor: null } });
     if (endpoint.endsWith("/settings")) return json({ data: saved });
-    if (endpoint.includes("/secrets/") && endpoint.endsWith("/actions/reveal"))
-      return json({ data: { value: syntheticSecret } });
-    if (endpoint.endsWith("/application-key/actions/generate")) {
-      saved = completion({
-        ...saved,
-        revision: saved.revision + 1,
-        application_public_key: "synthetic-application-public-key",
-        application_key_fingerprint: "a".repeat(64),
-      });
-      return json({
-        data: {
-          created: true,
-          settings: saved,
-          public_key: saved.application_public_key,
-          fingerprint: "synthetic",
-        },
-      });
-    }
-    if (endpoint.endsWith("/application-key/actions/regenerate")) {
-      const input = await request.clone().json() as { change_id: string };
-      saved = saved.provider
-        ? { ...pendingApplicationKey(saved), revision: saved.revision + 1,
-            pending_application_key: { ...pendingApplicationKey(saved).pending_application_key!, change_id: input.change_id } }
-        : { ...saved, revision: saved.revision + 1,
-            application_public_key: "synthetic-regenerated-application-public-key", application_key_fingerprint: "b".repeat(64) };
-      return json({ data: { created: true, settings: saved,
-        public_key: saved.pending_application_key?.public_key ?? saved.application_public_key,
-        fingerprint: saved.pending_application_key?.fingerprint ?? saved.application_key_fingerprint } });
-    }
-    if (endpoint.endsWith("/application-key/actions/activate")) {
-      const input = await request.clone().json() as { platform_public_key?: unknown };
-      if (typeof input.platform_public_key !== "string" || !input.platform_public_key.trim())
-        return json({ error: { code: "validation_failed", message: "请求字段校验失败" } }, 422);
-      const pending = saved.pending_application_key!;
-      saved = { ...saved, revision: saved.revision + 1, payment_revision: saved.payment_revision + 1,
-        application_public_key: pending.public_key, application_key_fingerprint: pending.fingerprint,
-        provider: { ...saved.provider!, platform_public_key: input.platform_public_key },
-        pending_application_key: null };
-      return json({ data: saved });
-    }
-    if (endpoint.endsWith("/application-key/actions/discard")) {
-      saved = { ...saved, revision: saved.revision + 1, pending_application_key: null };
-      return json({ data: saved });
-    }
-    if (endpoint.endsWith("/notification-key/actions/rotate")) {
-      const { revision } = await request.clone().json();
-      if (revision !== saved.revision) return apiError("settings_revision_conflict", "stale revision");
-      saved = { ...saved, revision: revision + 1, secrets: { ...saved.secrets, webhook_secret: { ...saved.secrets.webhook_secret!, version: (saved.secrets.webhook_secret!.version ?? 0) + 1 } } };
-      return json({ data: { settings: saved, secret: "synthetic-rotated-notification-secret" } });
-    }
-    if (endpoint.endsWith("/api-key/actions/rotate")) {
-      saved = completion({
-        ...saved,
-        revision: saved.revision + 1,
-        secrets: {
-          ...saved.secrets,
-          api_secret: { ...saved.secrets.api_secret!, configured: true },
-        },
-      });
-      return json({
-        data: {
-          settings: saved,
-          secret: syntheticSecret,
-          client_id: "default",
-        },
-      });
-    }
     if (request.method === "PUT") {
       const { revision, ...body } = await request.clone().json();
       if (revision !== saved.revision)
         return apiError("settings_revision_conflict", "stale revision");
       const section = endpoint.split("/").at(-1)!;
+      const key = section === "collection-policy" ? "collection_policy" : section;
       saved = completion({
         ...saved,
         revision: revision + 1,
-        payment_revision:
-          saved.payment_revision +
-          (section === "provider" || section === "collection" ? 1 : 0),
-        [section]: body,
+        [key]: body,
       });
-      if (section === "notifications")
-        saved.secrets.webhook_secret!.configured = body.enabled;
       return json({ data: saved });
     }
     return apiError(

@@ -132,66 +132,6 @@ describe("homepage collection health", () => {
   });
 });
 
-describe("guided configuration field errors", () => {
-  it("does not submit arbitrary text as a collection code and focuses the retained input", async () => {
-    const view = mountOnboarding({
-      stage: 2,
-      path: "/settings/onboarding/collection",
-    });
-    const field = await screen.findByLabelText("支付宝收款码内容");
-    fireEvent.change(field, { target: { value: "not-a-payment-code" } });
-    await userEvent
-      .setup()
-      .click(screen.getByRole("button", { name: "保存并继续" }));
-    await waitFor(() => expect(field).toHaveAttribute("aria-invalid", "true"));
-    await waitFor(() => expect(field).toHaveFocus());
-    expect(field).toHaveValue("not-a-payment-code");
-    expect(view.writes()).toHaveLength(0);
-    expect(view.router.state.location.pathname).toBe(
-      "/settings/onboarding/collection",
-    );
-  });
-  it("associates a server key error with the exact field without clearing the draft", async () => {
-    const view = mountOnboarding({
-      stage: 1,
-      path: "/settings/onboarding/provider",
-      handle: (request) =>
-        request.method === "PUT"
-          ? json(
-              {
-                error: {
-                  code: "settings_validation_failed",
-                  message: "请改填支付宝公钥。",
-                  request_id: "field-test",
-                  fields: { platform_public_key: "请改填支付宝公钥。" },
-                },
-              },
-              422,
-            )
-          : undefined,
-    });
-    fireEvent.change(await screen.findByLabelText("应用 ID（App ID）"), {
-      target: { value: "app-id-test" },
-    });
-    const key = screen.getByLabelText("支付宝公钥");
-    fireEvent.change(key, { target: { value: "invalid-public-key" } });
-    await userEvent
-      .setup()
-      .click(screen.getByRole("button", { name: "保存并继续" }));
-    await waitFor(() => expect(key).toHaveFocus());
-    expect(key).toHaveAttribute("aria-invalid", "true");
-    expect(key).toHaveValue("invalid-public-key");
-    expect(screen.getByLabelText("应用 ID（App ID）")).toHaveValue(
-      "app-id-test",
-    );
-    expect(view.router.state.location.pathname).toBe(
-      "/settings/onboarding/provider",
-    );
-    fireEvent.change(key, { target: { value: "corrected-draft" } });
-    expect(key).not.toHaveAttribute("aria-invalid", "true");
-  });
-});
-
 function orderRequests(request: Request) {
   const url = new URL(request.url);
   if (url.pathname.endsWith("/orders"))

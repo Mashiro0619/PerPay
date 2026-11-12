@@ -64,7 +64,7 @@ function mount(options: { failReads?: boolean; failMutation?: boolean } = {}) {
   // Compose the real password editor as a sibling to exercise draft/cache isolation.
   // App routing and its password/session overlays are covered in settings-overlays.test.tsx.
   const router = createMemoryRouter([{ path: "/settings/security", element: <AuthBoundary><DraftProvider>
-    <SecuritySettings settings={settings} onSaved={() => undefined} />
+    <SecuritySettings settings={settings} />
     <PasswordEditorPage />
   </DraftProvider></AuthBoundary> }], { initialEntries: ["/settings/security"] });
   const view = render(<QueryClientProvider client={queryClient}><Toaster><RouterProvider router={router} /></Toaster></QueryClientProvider>);

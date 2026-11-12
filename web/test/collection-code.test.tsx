@@ -15,8 +15,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { queryClient } from "../src/api/client";
 import { DraftProvider } from "../src/drafts";
 import { SettingsEditorOverlay as Settings } from "../src/pages/Settings";
+import { AlipayAccountDetail } from "../src/pages/AlipayAccounts";
 import { decodeQrImage } from "../src/qr-image";
-import { apiError, json, settings } from "./fixtures";
+import { alipayAccount, apiError, json, settings } from "./fixtures";
 
 vi.mock("../src/qr-image", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../src/qr-image")>()),
@@ -25,6 +26,8 @@ vi.mock("../src/qr-image", async (importOriginal) => ({
 
 const recognizedLink =
   "https://qr.alipay.com/fkx-upload-test?value=a%2Fb&amount=0.01";
+const collectionAccount = { ...alipayAccount, revision: 3, code_payload: alipayAccount.code_payload! };
+const accountPath = "/settings/accounts/" + collectionAccount.id;
 const imageFile = () =>
   new File(["image"], "支付宝收款码.png", { type: "image/png" });
 const uploadZone = () => screen.getByRole("group", { name: "二维码图片上传" });
@@ -51,12 +54,13 @@ function mount(conflict = false) {
   const fetchMock = vi.fn(async (request: Request) => {
     if (request.method === "PUT") {
       if (conflict)
-        return apiError("settings_revision_conflict", "配置版本冲突，请刷新");
-      const { revision, ...collection } = await request.clone().json();
+        return apiError("alipay_account_revision_conflict", "配置版本冲突，请刷新");
+      const { revision, ...configuration } = await request.clone().json();
       return json({
-        data: { ...settings, revision: revision + 1, collection },
+        data: { ...collectionAccount, ...configuration, revision: revision + 1 },
       });
     }
+    if (new URL(request.url).pathname.endsWith("/alipay-accounts/" + collectionAccount.id)) return json({ data: collectionAccount });
     return json({ data: settings });
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -69,12 +73,13 @@ function mount(conflict = false) {
           </DraftProvider>
         ),
         children: [
+          { path: accountPath, element: <AlipayAccountDetail accountId={collectionAccount.id} /> },
           { path: "/settings/:section", element: <Settings /> },
           { path: "/orders", element: <h1>订单</h1> },
         ],
       },
     ],
-    { initialEntries: ["/settings/collection"] },
+    { initialEntries: [accountPath] },
   );
   const view = render(
     <QueryClientProvider client={queryClient}><Toaster>
@@ -161,10 +166,10 @@ describe("collection QR image upload", () => {
         window.dispatchEvent(unload);
         expect(unload.defaultPrevented).toBe(true);
       });
-      await user.click(screen.getByRole("button", { name: "保存" }));
+      await user.click(screen.getByRole("button", { name: "保存草稿" }));
       expect(await screen.findByText(/已保存/)).toBeVisible();
       expect(writes(fetchMock)).toHaveLength(1);
-      expect(await writes(fetchMock)[0]!.json()).toEqual({
+      expect(await writes(fetchMock)[0]!.json()).toMatchObject({
         revision: 3,
         code_payload: recognizedLink,
       });
@@ -177,7 +182,7 @@ describe("collection QR image upload", () => {
 
   it("allows selecting the same image again and does not make an unchanged payload dirty", async () => {
     vi.mocked(decodeQrImage).mockResolvedValue(
-      settings.collection!.code_payload,
+      collectionAccount.code_payload,
     );
     mount();
     const picker = await screen.findByLabelText("选择收款码二维码图片");
@@ -212,7 +217,7 @@ describe("collection QR image upload", () => {
     ).toHaveAccessibleDescription(
       /未识别到二维码，请上传清晰、完整的二维码图片。/,
     );
-    expect(field).toHaveValue(settings.collection!.code_payload);
+    expect(field).toHaveValue(collectionAccount.code_payload);
     expect(field).not.toHaveAttribute("aria-invalid", "true");
     expect(screen.queryByText("未保存")).not.toBeInTheDocument();
     expect(writes(fetchMock)).toHaveLength(0);
@@ -231,13 +236,13 @@ describe("collection QR image upload", () => {
       "aria-busy",
       "true",
     );
-    expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "保存草稿" })).toBeDisabled();
     fireEvent.submit(picker.closest("form")!);
     expect(writes(fetchMock)).toHaveLength(0);
     await act(async () => {
       pending.resolve(recognizedLink);
     });
-    expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "保存草稿" })).toBeEnabled();
     expect(writes(fetchMock)).toHaveLength(0);
   });
 
@@ -264,7 +269,7 @@ describe("collection QR image upload", () => {
       await user.clear(field);
       await user.type(field, "https://qr.alipay.com/manual-edit");
       expect(signal.aborted).toBe(true);
-      expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
+      expect(screen.getByRole("button", { name: "保存草稿" })).toBeEnabled();
       await act(async () => {
         if (outcome === "success") pending.resolve(recognizedLink);
         else pending.reject(new Error("late failure"));
@@ -298,16 +303,16 @@ describe("collection QR image upload", () => {
         first.resolve("https://qr.alipay.com/older-image");
       });
       expect(screen.getByLabelText("支付宝收款码内容")).toHaveValue(
-        settings.collection!.code_payload,
+        collectionAccount.code_payload,
       );
-      expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "保存草稿" })).toBeDisabled();
       await act(async () => {
         second.resolve(recognizedLink);
       });
       expect(screen.getByLabelText("支付宝收款码内容")).toHaveValue(
         recognizedLink,
       );
-      expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
+      expect(screen.getByRole("button", { name: "保存草稿" })).toBeEnabled();
     },
   );
 
@@ -331,10 +336,10 @@ describe("collection QR image upload", () => {
       });
       expect(screen.queryByText("已识别")).not.toBeInTheDocument();
       await act(async () => {
-        await router.navigate("/settings/collection");
+        await router.navigate(accountPath);
       });
       expect(screen.getByLabelText("支付宝收款码内容")).toHaveValue(
-        settings.collection!.code_payload,
+        collectionAccount.code_payload,
       );
       expect(screen.queryByText("未保存")).not.toBeInTheDocument();
       expect(writes(fetchMock)).toHaveLength(0);
@@ -374,7 +379,7 @@ describe("collection QR image upload", () => {
       imageFile(),
     );
     await screen.findByText("已识别");
-    await user.click(screen.getByRole("button", { name: "保存" }));
+    await user.click(screen.getByRole("button", { name: "保存草稿" }));
     expect(await screen.findByText("配置版本冲突，请刷新")).toBeVisible();
     expect(screen.getByLabelText("支付宝收款码内容")).toHaveValue(
       recognizedLink,
@@ -392,7 +397,7 @@ describe("collection QR image upload", () => {
     fireEvent.change(picker, { target: { files: [] } });
     expect(decodeQrImage).not.toHaveBeenCalled();
     expect(screen.getByLabelText("支付宝收款码内容")).toHaveValue(
-      settings.collection!.code_payload,
+      collectionAccount.code_payload,
     );
     expect(screen.queryByText("未保存")).not.toBeInTheDocument();
   });
@@ -438,7 +443,7 @@ describe("collection QR image upload", () => {
       expect(drop.defaultPrevented).toBe(false);
       expect(decodeQrImage).not.toHaveBeenCalled();
       expect(writes(fetchMock)).toHaveLength(0);
-      expect(field).toHaveValue(settings.collection!.code_payload);
+      expect(field).toHaveValue(collectionAccount.code_payload);
     },
   );
 
@@ -452,7 +457,7 @@ describe("collection QR image upload", () => {
       "一次只能识别一张二维码图片，请重新选择。",
     );
     expect(decodeQrImage).not.toHaveBeenCalled();
-    expect(field).toHaveValue(settings.collection!.code_payload);
+    expect(field).toHaveValue(collectionAccount.code_payload);
     expect(screen.queryByText("未保存")).not.toBeInTheDocument();
     expect(writes(fetchMock)).toHaveLength(0);
   });
@@ -471,7 +476,7 @@ describe("collection QR image upload", () => {
       const field = await screen.findByLabelText("支付宝收款码内容");
       dropFiles(uploadZone(), [imageFile()]);
       const signal = vi.mocked(decodeQrImage).mock.calls[0]![1];
-      expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "保存草稿" })).toBeDisabled();
       dropFiles(uploadZone(), Array.from({ length: count }, imageFile));
       expect(signal.aborted).toBe(true);
       const message =
@@ -479,12 +484,12 @@ describe("collection QR image upload", () => {
           ? "请拖入一张 PNG、JPG 或 WebP 二维码图片。"
           : "一次只能识别一张二维码图片，请重新选择。";
       expect(screen.getByRole("alert")).toHaveTextContent(message);
-      expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "保存草稿" })).toBeDisabled();
       await act(async () => {
         if (outcome === "success") pending.resolve(recognizedLink);
         else pending.reject(new Error("late failure"));
       });
-      expect(field).toHaveValue(settings.collection!.code_payload);
+      expect(field).toHaveValue(collectionAccount.code_payload);
       expect(screen.getByRole("alert")).toHaveTextContent(message);
       expect(screen.queryByText("已识别")).not.toBeInTheDocument();
       expect(screen.queryByText("未保存")).not.toBeInTheDocument();
@@ -493,7 +498,7 @@ describe("collection QR image upload", () => {
       fireEvent.change(screen.getByLabelText("支付宝收款码内容"), {
         target: { value: "https://qr.alipay.com/manual-replacement" },
       });
-      expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
+      expect(screen.getByRole("button", { name: "保存草稿" })).toBeEnabled();
     },
   );
 
@@ -519,12 +524,12 @@ describe("collection QR image upload", () => {
           ? "请选择 PNG、JPG 或 WebP 图片。"
           : "图片不能超过 10 MB",
       );
-      expect(field).toHaveValue(settings.collection!.code_payload);
-      expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
+      expect(field).toHaveValue(collectionAccount.code_payload);
+      expect(screen.getByRole("button", { name: "保存草稿" })).toBeDisabled();
       fireEvent.change(screen.getByLabelText("支付宝收款码内容"), {
         target: { value: "https://qr.alipay.com/manual-replacement" },
       });
-      expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
+      expect(screen.getByRole("button", { name: "保存草稿" })).toBeEnabled();
     },
   );
 
@@ -593,7 +598,7 @@ describe("collection QR image upload", () => {
     fireEvent.change(screen.getByLabelText("支付宝收款码内容"), {
       target: { value: "https://qr.alipay.com/manual-replacement" },
     });
-    await userEvent.setup().click(screen.getByRole("button", { name: "保存" }));
+    await userEvent.setup().click(screen.getByRole("button", { name: "保存草稿" }));
     await waitFor(() => expect(writes(fetchMock)).toHaveLength(1));
     expect(field).toBeDisabled();
     expect(zone).not.toHaveClass("bg-accent");
@@ -610,7 +615,7 @@ describe("collection QR image upload", () => {
     expect(decodeQrImage).not.toHaveBeenCalled();
     expect(field).toHaveValue("https://qr.alipay.com/manual-replacement");
     await act(async () => {
-      finish(json({ data: { ...settings, revision: 4 } }));
+      finish(json({ data: { ...collectionAccount, code_payload: "https://qr.alipay.com/manual-replacement", revision: 4 } }));
     });
     expect(screen.getByLabelText("支付宝收款码内容")).toBeEnabled();
   });

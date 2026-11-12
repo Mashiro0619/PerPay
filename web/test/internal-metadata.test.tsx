@@ -1,14 +1,9 @@
-import { QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import { queryClient } from "../src/api/client";
-import { dateTime } from "../src/lib/format";
-import { SecuritySettings } from "../src/pages/SecuritySettings";
 import { recordAction } from "./menu-helper";
-import { json, ledger, ledgerId, order, orderId, settings } from "./fixtures";
+import { json, ledger, ledgerId, order, orderId } from "./fixtures";
 import { mountOnboarding } from "./onboarding-fixture";
 import { groupedLedger } from "./ledger-fixtures";
 
@@ -26,38 +21,6 @@ const candidate = {
 };
 
 describe("ordinary administrator views", () => {
-  it("shows key configuration and update time instead of technical key versions and fingerprints", () => {
-    const updatedAt = Date.UTC(2026, 8, 13, 12);
-    const configured = {
-      ...settings,
-      secrets: {
-        ...settings.secrets,
-        provider_private_key: {
-          ...settings.secrets.provider_private_key,
-          configured: true,
-          version: 777,
-          updatedAt,
-          fingerprint: "f".repeat(64),
-        },
-      },
-    };
-    render(
-      <QueryClientProvider client={queryClient}>
-        <MemoryRouter>
-          <SecuritySettings settings={configured} onSaved={vi.fn()} />
-        </MemoryRouter>
-      </QueryClientProvider>,
-    );
-    const row = screen
-      .getByRole("button", { name: "查看应用私钥" })
-      .closest<HTMLElement>('[role="listitem"]')!;
-    expect(within(row).getByText("已配置")).toBeVisible();
-    expect(
-      within(row).getByTitle(dateTime(updatedAt) + "（北京时间）"),
-    ).toBeVisible();
-    expect(row).toHaveTextContent("更新于 " + dateTime(updatedAt));
-    expect(row).not.toHaveTextContent(/版本|指纹|777/);
-  });
 
   it("keeps refund actions, actor and history without showing order or mark versions", async () => {
     const mark = {

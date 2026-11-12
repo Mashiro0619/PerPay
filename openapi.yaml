@@ -9054,6 +9054,7 @@ components:
         - backup
         - display
         - secrets
+        - site_mode
       properties:
         admin_access:
           $ref: "#/components/schemas/AdminAccess"
@@ -9111,7 +9112,8 @@ components:
           $ref: "#/components/schemas/CollectionPolicyRequest"
         site_mode:
           type: boolean
-          description: "True for site-aware instance settings. Site policies and business secret metadata are not returned in this mode."
+          const: true
+          description: "Instance settings always use the multi-site model. Site policies and business secret metadata belong to their websites."
     SettingsCompletion:
       type: object
       additionalProperties: false

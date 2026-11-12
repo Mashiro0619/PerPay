@@ -31,8 +31,6 @@ describe("instance display settings", () => {
     expect(name).toHaveAttribute("required");
     expect(name).toHaveAttribute("maxlength", "40");
     expect(name).not.toHaveAttribute("aria-describedby");
-    expect(screen.getByRole("switch", { name: "收银台显示商品名称" })).toBeVisible();
-    expect(screen.getByRole("textbox", { name: "商家帮助链接" })).toBeVisible();
     const chart = screen.getByRole("group", { name: "收款趋势默认图形" });
     expect(within(chart).getByRole("button", { name: "面积图" })).toHaveAttribute("aria-pressed", "true");
     expect(within(chart).getByRole("button", { name: "柱状图" })).toHaveAttribute("aria-pressed", "false");
@@ -40,18 +38,16 @@ describe("instance display settings", () => {
     const form = name.closest("form")!;
     expect(form).toHaveClass("w-full");
     expect(form).not.toHaveClass("max-w-2xl");
-    expect(form.querySelector("[data-slot=card-content] > [data-slot=field-group]")).toHaveClass("max-w-2xl");
+    expect(form.querySelector("[data-slot=card-content] > [data-slot=field-set]")).toHaveClass("max-w-2xl");
     const displayFields = name.closest('[data-slot="field-group"]')!;
     const rows = [...displayFields.children];
-    expect(rows).toHaveLength(4);
+    expect(rows).toHaveLength(2);
     for (const row of rows) {
       expect(row).toHaveAttribute("data-orientation", "vertical");
       expect(row).not.toContainElement(row.querySelector("label input"));
     }
     expect(rows[0]).toContainElement(name);
     expect(rows[1]).toContainElement(chart);
-    expect(rows[2]).toContainElement(screen.getByRole("textbox", { name: "商家帮助链接" }));
-    expect(rows[3]).toContainElement(screen.getByRole("switch", { name: "收银台显示商品名称" }));
     expect(new FormData(form).get("dashboard_chart_type")).toBe("AREA");
     expect(chart).toHaveAccessibleDescription("用于未设置个人图形偏好的浏览器。");
     expect(form.querySelector('[data-slot="card-header"]')).toHaveClass("sr-only");
@@ -78,8 +74,6 @@ describe("instance display settings", () => {
       display: {
         ...latest.display,
         system_name: "测试支付",
-        checkout_help_url: "https://support.example/help",
-        checkout_show_product_name: false,
       },
     };
     vi.stubGlobal(
@@ -91,21 +85,13 @@ describe("instance display settings", () => {
     );
     const { onSaved, updateSettings } = mount(initial);
     const user = userEvent.setup();
-    expect(
-      screen.getByRole("switch", { name: "收银台显示商品名称" }),
-    ).toBeChecked();
     expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
     const name = screen.getByRole("textbox", { name: "支付系统名称" });
     await user.clear(name);
     await user.type(name, "测试支付");
-    await user.type(screen.getByRole("textbox", { name: "商家帮助链接" }), "https://support.example/help");
-    await user.click(
-      screen.getByRole("switch", { name: "收银台显示商品名称" }),
-    );
     expect(requests).toHaveLength(0);
     updateSettings(latest);
     expect(name).toHaveValue("测试支付");
-    expect(screen.getByRole("textbox", { name: "商家帮助链接" })).toHaveValue("https://support.example/help");
     await user.click(screen.getByRole("button", { name: "保存" }));
     await waitFor(() => expect(onSaved).toHaveBeenCalledWith(saved));
     expect(requests).toHaveLength(1);
@@ -114,9 +100,7 @@ describe("instance display settings", () => {
     );
     expect(await requests[0]!.json()).toEqual({
       system_name: "测试支付",
-      checkout_help_url: "https://support.example/help",
       revision: latest.revision,
-      checkout_show_product_name: false,
       dashboard_chart_type: "LINE",
     });
     expect(screen.getByRole("button", { name: "折线图" })).toHaveAttribute("aria-pressed", "true");
@@ -167,10 +151,9 @@ describe("instance display settings", () => {
     vi.stubGlobal("fetch", fetchMock);
     mount();
     const user = userEvent.setup();
-    const checkbox = screen.getByRole("switch", { name: "收银台显示商品名称" });
-    await user.click(checkbox);
+    await user.click(screen.getByRole("button", { name: "柱状图" }));
     expect(screen.getByText("未保存")).toBeVisible();
-    await user.click(checkbox);
+    await user.click(screen.getByRole("button", { name: "面积图" }));
     const name = screen.getByRole("textbox", { name: "支付系统名称" });
     await user.clear(name);
     await user.type(name, "新的支付");
@@ -193,15 +176,9 @@ describe("instance display settings", () => {
     const name = screen.getByRole("textbox", { name: "支付系统名称" });
     await user.clear(name);
     await user.type(name, "尚未保存的名称");
-    await user.click(
-      screen.getByRole("switch", { name: "收银台显示商品名称" }),
-    );
     await user.click(screen.getByRole("button", { name: "柱状图" }));
     await user.click(screen.getByRole("button", { name: "保存" }));
     await screen.findByRole("alert");
-    expect(
-      screen.getByRole("switch", { name: "收银台显示商品名称" }),
-    ).not.toBeChecked();
     expect(name).toHaveValue("尚未保存的名称");
     expect(screen.getByRole("button", { name: "柱状图" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByText("未保存")).toBeVisible();

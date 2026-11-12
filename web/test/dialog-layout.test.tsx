@@ -5,13 +5,9 @@ import { queryClient } from "../src/api/client";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { CopyValue } from "../src/components/copy-value";
-import {
-  SecretDialog,
-  RotateKeyDialog,
-  SecuritySettings,
-} from "../src/pages/SecuritySettings";
+import { SecuritySettings } from "../src/pages/SecuritySettings";
 import { recordAction } from "./menu-helper";
-import { json, settings, withSessionList } from "./fixtures";
+import { settings, withSessionList } from "./fixtures";
 
 const longValue = [
   "-----BEGIN PRIVATE KEY-----",
@@ -44,76 +40,6 @@ describe("bounded secret content", () => {
       expect(screen.getByRole("status").parentElement).toHaveClass("relative");
     },
   );
-
-  it.each(["reveal", "rotate"] as const)(
-    "keeps the %s title and closing action outside the scrollable content",
-    async (kind) => {
-      vi.spyOn(document, "hidden", "get").mockReturnValue(false);
-      vi.stubGlobal(
-        "fetch",
-        vi.fn(async () =>
-          json({
-            data:
-              kind === "reveal"
-                ? { value: longValue }
-                : { secret: longValue, settings },
-          }),
-        ),
-      );
-      const onClose = vi.fn();
-      const user = userEvent.setup();
-      render(
-        kind === "reveal" ? (
-          <SecretDialog
-            name="provider_private_key"
-            title="应用私钥"
-            onClose={onClose}
-          />
-        ) : (
-          <RotateKeyDialog
-            settings={{
-              ...settings,
-              completion: { ...settings.completion, api: false },
-            }}
-            onSaved={vi.fn()}
-            onClose={onClose}
-          />
-        ),
-      );
-      if (kind === "rotate")
-        await user.click(screen.getByRole("button", { name: "生成密钥" }));
-      const textbox = await screen.findByRole("textbox", { name: "密钥内容" });
-      const dialog = screen.getByRole("dialog");
-      const header = dialog.querySelector<HTMLElement>(
-        "[data-slot=dialog-header]",
-      )!;
-      const footer = dialog.querySelector<HTMLElement>(
-        "[data-slot=dialog-footer]",
-      )!;
-      const body = header.nextElementSibling;
-      expect(dialog).toHaveClass(
-        "flex",
-        "flex-col",
-        "max-h-[calc(100dvh-2rem)]",
-      );
-      expect(header).toHaveClass("shrink-0", "pr-8");
-      expect(footer).toHaveClass("shrink-0");
-      expect(body).toHaveClass("min-h-0", "overflow-y-auto");
-      expect(body).toContainElement(textbox);
-      expect(body).not.toContainElement(header);
-      expect(body).not.toContainElement(footer);
-      expect(textbox).toHaveValue(longValue);
-      expect(dialog).toHaveAccessibleDescription(
-        "60 秒后或离开此标签页时，弹窗关闭并清除页面明文；密钥仍可再次查看。",
-      );
-      await user.click(
-        within(footer).getByRole("button", {
-          name: kind === "reveal" ? "关闭" : "完成",
-        }),
-      );
-      expect(onClose).toHaveBeenCalledOnce();
-    },
-  );
 });
 
 it("bounds the session confirmation without changing its cancel behavior", async () => {
@@ -125,7 +51,7 @@ it("bounds the session confirmation without changing its cancel behavior", async
   render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter>
-        <SecuritySettings settings={settings} onSaved={vi.fn()} />
+        <SecuritySettings settings={settings} />
       </MemoryRouter>
     </QueryClientProvider>,
   );

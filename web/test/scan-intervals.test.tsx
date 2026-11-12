@@ -9,13 +9,12 @@ import { SettingsEditor } from "../src/components/SettingsForms";
 import { json } from "./fixtures";
 import { configuredThrough } from "./onboarding-fixture";
 
-function renderEditor(settings: RuntimeSettings, onSaved = vi.fn(), guided = false) {
+function renderEditor(settings: RuntimeSettings, onSaved = vi.fn()) {
   return render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter>
         <SettingsEditor
           section="collection-policy"
-          guided={guided}
           settings={settings}
           onSaved={onSaved}
         />
@@ -50,7 +49,9 @@ describe("adaptive ledger scan settings", () => {
     const fetchMock = vi.fn(async (_request: Request) => json({ data: saved }));
     vi.stubGlobal("fetch", fetchMock);
     const onSaved = vi.fn();
-    renderEditor(settings, onSaved, true);
+    settings.collection_policy!.timeout_milliseconds = 8123;
+    renderEditor(settings, onSaved);
+    await userEvent.setup().click(screen.getByRole("button", { name: "采用推荐值" }));
     expect(screen.queryByLabelText("应用 ID（App ID）")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("支付宝公钥")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "高级设置" })).not.toBeInTheDocument();

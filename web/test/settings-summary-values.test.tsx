@@ -130,7 +130,7 @@ describe("settings summaries expose the saved values", () => {
     const cidrs = ["192.0.2.0/24", "2001:db8:1234:5678::/64"];
     vi.stubGlobal("fetch", vi.fn(async () => json({ data: [] })));
     const router = createMemoryRouter([{ path: "/settings/security", element: <SecuritySettings
-      settings={{ ...settings, admin_access: { enabled, cidrs } }} onSaved={vi.fn()} /> }], { initialEntries: ["/settings/security"] });
+      settings={{ ...settings, admin_access: { enabled, cidrs } }} /> }], { initialEntries: ["/settings/security"] });
     render(<QueryClientProvider client={queryClient}><RouterProvider router={router} /></QueryClientProvider>);
     const list = screen.getByRole("list", { name: "已保存的白名单规则" });
     expect(within(list).getAllByRole("listitem").map(item => item.textContent)).toEqual(cidrs);

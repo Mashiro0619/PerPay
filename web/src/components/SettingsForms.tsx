@@ -2,17 +2,14 @@ import { integerUnits } from "../../../src/shared/time-units";
 import { BackupStatus } from "@/components/backup-status";
 import { setSystemName } from "@/branding";
 import {
-  Fragment,
   useEffect,
   useId,
   useRef,
   useState,
   type FormEvent,
-  type ReactNode,
 } from "react";
 import { onlineManager, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, Save } from "lucide-react";
-import { collectionCodeError } from "../../../src/shared/collection-code";
+import { Save } from "lucide-react";
 import { PROVIDER_TIMING_DEFAULTS } from "../../../src/shared/provider-defaults";
 import {
   ApiError,
@@ -23,20 +20,14 @@ import {
 } from "@/api/client";
 import { Link } from "@/navigation";
 import { cn } from "@/lib/utils";
-import { applicationKeyState } from "@/lib/application-key";
 import { useFormDraft } from "@/drafts";
 import { OverlayActions } from "@/components/overlay-actions";
-import { useOverlayCloseGuard, useOverlayContext } from "@/lib/overlay-context";
+import { useOverlayContext } from "@/lib/overlay-context";
 import { useSuccessToast } from "@/components/Feedback";
-import { CollectionCodeField } from "@/components/CollectionCodeField";
-import { ApplicationKey, hasLegacyAlipayConfiguration, LegacyAlipayNotice } from "@/components/ApplicationKey";
-export { ApplicationKey } from "@/components/ApplicationKey";
 import { ErrorNotice } from "@/components/request-state";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   Select,
@@ -63,11 +54,6 @@ import {
   CardContent,
   CardFooter,
 } from "@/components/ui/card";
-import {
-  Collapsible,
-  CollapsibleTrigger,
-  CollapsibleContent,
-} from "@/components/ui/collapsible";
 class SettingsInputError extends Error {
   readonly fields: Record<string, string>;
   constructor(field: string, message: string) {
@@ -76,18 +62,13 @@ class SettingsInputError extends Error {
   }
 }
 export type ConfigurationSection =
-  | "provider"
   | "collection-policy"
-  | "collection"
-  | "notifications"
   | "backup"
   | "advanced"
   | "display";
 export const sections = [
-  ["provider", "支付宝账号"],
-  ["collection", "收款码"],
+  ["accounts", "支付宝账号"],
   ["collection-policy", "查账设置"],
-  ["notifications", "通知"],
   ["security", "密钥与安全"],
   ["backup", "自动备份"],
   ["display", "界面显示"],
@@ -223,44 +204,23 @@ function BackupIntervalField({
     </Field>
   );
 }
-function backupInterval(seconds: number) {
-  return seconds % 86400 === 0
-    ? seconds === 86400
-      ? "每天"
-      : "每 " + seconds / 86400 + " 天"
-    : seconds % 3600 === 0
-      ? "每 " + seconds / 3600 + " 小时"
-      : "每 " + seconds + " 秒";
-}
 export function SettingsEditor({
   section,
   settings,
   onSaved,
   onFeedback,
-  guided = false,
-  submitLabel = "保存",
-  secondaryAction,
-  renderGuidedActions,
 }: {
   section: ConfigurationSection;
   settings: RuntimeSettings;
   onSaved: (settings: RuntimeSettings, message?: string) => void;
   onFeedback?: (message: string) => void;
-  guided?: boolean;
-  submitLabel?: string;
-  secondaryAction?: ReactNode;
-  renderGuidedActions?: (actions: ReactNode) => ReactNode;
 }) {
   // Keep defaults stable for this mounted draft when a sibling form saves.
   // Explicit refreshes remount the editor; saves still use the latest revision.
   const [initialSettings] = useState(settings);
   const overlay = useOverlayContext();
   const formId = useId();
-  const legacyProvider = section === "provider" &&
-    (hasLegacyAlipayConfiguration(initialSettings) || hasLegacyAlipayConfiguration(settings));
-  const [privateOpen, setPrivateOpen] = useState(false);
   function revealField(field: HTMLElement) {
-    if (field.closest("[data-settings-private]")) setPrivateOpen(true);
     requestAnimationFrame(() => {
       if (field.isConnected && !field.matches(":disabled")) field.focus();
     });
@@ -268,34 +228,18 @@ export function SettingsEditor({
   const submitting = useRef(false);
   const draft = useFormDraft(() => submitting.current);
   const queryClient = useQueryClient();
-  const [decoding, setDecoding] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-  const [notificationEnabled, setNotificationEnabled] = useState(
-    settings.notifications?.enabled ?? false,
-  );
-  const [showProductName, setShowProductName] = useState(
-    settings.display?.checkout_show_product_name ?? true,
-  );
   const [chartType, setChartType] = useState<DashboardChartType>(
     initialSettings.display?.dashboard_chart_type ?? "AREA",
   );
   const [savedChartType, setSavedChartType] = useState(chartType);
   useEffect(() => {
     if (section === "display") draft.onChange();
-  }, [showProductName, chartType, section]);
-  useEffect(() => {
-    // Disabled optional fields enter/leave FormData after the checkbox's change event.
-    if (section === "notifications") draft.onChange();
-  }, [notificationEnabled, guided, section]);
+  }, [chartType, section]);
   const mounted = useRef(false);
   const localFeedback = useSuccessToast();
   // A parent that remounts this editor after saving keeps the same toast owner.
   const setSavedMessage = onFeedback ?? localFeedback;
-  const canSave = !legacyProvider && (
-    guided ||
-    draft.dirty ||
-    (section === "provider" && !settings.completion.provider) ||
-    (section === "collection" && !settings.completion.collection));
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -306,7 +250,6 @@ export function SettingsEditor({
     networkMode: "always",
     retry: false,
     mutationFn: (form: FormData) => {
-      if (legacyProvider) throw new Error("旧沙箱接入已停用，请添加正式支付宝账号。");
       if (!onlineManager.isOnline() || !navigator.onLine)
         throw new Error("网络已断开，设置未提交。恢复连接后请重新提交。");
       return saveSettings(section, form, settings, savedChartType);
@@ -341,7 +284,6 @@ export function SettingsEditor({
     },
   });
   // Submitted saves retain the existing draft-confirmation flow in DraftProvider.
-  useOverlayCloseGuard(() => decoding);
   useEffect(() => {
     // A mutation can publish field errors before its disabled fieldset is released.
     if (save.isPending) return;
@@ -355,116 +297,13 @@ export function SettingsEditor({
   }, [fieldErrors, save.isPending, draft.form]);
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (decoding || save.isPending || submitting.current || !canSave) return;
+    if (save.isPending || submitting.current || !draft.dirty) return;
     submitting.current = true;
     setFieldErrors({});
     setSavedMessage("");
     save.mutate(new FormData(event.currentTarget));
   }
 
-  if (legacyProvider) return <LegacyAlipayNotice settings={hasLegacyAlipayConfiguration(settings) ? settings : initialSettings} />;
-
-  const providerIdentity = (
-    <FieldGroup>
-      <Field data-invalid={!!fieldErrors.app_id}>
-        <FieldLabel htmlFor="setting-app-id">应用 ID（App ID）</FieldLabel>
-        <Input
-          id="setting-app-id"
-          name="app_id"
-          required
-          maxLength={64}
-          pattern="[A-Za-z0-9._-]+"
-          defaultValue={initialSettings.provider?.app_id ?? ""}
-          autoComplete="off"
-          aria-invalid={!!fieldErrors.app_id}
-          aria-describedby={
-            fieldErrors.app_id ? "setting-app-id-error setting-app-id-hint" : "setting-app-id-hint"
-          }
-        />
-        <FieldDescription id="setting-app-id-hint">
-          使用支付宝平台状态为“已上线”的应用；“开发中”应用不能查账。
-        </FieldDescription>
-        {fieldErrors.app_id && (
-          <FieldError id="setting-app-id-error">
-            {fieldErrors.app_id}
-          </FieldError>
-        )}
-      </Field>
-      <Field data-invalid={!!fieldErrors.platform_public_key}>
-        <FieldLabel htmlFor="setting-platform-key">支付宝公钥</FieldLabel>
-        <Textarea
-          id="setting-platform-key"
-          className="settings-long-text"
-          name="platform_public_key"
-          rows={4}
-          required
-          defaultValue={initialSettings.provider?.platform_public_key ?? ""}
-          maxLength={16384}
-          autoComplete="off"
-          spellCheck={false}
-          placeholder="Base64 或 PEM"
-          aria-invalid={!!fieldErrors.platform_public_key}
-          aria-describedby={
-            fieldErrors.platform_public_key
-              ? "setting-platform-key-error" + " setting-platform-key-hint"
-              : "setting-platform-key-hint"
-          }
-        />
-        <FieldDescription id="setting-platform-key-hint">
-          从支付宝应用的接口加签设置复制。
-        </FieldDescription>
-        {fieldErrors.platform_public_key && (
-          <FieldError id="setting-platform-key-error">
-            {fieldErrors.platform_public_key}
-          </FieldError>
-        )}
-      </Field>
-      {!guided && (
-        <Collapsible
-          open={privateOpen}
-          onOpenChange={setPrivateOpen}
-          data-settings-private
-        >
-          <CollapsibleTrigger render={<Button variant="ghost" size="sm" className="h-auto min-h-8 max-w-full justify-start whitespace-normal" />}>
-            <ChevronDown data-icon="inline-start" />
-            导入已有应用私钥（可选）
-          </CollapsibleTrigger>
-          <CollapsibleContent keepMounted>
-            <Field className="pt-4" data-invalid={!!fieldErrors.private_key}>
-              <FieldLabel htmlFor="setting-private-key">应用私钥</FieldLabel>
-              <Textarea
-                id="setting-private-key"
-                className="settings-long-text"
-                name="private_key"
-                rows={4}
-                maxLength={16384}
-                autoComplete="off"
-                spellCheck={false}
-                aria-invalid={!!fieldErrors.private_key}
-                aria-describedby={
-                  fieldErrors.private_key
-                    ? "setting-private-key-error" + " setting-private-key-hint"
-                    : "setting-private-key-hint"
-                }
-              />
-              <FieldDescription id="setting-private-key-hint">
-                {settings.provider || settings.provider_generations.length > 0
-                  ? "留空保留当前私钥，此处不能更换。更换请用下方“更换应用密钥对”，上传后验证启用。"
-                  : applicationKeyState(settings) === "missing"
-                    ? "可导入已有应用私钥，并将对应公钥配置到支付宝；否则先生成应用密钥对。"
-                    : "留空复用当前私钥；导入的私钥须与当前应用公钥匹配。更换请用下方“更换应用密钥对”。"}
-              </FieldDescription>
-              {fieldErrors.private_key && (
-                <FieldError id="setting-private-key-error">
-                  {fieldErrors.private_key}
-                </FieldError>
-              )}
-            </Field>
-          </CollapsibleContent>
-        </Collapsible>
-      )}
-    </FieldGroup>
-  );
   function recommendedProvider() {
     const values = {
       timeout_milliseconds: PROVIDER_TIMING_DEFAULTS.timeoutMilliseconds / 1000,
@@ -502,7 +341,7 @@ export function SettingsEditor({
         label="请求超时（秒）"
         scale={1000}
         value={
-          initialSettings.collection_policy?.timeout_milliseconds ?? initialSettings.provider?.timeout_milliseconds ??
+          initialSettings.collection_policy?.timeout_milliseconds ??
           PROVIDER_TIMING_DEFAULTS.timeoutMilliseconds
         }
         min={1000}
@@ -513,7 +352,7 @@ export function SettingsEditor({
         error={fieldErrors.scan_interval_seconds}
         label="常规查账间隔（秒）"
         value={
-          initialSettings.collection_policy?.scan_interval_seconds ?? initialSettings.provider?.scan_interval_seconds ??
+          initialSettings.collection_policy?.scan_interval_seconds ??
           PROVIDER_TIMING_DEFAULTS.scanIntervalSeconds
         }
         min={5}
@@ -525,8 +364,7 @@ export function SettingsEditor({
         error={fieldErrors.active_scan_interval_seconds}
         label="活跃查账间隔（秒）"
         value={
-          initialSettings.collection_policy?.active_scan_interval_seconds ?? initialSettings.provider?.active_scan_interval_seconds ??
-          initialSettings.collection_policy?.scan_interval_seconds ?? initialSettings.provider?.scan_interval_seconds ??
+          initialSettings.collection_policy?.active_scan_interval_seconds ??
           PROVIDER_TIMING_DEFAULTS.activeScanIntervalSeconds
         }
         min={5}
@@ -537,7 +375,7 @@ export function SettingsEditor({
         name="minimum_scan_interval_seconds"
         error={fieldErrors.minimum_scan_interval_seconds}
         label="查账最小间隔（秒）"
-        value={initialSettings.collection_policy?.minimum_scan_interval_seconds ?? initialSettings.provider?.minimum_scan_interval_seconds ?? initialSettings.collection_policy?.active_scan_interval_seconds ?? initialSettings.provider?.active_scan_interval_seconds ?? PROVIDER_TIMING_DEFAULTS.activeScanIntervalSeconds}
+        value={initialSettings.collection_policy?.minimum_scan_interval_seconds ?? PROVIDER_TIMING_DEFAULTS.activeScanIntervalSeconds}
         min={5}
         max={3600}
         hint="也适用于手动核实，不能大于活跃间隔。"
@@ -547,7 +385,7 @@ export function SettingsEditor({
         error={fieldErrors.safety_lag_seconds}
         label="查账延迟（秒）"
         value={
-          initialSettings.collection_policy?.safety_lag_seconds ?? initialSettings.provider?.safety_lag_seconds ??
+          initialSettings.collection_policy?.safety_lag_seconds ??
           PROVIDER_TIMING_DEFAULTS.safetyLagSeconds
         }
         min={5}
@@ -559,110 +397,13 @@ export function SettingsEditor({
         error={fieldErrors.maximum_success_age_seconds}
         label="查账有效时限（秒）"
         value={
-          initialSettings.collection_policy?.maximum_success_age_seconds ?? initialSettings.provider?.maximum_success_age_seconds ??
+          initialSettings.collection_policy?.maximum_success_age_seconds ??
           PROVIDER_TIMING_DEFAULTS.maximumSuccessAgeSeconds
         }
         min={10}
         max={86400}
         hint="超过有效时限未成功查账的账号将暂停接收新订单，其未付款收银台暂不可用。网站仍可使用已配置的其他就绪账号。"
       />
-    </FieldGroup>
-  );
-  const collectionIdentity = (
-    <FieldGroup>
-      <CollectionCodeField
-        defaultValue={initialSettings.collection?.code_payload ?? ""}
-        onDecoded={() => {
-          draft.onChange();
-          setFieldErrors({});
-          setSavedMessage("");
-        }}
-        error={fieldErrors.code_payload}
-        onPendingChange={setDecoding}
-        disabled={save.isPending}
-      />
-    </FieldGroup>
-  );
-  const notificationFields = (
-    <FieldGroup>
-      <Field orientation="horizontal">
-        <Switch
-          id="setting-enabled"
-          name="enabled"
-          checked={notificationEnabled}
-          onCheckedChange={setNotificationEnabled}
-        />
-        <FieldLabel htmlFor="setting-enabled">启用通知</FieldLabel>
-      </Field>
-      {!notificationEnabled && (
-        <FieldDescription>通知未启用，网站需主动查单。</FieldDescription>
-      )}
-      <FieldSet hidden={!notificationEnabled} disabled={!notificationEnabled}>
-        <FieldGroup>
-          <Field data-invalid={!!fieldErrors.allowed_origin}>
-            <FieldLabel htmlFor="setting-origin">
-              通知地址前缀
-            </FieldLabel>
-            <Input
-              id="setting-origin"
-              name="allowed_origin"
-              type="url"
-              required={notificationEnabled}
-              defaultValue={initialSettings.notifications?.allowed_origin ?? ""}
-              placeholder="https://shop.example.com"
-              aria-invalid={!!fieldErrors.allowed_origin}
-              aria-describedby={
-                fieldErrors.allowed_origin
-                  ? "setting-origin-error" + " setting-origin-hint"
-                  : "setting-origin-hint"
-              }
-            />
-            <FieldDescription id="setting-origin-hint">
-              例如 https://shop.example.com，不含端口或路径。
-            </FieldDescription>
-            {fieldErrors.allowed_origin && (
-              <FieldError id="setting-origin-error">
-                {fieldErrors.allowed_origin}
-              </FieldError>
-            )}
-          </Field>
-          <FieldGroup className="settings-fields">
-            <NumberField
-              name="timeout_milliseconds"
-              error={fieldErrors.timeout_milliseconds}
-              label="通知超时（秒）"
-              scale={1000}
-              value={(initialSettings.notifications?.timeout_milliseconds ?? 5000)}
-              min={1000}
-              max={30000}
-            />
-            <NumberField
-              name="maximum_attempts"
-              error={fieldErrors.maximum_attempts}
-              label="最多发送次数"
-              value={(initialSettings.notifications?.maximum_attempts ?? 12)}
-              min={1}
-              max={100}
-            />
-            <NumberField
-              name="retry_base_seconds"
-              error={fieldErrors.retry_base_seconds}
-              label="首次重试间隔（秒）"
-              value={(initialSettings.notifications?.retry_base_seconds ?? 5)}
-              min={1}
-              max={3600}
-            />
-            <NumberField
-              name="retry_maximum_seconds"
-              error={fieldErrors.retry_maximum_seconds}
-              label="最大重试间隔（秒）"
-              value={(initialSettings.notifications?.retry_maximum_seconds ?? 3600)}
-              min={1}
-              max={86400}
-            />
-          </FieldGroup>
-        </FieldGroup>
-      </FieldSet>
     </FieldGroup>
   );
   const backupFields = (
@@ -683,8 +424,7 @@ export function SettingsEditor({
           max={365}
         />
       </FieldGroup>
-      {!guided && (
-        <Link
+      <Link
           className={buttonVariants({
             variant: "link",
             size: "sm",
@@ -693,8 +433,7 @@ export function SettingsEditor({
           to="/system"
         >
           查看备份状态
-        </Link>
-      )}
+      </Link>
     </FieldGroup>
   );
   const displayRowClassName =
@@ -757,50 +496,6 @@ export function SettingsEditor({
           {fieldErrors.dashboard_chart_type && <FieldError id={formId + "-chart-error"}>{fieldErrors.dashboard_chart_type}</FieldError>}
         </FieldContent>
       </Field>
-      {!settings.site_mode && <>
-      <Field
-        orientation="vertical"
-        className={displayRowClassName}
-        data-invalid={!!fieldErrors.checkout_help_url}
-      >
-        <FieldLabel htmlFor="setting-checkout-help-url">
-          商家帮助链接
-        </FieldLabel>
-        <FieldContent className="min-w-0">
-          <Input
-            id="setting-checkout-help-url"
-            name="checkout_help_url"
-            type="url"
-            placeholder="可选，留空不显示"
-            defaultValue={initialSettings.display?.checkout_help_url ?? ""}
-            aria-invalid={!!fieldErrors.checkout_help_url}
-            aria-describedby={
-              fieldErrors.checkout_help_url ? "checkout-help-error" : undefined
-            }
-          />
-          {fieldErrors.checkout_help_url && (
-            <FieldError id="checkout-help-error">
-              {fieldErrors.checkout_help_url}
-            </FieldError>
-          )}
-        </FieldContent>
-      </Field>
-      </>}
-      {!settings.site_mode && <>
-      <Field orientation="vertical" className={displayRowClassName}>
-        <FieldLabel htmlFor="checkout-show-product-name">
-          收银台显示商品名称
-        </FieldLabel>
-        <FieldContent className="min-w-0 items-start">
-          <Switch
-            id="checkout-show-product-name"
-            name="checkout_show_product_name"
-            checked={showProductName}
-            onCheckedChange={setShowProductName}
-          />
-        </FieldContent>
-      </Field>
-      </>}
     </FieldGroup>
   );
   const advancedFields = (
@@ -828,12 +523,9 @@ export function SettingsEditor({
     </FieldGroup>
   );
 
-  const panels: Array<{ title: string; description?: string; fields: ReactNode }> =
-    section === "provider" ? [{ title: "开放平台应用", fields: providerIdentity }]
-    : section === "collection" ? [{ title: "收款码", fields: collectionIdentity }]
-    : section === "collection-policy" ? [{ title: "PerPay 查账设置", fields: providerCollection }]
-    : section === "display" ? [{ title: "界面显示", fields: displayFields }]
-    : [{ title: sections.find(([value]) => value === section)?.[1] ?? "设置", ...(section === "backup" ? { description: "恢复需要数据库备份和主密钥。" } : {}), fields: section === "notifications" ? notificationFields : section === "backup" ? backupFields : advancedFields }];
+  const title = sections.find(([value]) => value === section)![1];
+  const fields = section === "collection-policy" ? providerCollection
+    : section === "display" ? displayFields : section === "backup" ? backupFields : advancedFields;
 
   const actions = (
     <FieldGroup>
@@ -847,16 +539,15 @@ export function SettingsEditor({
         }
       />
       <Field orientation="horizontal" className="flex-wrap justify-end">
-        {overlay && !guided && <Button type="button" variant="outline" disabled={save.isPending || decoding} onClick={() => overlay.requestClose()}>关闭</Button>}
-        <Button form={formId} type="submit" className="h-auto min-h-8 max-w-full whitespace-normal" disabled={decoding || !canSave || save.isPending} aria-busy={save.isPending}>
+        {overlay && <Button type="button" variant="outline" disabled={save.isPending} onClick={() => overlay.requestClose()}>关闭</Button>}
+        <Button form={formId} type="submit" className="h-auto min-h-8 max-w-full whitespace-normal" disabled={!draft.dirty || save.isPending} aria-busy={save.isPending}>
           {save.isPending ? (
             <Spinner aria-hidden="true" data-icon="inline-start" />
           ) : (
-            !guided && <Save data-icon="inline-start" />
+            <Save data-icon="inline-start" />
           )}
-          {submitLabel}
+          保存
         </Button>
-        {secondaryAction}
         {draft.dirty && (
           <span className="text-sm text-muted-foreground" role="status">
             未保存
@@ -866,13 +557,10 @@ export function SettingsEditor({
     </FieldGroup>
   );
 
-  const editor = (
+  return (
     <form
       id={formId}
-      className={cn(
-        "w-full min-w-0",
-        guided && renderGuidedActions && "flex min-w-0 flex-col gap-5",
-      )}
+      className="w-full min-w-0"
       ref={draft.form}
       onSubmit={submit}
       onInvalidCapture={(event) => {
@@ -900,98 +588,24 @@ export function SettingsEditor({
     >
       <FieldSet disabled={save.isPending}>
         <FieldGroup>
-          {guided ? (
-            renderGuidedActions ? (
-              <Card>
-                <CardContent>
-                  <FieldGroup>
-                    {panels.map((panel) => (
-                      <FieldSet key={panel.title} className="min-w-0">
-                        <FieldLegend>{panel.title}</FieldLegend>
-                        {panel.fields}
-                      </FieldSet>
-                    ))}
-                  </FieldGroup>
-                </CardContent>
-              </Card>
-            ) : (
-              panels.map((panel) => (
-                <Fragment key={panel.title}>{panel.fields}</Fragment>
-              ))
-            )
-          ) : (
-            <Card>
-              {!overlay && (
-                <CardHeader
-                  className={section === "display" ? "sr-only" : undefined}
-                >
-                  <CardTitle role="heading" aria-level={2}>
-                    {sections.find(([value]) => value === section)?.[1] ?? "设置"}
-                  </CardTitle>
-                </CardHeader>
-              )}
-              <CardContent>
-                <FieldGroup
-                  className={cn(
-                    "grid items-start gap-6",
-                    section === "display" && "w-full",
-                    section === "display" && !overlay && "max-w-2xl",
-                    panels.length > 1 && "@3xl/settings:grid-cols-2",
-                  )}
-                >
-                  {panels.map((panel) => (
-                    <FieldSet key={panel.title} className="min-w-0">
-                      <FieldLegend
-                        className={panels.length === 1 ? "sr-only" : undefined}
-                      >
-                        {panel.title}
-                      </FieldLegend>
-                      {panel.description && (
-                        <FieldDescription>{panel.description}</FieldDescription>
-                      )}
-                      {panel.fields}
-                    </FieldSet>
-                  ))}
-                </FieldGroup>
-              </CardContent>
-              {overlay ? <OverlayActions className="w-full">{actions}</OverlayActions> : <CardFooter>{actions}</CardFooter>}
-            </Card>
-          )}
-          {guided && !renderGuidedActions && actions}
+          <Card>
+            {!overlay && (
+              <CardHeader className={section === "display" ? "sr-only" : undefined}>
+                <CardTitle role="heading" aria-level={2}>{title}</CardTitle>
+              </CardHeader>
+            )}
+            <CardContent>
+              <FieldSet className={cn("min-w-0", section === "display" && !overlay && "max-w-2xl")}>
+                <FieldLegend className="sr-only">{title}</FieldLegend>
+                {section === "backup" && <FieldDescription>恢复需要数据库备份和主密钥。</FieldDescription>}
+                {fields}
+              </FieldSet>
+            </CardContent>
+            {overlay ? <OverlayActions className="w-full">{actions}</OverlayActions> : <CardFooter>{actions}</CardFooter>}
+          </Card>
         </FieldGroup>
       </FieldSet>
-      {guided && renderGuidedActions?.(actions)}
     </form>
-  );
-  if (guided && renderGuidedActions) return editor;
-  if (!guided)
-    return (
-      <div className="flex min-w-0 flex-col gap-4">
-        {editor}
-        {section === "provider" && (
-          <ApplicationKey settings={settings} onSaved={onSaved} />
-        )}
-      </div>
-    );
-  return (
-    <Card>
-      <CardContent className="flex flex-col gap-4">
-        {guided && section === "backup" ? (
-          <>
-            <p className="text-sm">
-              {backupInterval(settings.backup.interval_seconds)}备份，保留{" "}
-              {settings.backup.keep_count} 份。
-            </p>
-            {editor}
-            <p className="text-sm text-muted-foreground">
-              恢复需同时保留数据库备份和主密钥。
-            </p>
-          </>
-        ) : (
-          editor
-        )}
-      </CardContent>
-    </Card>
   );
 }
 
@@ -1016,31 +630,6 @@ async function saveSettings(
       throw new SettingsInputError(key, "请输入能精确换算的有效时间或整数。");
     return value;
   };
-  if (section === "collection") {
-    const code = text("code_payload");
-    const error = collectionCodeError(code);
-    if (error) throw new SettingsInputError("code_payload", error);
-    return (
-      await result(
-        api.updateCollectionSettings({
-          body: {
-            revision,
-            code_payload: code,
-          },
-        }),
-      )
-    ).data;
-  }
-  if (section === "provider") {
-    if (hasLegacyAlipayConfiguration(settings)) throw new Error("旧沙箱接入已停用，请添加正式支付宝账号。");
-    const platformPublicKey = text("platform_public_key");
-    if (!platformPublicKey) throw new SettingsInputError("platform_public_key", "请填写支付宝公钥。");
-    return (await result(api.updateProviderSettings({ body: {
-      revision, environment: "PRODUCTION",
-      app_id: text("app_id"), platform_public_key: platformPublicKey,
-      ...(text("private_key") ? { private_key: text("private_key") } : {}),
-    } }))).data;
-  }
   if (section === "collection-policy") {
     const normal = integer("scan_interval_seconds"), active = integer("active_scan_interval_seconds"), minimum = integer("minimum_scan_interval_seconds"), maximumAge = integer("maximum_success_age_seconds");
     if (minimum > active) throw new SettingsInputError("minimum_scan_interval_seconds", "最小查账间隔不能大于活跃查账间隔。");
@@ -1052,33 +641,6 @@ async function saveSettings(
       safety_lag_seconds: integer("safety_lag_seconds"), maximum_success_age_seconds: maximumAge,
     } }))).data;
   }
-  if (section === "notifications") {
-    if (settings.site_mode || !settings.notifications) throw new Error("通知设置已迁移至业务网站。");
-    const notifications = settings.notifications;
-    const enabled = form.has("enabled");
-    const notificationNumber = (
-      key:
-        | "timeout_milliseconds"
-        | "maximum_attempts"
-        | "retry_base_seconds"
-        | "retry_maximum_seconds",
-    ) => (form.has(key) ? integer(key) : notifications[key]);
-    return (
-      await result(
-        api.updateNotificationSettings({
-          body: {
-            revision,
-            enabled,
-            ...(enabled ? { allowed_origin: text("allowed_origin") } : {}),
-            timeout_milliseconds: notificationNumber("timeout_milliseconds"),
-            maximum_attempts: notificationNumber("maximum_attempts"),
-            retry_base_seconds: notificationNumber("retry_base_seconds"),
-            retry_maximum_seconds: notificationNumber("retry_maximum_seconds"),
-          },
-        }),
-      )
-    ).data;
-  }
   if (section === "display") {
     const selectedType = text("dashboard_chart_type");
     if (selectedType !== "AREA" && selectedType !== "BAR" && selectedType !== "LINE")
@@ -1089,7 +651,6 @@ async function saveSettings(
           body: {
             revision,
             system_name: text("system_name"),
-            ...(settings.site_mode ? {} : { checkout_help_url: text("checkout_help_url") || null, checkout_show_product_name: form.has("checkout_show_product_name") }),
             dashboard_chart_type: selectedType === savedChartType
               ? settings.display?.dashboard_chart_type ?? "AREA"
               : selectedType,

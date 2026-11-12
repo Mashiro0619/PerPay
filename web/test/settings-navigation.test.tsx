@@ -24,10 +24,10 @@ function mediaWidth(initial: number) {
   });
 }
 
-function mount(width: number, siteMode = false) {
+function mount(width: number) {
   const view = mountOnboarding({ stage: 4, path: "/settings/display", viewportWidth: width,
     handle: request => new URL(request.url).pathname === "/api/admin/v1/settings"
-      ? json({ data: { ...configuredThrough(4), site_mode: siteMode } }) : undefined,
+      ? json({ data: configuredThrough(4) }) : undefined,
   });
   return { ...view, resize: mediaWidth(width) };
 }
@@ -113,7 +113,7 @@ describe("responsive settings category navigation", () => {
   });
 
   it("omits migrated notification settings from the mobile selector", async () => {
-    mount(360, true);
+    mount(360);
     const user = userEvent.setup();
     await user.click(await screen.findByRole("combobox", { name: "设置分类" }));
     await screen.findByRole("listbox");

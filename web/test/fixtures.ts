@@ -13,6 +13,7 @@ export const ledgerId = "22222222-2222-4222-8222-222222222222";
 const emptySecret = { configured: false, version: null, fingerprint: null, masked: null, updatedAt: null };
 
 export const settings: RuntimeSettings = {
+  site_mode: true,
   collection_policy: { revision: 3, timeout_milliseconds: 8000, scan_interval_seconds: 60, active_scan_interval_seconds: 8, minimum_scan_interval_seconds: 8, safety_lag_seconds: 10, maximum_success_age_seconds: 300 },
   admin_access: { enabled: false, cidrs: [] },
   revision: 3, payment_revision: 1, updated_at: "2026-09-06T00:00:00.000Z",

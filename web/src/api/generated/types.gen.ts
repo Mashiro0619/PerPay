@@ -654,7 +654,7 @@ export type RuntimeSettings = {
     display: DisplaySettings;
     secrets: RuntimeSecretMetadataMap;
     collection_policy?: CollectionPolicyRequest;
-    site_mode?: boolean;
+    site_mode: true;
 };
 export type SettingsCompletion = {
     complete: boolean;
