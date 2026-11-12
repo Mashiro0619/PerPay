@@ -18,17 +18,21 @@ const secretRotators = {
 };
 export const siteEpayKey = (clientId: string) => ["site-epay", clientId] as const;
 
-export async function getSiteEpay(clientId: string, signal: AbortSignal): Promise<SiteEpayConfiguration> {
-  const response = await result(api.getSiteEpay({ path: { clientId }, signal }));
-  if (!response.data || response.data.client_id !== clientId || typeof response.data.pid !== "string" || !Number.isSafeInteger(response.data.revision)) {
+function requireSiteEpay(configuration: SiteEpayConfiguration | undefined, clientId: string): SiteEpayConfiguration {
+  if (!configuration || configuration.client_id !== clientId || typeof configuration.pid !== "string" || !Number.isSafeInteger(configuration.revision)) {
     throw new Error("接入配置读取不完整，请重新读取。");
   }
-  return response.data;
+  return configuration;
 }
 
-export async function saveSiteEpay(clientId: string, body: Pick<SiteEpayConfiguration, "revision" | "v1_enabled" | "v2_enabled">) {
-  const response = await result(api.updateSiteEpay({ path: { clientId }, body }));
-  return response.data;
+export async function getSiteEpay(clientId: string, signal: AbortSignal): Promise<SiteEpayConfiguration> {
+  const response = await result(api.getSiteEpay({ path: { clientId }, signal }));
+  return requireSiteEpay(response.data, clientId);
+}
+
+export async function saveSiteEpay(clientId: string, body: Pick<SiteEpayConfiguration, "revision" | "v1_enabled" | "v2_enabled">, signal: AbortSignal) {
+  const response = await result(api.updateSiteEpay({ path: { clientId }, body, signal }));
+  return requireSiteEpay(response.data, clientId);
 }
 
 export async function viewEpaySecret(clientId: string, purpose: EpaySecret, signal: AbortSignal) {
@@ -36,10 +40,10 @@ export async function viewEpaySecret(clientId: string, purpose: EpaySecret, sign
   return response.data;
 }
 
-export async function rotateEpaySecret(clientId: string, purpose: EpaySecret, revision: number) {
-  const response = await result(secretRotators[purpose]({ path: { clientId }, body: { revision } }));
+export async function rotateEpaySecret(clientId: string, purpose: EpaySecret, revision: number, signal: AbortSignal) {
+  const response = await result(secretRotators[purpose]({ path: { clientId }, body: { revision }, signal }));
   // Only the public snapshot may enter the mutation cache.
-  return response.data.configuration;
+  return requireSiteEpay(response.data.configuration, clientId);
 }
 
 export async function exportSiteIntegration(clientId: string, body: IntegrationExport, signal: AbortSignal): Promise<Blob> {

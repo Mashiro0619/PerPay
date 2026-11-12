@@ -8,6 +8,7 @@ import {
 } from "@/api/integration";
 import { useDirtyDraft } from "@/drafts";
 import { useOverlayCloseGuard } from "@/lib/overlay-context";
+import { waitForOperation } from "@/lib/operation-timeout";
 import { Link } from "@/navigation";
 import { CopyValue } from "@/components/copy-value";
 import { SecretViewDialog } from "@/components/secret-view-dialog";
@@ -56,16 +57,31 @@ const rotationDescriptions: Record<EpaySecret, string> = {
   epay_platform: "响应和通知将改用新平台私钥签名。请同步更新业务网站的平台公钥。",
 };
 
+type Switches = Pick<SiteEpayConfiguration, "revision" | "v1_enabled" | "v2_enabled">;
+type WriteCommand = {
+  purpose: EpaySecret | null;
+  values: Switches;
+  keyVersion: number;
+  controller: AbortController;
+};
+
+function keyVersion(configuration: SiteEpayConfiguration, purpose: EpaySecret): number {
+  return purpose === "epay_v1" ? configuration.v1_key_version
+    : purpose === "epay_merchant" ? configuration.merchant_key_version : configuration.platform_key_version;
+}
+
 export function SiteIntegrationAssistant(props: AssistantProps) {
   const query = useQuery({
     queryKey: siteEpayKey(props.site.client_id),
     queryFn: ({ signal }) => getSiteEpay(props.site.client_id, signal),
+    refetchOnMount: "always",
     refetchOnWindowFocus: false,
   });
   return <>
     <ErrorNotice error={query.error} retainedData={!!query.data} retry={() => { void query.refetch(); }} />
     {query.isPending ? <Loading label="正在读取接入配置…" /> : query.data &&
       <IntegrationContent key={props.site.client_id} {...props} configuration={query.data}
+        readUnavailable={query.isError || query.isPaused}
         reading={query.isFetching} onReload={async () => {
           const refreshed = await query.refetch();
           if (refreshed.error) throw refreshed.error;
@@ -77,13 +93,12 @@ export function SiteIntegrationAssistant(props: AssistantProps) {
 }
 
 function IntegrationContent({ site, siteDirty = false, disabled = false, showClientId = true, onProtocolChange, selectedProtocol, controlsRef, onWritePendingChange,
-  configuration, reading, onReload }: AssistantProps & {
-    configuration: SiteEpayConfiguration; reading: boolean; onReload: () => Promise<SiteEpayConfiguration>;
+  configuration, reading, readUnavailable, onReload }: AssistantProps & {
+    configuration: SiteEpayConfiguration; reading: boolean; readUnavailable: boolean; onReload: () => Promise<SiteEpayConfiguration>;
   }) {
   const id = useId();
   const [localProtocol, setProtocol] = useState<IntegrationProtocol>("native");
   const protocol = selectedProtocol ?? localProtocol;
-  type Switches = Pick<SiteEpayConfiguration, "revision" | "v1_enabled" | "v2_enabled">;
   const [draft, setDraft] = useState<{ base: Switches; values: Switches } | null>(null);
   const values = draft?.values ?? configuration;
   const dirty = draft !== null;
@@ -98,9 +113,15 @@ function IntegrationContent({ site, siteDirty = false, disabled = false, showCli
   const [rotation, setRotation] = useState<EpaySecret | null>(null);
   const activeRead = useRef<AbortController | null>(null);
   const generation = useRef(0);
-  const writePending = useRef(false);
+  const activeWrite = useRef<AbortController | null>(null);
   const viewTrigger = useRef<HTMLButtonElement | null>(null);
   const rotationTrigger = useRef<HTMLButtonElement | null>(null);
+
+  useLayoutEffect(() => () => {
+    const controller = activeWrite.current;
+    activeWrite.current = null;
+    controller?.abort();
+  }, []);
 
   const hideSecret = useCallback(() => {
     generation.current++;
@@ -130,31 +151,35 @@ function IntegrationContent({ site, siteDirty = false, disabled = false, showCli
     const timer = window.setTimeout(hideSecret, 60_000);
     return () => window.clearTimeout(timer);
   }, [revealed, hideSecret]);
-  useOverlayCloseGuard(() => writePending.current);
+  useOverlayCloseGuard(() => activeWrite.current !== null);
 
   const persist = useMutation({
     networkMode: "always",
-    mutationFn: async (purpose: EpaySecret | null) => {
-      writePending.current = true;
-      try {
-        return purpose
-          ? await rotateEpaySecret(site.client_id, purpose, configuration.revision)
-          : await saveSiteEpay(site.client_id, values);
-      } finally { writePending.current = false; }
-    },
-    onSuccess: async (saved, purpose) => {
+    retry: false,
+    mutationFn: (command: WriteCommand) => waitForOperation(command.controller, signal => command.purpose
+      ? rotateEpaySecret(site.client_id, command.purpose, command.values.revision, signal)
+      : saveSiteEpay(site.client_id, command.values, signal)),
+    onSuccess: async (saved, command) => {
+      if (activeWrite.current !== command.controller) return;
       await queryClient.cancelQueries({ queryKey: siteEpayKey(site.client_id), exact: true });
+      if (activeWrite.current !== command.controller) return;
       queryClient.setQueryData(siteEpayKey(site.client_id), saved);
       setDraft(null);
       clearDraft();
       setError(null);
       setRefreshRequired(false);
-      setFeedback(purpose ? "密钥已更新，请更新业务网站配置。" : "易支付设置已保存。");
-      if (purpose) setRotation(null);
+      setFeedback(command.purpose ? "密钥已更新，请更新业务网站配置。" : "易支付设置已保存。");
+      if (command.purpose) setRotation(null);
     },
-    onError: reason => {
-      setError(reason instanceof Error ? reason : new Error("保存失败，请重新读取并核对。"));
-      if (reason instanceof ApiError && reason.status === 409) setRefreshRequired(true);
+    onError: (reason, command) => {
+      if (activeWrite.current !== command.controller) return;
+      setError(reason);
+      setRefreshRequired(true);
+      setFeedback(reason instanceof ApiError && reason.status >= 400 && reason.status < 500
+        ? "请重新读取配置，核对后再继续。" : "操作结果待确认，请重新读取配置。");
+    },
+    onSettled: (_data, _error, command) => {
+      if (activeWrite.current === command.controller) activeWrite.current = null;
     },
   });
   useImperativeHandle(controlsRef, () => ({
@@ -162,7 +187,7 @@ function IntegrationContent({ site, siteDirty = false, disabled = false, showCli
       clearDraft();
       setDraft(null);
     },
-    isWritePending: () => writePending.current || persist.isPending,
+    isWritePending: () => activeWrite.current !== null || persist.isPending,
   }), [clearDraft, persist.isPending]);
   useLayoutEffect(() => {
     onWritePendingChange?.(persist.isPending);
@@ -171,20 +196,36 @@ function IntegrationContent({ site, siteDirty = false, disabled = false, showCli
   const busy = disabled || reading || pendingRead !== null || persist.isPending;
   const blocked = busy || siteDirty || dirty;
   const selected = protocols.find(item => item.value === protocol)!;
-  const keyReady = (purpose: EpaySecret) => !!(purpose === "epay_v1" ? configuration.v1_key_version
-    : purpose === "epay_merchant" ? configuration.merchant_key_version : configuration.platform_key_version);
+  const keyReady = (purpose: EpaySecret) => keyVersion(configuration, purpose) > 0;
   const protocolEnabled = protocol === "native" || (protocol === "epay_v1" ? configuration.v1_enabled : configuration.v2_enabled);
   const keysReady = protocol === "native" || (protocol === "epay_v1"
     ? !!configuration.v1_key_version
     : !!configuration.merchant_key_version && !!configuration.platform_key_version);
   const fieldErrors = error instanceof ApiError ? error.fields : {};
-  const needsRefresh = refreshRequired || error instanceof ApiError && error.status === 409;
+  const needsRefresh = readUnavailable || refreshRequired || error instanceof ApiError && error.status === 409;
   const sitePath = "/sites/" + encodeURIComponent(site.client_id);
   const documentation = "https://github.com/Mashiro0619/PerPay/blob/main/docs/" +
     (protocol === "native" ? "integration-quickstart.md" : "epay-integration.md");
 
+  function submit(purpose: EpaySecret | null) {
+    if (activeWrite.current || busy || siteDirty || needsRefresh || (purpose && dirty)) return;
+    const controller = new AbortController();
+    activeWrite.current = controller;
+    setError(null);
+    setFeedback("");
+    // Reopening after an interrupted write must read the current configuration.
+    void queryClient.invalidateQueries({ queryKey: siteEpayKey(site.client_id), exact: true, refetchType: "none" });
+    persist.mutate({
+      purpose,
+      values: { revision: purpose ? configuration.revision : values.revision, v1_enabled: values.v1_enabled, v2_enabled: values.v2_enabled },
+      keyVersion: purpose ? keyVersion(configuration, purpose) : 0,
+      controller,
+    });
+  }
+
   async function reloadConfiguration() {
     setRefreshRequired(true);
+    const command = persist.variables;
     try {
       const remote = await onReload();
       if (draft) {
@@ -203,7 +244,15 @@ function IntegrationContent({ site, siteDirty = false, disabled = false, showCli
           setDraft({ base: remote, values: merged });
           setFeedback("配置已重新读取，已保留你的修改，请核对后保存。");
         }
+      } else if (command?.purpose) {
+        const version = keyVersion(remote, command.purpose);
+        setFeedback(version !== command.keyVersion
+          ? `当前密钥版本已更新为 ${version}，请查看密钥并同步业务网站配置。`
+          : version > 0 ? `当前密钥版本为 ${version}，与操作前一致。` : "当前尚未生成密钥。");
+      } else {
+        setFeedback("配置已重新读取。");
       }
+      persist.reset();
       setError(null);
       setRefreshRequired(false);
     } catch (reason) {
@@ -212,7 +261,7 @@ function IntegrationContent({ site, siteDirty = false, disabled = false, showCli
   }
 
   async function read(purpose: EpaySecret, publicOnly = false) {
-    if (document.hidden || blocked || activeRead.current || writePending.current) return;
+    if (document.hidden || blocked || activeRead.current || activeWrite.current) return;
     const controller = new AbortController();
     activeRead.current = controller;
     const current = ++generation.current;
@@ -291,7 +340,7 @@ function IntegrationContent({ site, siteDirty = false, disabled = false, showCli
       }}>重新读取配置</Button>}
       {siteDirty && <Alert><AlertDescription>网站配置有未保存的修改，请先保存或撤销，再管理密钥。</AlertDescription></Alert>}
       {dirty && <div className="flex flex-wrap gap-2">
-        <Button type="button" disabled={busy || siteDirty || needsRefresh} onClick={() => persist.mutate(null)}>保存易支付设置</Button>
+        <Button type="button" disabled={busy || siteDirty || needsRefresh} onClick={() => submit(null)}>保存易支付设置</Button>
         <Button type="button" variant="outline" disabled={busy} onClick={() => { setDraft(null); clearDraft(); }}>撤销易支付修改</Button>
       </div>}
       {!protocolEnabled && <p role="status">此协议已暂停新订单。</p>}
@@ -339,10 +388,10 @@ function IntegrationContent({ site, siteDirty = false, disabled = false, showCli
         <AlertDialogDescription>{rotation && keyReady(rotation) ? rotationDescriptions[rotation] : "生成后，请将接入密钥配置到业务网站。"}</AlertDialogDescription>
       </AlertDialogHeader>
       <ErrorNotice error={error} showDiagnostics={false} />
-      {persist.isError && <p>请关闭后查看当前密钥，确认操作结果。</p>}
+      {persist.isError && <p>请关闭后重新读取配置，核对当前密钥。</p>}
       <AlertDialogFooter><AlertDialogCancel disabled={persist.isPending}>{persist.isError ? "关闭" : "取消"}</AlertDialogCancel>
         <AlertDialogAction variant={rotation && keyReady(rotation) ? "destructive" : "default"}
-          disabled={blocked || persist.isError} onClick={() => { if (rotation && !blocked && !persist.isError) persist.mutate(rotation); }}>
+          disabled={blocked || needsRefresh || persist.isError} onClick={() => { if (rotation && !persist.isError) submit(rotation); }}>
           {persist.isPending && <Spinner data-icon="inline-start" />}
           {persist.isPending ? "正在处理…" : rotation && keyReady(rotation) ? "确认轮换" : "生成密钥"}
         </AlertDialogAction>
