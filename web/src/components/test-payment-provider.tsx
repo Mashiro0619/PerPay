@@ -2,6 +2,8 @@ import { useWorkspace } from "@/workspace";
 import { actualPageAddress } from "@/lib/navigation-selection";
 import {
   createContext,
+  lazy,
+  Suspense,
   useContext,
   useEffect,
   useLayoutEffect,
@@ -12,7 +14,6 @@ import {
 } from "react";
 import { useLocation, useMatch } from "react-router";
 import { ScanLine } from "lucide-react";
-import { TestPaymentDialog } from "@/pages/TestPayment";
 import {
   TestPaymentRequestContext,
   useTestPaymentRequest,
@@ -21,6 +22,43 @@ import { Button } from "@/components/ui/button";
 import { usePageActionMenu } from "@/components/page-header-actions";
 import { useOptionalOverlayNavigation } from "@/lib/overlay-context";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/admin-dialog";
+import { Spinner } from "@/components/ui/spinner";
+
+const TestPaymentDialog = lazy(() =>
+  import("@/pages/TestPayment").then((module) => ({
+    default: module.TestPaymentDialog,
+  })),
+);
+
+function TestPaymentLoadingDialog({
+  open,
+  onOpenChange,
+  finalFocus,
+}: ComponentProps<typeof TestPaymentDialog>) {
+  const title = useRef<HTMLHeadingElement>(null);
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent initialFocus={title} finalFocus={open ? false : finalFocus}>
+        <DialogHeader>
+          <DialogTitle ref={title} tabIndex={-1}>测试收款</DialogTitle>
+        </DialogHeader>
+        <div role="status" className="flex items-center gap-2">
+          <Spinner aria-hidden="true" />正在加载测试收款…
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>取消</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 const TestPaymentContext = createContext<
   ((trigger: HTMLButtonElement) => void) | null
@@ -44,6 +82,8 @@ export function TestPaymentProvider({ children }: { children: ReactNode }) {
     if (overlayOpen) bindSite.current(clientId);
   }, [overlayOpen, clientId]);
   const trigger = useRef<HTMLButtonElement | null>(null);
+  const finalFocus = () => trigger.current?.isConnected
+    ? trigger.current : document.getElementById("main-content");
   useEffect(() => {
     setOpen(false);
   }, [pageAddress]);
@@ -60,15 +100,11 @@ export function TestPaymentProvider({ children }: { children: ReactNode }) {
       <TestPaymentRequestContext value={request}>
         {children}
         {started && !standalone && !overlay && (
-          <TestPaymentDialog
-            open={open}
-            onOpenChange={setOpen}
-            finalFocus={() =>
-              trigger.current?.isConnected
-                ? trigger.current
-                : document.getElementById("main-content")
-            }
-          />
+          <Suspense fallback={
+            <TestPaymentLoadingDialog open={open} onOpenChange={setOpen} finalFocus={finalFocus} />
+          }>
+            <TestPaymentDialog open={open} onOpenChange={setOpen} finalFocus={finalFocus} />
+          </Suspense>
         )}
       </TestPaymentRequestContext>
     </TestPaymentContext>
