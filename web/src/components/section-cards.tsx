@@ -55,7 +55,7 @@ export function SectionCards({
               className={card.href ? "flex items-center justify-between gap-1.5" : undefined}
             >
               {card.title}
-              {card.href && !pending && (
+              {card.href && (
                 <ArrowUpRight
                   aria-hidden="true"
                   className="size-3.5 shrink-0 text-muted-foreground transition-transform group-hover/card:translate-x-0.5 group-hover/card:-translate-y-0.5"
