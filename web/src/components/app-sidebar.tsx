@@ -153,10 +153,11 @@ export function AppSidebar({
               className="p-0"
             />
           </nav>
-          <nav aria-label="设置导航">
+          <nav aria-label="设置导航" className="border-t border-sidebar-border pt-2">
             <NavSecondary
               items={items.slice(4, 5)}
               pathname={pathname}
+              label={selection.clientId ? "当前网站" : undefined}
               className="p-0"
             />
           </nav>

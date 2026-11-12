@@ -310,6 +310,8 @@ describe("business websites in the sidebar", () => {
     const manage = within(shared).getByRole("link", { name: "业务网站" });
     expect(manage).toHaveAttribute("href", "/sites");
     expect(within(settings).getByRole("link", { name: "设置" })).toHaveAttribute("href", "/settings");
+    expect(within(settings).queryByText("当前网站")).not.toBeInTheDocument();
+    expect(settings).toHaveClass("border-t", "border-sidebar-border");
     expect(settings.closest("[data-slot=sidebar-footer]")).toContainElement(shared);
     expect(shared.compareDocumentPosition(settings) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     const selector = within(nav).getByRole("navigation", { name: "网站选择" });
@@ -419,6 +421,7 @@ describe("business websites in the sidebar", () => {
     const nav = sidebar();
     expect(primaryLinks(nav)).toEqual(["总览", "订单", "待处理", "通知"]);
     const settings = within(nav).getByRole("navigation", { name: "设置导航" });
+    expect(within(settings).getByText("当前网站")).toBeVisible();
     expect(within(settings).getByRole("link", { name: "设置" })).toHaveAttribute("href", "/sites/a/settings/basic");
     expect(within(nav).getByRole("link", { name: "对账" })).toHaveAttribute("href", "/reconciliation?selected_site=a");
     expect(within(nav).getByRole("link", { name: "运行状态" })).toHaveAttribute("href", "/system?selected_site=a");
