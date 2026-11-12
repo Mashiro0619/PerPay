@@ -102,7 +102,7 @@ for (let attempt = 0; attempt < 18; attempt += 1) {
   });
 }
 
-const freshConfig = loadConfig({ PERPAY_MASTER_KEY: "0123456789abcdef".repeat(4), PERPAY_DATA_DIR: join(directory, "fresh", "data"), PERPAY_BACKUP_DIR: join(directory, "fresh", "backups"), PERPAY_PUBLIC_URL: "http://127.0.0.1:6195" });
+const freshConfig = loadConfig({ PERPAY_MASTER_KEY: "0123456789abcdef".repeat(4), PERPAY_DATA_DIR: join(directory, "fresh", "data"), PERPAY_BACKUP_DIR: join(directory, "fresh", "backups"), PERPAY_PUBLIC_URL: "http://127.0.0.1:6195", PERPAY_SETUP_TOKEN_ENABLED: "false" });
 const freshDatabase = await AppDatabase.open(freshConfig.databasePath);
 const freshIdentity = new IdentityService(freshDatabase);
 await freshIdentity.initialize();

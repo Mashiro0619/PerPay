@@ -8851,7 +8851,7 @@ components:
           type: string
           minLength: 1
           maxLength: 256
-          description: Required only when PERPAY_SETUP_TOKEN_ENABLED=true (default false). One-time token from the latest startup log; generated as 64 lowercase hexadecimal characters. Do not place it in URLs or browser storage.
+          description: Required when PERPAY_SETUP_TOKEN_ENABLED=true (the default). One-time token from the latest startup log; generated as 64 lowercase hexadecimal characters. Do not place it in URLs or browser storage.
     AdminLoginEnvelope:
       type: object
       additionalProperties: false

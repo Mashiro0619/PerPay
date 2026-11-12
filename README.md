@@ -91,7 +91,7 @@ curl -fsSLo docker-compose.yml https://raw.githubusercontent.com/Mashiro0619/Per
 | `x-perpay-public-url` | PerPay 的公开地址，如 `https://pay.example.com`，不带路径。 |
 | `x-perpay-trusted-proxy-cidrs` | 反向代理连接到 PerPay 时使用的 IP 或网段，多个用逗号分隔。本机直接访问时留空。 |
 | `x-perpay-host-port` | 默认 `127.0.0.1:6190:6190`，供宿主机上的反向代理访问。 |
-| `x-perpay-setup-token-enabled` | 默认 `"false"`。改为 `"true"` 后，首次创建管理员还需要填写启动日志中的一次性令牌。 |
+| `x-perpay-setup-token-enabled` | 默认 `"true"`，首次创建管理员时填写启动日志中的一次性令牌。 |
 
 在服务器上配置反向代理，将域名转发到 `http://127.0.0.1:6190`。代理 IP 怎么填，见[反向代理配置示例](docs/reverse-proxy.md)。
 
@@ -101,7 +101,7 @@ curl -fsSLo docker-compose.yml https://raw.githubusercontent.com/Mashiro0619/Per
 
 ### 3. 启动服务
 
-公网部署先按[首次访问控制](docs/reverse-proxy.md#首次访问控制)限制后台访问，创建管理员后再开放。
+首次创建管理员默认需要初始化令牌，读取方式见[初始化](#初始化)。需要限制安装期间的访问来源时，按[首次访问控制](docs/reverse-proxy.md#首次访问控制)配置。
 
 ```sh
 docker compose config --quiet
@@ -114,12 +114,12 @@ docker compose ps
 ## 初始化
 
 1. 打开 `https://你的域名/admin/`；本机试用打开 [http://localhost:6190/admin/](http://localhost:6190/admin/)。
-2. 设置管理员密码，至少 6 个字符，建议使用随机长密码。若启用了初始化令牌，从 `docker compose logs --tail=100 app` 中读取最近一次 `administrator_setup_required` 的 `setup_token`。
+2. 从 `docker compose logs --tail=100 app` 中读取最新一条 `administrator_setup_required` 的 `setup_token`，填写初始化令牌并设置管理员密码。密码至少 6 个字符，建议使用随机长密码。
 3. 登录并按向导[配置支付宝账号](docs/alipay-setup.md)，完成密钥与收款码设置、连接检查。
 4. [创建业务网站](docs/multi-site.md)，选择收款账号；在接入助手中选择原生 API 或易支付 V1/V2。
 5. 从业务网站下单并支付一笔小额订单，确认 **PerPay 显示“收款已确认”，业务网站也已收到通知并完成发货或服务开通**。
 
-暂时无法收款时，打开“运行状态”查看原因；通知发送失败时，打开订单中的通知记录。如果启用了初始化令牌，服务重启后令牌会更换，首次设置时使用最新值。
+暂时无法收款时，打开“运行状态”查看原因；通知发送失败时，打开订单中的通知记录。管理员创建前，服务重启会更换初始化令牌，填写最新值即可。
 
 ## 更新
 

@@ -37,7 +37,7 @@ const rawDeploymentConfigSchema = z.object({
   PERPAY_SECRETS_DIR: z.string().trim().min(1).optional(),
   PERPAY_PUBLIC_URL: z.string().trim().min(1).default("http://localhost:6190"),
   PERPAY_TRUSTED_PROXY_CIDRS: z.string().default(""),
-  PERPAY_SETUP_TOKEN_ENABLED: z.enum(["true", "false"]).default("false"),
+  PERPAY_SETUP_TOKEN_ENABLED: z.enum(["true", "false"]).default("true"),
   // Kept as a non-Compose compatibility fallback for local health probes.
   PERPAY_BACKUP_INTERVAL_SECONDS: z.coerce
     .number()

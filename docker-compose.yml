@@ -10,8 +10,8 @@ x-perpay-public-url: &perpay-public-url "https://pay.example.com"
 # HTTPS 部署必填：直连反向代理的 IP 或 CIDR 网段，多个用逗号分隔。
 # 以 PerPay 容器实际看到的来源为准；宿主机代理可能显示为 Docker 网关 IP。
 x-perpay-trusted-proxy-cidrs: &perpay-trusted-proxy-cidrs ""
-# 可选：首次创建管理员时要求启动日志中的一次性令牌；默认关闭，开启改为 "true"。
-x-perpay-setup-token-enabled: &perpay-setup-token-enabled "false"
+# 首次创建管理员时填写启动日志中的一次性令牌；默认开启。
+x-perpay-setup-token-enabled: &perpay-setup-token-enabled "true"
 
 services:
   app:

@@ -9,7 +9,7 @@
 | Nginx 直接安装在服务器上 | [宿主机代理](#宿主机代理)：Nginx 通过服务器本机端口访问 PerPay。 |
 | Nginx 也运行在 Docker 容器里 | [同网络容器代理](#同网络容器代理)：两个容器通过专用网络连接。 |
 
-两种方式都要在首次启动前做好[首次访问控制](#首次访问控制)，防止别人抢先创建管理员。`x-perpay-public-url` 填浏览器实际访问的地址，例如 `https://pay.example.com`，包含 `https://`，不带路径。`x-perpay-trusted-proxy-cidrs` 告诉 PerPay 哪个代理可以转发用户 IP，填写方法见各自步骤。
+两种方式都默认使用[一次性初始化令牌](#首次访问控制)创建管理员。`x-perpay-public-url` 填浏览器实际访问的地址，例如 `https://pay.example.com`，包含 `https://`，不带路径。`x-perpay-trusted-proxy-cidrs` 告诉 PerPay 哪个代理可以转发用户 IP，填写方法见各自步骤。
 
 以下命令在 `docker-compose.yml` 所在目录执行，默认项目名是 `perpay`。如果你用 `-p` 指定过其他名字，后续命令继续带上同一 `-p 项目名`，并替换示例中的网络名。
 
@@ -25,7 +25,7 @@
 
 2. 将 Nginx 连接 PerPay 时使用的地址填入 `x-perpay-trusted-proxy-cidrs`。经过 Docker 转发后，这个地址通常是上一步输出的网关，不能直接照填 `127.0.0.1`。IPv4 地址后加 `/32`，IPv6 地址后加 `/128`，表示只信任这个地址；多个地址用逗号分隔。
 
-3. 配置 Nginx，将域名、证书路径换成实际值，并按[首次访问控制](#首次访问控制)加入临时规则或启用初始化令牌：
+3. 配置 Nginx，将域名、证书路径换成实际值：
 
    ```nginx
    server {
@@ -56,9 +56,15 @@
 
 ## 首次访问控制
 
-第一次创建管理员前，按下面一种方式保护设置页面。初始化令牌默认关闭，需要时手动开启。
+初始化令牌默认开启。启动后读取最新令牌：
 
-**固定来源 IP：临时限制整个站点。** 在 Nginx 的 `server` 内、`location /` 之前加入以下规则，将示例地址换成自己的公网 IP：
+```sh
+docker compose logs --tail=100 app
+```
+
+找到最新一条 `administrator_setup_required` 日志，把其中的 `setup_token` 填入自己的 HTTPS 管理页面。创建管理员后，这个令牌立即失效；如果创建前重启了服务，需要使用新令牌。已有部署保留显式配置；之前关闭过令牌的全新实例，可将 Compose 的 `x-perpay-setup-token-enabled` 改为 `"true"`。
+
+如需在安装期间只允许自己访问，可临时限制整个站点。在 Nginx 的 `server` 内、`location /` 之前加入以下规则，将示例地址换成自己的公网 IP：
 
 ```nginx
 allow 203.0.113.10;
@@ -66,14 +72,6 @@ deny all;
 ```
 
 重新加载 Nginx 后，从允许的地址打开 `/admin/`，应能看到管理员设置页面；其他地址会收到 403。创建管理员并成功登录后，删除这两行并重新加载，让付款人和业务网站可以访问。
-
-**无法固定来源 IP：启用一次性初始化令牌。** 首次启动前，将 Compose 的 `x-perpay-setup-token-enabled` 改为 `"true"`。启动后读取最新令牌：
-
-```sh
-docker compose logs --tail=100 app
-```
-
-找到最新一条 `administrator_setup_required` 日志，把其中的 `setup_token` 填入自己的 HTTPS 管理页面。创建管理员后，这个令牌立即失效；如果创建前重启了服务，需要使用新令牌。
 
 代理已经运行后修改配置，宿主机执行 `sudo nginx -t && sudo systemctl reload nginx`；容器代理执行 `docker compose exec proxy nginx -t && docker compose exec proxy nginx -s reload`。首次安装先写好配置，再按对应路线启动，容器尚未启动时不执行 `exec`。
 

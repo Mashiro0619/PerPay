@@ -85,6 +85,7 @@ export async function createPreviewDemo(options: { port?: number; now?: number; 
       PERPAY_DATA_DIR: join(directory, "data"),
       PERPAY_BACKUP_DIR: join(directory, "backups"),
       PERPAY_PUBLIC_URL: origin,
+      PERPAY_SETUP_TOKEN_ENABLED: "false",
     });
     const db = await AppDatabase.open(config.databasePath, { masterKey: config.masterKey });
     database = db;

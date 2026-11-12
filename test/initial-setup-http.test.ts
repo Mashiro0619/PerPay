@@ -17,7 +17,7 @@ const MASTER_KEY = "0123456789abcdef".repeat(4);
 const ADMIN_PASSWORD = "first-run-admin-password";
 
 describe("first-run administrator HTTP flow", () => {
-  for (const mode of [null, "false"] as const) {
+  for (const mode of ["false"] as const) {
     it(`initializes without a token when the deployment flag is ${mode ?? "unset"}`, async () => {
       const fixture = await createFixture(Date.now, mode);
       try {
@@ -63,7 +63,7 @@ describe("first-run administrator HTTP flow", () => {
   }
 
   it("uses the current deployment flag when an uninitialized instance restarts", async () => {
-    const fixture = await createFixture(Date.now, null);
+    const fixture = await createFixture(Date.now, "false");
     try {
       const protectedApp = fixture.recreateApp(true);
       assert.equal(fixture.issuedTokens.length, 1);
@@ -390,7 +390,7 @@ describe("first-run administrator HTTP flow", () => {
   });
 });
 
-async function createFixture(clock: () => number = Date.now, tokenMode: "true" | "false" | null = "true") {
+async function createFixture(clock: () => number = Date.now, tokenMode: "true" | "false" | null = null) {
   const directory = mkdtempSync(join(tmpdir(), "perpay-initial-setup-http-"));
   const config = loadConfig({
     PERPAY_MASTER_KEY: MASTER_KEY,

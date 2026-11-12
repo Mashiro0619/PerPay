@@ -37,17 +37,17 @@ function cleanup(directory) {
 }
 
 describe("production administrator smoke", () => {
-  for (const setupTokenEnabled of [undefined, true]) {
-  it(`uses real Hono, SQLite and build assets through setup, auth, conflicts and restart with token ${setupTokenEnabled ? "enabled" : "disabled by default"}`, async () => {
+  for (const setupTokenEnabled of [undefined, false]) {
+  it(`uses real Hono, SQLite and build assets through setup, auth, conflicts and restart with token ${setupTokenEnabled === false ? "disabled" : "enabled by default"}`, async () => {
     const directory = mkdtempSync(join(tmpdir(), "perpay-admin-smoke-"));
     const password = randomBytes(32).toString("hex");
     let services = await open(directory, Date.now, setupTokenEnabled);
     try {
-      assert.equal(typeof services.setupToken === "string", setupTokenEnabled === true);
+      assert.equal(typeof services.setupToken === "string", setupTokenEnabled !== false);
       const options = { baseUrl: origin, password, isolated: true, assets: listAdminAssets() };
       const first = await runAdminSmoke({ ...options, initialize: true, setupToken: services.setupToken, request: (url, init) => {
         if (new URL(url).pathname === "/api/admin/v1/setup") {
-          assert.equal(Object.hasOwn(JSON.parse(init.body), "setup_token"), setupTokenEnabled === true);
+          assert.equal(Object.hasOwn(JSON.parse(init.body), "setup_token"), setupTokenEnabled !== false);
         }
         return services.app.request(url, init);
       } });
