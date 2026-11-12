@@ -327,6 +327,15 @@ describe("website overview amount cards", () => {
     expect(link).toHaveAttribute("href", "/sites/site_all_zero?range=7");
   });
 
+  it("enforces a minimum visible bar width for tiny nonzero receipts relative to the global maximum", async () => {
+    mount(() => page([
+      site("site_tiny", "极小实收网站", { confirmed_amount_cents: 3901 }),
+      site("site_peak", "最高实收网站", { confirmed_amount_cents: 1850000 }),
+    ], null, { maximum: 1850000 }));
+    const tiny = await findCard("site_tiny");
+    expect(barWidth(tiny)).toBe(3);
+  });
+
   it("recovers from an initial read failure without showing empty or zero-valued cards", async () => {
     let attempt = 0;
     const view = mount(() => ++attempt === 1

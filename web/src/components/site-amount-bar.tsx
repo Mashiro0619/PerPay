@@ -1,6 +1,6 @@
 /** SVG attributes keep the amount comparison compatible with the administrator CSP. */
 export function SiteAmountBar({ amount, maximum }: { amount: number; maximum: number }) {
-  const width = maximum > 0 ? Math.max(0, Math.min(100, amount / maximum * 100)) : 0;
+  const width = amount > 0 && maximum > 0 ? Math.max(3, Math.min(100, amount / maximum * 100)) : 0;
   return (
     <svg
       className="site-overview-amount-bar"
