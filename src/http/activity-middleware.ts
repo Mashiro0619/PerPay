@@ -63,7 +63,8 @@ export function httpActivityMiddleware<E extends Env>(options: {
             subjectType: scope.subjectType, subjectId: scope.subjectId,
             httpMethod: context.req.method, route, httpStatus: status, durationMs: Math.max(0, Math.round(performance.now() - started)),
             outcome: status >= 400 ? "FAILURE" : "SUCCESS",
-            aggregate: ["GET", "HEAD"].includes(context.req.method) && status < 400 && scope.coreEventIds.length === 0,
+            aggregate: scope.coreEventIds.length === 0 &&
+              (["GET", "HEAD"].includes(context.req.method) || (scope.actorType === "ANONYMOUS" && status >= 400)),
             details: scope.errorCode ? { error_code: scope.errorCode } : {}, coreEventIds: coreIds });
         }
       }

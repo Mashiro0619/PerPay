@@ -31,6 +31,7 @@ export default function AuditStatus() {
         <CardContent><DetailFields density="comfortable" wide={["最近错误代码"]} items={[
           ["最近成功写入", data.capture.last_flush_at ? <AuditTime value={data.capture.last_flush_at} /> : "等待首次成功写入"],
           ["等待写入", data.capture.buffered_events.toLocaleString("zh-CN") + " 条"],
+          ...(data.capture.last_dropped_at ? [["最近丢弃活动", <AuditTime value={data.capture.last_dropped_at} />] as const] : []),
           ["最近维护日志导入", data.capture.spool_last_import_at ? <AuditTime value={data.capture.spool_last_import_at} /> : "未记录"],
           ...(snapshot ? [["列表读取时间", <AuditTime value={snapshot} />] as const] : []),
           ...(data.capture.last_error_code ? [["最近错误代码", data.capture.last_error_code] as const] : []),

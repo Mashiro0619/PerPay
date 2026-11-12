@@ -50,7 +50,7 @@ export function AuditSourceInfo({ event }: { event: AuditEventItem }) {
 }
 
 export function AuditRetention() {
-  return <p className="text-xs text-muted-foreground" data-audit-retention>核心审计持续保留；活动记录保留 30 天。成功查询按活动汇总。</p>;
+  return <p className="text-xs text-muted-foreground" data-audit-retention>核心审计持续保留；活动记录保留 30 天。普通查询和匿名错误请求按分钟汇总，其中未关联核心审计的查询和匿名请求最多保留 20,000 条。</p>;
 }
 
 export function AuditCaptureNotice({ capture, compact = false }: Pick<AuditMetadata, "capture"> & { compact?: boolean }) {
@@ -71,6 +71,8 @@ export function AuditCaptureNotice({ capture, compact = false }: Pick<AuditMetad
         {capture.spool_gap_count > 0 && <span>维护日志缺口：{capture.spool_gap_count.toLocaleString("zh-CN")} 处</span>}
         {capture.buffered_events > 0 && <span>等待写入：{capture.buffered_events.toLocaleString("zh-CN")} 条</span>}
       </div>
+      {capture.last_error_code === "activity_http_budget_exceeded" && <p>查询和匿名请求超过采集预算，部分活动未记录。该类请求每分钟最多接收 600 条待写入记录，重复请求会先合并。</p>}
+      {!compact && capture.last_dropped_at && <p>最近丢弃活动：<AuditTime value={capture.last_dropped_at} /></p>}
       {!compact && capture.last_flush_at && <p>最近成功写入：<AuditTime value={capture.last_flush_at} /></p>}
       {!compact && capture.spool_last_import_at && <p>最近维护日志导入：<AuditTime value={capture.spool_last_import_at} /></p>}
       {!compact && capture.last_error_code && <p className="wrap-anywhere">错误代码：{capture.last_error_code}</p>}
@@ -83,7 +85,7 @@ export function AuditAggregation({ event }: { event: AuditEventItem }) {
   return <Card aria-label="活动汇总" className="detail-section">
     <CardHeader>
       <CardTitle role="heading" aria-level={2}>活动汇总 · {event.event_count.toLocaleString("zh-CN")} 次</CardTitle>
-      <CardDescription>同类成功活动的次数、时间与耗时统计。</CardDescription>
+      <CardDescription>同类活动的次数、时间与耗时统计；不同结果和错误分别汇总。</CardDescription>
     </CardHeader>
     <CardContent>
       <DetailFields density="comfortable" items={[

@@ -6,9 +6,14 @@ import { createAuditContext, currentAuditContext, normalizeAuditAddress, normali
 export const ACTIVITY_RETENTION_DAYS = 30;
 export const ACTIVITY_RETENTION_MILLISECONDS = ACTIVITY_RETENTION_DAYS * 86_400_000;
 export const ACTIVITY_MAX_EVENT_BYTES = 16 * 1_024;
+export const ACTIVITY_HTTP_MAX_RECORDS = 20_000;
+export const ACTIVITY_HTTP_WRITES_PER_MINUTE = 600;
 const MAX_DETAILS_BYTES = 8 * 1_024;
 const MAX_BUFFER_BYTES = 4 * 1_024 * 1_024;
+const MAX_HTTP_BUFFER_BYTES = 1 * 1_024 * 1_024;
+const PRUNE_BATCH_SIZE = 1_000;
 const HOUR = 3_600_000;
+const BUDGETED_HTTP_SQL = "action = 'http.request' AND source_type = 'HTTP' AND core_event_ids_json = '[]' AND (http_method IN ('GET', 'HEAD') OR actor_type = 'ANONYMOUS')";
 const ACTION = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const PRIVATE_FIELD = /(?:password|passwd|secret|token|authorization|cookie|private.?key|signature|raw.?body|request.?body|response.?body|payload|credential)/i;
 
@@ -78,6 +83,7 @@ export interface ActivityCaptureStatus {
   readonly state: "healthy" | "degraded";
   readonly bufferedEvents: number;
   readonly droppedEvents: number;
+  readonly lastDroppedAt: number | null;
   readonly writeFailures: number;
   readonly lastFlushAt: number | null;
   readonly lastErrorCode: string | null;
@@ -109,10 +115,16 @@ export class ActivityRecorder {
   #buffer: ActivityEvent[] = [];
   #aggregates = new Map<string, ActivityEvent>();
   #bufferBytes = 0;
+  #httpBufferBytes = 0;
+  #httpBufferedEvents = 0;
+  #httpBudgetMinute = -1;
+  #httpWrites = 0;
+  #httpPrunePending = true;
   #timer: NodeJS.Timeout | null = null;
   #stopped = false;
   #flushing = false;
   #droppedEvents = 0;
+  #lastDroppedAt: number | null = null;
   #writeFailures = 0;
   #lastFlushAt: number | null = null;
   #lastErrorCode: string | null = null;
@@ -133,6 +145,7 @@ export class ActivityRecorder {
       if (row) {
         const previous = JSON.parse(row.value_json) as Partial<ActivityCaptureStatus>;
         this.#droppedEvents = nonnegative(previous.droppedEvents ?? 0);
+        this.#lastDroppedAt = previous.lastDroppedAt ?? null;
         this.#writeFailures = nonnegative(previous.writeFailures ?? 0);
         this.#spoolFailures = nonnegative(previous.spoolFailures ?? 0);
         this.#spoolGapCount = nonnegative(previous.spoolGapCount ?? 0);
@@ -173,12 +186,23 @@ export class ActivityRecorder {
         return;
       }
       const bytes = Buffer.byteLength(JSON.stringify(event), "utf8");
+      const budgetedHttp = isBudgetedHttpEvent(event);
+      if (budgetedHttp) {
+        const minute = Math.floor(this.#now() / 60_000);
+        if (minute !== this.#httpBudgetMinute) { this.#httpBudgetMinute = minute; this.#httpWrites = 0; }
+        if (this.#httpWrites >= ACTIVITY_HTTP_WRITES_PER_MINUTE ||
+          this.#httpBufferedEvents >= Math.max(1, Math.min(512, Math.floor(this.#maximumEvents / 2))) || this.#httpBufferBytes + bytes > MAX_HTTP_BUFFER_BYTES) {
+          this.#drop("activity_http_budget_exceeded", event.eventCount);
+          return;
+        }
+      }
       if (bytes > ACTIVITY_MAX_EVENT_BYTES || this.#buffer.length >= this.#maximumEvents || this.#bufferBytes + bytes > MAX_BUFFER_BYTES) {
         this.#drop("activity_buffer_full", event.eventCount);
         return;
       }
       this.#buffer.push(event);
       this.#bufferBytes += bytes;
+      if (budgetedHttp) { this.#httpWrites += 1; this.#httpBufferedEvents += 1; this.#httpBufferBytes += bytes; }
       if (event.aggregationKey !== null) this.#aggregates.set(event.aggregationKey, event);
     } catch { this.#drop("activity_event_invalid", input.count ?? 1); }
   }
@@ -188,14 +212,25 @@ export class ActivityRecorder {
     this.#flushing = true;
     try {
       const now = this.#now();
+      let httpPrunePending = this.#httpPrunePending;
       this.#database.write(db => {
         for (const event of this.#buffer) persistActivityEvent(db, event);
+        if (this.#httpBufferedEvents > 0 || httpPrunePending) {
+          const pruned = db.prepare(`DELETE FROM activity_events WHERE sequence IN (
+            SELECT sequence FROM activity_events WHERE ${BUDGETED_HTTP_SQL}
+            ORDER BY occurred_at DESC, sequence DESC LIMIT ? OFFSET ?)`)
+            .run(PRUNE_BATCH_SIZE, ACTIVITY_HTTP_MAX_RECORDS);
+          httpPrunePending = Number(pruned.changes) === PRUNE_BATCH_SIZE;
+        }
         persistCaptureState(db, { ...this.status(), bufferedEvents: 0, lastFlushAt: now,
           lastErrorCode: this.#lastErrorCode === "activity_write_failed" || this.#lastErrorCode === "activity_state_unavailable" ? null : this.#lastErrorCode }, now);
       });
       this.#buffer = [];
       this.#aggregates.clear();
       this.#bufferBytes = 0;
+      this.#httpBufferBytes = 0;
+      this.#httpBufferedEvents = 0;
+      this.#httpPrunePending = httpPrunePending;
       this.#lastFlushAt = now;
       if (this.#lastErrorCode === "activity_write_failed" || this.#lastErrorCode === "activity_state_unavailable") this.#lastErrorCode = null;
       if (this.#prunePending || this.#lastPrunedAt === null || now - this.#lastPrunedAt >= HOUR) this.prune();
@@ -211,8 +246,8 @@ export class ActivityRecorder {
       const now = this.#now(), cutoff = Math.max(0, now - ACTIVITY_RETENTION_MILLISECONDS);
       const deleted = this.#database.write(db => {
         const result = db.prepare("DELETE FROM activity_events WHERE sequence IN (SELECT sequence FROM activity_events WHERE occurred_at < ? ORDER BY occurred_at LIMIT 500)").run(cutoff);
-        db.prepare("DELETE FROM activity_external_receipts WHERE event_id IN (SELECT event_id FROM activity_external_receipts WHERE core_event_id IS NULL AND occurred_at < ? ORDER BY occurred_at LIMIT 500)").run(cutoff);
-        return Number(result.changes);
+        const receipts = db.prepare("DELETE FROM activity_external_receipts WHERE event_id IN (SELECT event_id FROM activity_external_receipts WHERE core_event_id IS NULL AND occurred_at < ? ORDER BY occurred_at LIMIT 500)").run(cutoff);
+        return Math.max(Number(result.changes), Number(receipts.changes));
       });
       this.#lastPrunedAt = now;
       this.#prunePending = deleted === 500;
@@ -226,7 +261,7 @@ export class ActivityRecorder {
 
   status(): ActivityCaptureStatus {
     return Object.freeze({ state: this.#lastErrorCode !== null || this.#droppedEvents > 0 || this.#spoolGapCount > 0 ? "degraded" : "healthy",
-      bufferedEvents: this.#buffer.reduce((count, event) => count + event.eventCount, 0), droppedEvents: this.#droppedEvents,
+      bufferedEvents: this.#buffer.reduce((count, event) => count + event.eventCount, 0), droppedEvents: this.#droppedEvents, lastDroppedAt: this.#lastDroppedAt,
       writeFailures: this.#writeFailures, lastFlushAt: this.#lastFlushAt, lastErrorCode: this.#lastErrorCode,
       spoolLastImportAt: this.#spoolLastImportAt, spoolFailures: this.#spoolFailures, spoolGapCount: this.#spoolGapCount,
       retentionDays: ACTIVITY_RETENTION_DAYS });
@@ -262,7 +297,10 @@ export class ActivityRecorder {
   }
 
   #now(): number { try { return nonnegative(this.#clock()); } catch { return Date.now(); } }
-  #drop(code: string, count: number): void { this.#droppedEvents += Number.isSafeInteger(count) && count > 0 ? count : 1; this.#lastErrorCode = code; this.#warn(); }
+  #drop(code: string, count: number): void {
+    this.#droppedEvents += Number.isSafeInteger(count) && count > 0 ? count : 1;
+    this.#lastDroppedAt = this.#now(); this.#lastErrorCode = code; this.#warn();
+  }
   #warn(): void {
     const now = this.#now();
     if (now - this.#lastWarningAt < 60_000) return;
@@ -292,21 +330,29 @@ export function createActivityEvent(input: ActivityEventInput, now = Date.now())
   const httpStatus = input.httpStatus ?? null;
   if (httpStatus !== null && (!Number.isInteger(httpStatus) || httpStatus < 100 || httpStatus > 599)) throw new TypeError("invalid activity HTTP status");
   const coreEventIds = (input.coreEventIds ?? scope?.coreEventIds ?? []).filter(id => typeof id === "string" && id.length <= 128).slice(0, 256);
-  const aggregate = (input.aggregate === true || input.aggregate === "hour") && outcome === "SUCCESS" && coreEventIds.length === 0;
+  const aggregate = (input.aggregate === true || input.aggregate === "hour") &&
+    (outcome === "SUCCESS" || (sourceType === "HTTP" && input.action === "http.request")) && coreEventIds.length === 0;
   const httpAggregate = aggregate && sourceType === "HTTP";
   // A request group represents the registered method/route, not its first order or website resource.
   const subjectType = httpAggregate ? null : text(input.subjectType, 128);
   const subjectId = httpAggregate ? null : text(input.subjectId, 256);
   const bucket = input.aggregate === "hour" ? "hour:" + Math.floor(occurredAt / HOUR) : Math.floor(occurredAt / 60_000);
+  const details = sanitizeActivityDetails(input.details ?? {});
   const aggregationKey = aggregate ? createHash("sha256").update(JSON.stringify([bucket, sourceType,
-    actorType, actorId, input.action, outcome, subjectType, subjectId, siteId, sourceAddress, userAgent, httpMethod, route, httpStatus])).digest("hex") : null;
-  const detailsJson = JSON.stringify(sanitizeActivityDetails(input.details ?? {}));
+    actorType, actorId, input.action, outcome, subjectType, subjectId, siteId, sourceAddress, userAgent, httpMethod, route, httpStatus,
+    details.error_code ?? null])).digest("hex") : null;
+  const detailsJson = JSON.stringify(details);
   if (Buffer.byteLength(detailsJson, "utf8") > MAX_DETAILS_BYTES) throw new TypeError("activity details too large");
   return { eventId: randomUUID(), activityId: aggregate ? randomUUID() : text(input.activityId ?? scope?.activityId, 128) ?? randomUUID(),
     requestId: aggregate ? null : text(select(input.requestId, scope?.requestId ?? null), 128), occurredAt, firstOccurredAt: occurredAt, lastOccurredAt: occurredAt,
     sourceType, actorType, actorId, action: input.action, outcome, subjectType, subjectId, siteId, siteName, sourceAddress, userAgent,
     httpMethod, route, httpStatus, durationMs: nonnegative(input.durationMs ?? 0), eventCount: Math.max(1, nonnegative(input.count ?? 1)),
     isAggregate: aggregate, detailsJson, coreEventIdsJson: JSON.stringify(coreEventIds), externalEventId: text(input.externalEventId, 128), aggregationKey };
+}
+
+function isBudgetedHttpEvent(event: ActivityEvent): boolean {
+  return event.action === "http.request" && event.sourceType === "HTTP" && event.coreEventIdsJson === "[]" &&
+    (event.httpMethod === "GET" || event.httpMethod === "HEAD" || event.actorType === "ANONYMOUS");
 }
 
 /** Called inside the caller's transaction so imported receipts cannot outrun data. */

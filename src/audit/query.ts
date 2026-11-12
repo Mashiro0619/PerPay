@@ -338,13 +338,15 @@ export function queryAuditEvent(database: ReadDatabase, source: string, eventId:
 export interface RawAuditCaptureState {
   readonly state: "healthy" | "degraded";
   readonly bufferedEvents: number; readonly droppedEvents: number; readonly writeFailures: number;
+  readonly lastDroppedAt?: number | null;
   readonly lastFlushAt: number | null; readonly lastErrorCode: string | null; readonly spoolLastImportAt: number | null;
   readonly spoolFailures: number; readonly spoolGapCount: number;
 }
 export function projectAuditCaptureState(value: RawAuditCaptureState | null | undefined): AuditCaptureState {
   if (!value) return { state: "unavailable", buffered_events: 0, dropped_events: 0, write_failures: 0,
-    last_flush_at: null, last_error_code: null, spool_last_import_at: null, spool_failures: 0, spool_gap_count: 0 };
+    last_dropped_at: null, last_flush_at: null, last_error_code: null, spool_last_import_at: null, spool_failures: 0, spool_gap_count: 0 };
   return { state: value.state, buffered_events: safeInteger(value.bufferedEvents), dropped_events: safeInteger(value.droppedEvents), write_failures: safeInteger(value.writeFailures),
+    last_dropped_at: value.lastDroppedAt == null ? null : iso(value.lastDroppedAt),
     last_flush_at: value.lastFlushAt === null ? null : iso(value.lastFlushAt), last_error_code: value.lastErrorCode,
     spool_last_import_at: value.spoolLastImportAt === null ? null : iso(value.spoolLastImportAt), spool_failures: safeInteger(value.spoolFailures), spool_gap_count: safeInteger(value.spoolGapCount) };
 }

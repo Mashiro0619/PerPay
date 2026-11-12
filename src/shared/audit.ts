@@ -99,6 +99,7 @@ export interface AuditCaptureState {
   readonly state: "healthy" | "degraded" | "unavailable";
   readonly buffered_events: number;
   readonly dropped_events: number;
+  readonly last_dropped_at?: string | null;
   readonly write_failures: number;
   readonly last_flush_at: string | null;
   readonly last_error_code: string | null;

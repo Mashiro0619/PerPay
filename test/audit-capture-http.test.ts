@@ -44,7 +44,7 @@ async function fixture() {
 }
 
 describe("HTTP activity capture at the real application boundary", () => {
-  it("captures this request's trusted source, uses internal associations, and aggregates only successful reads", async () => {
+  it("captures this request's trusted source and keeps core associations out of read aggregates", async () => {
     const test = await fixture();
     try {
       const headers = await test.login();
@@ -76,7 +76,9 @@ describe("HTTP activity capture at the real application boundary", () => {
       }, body: JSON.stringify({ password: marker }) }, test.network)).status, 401);
       test.activity.flush();
       const events = test.activities();
-      assert.equal(events.length, 2); assert.ok(events.every(event => event.outcome === "FAILURE" && Number(event.is_aggregate) === 0));
+      assert.equal(events.length, 2); assert.ok(events.every(event => event.outcome === "FAILURE"));
+      assert.equal(Number(events[0]!.is_aggregate), 1);
+      assert.equal(Number(events[1]!.is_aggregate), 0);
       assert.ok(events.every(event => event.actor_type === "ANONYMOUS"));
       assert.equal(events[0]!.route, "/api/public/v1/checkouts/:token");
       const stored = JSON.stringify(events, (_, value: unknown) => typeof value === "bigint" ? value.toString() : value);

@@ -7462,6 +7462,9 @@ components:
         dropped_events:
           type: "integer"
           minimum: 0
+        last_dropped_at:
+          type: ["string", "null"]
+          format: "date-time"
         write_failures:
           type: "integer"
           minimum: 0

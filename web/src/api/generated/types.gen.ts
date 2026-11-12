@@ -103,6 +103,7 @@ export type AuditCaptureState = {
     state: 'healthy' | 'degraded' | 'unavailable';
     buffered_events: number;
     dropped_events: number;
+    last_dropped_at?: string | null;
     write_failures: number;
     last_flush_at: string | null;
     last_error_code: string | null;
