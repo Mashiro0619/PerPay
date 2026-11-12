@@ -8728,6 +8728,7 @@ components:
         - instance_id
         - schema_version
         - interval_milliseconds
+        - content_verified_at
         - keep_count
         - retained_count
         - maximum_age_milliseconds
@@ -8771,6 +8772,10 @@ components:
         instance_id:
           type: [string, 'null']
           pattern: '^[0-9a-f]{32}$'
+        content_verified_at:
+          type: [integer, 'null']
+          minimum: 0
+          description: Time of the latest successful full content verification, in Unix milliseconds.
         schema_version:
           type: [integer, 'null']
           minimum: 1

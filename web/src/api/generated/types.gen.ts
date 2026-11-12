@@ -536,6 +536,7 @@ export type BackupHealth = {
     backup_sha256: string | null;
     backup_size_bytes: number | null;
     instance_id: string | null;
+    content_verified_at: number | null;
     schema_version: number | null;
     interval_milliseconds: number | null;
     keep_count: number | null;

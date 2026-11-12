@@ -45,6 +45,7 @@ export function BackupOverview({ settings }: { settings: RuntimeSettings }) {
   if (backup) rows.push(
     ["最近成功", backup.last_success_at === null ? "尚未成功备份" : dateTime(backup.last_success_at)],
     ["恢复校验", !current ? "待确认" : backup.backup_available ? "最近副本已验证可用" : "暂无已验证的可恢复副本"],
+    ["最近内容校验", backup.content_verified_at === null ? "尚未通过校验" : dateTime(backup.content_verified_at)],
     ["保留记录", backup.retained_count === null ? "未记录数量" : backup.retained_count + " 份"],
     ...(current && backup.backup_available && backup.backup_name ? [["最近可用副本", <CopyValue value={backup.backup_name} label="复制备份文件名" />] as const] : []),
     ["下次计划", !current ? "待确认" : !backup.enabled ? "未启用" : backup.backup_in_progress ? "正在执行"

@@ -9,12 +9,9 @@ import {
 } from "./runner.ts";
 import { readBackupPolicy } from "./policy.ts";
 
-/**
- * Health probing intentionally has a short, fixed cache. The persisted backup
- * state is authoritative, while the digest check is allowed to run off the
- * HTTP request's synchronous path.
- */
+/** Status metadata is refreshed independently of the full content check. */
 export const DEFAULT_BACKUP_HEALTH_CACHE_TTL_MILLISECONDS = 5_000;
+export const BACKUP_CONTENT_VERIFICATION_INTERVAL_MILLISECONDS = 60 * 60 * 1_000;
 
 const MAX_CACHE_TTL_MILLISECONDS = 60_000;
 const STREAM_HIGH_WATER_MARK_BYTES = 256 * 1_024;
@@ -36,6 +33,9 @@ export interface AsyncBackupHealthProviderOptions {
 export type AsyncBackupHealthProvider = (() => Promise<BackupHealth>) & {
   /** Discard a cached snapshot and force the next call to inspect immediately. */
   readonly invalidate: () => void;
+  /** Check content on startup and then hourly, independently of HTTP requests. */
+  readonly start: (onError: (error: unknown) => void) => void;
+  readonly stop: () => Promise<void>;
 };
 
 interface FileIdentity {
@@ -43,6 +43,7 @@ interface FileIdentity {
   readonly inode: bigint;
   readonly size: bigint;
   readonly modifiedAtNanoseconds: bigint;
+  readonly changedAtNanoseconds: bigint;
 }
 
 interface CachedHealth {
@@ -51,13 +52,34 @@ interface CachedHealth {
   readonly expiresAt: number;
 }
 
+interface ContentVerification {
+  readonly path: string;
+  readonly expectedSha256: string;
+  readonly identity: FileIdentity;
+  readonly checkedAt: number;
+  readonly valid: boolean;
+}
+
+interface InspectedHealth {
+  readonly health: BackupHealth;
+  readonly verification: ContentVerification | null;
+}
+
+interface ContentCheck {
+  readonly path: string;
+  readonly expectedSha256: string;
+  readonly identity: FileIdentity;
+  readonly promise: Promise<ContentVerification | null>;
+}
+
+type VerifyContent = (path: string, expectedSha256: string, before: FileIdentity) => Promise<ContentVerification | null>;
+
 /**
  * Creates the provider used by the HTTP status endpoint.
  *
- * The metadata probe is intentionally delegated to the runner's existing
- * bounded state/identity check. Only the content digest is expensive; it is
- * streamed asynchronously and never read synchronously on the request path.
- * Calls made while a probe is running share the exact same Promise.
+ * Unchanged files reuse their content check for one hour. New files and
+ * changed file identities are checked on the next metadata refresh.
+ * Concurrent callers share one probe.
  */
 export function createAsyncBackupHealthProvider(
   config: AsyncBackupHealthConfig,
@@ -68,8 +90,25 @@ export function createAsyncBackupHealthProvider(
   );
   const clock = options.clock ?? Date.now;
   let cached: CachedHealth | null = null;
+  let verification: ContentVerification | null = null;
   let inFlight: Promise<BackupHealth> | null = null;
+  let contentCheck: ContentCheck | null = null;
+  let periodicCheck: Promise<void> | null = null;
+  let timer: NodeJS.Timeout | null = null;
+  let running = false;
   let generation = 0;
+
+  const verifyContent: VerifyContent = (path, expectedSha256, before) => {
+    if (contentCheck !== null && contentCheck.path === path &&
+      contentCheck.expectedSha256 === expectedSha256 && sameIdentity(contentCheck.identity, before)) {
+      return contentCheck.promise;
+    }
+    const promise = hashBackupContent(path, expectedSha256, before, clock).finally(() => {
+      if (contentCheck?.promise === promise) contentCheck = null;
+    });
+    contentCheck = { path, expectedSha256, identity: before, promise };
+    return promise;
+  };
 
   const provider = (() => {
     if (inFlight !== null) return inFlight;
@@ -91,7 +130,11 @@ export function createAsyncBackupHealthProvider(
     // Starting from a microtask means a caller never performs even the small
     // metadata read while constructing the HTTP response synchronously.
     const pending = Promise.resolve()
-      .then(() => inspectAndVerify(config, now))
+      .then(async () => {
+        const inspected = await inspectAndVerify(config, now, verification, verifyContent, running);
+        if (generation === probeGeneration) verification = inspected.verification;
+        return inspected.health;
+      })
       .catch((error: unknown) => {
         if (fallback === null) throw error;
         return degradedSnapshot(fallback.value, now);
@@ -119,9 +162,54 @@ export function createAsyncBackupHealthProvider(
     value: () => {
       generation += 1;
       cached = null;
+      verification = null;
       inFlight = null;
     },
     writable: false,
+  });
+  Object.defineProperty(provider, "start", {
+    value: (onError: (error: unknown) => void) => {
+      if (running) return;
+      running = true;
+      const check = () => {
+        timer = null;
+        const probeGeneration = generation;
+        periodicCheck = Promise.resolve()
+          .then(() => inspectAndVerify(config, clock(), null, verifyContent, false))
+          .then((inspected) => {
+            if (generation !== probeGeneration) return;
+            generation += 1;
+            verification = inspected.verification;
+            cached = null;
+            inFlight = null;
+          })
+          .catch((error: unknown) => {
+            if (generation === probeGeneration) {
+              generation += 1;
+              verification = null;
+              cached = null;
+              inFlight = null;
+            }
+            onError(error);
+          })
+          .finally(() => {
+            periodicCheck = null;
+            if (running) {
+              timer = setTimeout(check, BACKUP_CONTENT_VERIFICATION_INTERVAL_MILLISECONDS);
+              timer.unref();
+            }
+          });
+      };
+      check();
+    },
+  });
+  Object.defineProperty(provider, "stop", {
+    value: async () => {
+      running = false;
+      if (timer !== null) clearTimeout(timer);
+      timer = null;
+      await periodicCheck;
+    },
   });
   return provider;
 }
@@ -129,7 +217,10 @@ export function createAsyncBackupHealthProvider(
 async function inspectAndVerify(
   config: AsyncBackupHealthConfig,
   now: number,
-): Promise<BackupHealth> {
+  previousVerification: ContentVerification | null,
+  verifyContent: VerifyContent,
+  reuseUntilScheduledCheck: boolean,
+): Promise<InspectedHealth> {
   const policy = config.dataDirectory === undefined ? null : readBackupPolicy(config.dataDirectory);
   const metadata = inspectBackupHealth({
     ...config,
@@ -141,17 +232,26 @@ async function inspectAndVerify(
     metadata.backup_sha256 === null ||
     metadata.backup_size_bytes === null
   ) {
-    return metadata;
+    return { health: metadata, verification: null };
   }
 
   const path = safeBackupPath(config.backupDirectory, metadata.backup_name);
-  if (path === null) return markUnavailable(metadata);
-  const verified = await verifyBackupDigest(
+  if (path === null) return { health: markUnavailable(metadata), verification: null };
+  const verification = await verifyBackupDigest(
     path,
     metadata.backup_size_bytes,
     metadata.backup_sha256,
+    previousVerification,
+    now,
+    verifyContent,
+    reuseUntilScheduledCheck,
   );
-  return verified ? metadata : markUnavailable(metadata);
+  return {
+    health: verification?.valid
+      ? { ...metadata, content_verified_at: verification.checkedAt }
+      : markUnavailable(metadata),
+    verification,
+  };
 }
 
 function safeBackupPath(directoryInput: string, name: string): string | null {
@@ -164,19 +264,41 @@ async function verifyBackupDigest(
   path: string,
   expectedSize: number,
   expectedSha256: string,
-): Promise<boolean> {
-  let before: FileIdentity;
+  previous: ContentVerification | null,
+  now: number,
+  verifyContent: VerifyContent,
+  reuseUntilScheduledCheck: boolean,
+): Promise<ContentVerification | null> {
   try {
-    before = await inspectFile(path);
-    if (before.size !== BigInt(expectedSize)) return false;
+    const before = await inspectFile(path);
+    if (before.size !== BigInt(expectedSize)) return null;
+    if (previous !== null && previous.path === path && previous.expectedSha256 === expectedSha256 &&
+      sameIdentity(previous.identity, before) && now >= previous.checkedAt &&
+      (reuseUntilScheduledCheck || now - previous.checkedAt < BACKUP_CONTENT_VERIFICATION_INTERVAL_MILLISECONDS)) {
+      return previous;
+    }
+    return await verifyContent(path, expectedSha256, before);
+  } catch {
+    return null;
+  }
+}
+
+async function hashBackupContent(
+  path: string,
+  expectedSha256: string,
+  before: FileIdentity,
+  clock: () => number,
+): Promise<ContentVerification | null> {
+  try {
     const hash = createHash("sha256");
     const stream = createReadStream(path, { highWaterMark: STREAM_HIGH_WATER_MARK_BYTES });
     for await (const chunk of stream) hash.update(chunk);
     const digest = hash.digest("hex");
     const after = await inspectFile(path);
-    return sameIdentity(before, after) && digest === expectedSha256;
+    if (!sameIdentity(before, after)) return null;
+    return { path, expectedSha256, identity: after, checkedAt: clock(), valid: digest === expectedSha256 };
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -196,6 +318,7 @@ async function inspectFile(path: string): Promise<FileIdentity> {
     inode: stat.ino,
     size: stat.size,
     modifiedAtNanoseconds: stat.mtimeNs,
+    changedAtNanoseconds: stat.ctimeNs,
   });
 }
 
@@ -203,7 +326,8 @@ function sameIdentity(left: FileIdentity, right: FileIdentity): boolean {
   return left.device === right.device &&
     left.inode === right.inode &&
     left.size === right.size &&
-    left.modifiedAtNanoseconds === right.modifiedAtNanoseconds;
+    left.modifiedAtNanoseconds === right.modifiedAtNanoseconds &&
+    left.changedAtNanoseconds === right.changedAtNanoseconds;
 }
 
 function markUnavailable(health: BackupHealth): BackupHealth {
@@ -212,6 +336,7 @@ function markUnavailable(health: BackupHealth): BackupHealth {
     ok: false,
     status: "unhealthy" as const,
     backup_available: false,
+    content_verified_at: null,
   });
 }
 
@@ -223,6 +348,7 @@ function degradedSnapshot(health: BackupHealth, now: number): BackupHealth {
     last_error_at: now,
     last_error_stage: "state" as const,
     backup_available: false,
+    content_verified_at: null,
   });
 }
 

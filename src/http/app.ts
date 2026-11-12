@@ -330,6 +330,7 @@ const disabledBackupHealth = Object.freeze({
   backup_name: null,
   backup_sha256: null,
   backup_size_bytes: null,
+  content_verified_at: null,
   instance_id: null,
   schema_version: null,
   interval_milliseconds: null,

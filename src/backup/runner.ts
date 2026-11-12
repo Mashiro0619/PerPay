@@ -209,6 +209,7 @@ export interface BackupHealth {
   readonly backup_name: string | null;
   readonly backup_sha256: string | null;
   readonly backup_size_bytes: number | null;
+  readonly content_verified_at: number | null;
   readonly instance_id: string | null;
   readonly schema_version: number | null;
   readonly interval_milliseconds: number | null;
@@ -988,6 +989,7 @@ export function inspectBackupHealth(
     backup_name: state.backupName,
     backup_sha256: state.backupSha256,
     backup_size_bytes: state.backupSizeBytes,
+    content_verified_at: null,
     instance_id: state.instanceId,
     schema_version: state.schemaVersion,
     interval_milliseconds: interval,

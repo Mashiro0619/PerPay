@@ -86,6 +86,7 @@ try {
   activity.start();
   activityImporter.start();
   ledgerRetention.start();
+  backupHealth.start(error => logError("backup_health_check_failed", error));
 } catch (error) {
   activity.record({ action: "system.start_failed", sourceType: "INTERNAL", actorType: "SYSTEM", outcome: "FAILURE" });
   activity.stop();
@@ -215,7 +216,7 @@ function closeDatabase(): void {
 
 async function stopBackground(): Promise<void> {
   ledgerRetention.stop();
-  const stopped = await Promise.allSettled([runtime.stop(), activityImporter.stop()]);
+  const stopped = await Promise.allSettled([runtime.stop(), activityImporter.stop(), backupHealth.stop()]);
   const failure = stopped.find(result => result.status === "rejected");
   if (failure?.status === "rejected") { backgroundShutdownFailed = true; logError("background_shutdown_failed", failure.reason); process.exitCode = 1; }
 }

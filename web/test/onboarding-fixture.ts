@@ -131,6 +131,7 @@ export function systemStatus(value = configuredThrough(4)): SystemStatus {
       backup_name: null,
       backup_sha256: null,
       backup_size_bytes: null,
+      content_verified_at: null,
       instance_id: instanceId,
       schema_version: 1,
       interval_milliseconds: 86400000,
