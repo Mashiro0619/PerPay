@@ -35,7 +35,7 @@ PerPay 在服务器上持续查询支付宝账单，根据收款账号、金额�
 
 通过管理 API 配置时，按以下顺序操作。写请求需携带已登录的管理员会话，使用 JSON 正文，并通过同源和 CSRF 校验：
 
-1. `POST /api/admin/v1/setup` 提交 `password` 创建管理员，再用 `POST /api/admin/v1/session/login` 登录。启用 `PERPAY_SETUP_TOKEN_ENABLED=true` 时，还需提交最近一次启动日志 `administrator_setup_required` 事件中的 `setup_token`；Docker 部署可用 `docker compose logs --tail=100 app` 查看。初始化令牌默认关闭，启用时随未初始化服务重启而更新，管理员创建后失效。
+1. `POST /api/admin/v1/setup` 提交 `password` 创建管理员，再用 `POST /api/admin/v1/session/login` 登录。默认启用 `PERPAY_SETUP_TOKEN_ENABLED=true`，还需提交最近一次启动日志 `administrator_setup_required` 事件中的 `setup_token`；Docker 部署可用 `docker compose logs --tail=100 app` 查看。初始化令牌随未初始化服务重启而更新，管理员创建后失效；显式设为 `false` 时不检查令牌。
 2. `POST /api/admin/v1/alipay-accounts` 创建账号，再用 `POST /api/admin/v1/alipay-accounts/:accountId/application-key` 生成应用密钥，最后通过 `PUT /api/admin/v1/alipay-accounts/:accountId` 保存应用和收款码。`POST /api/admin/v1/alipay-accounts/:accountId/check` 检查已保存配置。创建时可携带 UUID v4 `operation_id`；相同编号和内容返回原账号，内容不同返回 `409 / alipay_account_creation_conflict`，原账号已删除返回 `404`。省略编号会创建新账号。
 3. `POST /api/admin/v1/sites` 提交 UUID `operation_id`、完整 `configuration` 和可选 `client_id`。先用 `GET /api/admin/v1/settings/site-defaults` 取得策略模板；`configuration.collection` 指定账号和分配方式，初始通知关闭。创建结果中的 `client_id` 是管理路径使用的稳定网站编号，`api_client_id` 是业务认证使用的当前客户端 ID。占用冲突返回 `409 / site_client_id_conflict`，字段错误在 `error.fields.client_id`。重试保持原操作编号、客户端 ID 和配置。
 4. `POST /api/admin/v1/sites/:clientId/secrets/api_secret/actions/rotate` 生成网站 API 密钥；通知密钥使用 `POST /api/admin/v1/sites/:clientId/secrets/webhook_secret/actions/rotate`。每次提交最新网站 `revision`，后一次操作使用前次响应的版本。已有通知密钥可通过 `POST /api/admin/v1/sites/:clientId/secrets/webhook_secret/actions/view` 和正文 `{}` 查看。
@@ -414,9 +414,9 @@ PerPay 在执行操作的数据库事务中确定本次要忽略哪些提醒，�
 
 ### 外观
 
-后台侧栏“外观”提供经典蓝、青竹、暖砂、柔紫和石墨配色，每种均支持浅色、深色或跟随系统。选择后立即生效；点击外部、关闭按钮或 Escape 收起，手机先打开导航菜单。
+顶栏“外观”提供浅色、深色和跟随系统三种模式（手机后台位于顶栏“更多操作”菜单中）。选择后立即生效；点击外部或按 Escape 收起。
 
-偏好保存在当前浏览器，并同步到同源标签页。登录和初始化页面共用该外观，公开收银台按网站展示配置显示。
+偏好保存在当前浏览器，并同步到同源标签页。后台、登录与初始化页面及公开收银台共用该主题偏好；收银台显示的网站名称、商品名开关和帮助链接按网站展示配置显示。
 
 ### 设置与安全
 

@@ -949,7 +949,7 @@ paths:
       description: |
         This endpoint is available only until the first administrator password is stored.
         The administrator name is fixed as `admin`. The request must include the password.
-        When `PERPAY_SETUP_TOKEN_ENABLED=true` (default: false), it must also include the
+        When `PERPAY_SETUP_TOKEN_ENABLED=true` (the default), it must also include the
         one-time `setup_token` from the server's latest `administrator_setup_required`
         startup log. The admin HTML exposes this requirement through the non-secret
         `perpay-setup-token-required` meta flag. When disabled, no token is generated or checked.
