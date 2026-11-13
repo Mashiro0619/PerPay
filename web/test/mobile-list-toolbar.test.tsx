@@ -123,7 +123,7 @@ describe("mobile list query hierarchy", () => {
     ).toBeInTheDocument();
     expect(screen.getByRole("searchbox")).toHaveAttribute(
       "placeholder",
-      "输入关键词",
+      "关键词",
     );
   });
 

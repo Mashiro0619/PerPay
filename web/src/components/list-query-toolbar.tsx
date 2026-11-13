@@ -212,7 +212,7 @@ export function ListQueryToolbar({
                   name={selectedMode ? lookup!.inputName : "q"}
                   placeholder={
                     selectedMode?.placeholder ??
-                    (compact ? "输入关键词" : "输入关键词，按 Enter 搜索")
+                    (compact ? "关键词" : "输入关键词，回车搜索")
                   }
                   value={selectedMode ? lookupDraft : draft}
                   required={!!selectedMode}
