@@ -56,7 +56,7 @@ function expectSelectedType(
 }
 
 describe("trend chart remembered preferences", () => {
-  it("adopts a saved chart default that arrives after the initial loading render", () => {
+  it("adopts a saved chart default that arrives after the initial loading render", async () => {
     const onRangeChange = vi.fn();
     const { container, rerender } = render(
       <ChartAreaInteractive
@@ -77,6 +77,7 @@ describe("trend chart remembered preferences", () => {
         onRangeChange={onRangeChange}
       />,
     );
+    await screen.findByRole("application");
     expectSelectedType("BAR", container);
 
     rerender(
@@ -104,6 +105,7 @@ describe("trend chart remembered preferences", () => {
         onRangeChange={onRangeChange}
       />,
     );
+    await screen.findByRole("application");
     await user.click(screen.getByRole("button", { name: "折线图" }));
     expectSelectedType("LINE", container);
 
@@ -164,6 +166,7 @@ describe("trend chart remembered preferences", () => {
     const first = render(
       <ChartAreaInteractive analytics={analytics()} range={7} pending={false} onRangeChange={onRangeChange} chartType="AREA" />,
     );
+    await screen.findByRole("application");
     await userEvent.setup().click(screen.getByRole("button", { name: "柱状图" }));
     expectSelectedType("BAR", first.container);
     expect(localStorage.getItem(CHART_TYPE_STORAGE_KEY)).toBe("BAR");
@@ -181,7 +184,7 @@ describe("trend chart remembered preferences", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it.each(["AREA", "BAR", "LINE"] as const)("loads the remembered %s type before the server default arrives", (type) => {
+  it.each(["AREA", "BAR", "LINE"] as const)("loads the remembered %s type before the server default arrives", async (type) => {
     localStorage.setItem(CHART_TYPE_STORAGE_KEY, type);
     const onRangeChange = vi.fn();
     const { container, rerender } = render(
@@ -191,15 +194,17 @@ describe("trend chart remembered preferences", () => {
     rerender(
       <ChartAreaInteractive analytics={analytics()} range={7} pending={false} onRangeChange={onRangeChange} chartType={type === "AREA" ? "LINE" : "AREA"} />,
     );
+    await screen.findByRole("application");
     expectSelectedType(type, container);
   });
 
-  it.each(["pie", '"LINE"', "null", ""])("ignores invalid stored type %j and continues following the server fallback", (invalid) => {
+  it.each(["pie", '"LINE"', "null", ""])("ignores invalid stored type %j and continues following the server fallback", async (invalid) => {
     localStorage.setItem(CHART_TYPE_STORAGE_KEY, invalid);
     const onRangeChange = vi.fn();
     const { container, rerender } = render(
       <ChartAreaInteractive analytics={analytics()} range={7} pending={false} onRangeChange={onRangeChange} chartType="BAR" />,
     );
+    await screen.findByRole("application");
     expectSelectedType("BAR", container);
     rerender(
       <ChartAreaInteractive analytics={analytics()} range={7} pending={false} onRangeChange={onRangeChange} chartType="LINE" />,
@@ -207,11 +212,12 @@ describe("trend chart remembered preferences", () => {
     expectSelectedType("LINE", container);
   });
 
-  it("synchronizes changes from another page and uses the current fallback after removal or clear", () => {
+  it("synchronizes changes from another page and uses the current fallback after removal or clear", async () => {
     const onRangeChange = vi.fn();
     const { container, rerender } = render(
       <ChartAreaInteractive analytics={analytics()} range={7} pending={false} onRangeChange={onRangeChange} chartType="BAR" />,
     );
+    await screen.findByRole("application");
     function fromOtherPage(value: string | null, clear = false) {
       act(() => {
         if (clear) localStorage.clear();
@@ -239,11 +245,12 @@ describe("trend chart remembered preferences", () => {
     expect(onRangeChange).not.toHaveBeenCalled();
   });
 
-  it("ignores storage events for other preferences and other storage areas", () => {
+  it("ignores storage events for other preferences and other storage areas", async () => {
     localStorage.setItem(CHART_TYPE_STORAGE_KEY, "LINE");
     const { container } = render(
       <ChartAreaInteractive analytics={analytics()} range={7} pending={false} onRangeChange={vi.fn()} chartType="AREA" />,
     );
+    await screen.findByRole("application");
     act(() => {
       window.dispatchEvent(new StorageEvent("storage", { key: "another-preference", newValue: "BAR", storageArea: localStorage }));
     });
@@ -262,6 +269,7 @@ describe("trend chart remembered preferences", () => {
       const { container, rerender } = render(
         <ChartAreaInteractive analytics={analytics()} range={7} pending={false} onRangeChange={onRangeChange} chartType="BAR" />,
       );
+      await screen.findByRole("application");
       expectSelectedType("BAR", container);
       await userEvent.setup().click(screen.getByRole("button", { name: "折线图" }));
       expectSelectedType("LINE", container);
@@ -296,6 +304,7 @@ describe("trend chart remembered preferences", () => {
         onRangeChange={onRangeChange}
       />,
     );
+    await screen.findByRole("application");
     expectSelectedType("LINE", container);
   });
 
@@ -310,6 +319,7 @@ describe("trend chart remembered preferences", () => {
         onRangeChange={vi.fn()}
       />,
     );
+    await screen.findByRole("application");
     await user.click(screen.getByRole("button", { name: "折线图" }));
     await user.click(screen.getByRole("button", { name: "新建订单" }));
     await user.click(screen.getByRole("tab", { name: "每日数据" }));
@@ -354,6 +364,7 @@ describe("trend chart remembered preferences", () => {
         onRangeChange={vi.fn()}
       />,
     );
+    await screen.findByRole("application");
     for (const type of ["AREA", "BAR", "LINE"] as const) {
       const button = screen.getByRole("button", { name: typeLabels[type] });
       await user.click(button);
@@ -374,6 +385,7 @@ describe("trend chart remembered preferences", () => {
         onRangeChange={onRangeChange}
       />,
     );
+    await screen.findByRole("application");
     expect(container.querySelector("[data-metric-value]")).toHaveTextContent(
       "¥123.45",
     );

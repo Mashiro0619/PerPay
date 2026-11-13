@@ -12,8 +12,7 @@ import {
   YAxis,
 } from "recharts";
 import type { DashboardChartType } from "@/api/client";
-import type { TrendDay, TrendMetric, TrendView } from "@/lib/trend-analytics";
-import { CombinedTrendPlot } from "@/components/combined-trend-plot";
+import type { TrendDay, TrendMetric } from "@/lib/trend-analytics";
 import { money, count } from "@/lib/format";
 import { dailyWeekday } from "@/lib/daily-analytics";
 import { useChartSeriesMotion } from "@/components/selection-motion";
@@ -35,18 +34,7 @@ const activeDot = {
     "motion-safe:transition-[cx,cy] motion-safe:duration-200 motion-safe:ease-out motion-reduce:transition-none",
 };
 
-export function TrendPlot(props: {
-  data: TrendDay[];
-  metric: TrendView;
-  chartType: DashboardChartType;
-  today: string;
-}) {
-  return props.metric === "combined"
-    ? <CombinedTrendPlot data={props.data} today={props.today} />
-    : <SingleTrendPlot {...props} metric={props.metric} />;
-}
-
-function SingleTrendPlot({
+export function TrendPlot({
   data,
   metric,
   chartType,

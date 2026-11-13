@@ -1,6 +1,6 @@
 // Preload the real chart module outside per-interaction timeouts.
 import "../src/pages/Dashboard";
-import "../src/components/chart-area-interactive";
+import "../src/components/trend-plot";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { createElement } from "react";
 import { render } from "@testing-library/react";

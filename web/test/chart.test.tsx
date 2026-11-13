@@ -62,6 +62,7 @@ describe("official shadcn interactive chart", () => {
     expect(await screen.findByRole("menuitemradio", { name: "面积图" })).toHaveAttribute("aria-checked", "true");
     await user.click(screen.getByRole("menuitemradio", { name: "柱状图" }));
     await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
+    await within(container).findByRole("application");
     expect(container.querySelector("[data-slot=chart]")).toHaveAttribute("data-chart-type", "BAR");
     expect(screen.getByRole("button", { name: "图表类型：柱状图" })).toBeVisible();
     expect(localStorage.getItem(CHART_TYPE_STORAGE_KEY)).toBe("BAR");
@@ -119,6 +120,7 @@ describe("official shadcn interactive chart", () => {
           chartType={chartType}
         />,
       );
+      await within(container).findByRole("application");
       expect(container.querySelector("[data-slot=chart]")).toHaveAttribute(
         "data-chart-type",
         chartType,
@@ -171,9 +173,7 @@ describe("official shadcn interactive chart", () => {
       ] as const) {
         await user.click(screen.getByRole("button", { name: label }));
         const color = "var(--" + token + ")";
-        const chart = container.querySelector<SVGElement>(
-          'svg[role="application"]',
-        )!;
+        const chart = await within(container).findByRole("application");
         fireEvent.focus(chart);
         fireEvent.keyDown(chart, { key: "ArrowRight" });
         await waitFor(() =>
@@ -234,7 +234,7 @@ describe("official shadcn interactive chart", () => {
 
   it.each([7, 30, 90] as const)(
     "renders one financial series and authoritative summary values for %i days",
-    (days) => {
+    async (days) => {
       const data = analytics(days);
       const { container } = render(
         <ChartAreaInteractive
@@ -245,6 +245,7 @@ describe("official shadcn interactive chart", () => {
         />,
       );
       expect(screen.getByRole("heading", { name: "收款趋势" })).toBeVisible();
+      await within(container).findByRole("application");
       expect(container.querySelectorAll("[data-slot=chart]")).toHaveLength(1);
       expect(container.querySelector("[data-slot=chart] style")).toBeNull();
       expect(
@@ -293,6 +294,7 @@ describe("official shadcn interactive chart", () => {
     expect(
       within(metrics).getByRole("button", { name: "确认金额" }),
     ).toHaveAttribute("aria-pressed", "false");
+    await within(container).findByRole("application");
     expect(container.querySelector("[data-slot=chart]")).toHaveAttribute(
       "aria-label",
       expect.stringContaining("每日新建订单"),
@@ -321,9 +323,7 @@ describe("official shadcn interactive chart", () => {
         pending={false}
       />,
     );
-    const application = container.querySelector<SVGElement>(
-      'svg[role="application"]',
-    )!;
+    const application = await within(container).findByRole("application");
     expect(application).not.toBeNull();
     expect(application).toHaveAttribute("tabindex", "0");
     fireEvent.focus(application);
@@ -398,9 +398,7 @@ describe("official shadcn interactive chart", () => {
           pending={false}
         />,
       );
-      const chart = container.querySelector<SVGElement>(
-        'svg[role="application"]',
-      )!;
+      const chart = await within(container).findByRole("application");
       fireEvent.focus(chart);
       fireEvent.keyDown(chart, { key: "ArrowRight" });
       await waitFor(() =>
@@ -438,9 +436,7 @@ describe("official shadcn interactive chart", () => {
           pending={false}
         />,
       );
-      const chart = container.querySelector<SVGElement>(
-        'svg[role="application"]',
-      )!;
+      const chart = await within(container).findByRole("application");
       fireEvent.focus(chart);
       fireEvent.keyDown(chart, { key: "ArrowRight" });
       await waitFor(() =>
@@ -484,9 +480,7 @@ describe("official shadcn interactive chart", () => {
         pending={false}
       />,
     );
-    const chart = container.querySelector<SVGElement>(
-      'svg[role="application"]',
-    )!;
+    const chart = await within(container).findByRole("application");
     fireEvent.focus(chart);
     fireEvent.keyDown(chart, { key: "ArrowRight" });
     await waitFor(() =>
@@ -531,9 +525,7 @@ describe("official shadcn interactive chart", () => {
         pending={false}
       />,
     );
-    const chart = container.querySelector<SVGElement>(
-      'svg[role="application"]',
-    )!;
+    const chart = await within(container).findByRole("application");
     fireEvent.focus(chart);
     fireEvent.keyDown(chart, { key: "ArrowRight" });
     await waitFor(() =>

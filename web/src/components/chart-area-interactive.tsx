@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { lazy, Suspense, useId, useState } from "react";
 import { ChartArea, ChartColumn, ChartLine, Info } from "lucide-react";
 import type { DashboardChartType, SystemAnalytics } from "@/api/client";
 import { useChartType } from "@/hooks/use-chart-type";
@@ -7,7 +7,7 @@ import { money, count } from "@/lib/format";
 import { buildTrendReport, type TrendView } from "@/lib/trend-analytics";
 import { dailyDateLabel } from "@/lib/daily-analytics";
 import { DailyAnalytics } from "@/components/daily-analytics";
-import { TrendPlot } from "@/components/trend-plot";
+import { CombinedTrendPlot } from "@/components/combined-trend-plot";
 import {
   SelectionMotionGroup,
   SelectionMotionIndicator,
@@ -47,6 +47,12 @@ import {
 } from "@/components/ui/popover";
 import { Empty, EmptyHeader, EmptyTitle } from "@/components/admin-empty";
 import { Skeleton } from "@/components/ui/skeleton";
+
+const TrendPlot = lazy(() =>
+  import("@/components/trend-plot").then((module) => ({
+    default: module.TrendPlot,
+  })),
+);
 
 const periods = [
   { value: "7", label: "近 7 天" },
@@ -374,12 +380,18 @@ export function ChartAreaInteractive({
               </Empty>
             ) : (
               <>
-                <TrendPlot
-                  data={data}
-                  metric={metric}
-                  chartType={effectiveType}
-                  today={report.today}
-                />
+                {metric === "combined" ? (
+                  <CombinedTrendPlot data={data} today={report.today} />
+                ) : (
+                  <Suspense fallback={<Skeleton className="trend-plot w-full" data-chart-state="loading" />}>
+                    <TrendPlot
+                      data={data}
+                      metric={metric}
+                      chartType={effectiveType}
+                      today={report.today}
+                    />
+                  </Suspense>
+                )}
                 <div className="trend-caption">
                   <p>
                     {metric === "combined" ? `共 ${data.length} 天` : summary?.activeDays

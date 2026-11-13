@@ -338,6 +338,7 @@ describe("chart series motion", () => {
     };
     const user = userEvent.setup();
     const { container } = render(<ChartAreaInteractive analytics={analytics} pending={false} range={7} onRangeChange={vi.fn()} />);
+    await screen.findByRole("application");
     expect(animate).not.toHaveBeenCalled();
     await user.click(screen.getByRole("button", { name: "新建订单" }));
     await waitFor(() => expect(animate).toHaveBeenCalled());

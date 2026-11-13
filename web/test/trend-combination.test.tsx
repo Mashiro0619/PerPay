@@ -45,6 +45,12 @@ function application(container: HTMLElement) {
   return chart!;
 }
 
+function waitForCombinedChart(container: HTMLElement) {
+  return waitFor(() => {
+    expect(container.querySelector('[data-chart-type="COMBINED"] svg[role="application"]')).not.toBeNull();
+  });
+}
+
 async function expectTooltip(container: HTMLElement, date: string, amount: string, orders: string) {
   await waitFor(() => {
     const tooltip = container.querySelector<HTMLElement>(".recharts-tooltip-wrapper");
@@ -60,6 +66,7 @@ async function expectTooltip(container: HTMLElement, date: string, amount: strin
 describe("amount and order combination view", () => {
   it("keeps authoritative totals and the two plotted units independent", async () => {
     const { container } = render(<ChartAreaInteractive analytics={analytics()} range={7} pending={false} onRangeChange={vi.fn()} />);
+    await screen.findByRole("application");
     await userEvent.setup().click(screen.getByRole("button", { name: "金额与订单" }));
     const summary = screen.getByLabelText("金额与订单汇总");
     expect(value(summary, "amount")).toHaveTextContent("¥98,765.43");
@@ -71,6 +78,7 @@ describe("amount and order combination view", () => {
     expect(screen.getByRole("button", { name: "新建订单" })).toHaveAccessibleDescription("4,321 笔");
     expect(screen.getByRole("button", { name: "金额与订单" })).toHaveAccessibleDescription(/确认金额 ¥98,765\.43.*新建订单 4,321 笔/);
     expect(screen.queryByRole("group", { name: "图表类型" })).not.toBeInTheDocument();
+    await waitForCombinedChart(container);
     const chart = plot(container);
     expect(chart.querySelectorAll(".recharts-bar")).toHaveLength(1);
     expect(chart.querySelectorAll(".recharts-line")).toHaveLength(1);
@@ -101,7 +109,9 @@ describe("amount and order combination view", () => {
       orders_created: index === 1 ? 1234 : 0,
     }));
     const { container } = render(<ChartAreaInteractive analytics={data} range={7} pending={false} onRangeChange={vi.fn()} />);
+    await screen.findByRole("application");
     await userEvent.setup().click(screen.getByRole("button", { name: "金额与订单" }));
+    await waitForCombinedChart(container);
     const chart = application(container);
     fireEvent.focus(chart);
     await expectTooltip(container, "2026-06-01", "¥0.01", "0");
@@ -117,11 +127,13 @@ describe("amount and order combination view", () => {
     data.orders = { ...data.orders, created: 0, confirmed: 0, unpaid: 0 };
     data.daily = data.daily.map(day => ({ ...day, orders_created: 0, confirmed_amount_cents: 0, confirmations: 0 }));
     const { container } = render(<ChartAreaInteractive analytics={data} range={7} pending={false} onRangeChange={vi.fn()} />);
+    await screen.findByRole("application");
     await userEvent.setup().click(screen.getByRole("button", { name: "金额与订单" }));
     const summary = screen.getByLabelText("金额与订单汇总");
     expect(value(summary, "amount")).toHaveTextContent("¥0.00");
     expect(value(summary, "orders")).toHaveTextContent("0 笔");
     expect(screen.queryByText("暂无每日数据")).not.toBeInTheDocument();
+    await waitForCombinedChart(container);
     expect(plot(container).querySelectorAll(".recharts-yAxis")).toHaveLength(2);
     for (const bar of container.querySelectorAll(".recharts-bar-rectangle .recharts-rectangle")) {
       expect(Number(bar.getAttribute("height"))).toBe(0);
@@ -136,6 +148,7 @@ describe("amount and order combination view", () => {
     vi.stubGlobal("fetch", request);
     const onRangeChange = vi.fn();
     const { container } = render(<ChartAreaInteractive analytics={analytics(30)} range={30} pending={false} onRangeChange={onRangeChange} />);
+    await screen.findByRole("application");
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "折线图" }));
     expect(localStorage.getItem(CHART_TYPE_STORAGE_KEY)).toBe("LINE");
@@ -171,6 +184,7 @@ describe("amount and order combination view", () => {
   it("retains the combination choice while another period loads and distinguishes unavailable totals", async () => {
     const onRangeChange = vi.fn();
     const { container, rerender } = render(<ChartAreaInteractive analytics={analytics()} range={7} pending={false} onRangeChange={onRangeChange} />);
+    await screen.findByRole("application");
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "金额与订单" }));
     await user.click(screen.getByRole("combobox", { name: "统计周期" }));
@@ -188,6 +202,7 @@ describe("amount and order combination view", () => {
     rerender(<ChartAreaInteractive analytics={refreshed} range={30} pending={false} onRangeChange={onRangeChange} />);
     expect(value(screen.getByLabelText("金额与订单汇总"), "amount")).toHaveTextContent("¥1.23");
     expect(value(screen.getByLabelText("金额与订单汇总"), "orders")).toHaveTextContent("9 笔");
+    await waitForCombinedChart(container);
     expect(plot(container)).toBeInTheDocument();
     rerender(<ChartAreaInteractive analytics={undefined} range={30} pending={false} onRangeChange={onRangeChange} />);
     expect(screen.getByText("统计数据暂不可用")).toBeVisible();
