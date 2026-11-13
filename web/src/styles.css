@@ -769,39 +769,39 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 }
 /* Static lengths fit complete figures under the CSP without inline styles.
    The value keeps a keyboard-reachable scroll fallback for differing glyphs. */
-[data-overview-kpis] .overview-metric-value { --overview-value-units: 1; }
-[data-overview-kpis] .overview-metric-value[data-value-length="1"] { --overview-value-units: 0.6; }
-[data-overview-kpis] .overview-metric-value[data-value-length="2"] { --overview-value-units: 1.2; }
-[data-overview-kpis] .overview-metric-value[data-value-length="3"] { --overview-value-units: 1.8; }
-[data-overview-kpis] .overview-metric-value[data-value-length="4"] { --overview-value-units: 2.4; }
-[data-overview-kpis] .overview-metric-value[data-value-length="5"] { --overview-value-units: 3; }
-[data-overview-kpis] .overview-metric-value[data-value-length="6"] { --overview-value-units: 3.6; }
-[data-overview-kpis] .overview-metric-value[data-value-length="7"] { --overview-value-units: 4.2; }
-[data-overview-kpis] .overview-metric-value[data-value-length="8"] { --overview-value-units: 4.8; }
-[data-overview-kpis] .overview-metric-value[data-value-length="9"] { --overview-value-units: 5.4; }
-[data-overview-kpis] .overview-metric-value[data-value-length="10"] { --overview-value-units: 6; }
-[data-overview-kpis] .overview-metric-value[data-value-length="11"] { --overview-value-units: 6.6; }
-[data-overview-kpis] .overview-metric-value[data-value-length="12"] { --overview-value-units: 7.2; }
-[data-overview-kpis] .overview-metric-value[data-value-length="13"] { --overview-value-units: 7.8; }
-[data-overview-kpis] .overview-metric-value[data-value-length="14"] { --overview-value-units: 8.4; }
-[data-overview-kpis] .overview-metric-value[data-value-length="15"] { --overview-value-units: 9; }
-[data-overview-kpis] .overview-metric-value[data-value-length="16"] { --overview-value-units: 9.6; }
-[data-overview-kpis] .overview-metric-value[data-value-length="17"] { --overview-value-units: 10.2; }
-[data-overview-kpis] .overview-metric-value[data-value-length="18"] { --overview-value-units: 10.8; }
-[data-overview-kpis] .overview-metric-value[data-value-length="19"] { --overview-value-units: 11.4; }
-[data-overview-kpis] .overview-metric-value[data-value-length="20"] { --overview-value-units: 12; }
-[data-overview-kpis] .overview-metric-value[data-value-length="21"] { --overview-value-units: 12.6; }
-[data-overview-kpis] .overview-metric-value[data-value-length="22"] { --overview-value-units: 13.2; }
-[data-overview-kpis] .overview-metric-value[data-value-length="23"] { --overview-value-units: 13.8; }
-[data-overview-kpis] .overview-metric-value[data-value-length="24"] { --overview-value-units: 14.4; }
-[data-overview-kpis] .overview-metric-value[data-value-length="25"] { --overview-value-units: 15; }
-[data-overview-kpis] .overview-metric-value[data-value-length="26"] { --overview-value-units: 15.6; }
-[data-overview-kpis] .overview-metric-value[data-value-length="27"] { --overview-value-units: 16.2; }
-[data-overview-kpis] .overview-metric-value[data-value-length="28"] { --overview-value-units: 16.8; }
-[data-overview-kpis] .overview-metric-value[data-value-length="29"] { --overview-value-units: 17.4; }
-[data-overview-kpis] .overview-metric-value[data-value-length="30"] { --overview-value-units: 18; }
-[data-overview-kpis] .overview-metric-value[data-value-length="31"] { --overview-value-units: 18.6; }
-[data-overview-kpis] .overview-metric-value[data-value-length="32"] { --overview-value-units: 19.2; }
+:is(.overview-metric-value, .trend-value) { --overview-value-units: 1; }
+:is(.overview-metric-value, .trend-value)[data-value-length="1"] { --overview-value-units: 0.6; }
+:is(.overview-metric-value, .trend-value)[data-value-length="2"] { --overview-value-units: 1.2; }
+:is(.overview-metric-value, .trend-value)[data-value-length="3"] { --overview-value-units: 1.8; }
+:is(.overview-metric-value, .trend-value)[data-value-length="4"] { --overview-value-units: 2.4; }
+:is(.overview-metric-value, .trend-value)[data-value-length="5"] { --overview-value-units: 3; }
+:is(.overview-metric-value, .trend-value)[data-value-length="6"] { --overview-value-units: 3.6; }
+:is(.overview-metric-value, .trend-value)[data-value-length="7"] { --overview-value-units: 4.2; }
+:is(.overview-metric-value, .trend-value)[data-value-length="8"] { --overview-value-units: 4.8; }
+:is(.overview-metric-value, .trend-value)[data-value-length="9"] { --overview-value-units: 5.4; }
+:is(.overview-metric-value, .trend-value)[data-value-length="10"] { --overview-value-units: 6; }
+:is(.overview-metric-value, .trend-value)[data-value-length="11"] { --overview-value-units: 6.6; }
+:is(.overview-metric-value, .trend-value)[data-value-length="12"] { --overview-value-units: 7.2; }
+:is(.overview-metric-value, .trend-value)[data-value-length="13"] { --overview-value-units: 7.8; }
+:is(.overview-metric-value, .trend-value)[data-value-length="14"] { --overview-value-units: 8.4; }
+:is(.overview-metric-value, .trend-value)[data-value-length="15"] { --overview-value-units: 9; }
+:is(.overview-metric-value, .trend-value)[data-value-length="16"] { --overview-value-units: 9.6; }
+:is(.overview-metric-value, .trend-value)[data-value-length="17"] { --overview-value-units: 10.2; }
+:is(.overview-metric-value, .trend-value)[data-value-length="18"] { --overview-value-units: 10.8; }
+:is(.overview-metric-value, .trend-value)[data-value-length="19"] { --overview-value-units: 11.4; }
+:is(.overview-metric-value, .trend-value)[data-value-length="20"] { --overview-value-units: 12; }
+:is(.overview-metric-value, .trend-value)[data-value-length="21"] { --overview-value-units: 12.6; }
+:is(.overview-metric-value, .trend-value)[data-value-length="22"] { --overview-value-units: 13.2; }
+:is(.overview-metric-value, .trend-value)[data-value-length="23"] { --overview-value-units: 13.8; }
+:is(.overview-metric-value, .trend-value)[data-value-length="24"] { --overview-value-units: 14.4; }
+:is(.overview-metric-value, .trend-value)[data-value-length="25"] { --overview-value-units: 15; }
+:is(.overview-metric-value, .trend-value)[data-value-length="26"] { --overview-value-units: 15.6; }
+:is(.overview-metric-value, .trend-value)[data-value-length="27"] { --overview-value-units: 16.2; }
+:is(.overview-metric-value, .trend-value)[data-value-length="28"] { --overview-value-units: 16.8; }
+:is(.overview-metric-value, .trend-value)[data-value-length="29"] { --overview-value-units: 17.4; }
+:is(.overview-metric-value, .trend-value)[data-value-length="30"] { --overview-value-units: 18; }
+:is(.overview-metric-value, .trend-value)[data-value-length="31"] { --overview-value-units: 18.6; }
+:is(.overview-metric-value, .trend-value)[data-value-length="32"] { --overview-value-units: 19.2; }
 @media (min-width: 768px) { .trend-plot { height: 16rem; min-height: 16rem; } }
 .system-page { display: flex; min-width: 0; flex-direction: column; gap: 1.25rem; container: runtime / inline-size; }
 .runtime-surface { display: flex; min-width: 0; flex-direction: column; gap: 0.875rem; }
@@ -898,10 +898,11 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 .trend-metrics { flex-wrap: wrap; }
 .trend-types [data-slot="toggle-group-item"] { width: 2rem; padding-inline: 0; flex: 0 1 2rem; }
 .trend-summary { display: grid; min-width: 0; grid-template-columns: minmax(0, 1.4fr) repeat(2, minmax(0, 1fr)); gap: 1.25rem; align-items: start; }
-.trend-summary > div { display: flex; min-width: 0; flex-direction: column; gap: 0.375rem; }
+.trend-summary > div { display: flex; min-width: 0; flex-direction: column; gap: 0.375rem; container-type: inline-size; }
 .trend-summary dt, .trend-summary-note { color: var(--muted-foreground); font-size: 0.75rem; }
-.trend-summary dd { min-width: 0; font-size: 1.25rem; font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-.trend-summary .trend-total > [data-metric-value] { font-size: 2rem; letter-spacing: -0.035em; }
+.trend-summary dd { min-width: 0; font-size: 1.25rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.trend-summary .trend-value { max-width: 100%; overflow-x: auto; white-space: nowrap; font-size: min(1.25rem, calc(100cqi / var(--overview-value-units, 1))); }
+.trend-summary .trend-total > [data-metric-value] { font-size: min(2rem, calc(100cqi / var(--overview-value-units, 1))); letter-spacing: -0.035em; }
 .trend-summary .trend-summary-note { font-size: 0.75rem; font-weight: 400; letter-spacing: normal; }
 .trend-summary-combined { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .trend-caption { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 1rem; color: var(--muted-foreground); font-size: 0.75rem; font-variant-numeric: tabular-nums; }
@@ -952,7 +953,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 [data-admin-console] .trend-content { gap: 1.5rem; }
 [data-admin-console] .trend-summary { align-items: start; }
 [data-admin-console] .trend-summary .trend-total > [data-metric-value] {
-  font-size: var(--console-stat-size);
+  font-size: min(var(--console-stat-size), calc(100cqi / var(--overview-value-units, 1)));
   line-height: 1.25;
   letter-spacing: var(--console-stat-tracking);
 }
@@ -969,6 +970,24 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   [data-admin-console] .trend-card { --card-spacing: 1rem; }
   [data-admin-console] .trend-content { gap: 1.25rem; }
   [data-admin-console] [data-overview-kpis] > [data-slot="card"] { --card-spacing: 1rem; }
+}
+
+@media (max-width: 1023px) {
+  .site-overview-grid { --site-overview-columns: 1; gap: 0; border: 1px solid var(--border); border-radius: var(--radius-xl); }
+  .site-overview-grid > li + li { border-top: 1px solid var(--border); }
+  .site-overview-grid .site-overview-card { border-radius: 0; }
+  .site-overview-grid > li:first-child .site-overview-card { border-top-left-radius: var(--radius-xl); border-top-right-radius: var(--radius-xl); }
+  .site-overview-grid > li:last-child .site-overview-card { border-bottom-left-radius: var(--radius-xl); border-bottom-right-radius: var(--radius-xl); }
+  [data-admin-console] [data-overview-layout] .site-overview-card-surface {
+    --card-spacing: 0.875rem;
+    gap: 0.375rem;
+    border-radius: inherit;
+    box-shadow: none;
+  }
+  .site-overview-card-header { row-gap: 0.25rem; }
+  .site-overview-card-surface [data-slot="card-content"] { gap: 0.375rem; }
+  .site-overview-card-amount { font-size: 1rem; }
+  .site-overview-card-surface .site-overview-amount-bar { display: none; }
 }
 
 /* Selection animation only decorates the existing Base UI controls. */
@@ -1002,7 +1021,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   .trend-metrics [data-slot="toggle-group-item"] { padding-inline: 0.25rem; }
   .trend-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem 0.75rem; }
   .trend-total { grid-column: 1 / -1; }
-  .trend-summary .trend-total > [data-metric-value] { font-size: 1.875rem; }
+  .trend-summary .trend-total > [data-metric-value] { font-size: min(1.875rem, calc(100cqi / var(--overview-value-units, 1))); }
 }
 @container card (max-width: 15rem) {
   .trend-summary { grid-template-columns: minmax(0, 1fr); }
@@ -1042,6 +1061,8 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 .daily-summary-metric .list-money { font-size: 1.25rem; line-height: 1.4; font-weight: 600; }
 .daily-summary-note { color: var(--muted-foreground); font-size: 0.875rem; }
 .daily-report-loading { display: flex; min-width: 0; flex-direction: column; gap: 0.5rem; }
+.daily-report-rows { min-width: 0; max-height: min(28rem, 65svh); overflow-y: auto; overscroll-behavior-y: contain; scrollbar-width: thin; }
+.daily-report-rows:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .daily-report-table { table-layout: fixed; }
 .daily-report-table .daily-date-column { width: 26%; }
 .daily-report-table .daily-amount-column { width: 38%; }

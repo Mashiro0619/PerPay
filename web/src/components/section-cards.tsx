@@ -1,4 +1,4 @@
-import { ArrowUpRight } from "lucide-react";
+import { ArrowUpRight, Info } from "lucide-react";
 import type { SystemAnalytics } from "@/api/client";
 import { count, money } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -10,6 +10,8 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 export function SectionCards({
   analytics,
   pending = false,
@@ -51,10 +53,17 @@ export function SectionCards({
         >
           <CardHeader>
             <CardDescription
-              title={card.description}
-              className={card.href ? "flex items-center justify-between gap-1.5" : undefined}
+              className="flex min-w-0 items-center justify-between gap-1.5"
             >
               {card.title}
+              {card.description && <Popover>
+                <PopoverTrigger render={<Button variant="ghost" size="icon-sm" aria-label={card.title + "统计口径"} />}>
+                  <Info aria-hidden="true" />
+                </PopoverTrigger>
+                <PopoverContent align="start" aria-label={card.title + "统计口径"}>
+                  <p>{card.description}</p>
+                </PopoverContent>
+              </Popover>}
               {card.href && (
                 <ArrowUpRight
                   aria-hidden="true"

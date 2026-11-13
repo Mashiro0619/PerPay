@@ -110,6 +110,9 @@ export function ChartAreaInteractive({
         : new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 1 }).format(
             value,
           );
+  const totalValue = format(summary?.total);
+  const averageValue = format(hasDays ? summary?.average : null);
+  const peakValue = format(hasDays ? summary?.peak?.value : null);
 
   return (
     <Card className="trend-card @container/card min-w-0" aria-busy={pending}>
@@ -283,17 +286,18 @@ export function ChartAreaInteractive({
           <CardContent className="trend-content">
             {metric === "combined" ? (
               <dl className="trend-summary trend-summary-combined" aria-label="金额与订单汇总">
-                {individualMetrics.map(({ value, label }) => (
+                {individualMetrics.map(({ value, label }) => {
+                  const formatted = !report ? "—" : value === "amount" ? money(report.amount.total) : count(report.orders.total);
+                  return (
                   <div className="trend-total" key={value}>
                     <dt>{label}</dt>
                     <dd id={summaryId + value} data-metric-value data-trend-metric={value}
-                      className="whitespace-normal wrap-anywhere leading-tight">
-                      {pending ? <Skeleton className="h-9 w-32" /> : !report ? "—"
-                        : value === "amount" ? money(report.amount.total) : `${count(report.orders.total)} 笔`}
+                      data-value-length={pending ? undefined : formatted.length} className="trend-value leading-tight">
+                      {pending ? <Skeleton className="h-9 w-32" /> : formatted}
                     </dd>
                     <dd className="trend-summary-note">含今天 · {value === "amount" ? "按确认时间" : "按创建时间"}</dd>
                   </div>
-                ))}
+                );})}
               </dl>
             ) : <dl
               className="trend-summary"
@@ -304,12 +308,13 @@ export function ChartAreaInteractive({
                 <dd
                   id={summaryId + metric}
                   data-metric-value
-                  className="whitespace-normal wrap-anywhere leading-tight"
+                  data-value-length={pending ? undefined : totalValue.length}
+                  className="trend-value leading-tight"
                 >
                   {pending ? (
                     <Skeleton className="h-9 w-32" />
                   ) : (
-                    format(summary?.total)
+                    totalValue
                   )}
                 </dd>
                 <dd className="trend-summary-note">
@@ -318,22 +323,22 @@ export function ChartAreaInteractive({
               </div>
               <div data-trend-summary="average">
                 <dt>{metric === "amount" ? "日均确认金额" : "日均新建订单"}</dt>
-                <dd>
+                <dd className="trend-value" data-value-length={pending ? undefined : averageValue.length}>
                   {pending ? (
                     <Skeleton className="h-6 w-20" />
                   ) : (
-                    format(hasDays ? summary?.average : null)
+                    averageValue
                   )}
                 </dd>
                 <dd className="trend-summary-note">按已结束日期计算</dd>
               </div>
               <div data-trend-summary="peak">
                 <dt>{metric === "amount" ? "单日最高金额" : "单日最多订单"}</dt>
-                <dd>
+                <dd className="trend-value" data-value-length={pending ? undefined : peakValue.length}>
                   {pending ? (
                     <Skeleton className="h-6 w-20" />
                   ) : (
-                    format(hasDays ? summary?.peak?.value : null)
+                    peakValue
                   )}
                 </dd>
                 <dd className="trend-summary-note">

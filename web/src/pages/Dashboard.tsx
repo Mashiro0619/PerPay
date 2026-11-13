@@ -8,6 +8,8 @@ import {
 import { Navigate, useLocation } from "react-router";
 import { Link } from "@/navigation";
 import { useOverview } from "@/features/overview/use-overview";
+import { useWorkspace } from "@/workspace";
+import { useIsMobile } from "@/hooks/use-mobile";
 import type { SystemStatus } from "@/api/client";
 import {
   deferredInstance,
@@ -76,6 +78,8 @@ function DashboardContent() {
     checking,
     changeRange,
   } = useOverview();
+  const { site } = useWorkspace();
+  const mobile = useIsMobile();
   const [metricsAwaitingRefresh, setMetricsAwaitingRefresh] = useState(false);
   // Keep current KPIs unknown through the reconnect request. Retained snapshots
   // remain useful for the dated trend, but must not be relabelled as today.
@@ -127,6 +131,76 @@ function DashboardContent() {
     !work.isPaused && work.data.data.length === 0;
   const firstOrder = orders.isSuccess && !orders.isPlaceholderData && orders.data.data.length === 0 &&
     data?.orders.created === 0 && data.confirmations.count === 0;
+  const siteConfiguration = site?.data?.data.configuration;
+  const collectionConfigured = settings.data?.data.completion.complete;
+  const sitePaused = siteConfiguration?.accepting_orders === false;
+  const siteNeedsAccount = !!siteConfiguration && !siteConfiguration.collection?.accounts.length;
+  const firstOrderDescription = !collectionConfigured
+    ? "先完成支付宝账号配置，再将收款账号分配给业务网站。"
+    : !clientId
+      ? "收款账号已配置，可以接入业务网站或创建测试订单。"
+      : sitePaused
+        ? "本站已暂停接单，请先在网站设置中允许新订单。"
+        : siteNeedsAccount
+          ? "本站尚未分配收款账号，请先选择支付宝账号。"
+          : "本站可以试收款。接入业务 API 时配置密钥，需要通知时设置回调。";
+  const trend = <div key="trend" className="overview-trend flex min-w-0 flex-col gap-6">
+    {analytics.isPaused ? <ReadPausedNotice retainedData={data !== undefined} /> : <ErrorNotice
+      scope="page"
+      error={analytics.error}
+      retainedData={data !== undefined}
+      retry={() => { void analytics.refetch(); }}
+    />}
+    {!firstOrder && <ChartAreaInteractive
+      scopeKey={clientId ?? "all"}
+      analytics={data}
+      chartType={settings.data?.data.display?.dashboard_chart_type ?? "AREA"}
+      range={range}
+      onRangeChange={changeRange}
+      pending={!analytics.isPaused && (analytics.isPending || analytics.isPlaceholderData)}
+    />}
+  </div>;
+  const sites = !clientId && <SiteOverviewList key="sites" range={range} />;
+  const records = <div key="records" className="overview-records" data-work-empty={workEmpty || undefined}>
+    <Card size="sm" className="overview-record-panel overview-work-panel" role="region" aria-labelledby="overview-work-title">
+      <CardHeader className="overview-records-header">
+        <CardTitle id="overview-work-title" role="heading" aria-level={2} aria-label={clientId ? "本站待处理" : "全部待处理"} className="flex items-center gap-2">
+          {clientId ? "本站待处理" : "全部待处理"}
+          {!workEmpty && <Badge variant={workTotal != null && workTotal > 0 ? "warning" : "secondary"} aria-label={workTotal == null ? "待处理总数未知" : `共 ${workTotal} 条提醒待处理`}>
+            {workTotal ?? "—"}
+          </Badge>}
+        </CardTitle>
+        {workEmpty && <CardDescription>暂无待处理提醒</CardDescription>}
+        <CardAction>
+          <Link to="/work-items" className={buttonVariants({ variant: "ghost", size: "sm" })}>
+            查看全部<ArrowRight data-icon="inline-end" />
+          </Link>
+        </CardAction>
+      </CardHeader>
+      {!workEmpty && <CardContent className="overview-records-content">
+        <QueryView query={work} loading={<OverviewRecordsLoading count={4} />}>
+          {(page) => <OverviewWorkItems items={page.data} />}
+        </QueryView>
+      </CardContent>}
+    </Card>
+    <div className="overview-orders-container">
+      <Card size="sm" className="overview-record-panel overview-orders-panel" role="region" aria-labelledby="overview-orders-title">
+        <CardHeader className="overview-records-header">
+          <CardTitle id="overview-orders-title" role="heading" aria-level={2}>最近订单</CardTitle>
+          <CardAction>
+            <Link to="/orders" className={buttonVariants({ variant: "ghost", size: "sm" })}>
+              {clientId ? "本站订单" : "全部订单"}<ArrowRight data-icon="inline-end" />
+            </Link>
+          </CardAction>
+        </CardHeader>
+        <CardContent className="overview-records-content">
+          <QueryView query={orders} loading={<OverviewRecordsLoading count={5} />}>
+            {(page) => <RecentOrders orders={page.data} />}
+          </QueryView>
+        </CardContent>
+      </Card>
+    </div>
+  </div>;
   return (
     <div
       className="flex w-full min-w-0 flex-col gap-4"
@@ -158,11 +232,13 @@ function DashboardContent() {
         </Alert>
       )}
       {firstOrder && <Card>
-        <CardHeader><CardTitle>开始第一笔收款</CardTitle><CardDescription>{settings.data?.data.completion.complete ? "收款配置已完成，可以接入业务网站或创建测试订单。" : "先完成支付宝账号配置，再将收款账号分配给业务网站。"}</CardDescription></CardHeader>
+        <CardHeader><CardTitle>开始第一笔收款</CardTitle><CardDescription>{firstOrderDescription}</CardDescription></CardHeader>
         <CardContent className="flex flex-wrap gap-2">
-          {!settings.data?.data.completion.complete
+          {!collectionConfigured
             ? <Link to={onboardingPath()} className={buttonVariants()}>继续配置收款</Link>
-            : <><Link to={clientId ? "/sites/" + encodeURIComponent(clientId) + "/settings/integration" : "/sites"} className={buttonVariants()}>接入业务网站</Link><Link to="/test-payment" className={buttonVariants({ variant: "outline" })}>测试收款</Link></>}
+            : clientId && (sitePaused || siteNeedsAccount)
+              ? <Link to={"/sites/" + encodeURIComponent(clientId) + "/settings/" + (sitePaused ? "basic" : "collection")} className={buttonVariants()}>{sitePaused ? "设置接单状态" : "分配收款账号"}</Link>
+              : <><Link to="/test-payment" className={buttonVariants()}>测试收款</Link><Link to={clientId ? "/sites/" + encodeURIComponent(clientId) + "/settings/integration" : "/sites"} className={buttonVariants({ variant: "outline" })}>接入业务网站</Link></>}
         </CardContent>
       </Card>}
       <SectionCards
@@ -172,79 +248,7 @@ function DashboardContent() {
         pending={!analytics.isPaused && (analytics.isPending || analytics.isPlaceholderData)}
       />
       {clientId && <ErrorNotice scope="page" error={workSummary.error} retry={() => { void workSummary.refetch(); }} />}
-      <div className="flex min-w-0 flex-col gap-6">
-        {analytics.isPaused ? <ReadPausedNotice retainedData={data !== undefined} /> : <ErrorNotice
-          scope="page"
-          error={analytics.error}
-          retainedData={data !== undefined}
-          retry={() => {
-            void analytics.refetch();
-          }}
-        />}
-        {!firstOrder && (
-          <ChartAreaInteractive
-            scopeKey={clientId ?? "all"}
-            analytics={data}
-            chartType={
-              settings.data?.data.display?.dashboard_chart_type ?? "AREA"
-            }
-            range={range}
-            onRangeChange={changeRange}
-            pending={!analytics.isPaused && (analytics.isPending || analytics.isPlaceholderData)}
-          />
-        )}
-      </div>
-      {!clientId && <SiteOverviewList range={range} />}
-      <div className="overview-records" data-work-empty={workEmpty || undefined}>
-        <Card size="sm" className="overview-record-panel overview-work-panel" role="region" aria-labelledby="overview-work-title">
-          <CardHeader className="overview-records-header">
-            <CardTitle id="overview-work-title" role="heading" aria-level={2} aria-label={clientId ? "本站待处理" : "全部待处理"} className="flex items-center gap-2">
-              {clientId ? "本站待处理" : "全部待处理"}
-              {!workEmpty && <Badge variant={workTotal != null && workTotal > 0 ? "warning" : "secondary"} aria-label={workTotal == null ? "待处理总数未知" : `共 ${workTotal} 条提醒待处理`}>
-                {workTotal ?? "—"}
-              </Badge>}
-            </CardTitle>
-            {workEmpty && <CardDescription>暂无待处理提醒</CardDescription>}
-            <CardAction>
-              <Link
-                to={"/work-items"}
-                className={buttonVariants({ variant: "ghost", size: "sm" })}
-              >
-                查看全部
-                <ArrowRight data-icon="inline-end" />
-              </Link>
-            </CardAction>
-          </CardHeader>
-          {!workEmpty && <CardContent className="overview-records-content">
-            <QueryView query={work} loading={<OverviewRecordsLoading count={4} />}>
-              {(page) => <OverviewWorkItems items={page.data} />}
-            </QueryView>
-          </CardContent>}
-        </Card>
-        <div className="overview-orders-container">
-          <Card size="sm" className="overview-record-panel overview-orders-panel" role="region" aria-labelledby="overview-orders-title">
-            <CardHeader className="overview-records-header">
-              <CardTitle id="overview-orders-title" role="heading" aria-level={2}>
-                最近订单
-              </CardTitle>
-              <CardAction>
-                <Link
-                  to={"/orders"}
-                  className={buttonVariants({ variant: "ghost", size: "sm" })}
-                >
-                  {clientId ? "本站订单" : "全部订单"}
-                  <ArrowRight data-icon="inline-end" />
-                </Link>
-              </CardAction>
-            </CardHeader>
-            <CardContent className="overview-records-content">
-              <QueryView query={orders} loading={<OverviewRecordsLoading count={5} />}>
-                {(page) => <RecentOrders orders={page.data} />}
-              </QueryView>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+      {mobile ? [records, trend, sites] : [trend, sites, records]}
     </div>
   );
 }

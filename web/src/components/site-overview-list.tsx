@@ -1,4 +1,5 @@
-import { useId } from "react";
+import { useId, useState } from "react";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { Info } from "lucide-react";
 import type { ListSiteOverviewResponse } from "@/api/client";
 import { Link } from "@/navigation";
@@ -100,6 +101,8 @@ function SiteOverviewSkeletons() {
 
 export function SiteOverviewList({ range }: { range: 7 | 30 | 90 }) {
   const headingId = useId();
+  const mobile = useIsMobile();
+  const [expanded, setExpanded] = useState(false);
   const { query, sites, latest, pending, refresh, loadMore } = useSiteOverview(range);
 
   if (!pending && query.isSuccess && query.hasNextPage === false && sites.length === 1) return null;
@@ -108,6 +111,7 @@ export function SiteOverviewList({ range }: { range: 7 | 30 | 90 }) {
     client_id: site.client_id,
     configuration: { name: site.name },
   }));
+  const visibleSites = mobile && !expanded ? sites.slice(0, 4) : sites;
   return (
     <section
       className="site-overview-section flex min-w-0 flex-col gap-4"
@@ -137,7 +141,7 @@ export function SiteOverviewList({ range }: { range: 7 | 30 | 90 }) {
           {query.isPaused ? <ReadPausedNotice retainedData /> : !query.isFetchNextPageError && <ErrorNotice scope="page" error={query.error} retry={refresh} retainedData />}
           {sites.length ? (
             <ul className="site-overview-grid" aria-label="各网站概览">
-              {sites.map((site) => (
+              {visibleSites.map((site) => (
                 <li key={site.client_id} className="min-w-0">
                   <SiteOverviewCard
                     site={site}
@@ -153,9 +157,12 @@ export function SiteOverviewList({ range }: { range: 7 | 30 | 90 }) {
               <EmptyHeader><EmptyTitle>暂无网站</EmptyTitle></EmptyHeader>
             </Empty>
           )}
+          {mobile && (sites.length > 4 || query.hasNextPage) && <Button className="self-start" variant="ghost" onClick={() => setExpanded(!expanded)}>
+            {expanded ? "收起网站概览" : "查看全部网站"}
+          </Button>}
           {query.isFetchNextPageError ? (
             <ErrorNotice scope="page" error={query.error} retry={loadMore} />
-          ) : query.hasNextPage && (
+          ) : query.hasNextPage && (!mobile || expanded) && (
             <Button className="self-start" variant="outline" disabled={query.isFetching} onClick={loadMore}>
               {query.isFetchingNextPage && <Spinner data-icon="inline-start" aria-hidden="true" />}
               {query.isFetchingNextPage ? "正在加载更多网站…" : "加载更多网站汇总"}

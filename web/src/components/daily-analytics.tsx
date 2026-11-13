@@ -78,7 +78,7 @@ export function DailyAnalytics({ analytics, pending }: DailyAnalyticsProps) {
         </dl>
       ) : null}
 
-      <div>
+      <div className="daily-report-rows" tabIndex={totalDays > 10 ? 0 : undefined} aria-label="每日收款记录">
         {pending ? (
           <div className="daily-report-loading" aria-hidden="true">
             {Array.from({ length: LOADING_ROWS }, (_, index) => <Skeleton key={index} className="h-9 w-full" />)}
