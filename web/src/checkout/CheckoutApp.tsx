@@ -8,6 +8,7 @@ import {
   Maximize,
   RefreshCw,
   WalletCards,
+  X,
 } from "lucide-react";
 import { Button, buttonVariants } from "../components/ui/button";
 import {
@@ -24,6 +25,7 @@ import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert";
 import {
   Dialog,
   DialogTrigger,
+  DialogClose,
   DialogContent,
   DialogHeader,
   DialogTitle,
@@ -154,11 +156,44 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
       </h1>
     </CardTitle>
   );
+  const statusBadge = (
+    <Badge
+      className="h-auto min-h-5 max-w-full whitespace-normal"
+      variant={
+        state.visual === "CONFIRMED"
+          ? "success"
+          : ["DISPUTED", "NOT_FOUND"].includes(state.visual)
+            ? "destructive"
+            : "secondary"
+      }
+    >
+      {awaitingStartup
+        ? "加载中"
+        : state.suspended
+          ? "等待状态确认"
+          : copy.badge}
+      {canPay && order && (
+        <>
+          <span aria-hidden="true">·</span>
+          <time
+            className="tabular-nums"
+            dateTime={order.checkout.expires_at}
+            role="timer"
+            aria-live="off"
+            data-countdown
+          >
+            <span className="sr-only">剩余 </span>
+            {countdown}
+          </time>
+        </>
+      )}
+    </Badge>
+  );
   const actions = (retryAllowed || returnUrl) && (
     <CardFooter
       className={cn(
         "flex flex-col items-stretch gap-3",
-        order && "lg:col-start-3 lg:row-start-2 lg:rounded-none lg:px-6 lg:py-6",
+        order && "lg:col-start-1 lg:row-start-2 lg:rounded-none lg:px-8 lg:py-6",
       )}
       data-checkout-actions
     >
@@ -243,7 +278,7 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
         <Card
           className={cn(
             order &&
-              "lg:relative lg:grid lg:grid-cols-[minmax(0,1.1fr)_auto_minmax(0,1fr)] lg:grid-rows-[1fr_auto] lg:gap-0 lg:py-0",
+              "lg:grid lg:grid-cols-[minmax(0,1.1fr)_auto_minmax(0,1fr)] lg:grid-rows-[1fr_auto] lg:gap-0 lg:py-0",
           )}
           data-checkout-layout
           data-has-order={!!order}
@@ -251,7 +286,7 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
           <div
             className={cn(
               "flex min-w-0 flex-col gap-4",
-              order && "lg:col-start-1 lg:row-start-1 lg:row-span-2 lg:gap-5 lg:py-8",
+              order && "lg:col-start-1 lg:row-start-1 lg:gap-5 lg:py-8",
               order && !canPay && "lg:justify-center",
             )}
             data-checkout-payment
@@ -259,45 +294,16 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
             <CardHeader
               className={cn(
                 "flex flex-col items-center gap-3 lg:px-8",
-                canPay && "lg:contents",
+                canPay && "lg:hidden",
               )}
             >
               <CardAction
                 className={cn(
                   "self-end",
-                  order && "lg:absolute lg:top-8 lg:right-6",
+                  order && "lg:hidden",
                 )}
               >
-                <Badge
-                  variant={
-                    state.visual === "CONFIRMED"
-                      ? "success"
-                      : ["DISPUTED", "NOT_FOUND"].includes(state.visual)
-                        ? "destructive"
-                        : "secondary"
-                  }
-                >
-                  {awaitingStartup
-                    ? "加载中"
-                    : state.suspended
-                      ? "等待状态确认"
-                      : copy.badge}
-                  {canPay && order && (
-                    <>
-                      <span aria-hidden="true">·</span>
-                      <time
-                        className="tabular-nums"
-                        dateTime={order.checkout.expires_at}
-                        role="timer"
-                        aria-live="off"
-                        data-countdown
-                      >
-                        <span className="sr-only">剩余 </span>
-                        {countdown}
-                      </time>
-                    </>
-                  )}
-                </Badge>
+                {statusBadge}
               </CardAction>
               {!canPay && paymentHeading}
               {(awaitingStartup || state.suspended || copy.detail) && (
@@ -385,34 +391,39 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                               <Maximize data-icon="inline-start" />
                               放大二维码
                             </DialogTrigger>
-                            <DialogContent className="checkout-qr-dialog sm:max-w-md">
-                              <div className="checkout-qr-information">
-                                <DialogHeader>
-                                  <DialogTitle>支付宝付款二维码</DialogTitle>
+                            <DialogContent className="checkout-qr-dialog" showCloseButton={false}>
+                              <DialogHeader className="checkout-qr-header">
+                                <DialogTitle>付款二维码</DialogTitle>
+                                <DialogClose render={<Button variant="ghost" size="icon-sm" aria-label="关闭二维码" />}>
+                                  <X />
+                                </DialogClose>
+                              </DialogHeader>
+                              <div className="checkout-qr-body">
+                                <div className="checkout-qr-stage" data-qr-dialog-body>
+                                  <img
+                                    src={qrSource}
+                                    width={640}
+                                    height={640}
+                                    className="rounded-lg bg-white"
+                                    alt="放大的支付宝付款二维码"
+                                    data-qr-dialog-image
+                                    onError={() => {
+                                      setQrFailed(true);
+                                      setExpanded(false);
+                                    }}
+                                  />
+                                </div>
+                                <div className="checkout-qr-information">
+                                  <p
+                                    className="checkout-qr-amount text-center text-2xl font-semibold tracking-tight whitespace-nowrap tabular-nums"
+                                    data-checkout-money-digits={amountIntegerDigits}
+                                  >
+                                    {formattedAmount}
+                                  </p>
                                   <DialogDescription>
                                     核对金额，勿重复付款。
                                   </DialogDescription>
-                                </DialogHeader>
-                                <p
-                                  className="checkout-qr-amount text-center text-2xl font-semibold tracking-tight whitespace-nowrap tabular-nums"
-                                  data-checkout-money-digits={amountIntegerDigits}
-                                >
-                                  {formattedAmount}
-                                </p>
-                              </div>
-                              <div className="checkout-qr-stage" data-qr-dialog-body>
-                                <img
-                                  src={qrSource}
-                                  width={640}
-                                  height={640}
-                                  className="rounded-lg bg-white"
-                                  alt="放大的支付宝付款二维码"
-                                  data-qr-dialog-image
-                                  onError={() => {
-                                    setQrFailed(true);
-                                    setExpanded(false);
-                                  }}
-                                />
+                                </div>
                               </div>
                             </DialogContent>
                           </Dialog>
@@ -456,13 +467,14 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
               <Separator orientation="vertical" className="hidden lg:col-start-2 lg:row-start-1 lg:row-span-2 lg:block" />
               <section
                 aria-label="订单信息"
-                className="flex min-w-0 flex-col gap-5 lg:col-start-3 lg:row-start-1 lg:self-center lg:px-6 lg:pt-8 lg:pb-4"
+                className="flex min-w-0 flex-col gap-5 lg:col-start-3 lg:row-start-1 lg:row-span-2 lg:self-center lg:px-6 lg:py-8"
                 data-checkout-summary
               >
-                <CardHeader className="hidden lg:block lg:px-0 lg:pr-36">
-                  <CardTitle>
+                <CardHeader className="hidden min-w-0 flex-wrap items-start justify-between gap-3 lg:flex lg:px-0">
+                  <CardTitle className="min-w-0">
                     <h2>订单信息</h2>
                   </CardTitle>
+                  <CardAction className="min-w-0 max-w-full self-start">{statusBadge}</CardAction>
                 </CardHeader>
                 <CardContent className="flex min-w-0 flex-col gap-4 lg:px-0">
                   <dl className="flex min-w-0 flex-col gap-3 text-sm lg:gap-5">
