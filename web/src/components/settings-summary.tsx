@@ -18,10 +18,10 @@ export function SettingsSummary({ title, description, rows, editTo, editLabel = 
 }) {
   return (
     <Card size="sm" data-settings-summary>
-      <CardHeader className={hideHeading ? "sr-only" : undefined}>
+      <CardHeader className={hideHeading ? "sr-only" : undefined} data-settings-summary-header>
         <CardTitle role="heading" aria-level={2}>{title}</CardTitle>
         {description && <CardDescription>{description}</CardDescription>}
-        {(editTo || actions) && <CardAction className="flex flex-wrap items-center gap-2">
+        {(editTo || actions) && <CardAction className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
           {actions}
           {editTo && <Link to={editTo} className={buttonVariants({ variant: "outline", size: "sm" })} aria-label={editLabel + title}>
             <Pencil data-icon="inline-start" />{editLabel}

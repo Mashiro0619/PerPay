@@ -21,6 +21,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
 const steps = [
@@ -99,7 +100,28 @@ export function AccountOnboarding({
   return (
     <div className="mx-auto flex w-full max-w-4xl min-w-0 flex-col gap-4" data-account-onboarding>
       <nav aria-label="配置步骤">
-        <ol className="grid grid-cols-3 gap-2">
+        <div data-onboarding-step-selector className="flex min-w-0 flex-col gap-2">
+          <p className="text-sm text-muted-foreground">第 {index + 1} / {steps.length} 步</p>
+          <Select
+            value={current.id}
+            items={steps.map(step => ({ value: step.id, label: step.title }))}
+            onValueChange={value => { if (value) void navigate("/settings/onboarding/" + value); }}
+          >
+            <SelectTrigger aria-label="选择配置步骤" className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent alignItemWithTrigger={false} data-onboarding-step-options className="min-w-0 max-w-(--available-width)">
+              <SelectGroup>
+                {steps.map((step, position) => (
+                  <SelectItem key={step.id} value={step.id} disabled={position > firstMissing}>
+                    {position + 1}. {step.title}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+        </div>
+        <ol className="grid grid-cols-3 gap-2" data-onboarding-step-list>
           {steps.map((step, position) => (
             <li key={step.id} className="min-w-0">
               {position > firstMissing ? (

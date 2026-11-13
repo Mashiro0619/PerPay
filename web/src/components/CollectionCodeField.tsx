@@ -4,6 +4,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Badge } from "@/components/ui/badge";
+import { Item, ItemActions, ItemContent, ItemDescription, ItemTitle } from "@/components/ui/item";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   Empty,
   EmptyHeader,
@@ -15,12 +17,13 @@ import {
 import {
   useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
   type ChangeEvent,
   type DragEvent,
 } from "react";
-import { Check, ImageUp } from "lucide-react";
+import { Check, ChevronDown, ImageUp } from "lucide-react";
 import { decodeQrImage, qrImageAccept } from "../qr-image";
 import { collectionCodeError } from "../../../src/shared/collection-code";
 import {
@@ -64,6 +67,8 @@ export function CollectionCodeField({
 }) {
   const textarea = useRef<HTMLTextAreaElement>(null);
   const picker = useRef<HTMLInputElement>(null);
+  const contentTrigger = useRef<HTMLButtonElement>(null);
+  const handoffFocus = useRef(false);
   const request = useRef<AbortController | null>(null);
   const dropzone = useRef<HTMLDivElement>(null);
   const dragDepth = useRef(0);
@@ -72,6 +77,15 @@ export function CollectionCodeField({
   const uploadHintId = `${feedbackId}-hint`;
   const [feedback, setFeedback] = useState<Feedback>({ kind: "idle" });
   const [dragging, setDragging] = useState(false);
+  const [value, setValue] = useState(defaultValue);
+  const [contentOpen, setContentOpen] = useState(false);
+  const hasCode = value !== "" && collectionCodeError(value) === null;
+  const contentVisible = !hasCode || contentOpen || !!error;
+  useLayoutEffect(() => {
+    const shouldHandoff = handoffFocus.current;
+    handoffFocus.current = false;
+    if (shouldHandoff && !contentVisible) contentTrigger.current?.focus();
+  }, [contentVisible, feedback.kind]);
   useEffect(() => {
     const resetDragging = () => {
       dragDepth.current = 0;
@@ -120,12 +134,14 @@ export function CollectionCodeField({
     onPendingChange(true);
     try {
       const payload = await decodeQrImage(file, current.signal);
-      if (current.signal.aborted || !textarea.current) return;
+      if (current.signal.aborted) return;
       const issue = collectionCodeError(payload);
       if (issue) throw new Error(issue);
-      textarea.current.value = payload;
+      setValue(payload);
       onValueChange?.(payload);
       onDecoded();
+      handoffFocus.current = document.activeElement === textarea.current;
+      setContentOpen(false);
       setFeedback({ kind: "success" });
     } catch (error) {
       if (!current.signal.aborted)
@@ -186,103 +202,146 @@ export function CollectionCodeField({
     void processImage(file);
   }
   return (
-    <FieldGroup>
-      <Empty
-        ref={dropzone}
-        className={cn("border border-dashed", dragging && "bg-accent")}
-        role="group"
-        aria-label="二维码图片上传"
-        aria-disabled={disabled}
-        onDragEnter={handleDragEnter}
-        onDragLeave={handleDragLeave}
-        onDragOver={handleDragOver}
-        onDrop={handleDrop}
+    <FieldGroup data-collection-code-field>
+      <Input
+        ref={picker}
+        type="file"
+        accept={qrImageAccept}
+        hidden
+        disabled={disabled}
+        aria-label="选择收款码二维码图片"
+        onChange={(event) => {
+          void selectImage(event);
+        }}
+      />
+      <Collapsible
+        open={contentVisible}
+        onOpenChange={setContentOpen}
+        className="flex min-w-0 flex-col gap-3"
       >
-        <EmptyHeader>
-          <EmptyMedia variant="icon">
-            {feedback.kind === "pending" ? (
-              <Spinner aria-hidden="true" />
-            ) : (
-              <ImageUp />
-            )}
-          </EmptyMedia>
-          <EmptyTitle id={uploadLabelId}>
-            {feedback.kind === "pending"
-              ? "正在识别…"
-              : dragging
-                ? "松开即可识别"
-                : "收款码图片"}
-          </EmptyTitle>
-          <EmptyDescription id={uploadHintId}>
-            PNG、JPG、WebP，最大 10 MB
-          </EmptyDescription>
-        </EmptyHeader>
-        <EmptyContent>
-          <Input
-            ref={picker}
-            type="file"
-            accept={qrImageAccept}
-            hidden
-            disabled={disabled}
-            aria-label="选择收款码二维码图片"
-            onChange={(event) => {
-              void selectImage(event);
-            }}
-          />
-          <Button
-            type="button"
+        {hasCode ? (
+          <Item
+            ref={dropzone}
             variant="outline"
-            disabled={disabled || feedback.kind === "pending"}
-            aria-busy={feedback.kind === "pending"}
-            onClick={() => picker.current?.click()}
-            aria-describedby={[
-              uploadHintId,
-              feedback.kind === "error" && feedbackId,
-            ]
-              .filter(Boolean)
-              .join(" ")}
+            className={cn("min-w-0", dragging && "bg-accent")}
+            role="group"
+            aria-label="已配置的收款码"
+            aria-disabled={disabled}
+            onDragEnter={handleDragEnter}
+            onDragLeave={handleDragLeave}
+            onDragOver={handleDragOver}
+            onDrop={handleDrop}
           >
-            上传二维码
-          </Button>
-          {feedback.kind === "success" && (
-            <Badge variant="outline" role="status">
-              <Check data-icon="inline-start" />
-              已识别
-            </Badge>
-          )}
-          {feedback.kind === "pending" && (
-            <span className="sr-only" role="status">
-              正在识别二维码图片。
-            </span>
-          )}
-          {feedback.kind === "error" && (
-            <FieldError id={feedbackId}>{feedback.message}</FieldError>
-          )}
-        </EmptyContent>
-      </Empty>
-      <Field data-invalid={!!error}>
-        <FieldLabel htmlFor={feedbackId + "-code"}>支付宝收款码内容</FieldLabel>
-        <Textarea
-          ref={textarea}
-          id={feedbackId + "-code"}
-          name="code_payload"
-          rows={2}
-          required={required}
-          minLength={8}
-          maxLength={2331}
-          defaultValue={defaultValue}
-          disabled={disabled}
-          onChange={event => { cancelReading(); onValueChange?.(event.currentTarget.value); }}
-          autoComplete="off"
-          spellCheck={false}
-          placeholder="https://qr.alipay.com/…"
-          aria-invalid={!!error}
-          aria-describedby={error ? feedbackId + "-code-error" : undefined}
-        />
-        {error && (
-          <FieldError id={feedbackId + "-code-error"}>{error}</FieldError>
+            <ItemContent className="min-w-0 flex-[1_1_12rem]">
+              <ItemTitle className="min-w-0 max-w-full line-clamp-none">
+                {dragging ? "松开即可更换" : "收款码已配置"}
+              </ItemTitle>
+              <ItemDescription className="line-clamp-none">
+                更换二维码后保存账号配置。
+              </ItemDescription>
+            </ItemContent>
+            <ItemActions className="max-w-full flex-wrap">
+              <Button
+                type="button"
+                variant="outline"
+                className="h-auto min-h-8 max-w-full whitespace-normal"
+                disabled={disabled || feedback.kind === "pending"}
+                aria-busy={feedback.kind === "pending"}
+                aria-describedby={feedback.kind === "error" ? feedbackId : undefined}
+                onClick={() => picker.current?.click()}
+              >
+                {feedback.kind === "pending" ? <Spinner data-icon="inline-start" /> : <ImageUp data-icon="inline-start" />}
+                {feedback.kind === "pending" ? "正在识别…" : "更换二维码"}
+              </Button>
+              <CollapsibleTrigger
+                ref={contentTrigger}
+                render={<Button type="button" variant="ghost" className="h-auto min-h-8 max-w-full whitespace-normal" disabled={disabled} />}
+              >
+                {contentVisible ? "收起内容" : "查看内容"}
+                <ChevronDown data-icon="inline-end" />
+              </CollapsibleTrigger>
+            </ItemActions>
+          </Item>
+        ) : (
+          <Empty
+            ref={dropzone}
+            className={cn("border border-dashed", dragging && "bg-accent")}
+            role="group"
+            aria-label="二维码图片上传"
+            aria-disabled={disabled}
+            onDragEnter={handleDragEnter}
+            onDragLeave={handleDragLeave}
+            onDragOver={handleDragOver}
+            onDrop={handleDrop}
+          >
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                {feedback.kind === "pending" ? <Spinner aria-hidden="true" /> : <ImageUp />}
+              </EmptyMedia>
+              <EmptyTitle id={uploadLabelId}>
+                {feedback.kind === "pending"
+                  ? "正在识别…"
+                  : dragging
+                    ? "松开即可识别"
+                    : "收款码图片"}
+              </EmptyTitle>
+              <EmptyDescription id={uploadHintId}>
+                PNG、JPG、WebP，最大 10 MB
+              </EmptyDescription>
+            </EmptyHeader>
+            <EmptyContent>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={disabled || feedback.kind === "pending"}
+                aria-busy={feedback.kind === "pending"}
+                onClick={() => picker.current?.click()}
+                aria-describedby={[
+                  uploadHintId,
+                  feedback.kind === "error" && feedbackId,
+                ].filter(Boolean).join(" ")}
+              >
+                上传二维码
+              </Button>
+            </EmptyContent>
+          </Empty>
         )}
-      </Field>
+        {feedback.kind === "success" && (
+          <Badge variant="outline" role="status" className="self-start">
+            <Check data-icon="inline-start" />已识别
+          </Badge>
+        )}
+        {feedback.kind === "pending" && <span className="sr-only" role="status">正在识别二维码图片。</span>}
+        {feedback.kind === "error" && <FieldError id={feedbackId}>{feedback.message}</FieldError>}
+        <CollapsibleContent keepMounted>
+          <Field data-invalid={!!error}>
+            <FieldLabel htmlFor={feedbackId + "-code"}>支付宝收款码内容</FieldLabel>
+            <Textarea
+              ref={textarea}
+              id={feedbackId + "-code"}
+              name="code_payload"
+              rows={2}
+              required={required}
+              minLength={8}
+              maxLength={2331}
+              value={value}
+              disabled={disabled}
+              onChange={event => {
+                cancelReading();
+                setContentOpen(true);
+                setValue(event.currentTarget.value);
+                onValueChange?.(event.currentTarget.value);
+              }}
+              autoComplete="off"
+              spellCheck={false}
+              placeholder="https://qr.alipay.com/…"
+              aria-invalid={!!error}
+              aria-describedby={error ? feedbackId + "-code-error" : undefined}
+            />
+            {error && <FieldError id={feedbackId + "-code-error"}>{error}</FieldError>}
+          </Field>
+        </CollapsibleContent>
+      </Collapsible>
     </FieldGroup>
   );
 }

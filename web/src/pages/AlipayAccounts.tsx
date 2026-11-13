@@ -30,6 +30,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CollectionCodeField } from "@/components/CollectionCodeField";
 import { CopyValue } from "@/components/copy-value";
 import { ErrorNotice, QueryView } from "@/components/request-state";
+import { useSuccessToast } from "@/components/Feedback";
 import { OperationRecoveryNotice } from "@/components/operation-recovery-notice";
 import { OperationNavigationDialog } from "@/components/operation-navigation-dialog";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -266,6 +267,7 @@ export function AlipayAccountEditor({
   const overlay = useOverlayContext();
   const tabbed = !!overlay || !!onBack;
   const formId = useId();
+  const successToast = useSuccessToast();
   const runOperation = useOperationWait();
   const navigate = useNavigate();
   const location = useLocation();
@@ -420,6 +422,10 @@ export function AlipayAccountEditor({
     mutationFn: (id: string) => {
       if (historical) throw new Error("此账号仅保留历史记录，请添加已上线应用的支付宝账号。");
       return runOperation(signal => result(api.checkAlipayAccount({ path: { accountId: id }, body: {}, signal })));
+    },
+    onSuccess: ({ data }) => {
+      setSaved(account => account ? { ...account, last_check: data } : account);
+      if (data.ok) successToast("查账连接检查通过");
     },
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: alipayAccountsKey });
@@ -661,6 +667,7 @@ export function AlipayAccountEditor({
   const pending = historical ? null : saved?.pending_application_key;
   const platformKeyError = pending ? activationKeyError : errors.platform_public_key;
   const checkResult = historical ? null : check.data?.data ?? (!dirty ? saved?.last_check : null);
+  const lastCheck = historical ? null : check.data?.data ?? saved?.last_check;
   const checkFailure = historical ? undefined : check.error?.message ?? initialCheckFailure;
   const setupGaps = saved ? [
     !saved.app_id && { label: "应用 ID", panel: "application", field: "alipay-app-id" },
@@ -693,7 +700,12 @@ export function AlipayAccountEditor({
           </Link>
         ) : null}
       </div>
-      {tabbed && <ScrollingTabs><TabsList aria-label="支付宝账号配置分组" variant="line" activateOnFocus={false} className="min-w-max">
+      {tabbed && <ScrollingTabs selection={{
+        items: accountSections.filter(([value]) => value !== "usage" || saved !== null).map(([value, label]) => ({ value, label })),
+        value: panel,
+        onValueChange: setPanel,
+        label: "支付宝账号配置分组",
+      }}><TabsList aria-label="支付宝账号配置分组" variant="line" activateOnFocus={false} className="min-w-max">
         {accountSections.filter(([value]) => value !== "usage" || saved !== null).map(([value, label]) => <TabsTrigger key={value} value={value}>{label}</TabsTrigger>)}
       </TabsList></ScrollingTabs>}
       <ErrorNotice error={requiresReview || creation.recovery ? null : error} />
@@ -775,11 +787,11 @@ export function AlipayAccountEditor({
           <AlertTitle>{savedMessage}</AlertTitle>
         </Alert>
       )}
-      {(checkResult || checkFailure || check.isPending) && (
+      {(checkFailure || checkResult?.ok === false || check.isPending) && (
         <Alert
           role="status"
           variant={
-            checkFailure || checkResult?.ok === false
+            !check.isPending && (checkFailure || checkResult?.ok === false)
               ? "destructive"
               : "default"
           }
@@ -791,12 +803,12 @@ export function AlipayAccountEditor({
                 ? "连接检查未通过"
                 : "连接检查通过"}
           </AlertTitle>
-          <AlertDescription>
+          {!check.isPending && <AlertDescription>
             {checkFailure ?? checkResult?.message}
             {(checkFailure || checkResult?.ok === false) && (
               <p>账号配置已保留。修正应用信息后保存，或直接重试检查。</p>
             )}
-          </AlertDescription>
+          </AlertDescription>}
         </Alert>
       )}
       <form
@@ -1073,6 +1085,14 @@ export function AlipayAccountEditor({
               {!historical && <div className="flex flex-wrap items-center gap-2"><dt className="text-muted-foreground">收款状态</dt><dd><Badge variant="outline">{setupGaps.length ? "配置未完成" : !saved.enabled ? "已暂停新订单" : collectionReady ? "当前可收款" : "暂不可收款"}</Badge></dd></div>}
               <div className="flex flex-wrap items-center gap-2"><dt className="text-muted-foreground">更新于</dt><dd>{dateTime(saved.updated_at)}</dd></div>
             </dl>
+            {lastCheck && <div className="flex min-w-0 flex-col gap-1">
+              <dl className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+                <dt className="text-sm text-muted-foreground">最近连接检查</dt>
+                <dd><Badge variant={lastCheck.ok ? "outline" : "destructive"}>{lastCheck.ok ? "通过" : "未通过"}</Badge></dd>
+                <dd className="text-sm text-muted-foreground"><time dateTime={lastCheck.checked_at}>{dateTime(lastCheck.checked_at)}</time></dd>
+              </dl>
+              <p className="text-sm text-muted-foreground">{lastCheck.message}</p>
+            </div>}
             {dirty && <p className="text-sm text-muted-foreground">以上为已保存的配置，当前修改尚未保存。</p>}
             <div className="flex min-w-0 flex-col gap-2">
             <p className="text-sm text-muted-foreground">用于网站 · {saved.sites.length} 个</p>

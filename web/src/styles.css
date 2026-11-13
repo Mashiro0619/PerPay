@@ -1712,7 +1712,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   -webkit-line-clamp: unset;
   white-space: normal;
 }
-[data-settings-tabs-options] [data-slot="select-item"] > span:first-child {
+[data-settings-tabs-options] [data-slot="select-item"] > :first-child {
   min-width: 0;
   flex-shrink: 1;
   white-space: normal;
@@ -1723,6 +1723,23 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   [data-settings-tabs-select] { display: block; }
   [data-settings-tabs-navigation]:has(> [data-settings-tabs-select]) > [data-settings-tabs-strip] { display: none; }
 }
+
+[data-settings-summary] { container: settings-summary / inline-size; }
+@container settings-summary (max-width: 24rem) {
+  [data-settings-summary-header]:not(.sr-only) { display: flex; min-width: 0; flex-direction: column; gap: 0.75rem; }
+  [data-settings-summary-header] > [data-slot="card-action"] { align-self: flex-start; justify-self: start; }
+  [data-settings-summary-header] [data-slot="card-action"] :is(a, button) { height: auto; min-height: 2rem; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+}
+
+[data-account-onboarding] { container: account-onboarding / inline-size; }
+[data-onboarding-step-selector] { display: none; }
+@container account-onboarding (max-width: 34rem) {
+  [data-onboarding-step-list] { display: none; }
+  [data-onboarding-step-selector] { display: flex; }
+  [data-onboarding-step-selector] [data-slot="select-trigger"] { height: auto; min-height: 2.5rem; white-space: normal; }
+  [data-onboarding-step-selector] [data-slot="select-value"] { display: block; min-width: 0; white-space: normal; overflow-wrap: anywhere; -webkit-line-clamp: unset; }
+}
+[data-onboarding-step-options] [data-slot="select-item"] > :first-child { min-width: 0; flex-shrink: 1; white-space: normal; overflow-wrap: anywhere; }
 
 .admin-settings-layout:has(> .site-settings-navigation) { container: site-settings / inline-size; }
 [data-management-summary] .list-summary-heading { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0.75rem; }
