@@ -15,7 +15,6 @@ import {
   BreadcrumbItem,
   BreadcrumbLink,
   BreadcrumbList,
-  BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import { TestPaymentButton } from "@/components/test-payment-provider";
@@ -27,12 +26,23 @@ import { DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { HeaderWorkspaceSwitcher } from "@/components/header-workspace-switcher";
 import { useIsMobile } from "@/hooks/use-mobile";
 
+export function PageActions({ overview, busy }: { overview: boolean; busy: boolean }) {
+  const fetching = useIsFetching({ queryKey: ["analytics"] }) > 0;
+  const menu = usePageHeaderMenu();
+  if (menu?.mobile) return null;
+  return <div className="flex min-w-0 flex-wrap items-center gap-2 empty:hidden" inert={busy}>
+    {overview && <>
+      <RefreshButton disabled={fetching || busy} onClick={() => void refreshOperationalData()} busy={fetching} />
+      <TestPaymentButton size="sm" title="测试收款">测试收款</TestPaymentButton>
+    </>}
+    <PageHeaderActionsSlot className="flex-wrap" />
+  </div>;
+}
+
 export function SiteHeader({
-  title,
   overview,
   busy = false,
 }: {
-  title: string;
   overview: boolean;
   busy?: boolean;
 }) {
@@ -48,11 +58,6 @@ export function SiteHeader({
   const menu = usePageHeaderMenu();
   const mobile = menu?.mobile ?? false;
   const actions = <>
-    {overview && <>
-      <RefreshButton disabled={fetching} onClick={() => void refreshOperationalData()} busy={fetching} />
-      <TestPaymentButton size="sm" title="测试收款">测试收款</TestPaymentButton>
-    </>}
-    <PageHeaderActionsSlot />
     <ContentWidthControl />
     <ThemeControl />
   </>;
@@ -64,7 +69,7 @@ export function SiteHeader({
           orientation="vertical"
           className="mx-2 h-4 data-vertical:self-auto"
         />
-        <Breadcrumb aria-label="页面路径" className="min-w-0 flex-1">
+        <Breadcrumb aria-label="查看范围" className="min-w-0 flex-1">
           <BreadcrumbList className="min-w-0 flex-nowrap">
           {scope.clientId && (
             <>
@@ -76,16 +81,10 @@ export function SiteHeader({
               <BreadcrumbSeparator className="hidden lg:list-item" />
             </>
           )}
-          <BreadcrumbItem className="min-w-0 max-w-[45%] lg:max-w-64">
+          <BreadcrumbItem className="min-w-0 lg:max-w-64">
             {scope.clientId && !isMobile
               ? <HeaderWorkspaceSwitcher name={workspaceName} />
               : <span className="truncate" title={workspaceName}>{workspaceName}</span>}
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem className="min-w-0">
-            <BreadcrumbPage className="truncate" title={title}>
-              {title}
-            </BreadcrumbPage>
           </BreadcrumbItem>
           </BreadcrumbList>
         </Breadcrumb>

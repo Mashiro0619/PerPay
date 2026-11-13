@@ -933,7 +933,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   transition-duration: var(--console-motion-fast);
   transition-timing-function: var(--console-ease);
 }
-[data-admin-console] [data-page-heading] > h1 { letter-spacing: -0.03em; }
+[data-admin-console] [data-page-heading] h1 { letter-spacing: -0.03em; }
 [data-admin-console] [data-overview-layout] :is(.trend-card, .overview-record-panel, .site-overview-card-surface),
 [data-admin-console] [data-overview-kpis] > [data-slot="card"] {
   --tw-ring-color: var(--console-hairline);

@@ -54,7 +54,7 @@ export const navigation = [
   { section: "work-items", url: "/work-items", title: "待处理", icon: ListChecks },
   { section: "notifications", url: "/notifications", title: "通知", icon: Bell },
   { section: "settings", url: "/settings", title: "设置", icon: Settings2 },
-  { section: "sites", url: "/sites", title: "业务网站", icon: Globe },
+  { section: "sites", url: "/sites", title: "网站管理", icon: Globe },
   { section: "reconciliation", url: "/reconciliation", title: "对账", icon: WalletCards },
   { section: "system", url: "/system", title: "运行状态", icon: Activity },
   { section: "audit", url: "/audit", title: "审计日志", icon: ScrollText },
@@ -129,7 +129,7 @@ export function AppSidebar({
           <nav aria-label="主导航">
             <NavMain items={items.slice(0, 4)} pathname={pathname} />
           </nav>
-          <nav aria-label="网站选择">
+          <nav aria-label="查看范围">
             <SidebarGroup>
               <SidebarGroupContent>
                 <SidebarMenu>

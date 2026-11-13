@@ -22,6 +22,7 @@ import {
   Route,
   useLocation,
   useMatch,
+  useMatches,
 } from "react-router";
 import { api, result } from "@/api/client";
 import { AuthBoundary, useSession } from "@/auth";
@@ -31,7 +32,7 @@ import { OfficialUpdateDialog, OfficialUpdateProvider, useOfficialUpdateAvailabl
 import { deferOnboarding, deferredInstance } from "@/lib/onboarding";
 import { AppSidebar } from "@/components/app-sidebar";
 import { isGlobalNavigationPage, navigationSection, type NavigationSection } from "@/lib/navigation-selection";
-import { SiteHeader } from "@/components/site-header";
+import { PageActions, SiteHeader } from "@/components/site-header";
 import { TestPaymentProvider } from "@/components/test-payment-provider";
 import { LegacyOverlayRedirect, OverlayHost, OverlayProvider } from "@/components/overlay-host";
 import { ErrorNotice, Loading } from "@/components/request-state";
@@ -62,7 +63,7 @@ const globalPageTitles: Record<NavigationSection, string> = {
   ledger: "支付宝流水",
   system: "运行状态",
   audit: "审计日志",
-  sites: "业务网站",
+  sites: "网站管理",
 };
 
 function AppShell() {
@@ -148,7 +149,10 @@ function Workspace() {
   const section = navigationSection(location.pathname);
   const globalPage = isGlobalNavigationPage(location.pathname);
   const testPaymentPage = useMatch("/test-payment");
-  const title = testPaymentPage
+  const notFound = useMatches().some(match => match.id === "not-found");
+  const title = notFound
+    ? "找不到这个页面"
+    : testPaymentPage
     ? "测试收款"
     : location.pathname.startsWith("/settings/onboarding")
       ? "配置向导"
@@ -161,7 +165,7 @@ function Workspace() {
             "/settings": "网站设置",
             "/reconciliation": "本站对账",
           }["/" + (localPath.split("/")[1] ?? "")] ?? "网站后台")
-        : (section ? globalPageTitles[section] : systemName);
+        : (section ? globalPageTitles[section] : "找不到这个页面");
   const overview = localPath === "/";
   useEffect(() => {
     document.title = [
@@ -196,10 +200,10 @@ function Workspace() {
         onLogout={() => requestDiscard(() => logout.mutate())}
       />
       <SidebarInset className="min-w-0" aria-busy={switching}>
-        <SiteHeader title={title} overview={overview} busy={switching} />
+        <SiteHeader overview={overview} busy={switching} />
         <PageHeadingProvider routeKey={location.pathname}>
         <AdminContent busy={switching} layout={isReadableDetailPage(location.pathname) ? "detail" : "default"}>
-          <PageHeadingSlot title={title} />
+          <PageHeadingSlot title={title} actions={<PageActions overview={overview} busy={switching} />} />
           <RequestNoticeBanner />
           <ErrorNotice error={logout.error} />
           <ErrorNotice scope="page" error={session.error} retry={session.retry} />
@@ -411,13 +415,11 @@ export const appRoutes = createRoutesFromElements(
     <Route path="setup" element={<Navigate to="/settings" replace />} />
     <Route
       path="*"
+      id="not-found"
       element={
         <Empty>
           <PageHeading title="找不到这个页面" />
           <EmptyHeader>
-            <EmptyTitle role="heading" aria-level={2}>
-              找不到这个页面
-            </EmptyTitle>
             <EmptyDescription>地址可能已变更。</EmptyDescription>
           </EmptyHeader>
           <EmptyContent>

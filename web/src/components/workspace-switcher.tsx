@@ -1,6 +1,6 @@
 import { siteChoiceLabel } from "@/lib/site-choice-label";
 import { useEffect, useId, useState } from "react";
-import { BellOff, Check, ChevronRight, CirclePause, Globe } from "lucide-react";
+import { BellOff, Check, ChevronRight, CirclePause, ListFilter } from "lucide-react";
 import { useWorkspaceSwitcher } from "@/hooks/use-workspace-switcher";
 import { Link } from "@/navigation";
 import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
@@ -43,7 +43,7 @@ export function WorkspaceSwitcher({
   useEffect(() => { setPopoverOpen(false); }, [location.key, icon]);
 
   const menu = (
-        <SidebarMenuSub className="mx-0 translate-x-0 border-0 px-0 py-1" aria-label="业务网站列表">
+        <SidebarMenuSub className="mx-0 translate-x-0 border-0 px-0 py-1" aria-label="查看范围列表">
           <SidebarMenuSubItem>
             <SidebarMenuSubButton
               isActive={!clientId}
@@ -156,12 +156,12 @@ export function WorkspaceSwitcher({
   </>;
   if (icon) return <SidebarMenuItem>
     <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
-      <PopoverTrigger render={<SidebarMenuButton tooltip={`业务网站 · ${selectedName}`} aria-label={`切换业务网站，当前${selectedName}`} />}>
-        <Globe />
-        <span className="sr-only">业务网站</span>
+      <PopoverTrigger render={<SidebarMenuButton tooltip={`查看范围 · ${selectedName}`} aria-label={`切换查看范围，当前${selectedName}`} />}>
+        <ListFilter />
+        <span className="sr-only">查看范围</span>
       </PopoverTrigger>
       <PopoverContent side="right" align="start" className="max-h-[min(32rem,calc(100dvh-2rem))] overflow-y-auto">
-        <PopoverTitle>业务网站</PopoverTitle>
+        <PopoverTitle>查看范围</PopoverTitle>
         <p className="text-xs text-muted-foreground">当前：{selectedName}</p>
         <RequestNoticeProvider>
           <RequestNoticeBanner showRuntimeLink={false} />
@@ -181,15 +181,15 @@ export function WorkspaceSwitcher({
       <CollapsibleTrigger
         render={
           <SidebarMenuButton
-            tooltip="业务网站"
+            tooltip="查看范围"
             className="pointer-coarse:min-h-10"
-            aria-label={`业务网站 ${selectedName}，${open ? "收起" : "展开"}`}
+            aria-label={`查看范围 ${selectedName}，${open ? "收起" : "展开"}`}
             aria-describedby={currentNameId}
           />
         }
       >
-        <Globe />
-        <span className="shrink-0">业务网站</span>
+        <ListFilter />
+        <span className="shrink-0">查看范围</span>
         <span
           id={currentNameId}
           data-current-workspace

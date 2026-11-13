@@ -29,16 +29,16 @@ export function HeaderWorkspaceSwitcher({ name }: { name: string }) {
   useEffect(() => { setOpen(false); }, [location.key]);
 
   return <DropdownMenu open={open} onOpenChange={setOpen} modal={false}>
-    <DropdownMenuTrigger render={<Button variant="ghost" className="min-w-0 max-w-full px-1.5" aria-label={`切换网站，当前${name}`} title={name} />}>
+    <DropdownMenuTrigger render={<Button variant="ghost" className="min-w-0 max-w-full px-1.5" aria-label={`切换查看范围，当前${name}`} title={name} />}>
       <span className="truncate">{name}</span>
       <ChevronDown data-icon="inline-end" aria-hidden="true" />
     </DropdownMenuTrigger>
-    <DropdownMenuContent align="start" aria-label="切换网站" className="w-72 max-w-[calc(100vw-2rem)]">
+    <DropdownMenuContent align="start" aria-label="查看范围" className="w-72 max-w-[calc(100vw-2rem)]">
       <RequestNoticeProvider>
         <RequestNoticeBanner showRuntimeLink={false} renderRetry={renderMenuRetry} />
         <span role="status" className="sr-only">{switching ? `正在切换到${pendingName}…` : ""}</span>
         <DropdownMenuGroup>
-          <DropdownMenuLabel>切换网站</DropdownMenuLabel>
+          <DropdownMenuLabel>查看范围</DropdownMenuLabel>
           <DropdownMenuItem closeOnClick={false} render={<Link {...linkProps(null)} />} aria-busy={switching && pending.selectedClientId === null}>
             {switching && pending.selectedClientId === null ? <Spinner aria-hidden="true" /> : <Check aria-hidden="true" className="invisible" />}
             <span className="min-w-0 flex-1 truncate">全部网站</span>

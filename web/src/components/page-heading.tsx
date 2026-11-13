@@ -11,15 +11,18 @@ export function PageHeadingProvider({ children, routeKey = "default" }: { childr
   const value = useMemo(() => ({ heading, setHeading }), [heading, setHeading]);
   return <HeadingContext value={value}>{children}</HeadingContext>;
 }
-function HeadingContent({ title, description }: Heading) {
-  return <div className="flex min-w-0 flex-col gap-2" data-page-heading>
-    <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
-    {description && <p className="text-sm text-muted-foreground">{description}</p>}
+function HeadingContent({ title, description, actions }: Heading & { actions?: ReactNode }) {
+  return <div className="flex min-w-0 flex-wrap items-start justify-between gap-3" data-page-heading>
+    <div className="flex min-w-0 flex-col gap-2">
+      <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
+      {description && <p className="text-sm text-muted-foreground">{description}</p>}
+    </div>
+    {actions}
   </div>;
 }
-export function PageHeadingSlot({ title }: { title: string }) {
+export function PageHeadingSlot({ title, actions }: { title: string; actions?: ReactNode }) {
   const host = useContext(HeadingContext);
-  return <HeadingContent {...(host?.heading ?? { title })} />;
+  return <HeadingContent {...(host?.heading ?? { title })} actions={actions} />;
 }
 export function PageHeading({ title, description }: Heading) {
   const host = useContext(HeadingContext);
