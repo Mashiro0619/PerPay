@@ -670,8 +670,9 @@ export function AlipayAccountEditor({
   ].filter((gap): gap is { label: string; panel: string; field: string | null } => !!gap) : [];
   const nextSetupGap = setupGaps[0];
   const collectionReady = saved?.health?.collection_ready === true;
+  const showSetupNotice = !historical && (!saved || setupGaps.length > 0 || (saved.enabled && !collectionReady));
   const setupStatus = !saved ? "先创建支付宝账号" : setupGaps.length ? "待补充：" + setupGaps.map(gap => gap.label).join("、")
-    : !saved.enabled ? "账号已暂停新订单" : collectionReady ? "当前可收款" : "配置已完成，等待查账就绪";
+    : "暂不可收款";
   return (
     <div className="flex min-w-0 flex-col gap-4" data-alipay-account-editor>
       <Tabs value={panel} onValueChange={value => { if (value) setPanel(value); }} className="min-w-0 gap-4">
@@ -748,7 +749,7 @@ export function AlipayAccountEditor({
           </AlertDescription>
         </Alert>
       )}
-      {!historical && <Alert role="status">
+      {showSetupNotice && <Alert role="status">
         <AlertTitle>{setupStatus}</AlertTitle>
         <AlertDescription>
           {!saved ? <p>填写账号名称并创建，再生成应用密钥、配置支付宝应用和收款码。</p>
@@ -762,11 +763,8 @@ export function AlipayAccountEditor({
                   target?.focus(); target?.scrollIntoView({ block: "nearest" });
                 });
               }}>继续配置{nextSetupGap.label}</Button>
-            </> : !saved.enabled ? <Button type="button" variant="outline" onClick={() => {
-              setPanel("basic"); requestAnimationFrame(() => document.getElementById("alipay-enabled")?.focus());
-            }}>调整接单设置</Button> : <>
-              {!collectionReady && <p>连接检查确认应用可用；首次查账完成后，运行状态会显示收款就绪。</p>}
-              {!saved.sites.length && <Link to="/sites/new" className={buttonVariants({ variant: "outline" })}>创建业务网站</Link>}
+            </> : <>
+              <p>请查看运行状态，核对查账连接和最近一次查账结果。</p>
               <Link to="/system" className={buttonVariants({ variant: "outline" })}>查看收款状态</Link>
             </>}
           {dirty && saved && <p>以上为已保存的配置，当前修改尚未保存。</p>}
@@ -1062,15 +1060,20 @@ export function AlipayAccountEditor({
       {saved && (
         <AccountPanel tabbed={tabbed} value="usage">
         <Card data-account-usage-card>
-          <CardHeader>
+          <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
             <CardTitle>使用情况</CardTitle>
+            {!historical && <CardAction className="max-w-full">
+              <Link to="/system" className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-auto min-h-8 max-w-full whitespace-normal py-1.5")}>查看收款状态</Link>
+            </CardAction>}
           </CardHeader>
           <CardContent className="flex min-w-0 flex-col gap-4">
             <dl className="flex min-w-0 flex-wrap gap-x-6 gap-y-3">
               <div className="flex flex-wrap items-center gap-2"><dt className="text-muted-foreground">账号状态</dt><dd><Badge variant="outline">{accountState(saved)}</Badge></dd></div>
               <div className="flex flex-wrap items-center gap-2"><dt className="text-muted-foreground">查账连接</dt><dd><Badge variant="outline">{accountHealth(saved)}</Badge></dd></div>
+              {!historical && <div className="flex flex-wrap items-center gap-2"><dt className="text-muted-foreground">收款状态</dt><dd><Badge variant="outline">{setupGaps.length ? "配置未完成" : !saved.enabled ? "已暂停新订单" : collectionReady ? "当前可收款" : "暂不可收款"}</Badge></dd></div>}
               <div className="flex flex-wrap items-center gap-2"><dt className="text-muted-foreground">更新于</dt><dd>{dateTime(saved.updated_at)}</dd></div>
             </dl>
+            {dirty && <p className="text-sm text-muted-foreground">以上为已保存的配置，当前修改尚未保存。</p>}
             <div className="flex min-w-0 flex-col gap-2">
             <p className="text-sm text-muted-foreground">用于网站 · {saved.sites.length} 个</p>
             {saved.sites.length ? (
@@ -1086,7 +1089,10 @@ export function AlipayAccountEditor({
                 ))}
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground">尚未分配给网站。</p>
+              <>
+                <p className="text-sm text-muted-foreground">尚未分配给网站。</p>
+                {!historical && <Link to="/sites/new" className={cn(buttonVariants({ variant: "outline", size: "sm" }), "self-start")}>创建业务网站</Link>}
+              </>
             )}
             </div>
             <Separator />
