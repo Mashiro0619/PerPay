@@ -164,7 +164,7 @@ export function SiteSettingsPage() {
     <PageHeading title="网站设置" />
     <div className="site-settings-navigation flex min-w-0 items-center gap-2">
       <Tabs className="min-w-0 flex-1" value={section} onValueChange={value => { if (value) void navigate("/sites/" + encodeURIComponent(clientId!) + "/settings/" + value); }}>
-        <ScrollingTabs><TabsList aria-label="网站设置分组" variant="line" activateOnFocus={false} className="min-w-max">
+        <ScrollingTabs selection={{ items: siteSections, value: section, onValueChange: value => { void navigate("/sites/" + encodeURIComponent(clientId!) + "/settings/" + value); }, label: "网站设置分组" }}><TabsList aria-label="网站设置分组" variant="line" activateOnFocus={false} className="min-w-max">
           {siteSections.map(item => <TabsTrigger key={item.value} value={item.value}>{item.label}</TabsTrigger>)}
         </TabsList></ScrollingTabs>
       </Tabs>
@@ -692,7 +692,15 @@ function SiteEditor({
             }
           }}
         >
-          <ScrollingTabs>
+          <ScrollingTabs selection={{
+            items: sections,
+            value: section,
+            onValueChange: value => {
+              if (tabbed) setActiveSection(value);
+              else void navigate("/sites/" + saved.client_id + "/settings/" + value);
+            },
+            label: "网站设置分组",
+          }}>
             <TabsList className="min-w-max" aria-label="网站设置分组" activateOnFocus={false}>
               {sections.map((item) => (
                 <TabsTrigger value={item.value} key={item.value}>
@@ -714,7 +722,7 @@ function SiteEditor({
               : requiresConfigurationReview
               ? "你的修改已保留。读取最新配置将合并无冲突项，冲突需核对；不会自动保存或重试密钥操作。"
               : "重新读取密钥状态后，可查看已保存的密钥。未保存的配置会保留。"}</p>
-            <Button ref={reloadTrigger} variant="outline" disabled={busy} onClick={() => reload.mutate()}>
+            <Button ref={reloadTrigger} variant="outline" className="h-auto min-h-8 max-w-full whitespace-normal py-1.5" disabled={busy} onClick={() => reload.mutate()}>
               {reload.isPending ? "正在读取…" : requiresConfigurationReview ? "读取最新配置并核对" : "重新读取密钥状态"}
             </Button>
           </AlertDescription>

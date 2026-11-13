@@ -2,8 +2,16 @@ import { useCallback, useId, useLayoutEffect, useState, type ReactNode } from "r
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useReducedMotion } from "@/lib/motion";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-export function ScrollingTabs({ children }: { children: ReactNode }) {
+type TabSelection = {
+  items: readonly { value: string; label: string }[];
+  value: string;
+  onValueChange: (value: string) => void;
+  label: string;
+};
+
+export function ScrollingTabs({ children, selection }: { children: ReactNode; selection?: TabSelection }) {
   const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
   const [edges, setEdges] = useState({ before: false, after: false });
   const hint = useId();
@@ -47,17 +55,31 @@ export function ScrollingTabs({ children }: { children: ReactNode }) {
   function scroll(direction: number) {
     scroller?.scrollBy({ left: direction * Math.max(100, scroller.clientWidth * .65), behavior: reducedMotion ? "instant" : "smooth" });
   }
-  return <div className="flex min-w-0 items-center gap-1" data-settings-tabs-navigation>
-    <Button variant="ghost" size="icon-sm" aria-label="向前滚动设置分类" hidden={!edges.before && !edges.after} disabled={!edges.before} onClick={() => scroll(-1)}><ChevronLeft /></Button>
-    <div ref={setScroller} className="no-scrollbar min-w-0 flex-1 scroll-p-1 overflow-x-auto p-1" data-settings-tabs-scroll onScroll={measure}
-      onFocusCapture={event => {
-        // Moving a pointer-focused tab can cancel the touch's following click.
-        if (event.target.matches(":focus-visible")) reveal(event.target.closest<HTMLElement>('[role="tab"]'));
-      }}
-      aria-describedby={edges.before || edges.after ? hint : undefined}>
-      {children}
+  return <div className="min-w-0" data-settings-tabs-navigation>
+    {selection && <div data-settings-tabs-select>
+      <Select items={selection.items} value={selection.value} onValueChange={value => { if (value) selection.onValueChange(value); }}>
+        <SelectTrigger aria-label={selection.label} data-settings-tabs-select-trigger className="w-full">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent data-settings-tabs-options alignItemWithTrigger={false} className="min-w-0 max-w-(--available-width)">
+          <SelectGroup>
+            {selection.items.map(item => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}
+          </SelectGroup>
+        </SelectContent>
+      </Select>
+    </div>}
+    <div className="flex min-w-0 items-center gap-1" data-settings-tabs-strip>
+      <Button variant="ghost" size="icon-sm" aria-label="向前滚动设置分类" hidden={!edges.before && !edges.after} disabled={!edges.before} onClick={() => scroll(-1)}><ChevronLeft /></Button>
+      <div ref={setScroller} className="no-scrollbar min-w-0 flex-1 scroll-p-1 overflow-x-auto p-1" data-settings-tabs-scroll onScroll={measure}
+        onFocusCapture={event => {
+          // Moving a pointer-focused tab can cancel the touch's following click.
+          if (event.target.matches(":focus-visible")) reveal(event.target.closest<HTMLElement>('[role="tab"]'));
+        }}
+        aria-describedby={edges.before || edges.after ? hint : undefined}>
+        {children}
+      </div>
+      <Button variant="ghost" size="icon-sm" aria-label="向后滚动设置分类" hidden={!edges.before && !edges.after} disabled={!edges.after} onClick={() => scroll(1)}><ChevronRight /></Button>
+      <span id={hint} className="sr-only">还有设置分类，可横向滚动；方向键移动焦点，Enter 或空格打开分类。</span>
     </div>
-    <Button variant="ghost" size="icon-sm" aria-label="向后滚动设置分类" hidden={!edges.before && !edges.after} disabled={!edges.after} onClick={() => scroll(1)}><ChevronRight /></Button>
-    <span id={hint} className="sr-only">还有设置分类，可横向滚动；方向键移动焦点，Enter 或空格打开分类。</span>
   </div>;
 }

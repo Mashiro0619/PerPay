@@ -88,7 +88,7 @@ function DialogScroll({ children, scrollRef, step = false }: { children: ReactNo
   return <div ref={element} tabIndex={scrollable ? 0 : -1} data-admin-dialog-scroll
     data-overlay-step-scroll={step || undefined} data-scrollable={scrollable}>{children}</div>;
 }
-export function DialogContent({ className, kind = "form", size, scrollMode = "content", children, initialFocus, ...props }: ComponentProps<typeof DialogUI.DialogContent> & { kind?: "form" | "technical" | "detail"; size?: OverlaySize; scrollMode?: "content" | "body" }) {
+export function DialogContent({ className, kind = "form", size, scrollMode = "content", children, initialFocus, ...props }: ComponentProps<typeof DialogUI.DialogContent> & { kind?: "form" | "technical" | "detail" | "compact"; size?: OverlaySize; scrollMode?: "content" | "body" }) {
   const keepMounted = useContext(RetainDialogContext);
   const switching = useWorkspaceSwitching();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -137,7 +137,7 @@ export function DialogContent({ className, kind = "form", size, scrollMode = "co
   }} presentation={step ? "step" : "dialog"} portalProps={{ ...props.portalProps, ...(step ? { container: steps!.portal } : {}), keepMounted: keepMounted || props.portalProps?.keepMounted,
     hidden: switching || stepHidden || props.portalProps?.hidden, inert: switching || stepHidden || props.portalProps?.inert }} data-admin-dialog={kind} data-overlay-step={step ? step.id : undefined}
     className={cn(className, step ? "flex min-h-0 max-h-full w-full flex-1 flex-col overflow-hidden" : content,
-      !step && (kind === "detail" ? detailClass : "max-md:translate-x-0 max-md:translate-y-0 " + (kind === "technical" ? "sm:max-w-3xl" : "sm:max-w-xl")))}>
+      !step && (kind === "detail" ? detailClass : kind === "compact" ? "sm:max-w-md" : "max-md:translate-x-0 max-md:translate-y-0 " + (kind === "technical" ? "sm:max-w-3xl" : "sm:max-w-xl")))}>
     <LocalRequestNotices>{scrollMode === "body" || kind === "detail" || (kind === "technical" && !step) ? children
       : <DialogScroll scrollRef={scrollRef} step={!!step}>{children}</DialogScroll>}</LocalRequestNotices>
   </DialogUI.DialogContent>;
@@ -158,7 +158,7 @@ export function AlertDialogContent({ className, initialFocus, children, ...props
   </AlertUI.AlertDialogContent>;
 }
 export function DialogHeader({ className, ...props }: ComponentProps<typeof DialogUI.DialogHeader>) {
-  return <DialogUI.DialogHeader {...props} className={cn(className, "shrink-0 pr-8 text-left")} />;
+  return <DialogUI.DialogHeader {...props} className={cn("shrink-0 text-left", className)} />;
 }
 export function AlertDialogHeader({ className, ...props }: ComponentProps<typeof AlertUI.AlertDialogHeader>) {
   return <AlertUI.AlertDialogHeader {...props} className={cn(className, "flex shrink-0 flex-col items-stretch gap-2 text-left")} />;

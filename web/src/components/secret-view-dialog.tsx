@@ -22,13 +22,14 @@ export function SecretViewDialog({ open, title, values = [], pending = false, er
   const closeButton = useRef<HTMLButtonElement>(null);
   const fields = useRef<HTMLDivElement>(null);
   const firstValue = values[0]?.value;
+  const compact = values.length < 2 && !values.some(field => field.multiline ?? /[\r\n]/.test(field.value));
   useLayoutEffect(() => {
     if (open && !pending && !error && firstValue !== undefined) {
       fields.current?.querySelector<HTMLInputElement | HTMLTextAreaElement>("input, textarea")?.focus({ preventScroll: true });
     }
   }, [open, pending, error, firstValue]);
   return <Dialog presentation="dialog" open={open} onOpenChange={next => { if (!next) onClose(); }}>
-    <DialogContent initialFocus={() => fields.current?.querySelector<HTMLInputElement | HTMLTextAreaElement>("input, textarea") ?? closeButton.current} finalFocus={finalFocus}>
+    <DialogContent kind={compact ? "compact" : "form"} initialFocus={() => fields.current?.querySelector<HTMLInputElement | HTMLTextAreaElement>("input, textarea") ?? closeButton.current} finalFocus={finalFocus}>
       <DialogHeader><DialogTitle>{title}</DialogTitle></DialogHeader>
       <DialogBody>
         {pending ? <Loading label="正在读取密钥…" /> : error ? <>

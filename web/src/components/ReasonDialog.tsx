@@ -119,7 +119,7 @@ export function ReasonDialog<Output>({
         }
         className="flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden"
       >
-        <DialogHeader className="shrink-0 pr-8">
+        <DialogHeader>
           <DialogTitle>{snapshot.title}</DialogTitle>
         </DialogHeader>
         <form

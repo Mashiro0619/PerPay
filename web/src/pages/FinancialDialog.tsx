@@ -243,7 +243,7 @@ export function FinancialDialog({
         className="flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden sm:max-w-xl"
         scrollMode="body"
       >
-        <DialogHeader className="shrink-0 pr-8">
+        <DialogHeader>
           <DialogTitle>人工关联收款</DialogTitle>
           <DialogDescription>
             {clientId ? "仅可关联本站订单；跨站流水或账本冲突请到「对账（全部网站）」处理。" : "关联支付宝收入后确认订单收款。"}

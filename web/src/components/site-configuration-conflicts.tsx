@@ -31,6 +31,8 @@ export function SiteConfigurationConflicts({ conflicts, choices, onChoose, onApp
               <ToggleGroup
                 aria-labelledby={id + conflict.path}
                 variant="outline"
+                orientation="vertical"
+                className="w-full"
                 disabled={disabled}
                 value={choices[conflict.path] ? [choices[conflict.path]!] : []}
                 onValueChange={value => {
@@ -39,15 +41,15 @@ export function SiteConfigurationConflicts({ conflicts, choices, onChoose, onApp
                     onChoose({ ...choices, [conflict.path]: choice });
                 }}
               >
-                <ToggleGroupItem value="local">保留我的修改</ToggleGroupItem>
-                <ToggleGroupItem value="remote">采用服务器值</ToggleGroupItem>
+                <ToggleGroupItem value="local" className="h-auto min-h-8 max-w-full whitespace-normal py-1.5">保留我的修改</ToggleGroupItem>
+                <ToggleGroupItem value="remote" className="h-auto min-h-8 max-w-full whitespace-normal py-1.5">采用服务器值</ToggleGroupItem>
               </ToggleGroup>
             </Field>
           ))}
         </FieldGroup>
       </CardContent>
       <CardFooter>
-        <Button disabled={disabled || conflicts.some(conflict => !choices[conflict.path])} onClick={onApply}>应用核对结果</Button>
+        <Button className="h-auto min-h-8 max-w-full whitespace-normal py-1.5" disabled={disabled || conflicts.some(conflict => !choices[conflict.path])} onClick={onApply}>应用核对结果</Button>
       </CardFooter>
     </Card>
   );

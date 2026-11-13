@@ -210,11 +210,10 @@ function CreatedDateDialogFilter({
   }
   return (
     <div
-      className="flex flex-wrap items-center gap-2"
+      className="flex min-w-0 max-w-full flex-wrap items-center gap-2"
       aria-label={label + "筛选"}
       role="group"
     >
-      <span className="text-sm text-muted-foreground">{label}</span>
       <Select
         items={presets}
         value={selected}
@@ -237,8 +236,11 @@ function CreatedDateDialogFilter({
           });
         }}
       >
-        <SelectTrigger ref={trigger} aria-label={label + "范围"}>
-          <SelectValue />
+        <SelectTrigger ref={trigger} aria-label={label + "范围"} data-created-date-trigger>
+          <SelectValue>
+            <span>{label}：{presets.find(item => item.value === selected)!.label}</span>
+            <span className="text-xs text-muted-foreground">北京时间</span>
+          </SelectValue>
         </SelectTrigger>
         <SelectContent>
           <SelectGroup>
@@ -255,7 +257,6 @@ function CreatedDateDialogFilter({
           修改日期
         </Button>
       )}
-      <span className="text-xs text-muted-foreground">北京时间</span>
       {children}
       {query.createdFrom && (
         <p className="w-full text-xs text-muted-foreground">

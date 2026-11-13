@@ -25,6 +25,11 @@ import {
 
 type DefaultsSnapshot = { revision: number; policy: SitePolicy };
 const defaultsKey = ["site-defaults"] as const;
+const sections = [
+  { value: "orders", label: "订单设置" },
+  { value: "display", label: "收银台展示" },
+  { value: "integration", label: "通知策略" },
+];
 
 function latestDefaults(snapshot: DefaultsSnapshot): DefaultsSnapshot {
   const cached = queryClient.getQueryData<{ data: DefaultsSnapshot }>(defaultsKey);
@@ -191,11 +196,9 @@ function DefaultsEditor({ initial }: { initial: DefaultsSnapshot }) {
       <PageHeading title="网站默认模板" />
       <p className="text-sm text-muted-foreground">仅用于新网站，已有网站不变。</p>
       <Tabs value={section} onValueChange={value => { if (value) setSection(value); }}>
-        <ScrollingTabs>
+        <ScrollingTabs selection={{ items: sections, value: section, onValueChange: setSection, label: "模板分组" }}>
           <TabsList className="min-w-max" aria-label="模板分组" activateOnFocus={false}>
-            <TabsTrigger value="orders">订单设置</TabsTrigger>
-            <TabsTrigger value="display">收银台展示</TabsTrigger>
-            <TabsTrigger value="integration">通知策略</TabsTrigger>
+            {sections.map(item => <TabsTrigger key={item.value} value={item.value}>{item.label}</TabsTrigger>)}
           </TabsList>
         </ScrollingTabs>
       </Tabs>
@@ -208,7 +211,7 @@ function DefaultsEditor({ initial }: { initial: DefaultsSnapshot }) {
             <p>{writeResultUnknown
               ? "输入和操作前的版本已保留。请读取最新模板核对保存结果，再继续修改。"
               : "你的修改已保留。读取最新模板将合并无冲突项，冲突需核对；不会自动保存。"}</p>
-            <Button variant="outline" disabled={busy} onClick={() => reload.mutate()}>
+            <Button variant="outline" className="h-auto min-h-8 max-w-full whitespace-normal py-1.5" disabled={busy} onClick={() => reload.mutate()}>
               {reload.isPending ? "正在读取…" : "读取最新模板并核对"}
             </Button>
           </AlertDescription>

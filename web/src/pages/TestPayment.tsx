@@ -257,7 +257,7 @@ function TestPaymentForm({ dialog, overlay = false }: { dialog?: TestPaymentDial
           finalFocus={dialog.finalFocus}
           showCloseButton={!create.isPending}
         >
-          <DialogHeader className="shrink-0 pr-8">
+          <DialogHeader>
             <DialogTitle ref={dialogTitle} tabIndex={-1}>
               测试收款
             </DialogTitle>

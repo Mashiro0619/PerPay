@@ -282,7 +282,7 @@ export function RefundMarkDialog({
         }
         className="flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden"
       >
-        <DialogHeader className="shrink-0 pr-8">
+        <DialogHeader>
           <DialogTitle>
             {context.marked ? "标记已退款" : "撤销退款标记"}
           </DialogTitle>
