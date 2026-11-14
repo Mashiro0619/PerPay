@@ -10,8 +10,10 @@ import { it } from "node:test";
 import { listAdminAssets, runAdminSmoke } from "../scripts/admin-smoke.mjs";
 import { listenForFetch } from "../examples/node-client/test/http-server.mjs";
 
-for (const setupTokenEnabled of [undefined, true]) {
-it(`runs first setup through the real process with token ${setupTokenEnabled ? "enabled" : "disabled by default"} and closes setup across restarts`, { timeout: 90_000 }, async () => {
+for (const setupTokenEnabled of [undefined, true, false]) {
+const tokenRequired = setupTokenEnabled !== false;
+const tokenMode = setupTokenEnabled === undefined ? "enabled by default" : setupTokenEnabled ? "explicitly enabled" : "explicitly disabled";
+it(`runs first setup through the real process with token ${tokenMode} and closes setup across restarts`, { timeout: 90_000 }, async () => {
   const directory = mkdtempSync(join(tmpdir(), "perpay-setup-process-"));
   const masterKey = randomBytes(32).toString("hex");
   const password = randomBytes(32).toString("hex");
@@ -72,12 +74,12 @@ it(`runs first setup through the real process with token ${setupTokenEnabled ? "
   }
   try {
     const first = await start();
-    assert.equal(first.tokens.length, setupTokenEnabled ? 1 : 0);
-    if (setupTokenEnabled) assert.equal(/^[0-9a-f]{64}$/.test(first.tokens[0]), true, "startup token must carry 32 random bytes");
+    assert.equal(first.tokens.length, tokenRequired ? 1 : 0);
+    if (tokenRequired) assert.equal(/^[0-9a-f]{64}$/.test(first.tokens[0]), true, "startup token must carry 32 random bytes");
     await stop();
     const next = await start();
-    assert.equal(next.tokens.length, setupTokenEnabled ? 1 : 0);
-    if (setupTokenEnabled) {
+    assert.equal(next.tokens.length, tokenRequired ? 1 : 0);
+    if (tokenRequired) {
       assert.equal(first.tokens[0] === next.tokens[0], false, "uninitialized restart must rotate the token");
       const stale = await fetch(next.baseUrl + "/api/admin/v1/setup", { method: "POST",
         headers: { origin: next.baseUrl, "content-type": "application/json" },

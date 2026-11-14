@@ -48,7 +48,7 @@ test("Compose contract accepts the default services and profile-gated maintenanc
   const parsed = parse(validCompose);
   assert.equal(parsed.services.app.environment.PERPAY_PUBLIC_URL, "https://pay.example.com");
   assert.equal(parsed.services.app.environment.PERPAY_SECRETS_DIR, "/run/perpay-secrets");
-  assert.equal(parsed.services.app.environment.PERPAY_SETUP_TOKEN_ENABLED, "false");
+  assert.equal(parsed.services.app.environment.PERPAY_SETUP_TOKEN_ENABLED, "true");
   assert.equal(parsed.services.app.environment.PERPAY_BACKUP_INTERVAL_SECONDS, undefined);
   assert.equal(parsed.services.backup.environment.PERPAY_BACKUP_INTERVAL_SECONDS, undefined);
   assert.equal(parsed.services.backup.environment.PERPAY_SETUP_TOKEN_ENABLED, undefined);
@@ -104,7 +104,7 @@ test("Compose contract rejects duplicate keys, unexpected services, and renamed 
 test("Compose release template rejects locally filled configuration", () => {
   for (const [placeholder, configured] of [
     ["https://pay.example.com", "https://pay.example.test"],
-    ['&perpay-setup-token-enabled "false"', '&perpay-setup-token-enabled "true"'],
+    ['&perpay-setup-token-enabled "true"', '&perpay-setup-token-enabled "false"'],
   ]) {
     assert.throws(
       () => inspectComposeContract(validCompose.replace(placeholder, configured)),
@@ -113,12 +113,12 @@ test("Compose release template rejects locally filled configuration", () => {
   }
 });
 
-test("Compose exposes the initialization-token option as a string anchor and preserves the disabled release default", () => {
-  const enabled = validCompose.replace('&perpay-setup-token-enabled "false"', '&perpay-setup-token-enabled "true"');
-  assert.equal(parse(enabled).services.app.environment.PERPAY_SETUP_TOKEN_ENABLED, "true");
-  assert.equal(parse(renderReleaseCompose(validCompose, "1.0.0-alpha.3")).services.app.environment.PERPAY_SETUP_TOKEN_ENABLED, "false");
-  assert.throws(() => inspectComposeContract(validCompose.replace('PERPAY_SETUP_TOKEN_ENABLED: *perpay-setup-token-enabled', 'PERPAY_SETUP_TOKEN_ENABLED: "false"')), /must reference the perpay-setup-token-enabled anchor/u);
-  assert.throws(() => inspectComposeContract(validCompose.replace('&perpay-setup-token-enabled "false"', '&perpay-setup-token-enabled false')), /must retain its anchored template value/u);
+test("Compose exposes the initialization-token option as a string anchor and preserves the enabled release default", () => {
+  const disabled = validCompose.replace('&perpay-setup-token-enabled "true"', '&perpay-setup-token-enabled "false"');
+  assert.equal(parse(disabled).services.app.environment.PERPAY_SETUP_TOKEN_ENABLED, "false");
+  assert.equal(parse(renderReleaseCompose(validCompose, "1.0.0-alpha.3")).services.app.environment.PERPAY_SETUP_TOKEN_ENABLED, "true");
+  assert.throws(() => inspectComposeContract(validCompose.replace('PERPAY_SETUP_TOKEN_ENABLED: *perpay-setup-token-enabled', 'PERPAY_SETUP_TOKEN_ENABLED: "true"')), /must reference the perpay-setup-token-enabled anchor/u);
+  assert.throws(() => inspectComposeContract(validCompose.replace('&perpay-setup-token-enabled "true"', '&perpay-setup-token-enabled true')), /must retain its anchored template value/u);
 });
 
 test("Compose keeps backup policy out of service environments", () => {
