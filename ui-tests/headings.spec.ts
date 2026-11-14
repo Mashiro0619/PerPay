@@ -9,7 +9,10 @@ test("pages and detail overlays expose one foreground title while the mobile hea
     const heading = page.locator('#main-content h1, #main-content [role="heading"][aria-level="1"]');
     await expect(heading).toHaveCount(1);
     await expect(heading).toBeVisible();
-    await expect(page.getByRole("navigation", { name: "页面路径" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
+    const header = page.locator(".site-header");
+    await expect(header.getByRole("navigation", { name: "查看范围", exact: true })).toBeVisible();
+    await expect(header.getByRole("heading")).toHaveCount(0);
     expect((await page.locator(".site-header").boundingBox())!.height).toBe(56);
     expect((await heading.boundingBox())!.y).toBeGreaterThanOrEqual(56);
     await record(page, info, { route });
@@ -22,6 +25,6 @@ test("pages and detail overlays expose one foreground title while the mobile hea
   await expect(dialog.getByRole("heading", { level: 1 })).toHaveCount(1);
   await expect(dialog.getByRole("heading", { level: 1 })).toBeVisible();
   await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
-  await expect(page.getByRole("navigation", { name: "页面路径" })).toHaveCount(0);
+  await expect(page.locator(".site-header").getByRole("navigation", { name: "查看范围", exact: true })).toHaveCount(0);
   await record(page, info, { route, foreground: "detail-overlay" });
 });

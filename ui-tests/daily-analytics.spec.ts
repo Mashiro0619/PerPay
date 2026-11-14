@@ -167,7 +167,7 @@ test("complete daily data survives presentation changes and updates for website,
   await expect(current.locator(".daily-date time")).toHaveCount(90);
 
   const sitePath = manifest.routes.find(path => /^\/sites\/[^/]+$/.test(path) && !["/sites/new", "/sites/defaults"].includes(path))!;
-  await page.getByRole("list", { name: "业务网站列表", exact: true }).locator(`a[href^="/admin${sitePath}?"]`).click();
+  await page.getByRole("list", { name: "查看范围列表", exact: true }).locator(`a[href^="/admin${sitePath}?"]`).click();
   await expect(page).toHaveURL(new RegExp(sitePath));
   await showDaily(page);
   await expect(report(page).locator(".daily-date time").first()).toHaveAttribute("datetime", "2026-01-06");

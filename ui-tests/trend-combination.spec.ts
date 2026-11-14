@@ -55,8 +55,9 @@ function trendCard(page: Page) {
 
 async function expectCombined(card: Locator, data: SystemAnalytics) {
   const summary = card.locator('dl[aria-label="金额与订单汇总"]');
+  await expect(summary.locator("dt")).toHaveText(["确认金额", "新建订单"]);
   await expect(summary.locator('[data-trend-metric="amount"]')).toHaveText(amountText(data.confirmations.amount_cents));
-  await expect(summary.locator('[data-trend-metric="orders"]')).toHaveText(countText(data.orders.created) + " 笔");
+  await expect(summary.locator('[data-trend-metric="orders"]')).toHaveText(countText(data.orders.created));
   await expect(card.getByRole("group", { name: "图表类型", exact: true })).toHaveCount(0);
   const plot = card.locator('[data-slot="chart"]');
   await expect(plot).toHaveAttribute("data-chart-type", "COMBINED");

@@ -346,7 +346,7 @@ test("an automatic update waits until the destination workspace has finished loa
       await route.fulfill({ response });
     });
     await open(page, fixture, "/admin/");
-    await page.getByRole("navigation", { name: "网站选择", exact: true })
+    await page.getByRole("navigation", { name: "查看范围", exact: true })
       .locator('a[href="/admin/sites/default"]').click();
     await expect.poll(() => siteRequested).toBe(true);
     await expect(page.locator('[data-slot="sidebar-inset"]')).toHaveAttribute("aria-busy", "true");

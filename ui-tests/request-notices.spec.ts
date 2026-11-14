@@ -204,7 +204,7 @@ for (const width of [1440, 390]) {
       await page.context().setOffline(false);
       await expect.poll(() => failures.get(metadataPath) ?? 0).toBeGreaterThan(0);
       if (width === 390) await page.getByRole("button", { name: "切换导航", exact: true }).click();
-      else await page.getByRole("button", { name: /^切换业务网站，当前/ }).click();
+      else await page.getByRole("button", { name: /^切换查看范围，当前/ }).click();
       const overlay = width === 390 ? page.getByRole("dialog", { name: "导航菜单", exact: true })
         : page.locator('[data-slot="popover-content"]');
       await expect(overlay).toBeVisible();

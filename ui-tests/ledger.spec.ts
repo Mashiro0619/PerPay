@@ -102,8 +102,8 @@ test("switching websites keeps global ledger rows, cursor and requests stable", 
   });
   const sites = (await (await page.request.get(manifest.origin + "/api/admin/v1/sites")).json()).data as Array<{ client_id: string; configuration: { name: string } }>;
   for (const site of [sites[0]!, sites[1]!, sites[0]!]) {
-    await page.getByRole("button", { name: /切换业务网站/ }).click();
-    await page.getByRole("dialog", { name: "业务网站", exact: true }).getByRole("link", { name: site.configuration.name, exact: true }).click();
+    await page.getByRole("button", { name: /切换查看范围/ }).click();
+    await page.getByRole("dialog", { name: "查看范围", exact: true }).getByRole("link", { name: site.configuration.name, exact: true }).click();
     await expect(page).toHaveURL(new RegExp("selected_site=" + site.client_id));
     await expect(first).toHaveAttribute("data-ledger-retained", "true");
     expect(new URL(page.url()).searchParams.get("cursor")).toBe(cursor);

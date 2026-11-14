@@ -23,7 +23,7 @@ test("sidebar and record menu names include their visible labels", async ({ page
     await page.clock.runFor(50);
     await waitForControlAnimations(account);
     if (mode === "mobile") {
-      const website = page.getByRole("button", { name: /^业务网站 .*，(?:收起|展开)$/ });
+      const website = page.getByRole("button", { name: /^查看范围 .*，(?:收起|展开)$/ });
       await website.scrollIntoViewIfNeeded();
       const result = await new AxeBuilder({ page }).withRules(["label-content-name-mismatch"]).analyze();
       await info.attach("mobile-website-label-content-name", { body: JSON.stringify(result), contentType: "application/json" });

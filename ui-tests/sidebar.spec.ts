@@ -15,9 +15,9 @@ async function iconRailGeometry(rail: Locator) {
         iconOffsetY: icon.top + icon.height / 2 - bounds.top - bounds.height / 2,
       };
     };
-    const workspace = rail.querySelector('nav[aria-label="网站选择"] button[aria-label^="切换业务网站"]')!;
+    const workspace = rail.querySelector('nav[aria-label="查看范围"] button[aria-label^="切换查看范围"]')!;
     const navigation = [...rail.querySelectorAll('nav[aria-label="主导航"] a')];
-    const globalWebsites = rail.querySelector('nav[aria-label="全局管理"] a[aria-label="业务网站"]')!;
+    const globalWebsites = rail.querySelector('nav[aria-label="全局管理"] a[aria-label="网站管理"]')!;
     const sequence = [...navigation, workspace].map(measure);
     const verticalSpacing = sequence.slice(1).map((button, index) => ({
       from: sequence[index]!.label, to: button.label,
@@ -25,7 +25,7 @@ async function iconRailGeometry(rail: Locator) {
       centerStep: button.iconCenterY - sequence[index]!.iconCenterY,
     }));
     const content = getComputedStyle(rail.querySelector('[data-slot="sidebar-content"]')!);
-    const groupPadding = ["主导航", "网站选择"].map(label => {
+    const groupPadding = ["主导航", "查看范围"].map(label => {
       const style = getComputedStyle(rail.querySelector('nav[aria-label="' + label + '"] [data-slot="sidebar-group"]')!);
       return { label, top: parseFloat(style.paddingTop), bottom: parseFloat(style.paddingBottom) };
     });
@@ -51,10 +51,10 @@ async function expectAlignedIcons(rail: Locator) {
   expect(geometry.workspace.height).toBe(32);
   expect(geometry.workspace.iconWidth).toBe(16);
   expect(geometry.workspace.iconHeight).toBe(16);
-  expect(geometry.targets.map(target => target.label)).toEqual(["总览", "订单", "待处理", "通知", "业务网站"]);
+  expect(geometry.targets.map(target => target.label)).toEqual(["总览", "订单", "待处理", "通知", "网站管理"]);
   expect(geometry.sequence).toHaveLength(5);
   expect(geometry.content).toEqual({ gap: 4, top: 8, bottom: 8 });
-  expect(geometry.groupPadding).toEqual([{ label: "主导航", top: 0, bottom: 0 }, { label: "网站选择", top: 0, bottom: 0 }]);
+  expect(geometry.groupPadding).toEqual([{ label: "主导航", top: 0, bottom: 0 }, { label: "查看范围", top: 0, bottom: 0 }]);
   return geometry;
 }
 
@@ -72,7 +72,7 @@ test("icon rail keeps navigation, website scope and account actions reachable", 
     await expect(sidebar).toHaveAttribute("data-state", "expanded");
     const expandedGeometry = await sidebar.evaluate(sidebar => {
       const content = getComputedStyle(sidebar.querySelector('[data-slot="sidebar-content"]')!);
-      const groups = ["主导航", "网站选择"].map(label => {
+      const groups = ["主导航", "查看范围"].map(label => {
         const style = getComputedStyle(sidebar.querySelector('nav[aria-label="' + label + '"] [data-slot="sidebar-group"]')!);
         return { label, top: parseFloat(style.paddingTop), bottom: parseFloat(style.paddingBottom),
           left: parseFloat(style.paddingLeft), right: parseFloat(style.paddingRight) };
@@ -81,7 +81,7 @@ test("icon rail keeps navigation, website scope and account actions reachable", 
     });
     expect(expandedGeometry.groups).toEqual([
       { label: "主导航", top: 8, bottom: 8, left: 8, right: 8 },
-      { label: "网站选择", top: 8, bottom: 8, left: 8, right: 8 },
+      { label: "查看范围", top: 8, bottom: 8, left: 8, right: 8 },
     ]);
     expect(expandedGeometry.content).toEqual({ gap: 0, top: 0, bottom: 0 });
     await page.getByRole("button", { name: "切换导航", exact: true }).click();
@@ -90,9 +90,9 @@ test("icon rail keeps navigation, website scope and account actions reachable", 
     const container = rail.locator('[data-slot="sidebar-container"]');
     await expect.poll(async () => (await container.boundingBox())!.width).toBeLessThanOrEqual(66);
     const geometry = await expectAlignedIcons(rail);
-    const trigger = page.getByRole("button", { name: /切换业务网站/ });
+    const trigger = page.getByRole("button", { name: /切换查看范围/ });
     await trigger.click();
-    await expect(page.getByRole("dialog", { name: "业务网站" })).toBeVisible();
+    await expect(page.getByRole("dialog", { name: "查看范围", exact: true })).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(trigger).toBeFocused();
     await trigger.click();

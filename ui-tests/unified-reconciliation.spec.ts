@@ -309,8 +309,8 @@ test("source anchors preserve the originating page and scroll across overlay clo
   };
   page.on("request", memoryRequest);
   for (const site of [sites[0]!, sites[1]!, sites[0]!]) {
-    await page.getByRole("button", { name: /切换业务网站/ }).click();
-    const picker = page.getByRole("dialog", { name: "业务网站", exact: true });
+    await page.getByRole("button", { name: /切换查看范围/ }).click();
+    const picker = page.getByRole("dialog", { name: "查看范围", exact: true });
     await expect(picker).toBeVisible();
     await page.clock.runFor(150);
     const option = picker.getByRole("link", { name: site.configuration.name, exact: true });

@@ -13,19 +13,25 @@ async function focusedInputIsReachable(target: Locator) {
   const geometry = await target.evaluate(element => {
     const bounds = element.getBoundingClientRect();
     const viewport = visualViewport!;
-    const scroll = element.closest<HTMLElement>("[data-list-filter-scroll]")!;
+    const scroll = element.closest<HTMLElement>("[data-list-filter-body]")!;
+    const scrollBounds = scroll.getBoundingClientRect();
     const hit = document.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
     return {
       bounds: { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height },
       viewport: { x: viewport.offsetLeft, y: viewport.offsetTop, width: viewport.width, height: viewport.height },
+      scrollBounds: { top: scrollBounds.top, bottom: scrollBounds.bottom },
       scrollTop: scroll.scrollTop,
+      formScrollTop: element.closest<HTMLElement>("[data-list-filter-scroll]")!.scrollTop,
       hit: hit === element || element.contains(hit),
     };
   });
   expect(geometry.hit, "focused invalid input receives a hit in its centre").toBe(true);
   expect(geometry.bounds.y).toBeGreaterThanOrEqual(geometry.viewport.y - 1);
   expect(geometry.bounds.y + geometry.bounds.height).toBeLessThanOrEqual(geometry.viewport.y + geometry.viewport.height + 1);
-  expect(geometry.scrollTop, "the single form scroller reveals the invalid field").toBeGreaterThan(0);
+  expect(geometry.bounds.y).toBeGreaterThanOrEqual(geometry.scrollBounds.top - 1);
+  expect(geometry.bounds.y + geometry.bounds.height).toBeLessThanOrEqual(geometry.scrollBounds.bottom + 1);
+  expect(geometry.scrollTop, "the filter body scroller reveals the invalid field").toBeGreaterThan(0);
+  expect(geometry.formScrollTop, "validation keeps the form shell and footer stationary").toBe(0);
   expect(await target.evaluate(element => element.closest<HTMLElement>('[role="dialog"]')!.scrollTop), "validation does not scroll the close-control shell").toBe(0);
   return geometry;
 }
