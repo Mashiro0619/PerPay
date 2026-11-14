@@ -995,10 +995,21 @@ export function AlipayAccountEditor({
                 <AccountPanel tabbed={tabbed} value="collection">
                 <FieldSet>
                   <FieldLegend>收款码</FieldLegend>
-                  <FieldDescription>
+                  {!historical && <FieldDescription>
                     支持支付宝收款码或经营码。可以先保存草稿，填写收款码后再接收订单。
-                  </FieldDescription>
-                  <CollectionCodeField
+                  </FieldDescription>}
+                  {historical ? <Field>
+                    <FieldLabel htmlFor={formId + "-historical-code"}>支付宝收款码内容</FieldLabel>
+                    <Textarea
+                      id={formId + "-historical-code"}
+                      value={draft.code_payload}
+                      readOnly
+                      rows={2}
+                      spellCheck={false}
+                      autoComplete="off"
+                      placeholder="未配置收款码"
+                    />
+                  </Field> : <CollectionCodeField
                     key={(saved?.id ?? "new") + ":" + (saved?.revision ?? 0)}
                     defaultValue={draft.code_payload}
                     onDecoded={() => {}}
@@ -1007,7 +1018,7 @@ export function AlipayAccountEditor({
                     disabled={editingBlocked}
                     required={false}
                     error={errors.code_payload}
-                  />
+                  />}
                 </FieldSet>
                 </AccountPanel>
               </FieldGroup>
