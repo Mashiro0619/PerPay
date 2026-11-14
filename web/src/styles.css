@@ -618,7 +618,8 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 .overview-orders-table col[data-column-layout="status"] { width: 7.5rem; }
 .overview-orders-table col[data-column-layout="datetime"] { width: 12rem; }
 .overview-orders-table:has(.list-money[data-wide="true"]) col[data-column-layout="amount"] { width: 13rem; }
-.overview-orders-container { min-width: 0; container: recent-orders / inline-size; }
+.overview-orders-container { display: flex; flex-direction: column; min-width: 0; container: recent-orders / inline-size; }
+.overview-orders-container > .overview-record-panel { flex: 1; }
 /* The 40rem measured list has two 0.75rem CardContent gutters. Pass header
    state through the card because CardHeader is also a query container. */
 @container recent-orders (width < 41.5rem) {

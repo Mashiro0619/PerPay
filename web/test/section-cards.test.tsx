@@ -42,8 +42,12 @@ describe("overview metric keyboard access", () => {
     const confirmations = screen.getByText("123,456,789");
 
     await user.tab();
+    expect(screen.getByRole("button", { name: "今日确认金额统计口径" })).toHaveFocus();
+    await user.tab();
     expect(amount).toHaveFocus();
     expect(amount).toHaveAccessibleName("今日确认金额：¥9,876,543,210.12");
+    await user.tab();
+    expect(screen.getByRole("button", { name: "今日收款确认笔数统计口径" })).toHaveFocus();
     await user.tab();
     expect(confirmations).toHaveFocus();
     expect(confirmations).toHaveAccessibleName("今日收款确认笔数：123,456,789");
@@ -65,6 +69,7 @@ describe("overview metric keyboard access", () => {
     const user = userEvent.setup();
     expect(screen.queryByText("¥9,876,543,210.12")).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/今日确认金额：/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /统计口径/ })).not.toBeInTheDocument();
     await user.tab();
     expect(screen.getByRole("button", { name: "卡片后续操作" })).toHaveFocus();
   });
@@ -73,6 +78,35 @@ describe("overview metric keyboard access", () => {
     render(<MemoryRouter><SectionCards analytics={undefined} workItems={7} /></MemoryRouter>);
     const user = userEvent.setup();
     await user.tab();
+    expect(screen.getByRole("button", { name: "今日确认金额统计口径" })).toHaveFocus();
+    await user.tab();
+    expect(screen.getByRole("button", { name: "今日收款确认笔数统计口径" })).toHaveFocus();
+    await user.tab();
     expect(screen.getByRole("link", { name: "—" })).toHaveFocus();
+  });
+
+  it("omits static tab stops for short values on desktop while keeping explanation popovers accessible", async () => {
+    mobileMedia(1280);
+    const compactAnalytics: SystemAnalytics = {
+      ...analytics,
+      daily: [{
+        ...analytics.daily[0]!,
+        confirmed_amount_cents: 42800,
+        confirmations: 18,
+      }],
+    };
+    mount(false, compactAnalytics);
+    const user = userEvent.setup();
+    const amount = screen.getByText("¥428.00");
+    const confirmations = screen.getByText("18");
+    expect(amount).not.toHaveAttribute("tabindex");
+    expect(confirmations).not.toHaveAttribute("tabindex");
+
+    await user.tab();
+    expect(screen.getByRole("button", { name: "今日确认金额统计口径" })).toHaveFocus();
+    await user.tab();
+    expect(screen.getByRole("button", { name: "今日收款确认笔数统计口径" })).toHaveFocus();
+    await user.tab();
+    expect(screen.getByRole("link", { name: "3" })).toHaveFocus();
   });
 });
