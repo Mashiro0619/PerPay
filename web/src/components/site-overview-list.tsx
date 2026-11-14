@@ -38,6 +38,7 @@ function SiteOverviewCard({ site, label, range, maximum }: {
     <Link
       className="site-overview-card"
       data-slot="site-overview-card"
+      data-accepting-orders={site.accepting_orders}
       to={"/sites/" + encodeURIComponent(site.client_id) + "?range=" + range}
       aria-label={label + "，查看网站总览"}
       aria-describedby={summaryId}
