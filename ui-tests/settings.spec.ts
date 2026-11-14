@@ -1,3 +1,4 @@
+import { selectSettingsSection, expectSettingsSections } from "./settings-sections";
 import { test, expect, login, record } from "./fixtures";
 import { test as isolatedTest } from "@playwright/test";
 import { createSettingsServer } from "./settings-server";
@@ -117,8 +118,8 @@ isolatedTest("IP 白名单在真实版本冲突后保留草稿并可继续保存
   } finally { await fixture.close(); }
 });
 
-test("website category tabs reveal keyboard focus without moving the page or navigating before Enter", async ({ page, manifest }, info) => {
-  await page.setViewportSize({ width: 390, height: 844 });
+test("website categories preserve keyboard activation across desktop tabs and the phone selector", async ({ page, manifest }, info) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
   await login(page, manifest);
   const settingsRoute = manifest.routes.find(route => /^\/sites\/[^/]+\/settings$/.test(route));
   expect(settingsRoute).toBeTruthy();
@@ -151,11 +152,27 @@ test("website category tabs reveal keyboard focus without moving the page or nav
   await expect(page).toHaveURL(manifest.origin + "/admin" + settingsRoute + "/display");
   await expect(choices.last()).toHaveAttribute("aria-selected", "true");
   await page.setViewportSize({ width: 360, height: 844 });
-  await expect.poll(() => choices.last().evaluate(element => {
-    const bounds = element.getBoundingClientRect(), viewport = element.closest("[data-settings-tabs-scroll]")!.getBoundingClientRect();
-    return bounds.left >= viewport.left - 1 && bounds.right <= viewport.right + 1;
-  })).toBe(true);
-  await record(page, info, { feature: "website-tabs-keyboard-reveal", evidence, enterNavigated: true, selectedRevealedAfterResize: true });
+  const category = page.getByRole("combobox", { name: "网站设置分组", exact: true });
+  await expect(category).toBeVisible();
+  await expect(category).toHaveText("收银台展示");
+  await expect(tabs).toHaveCount(0);
+  const phoneUrl = page.url(), phoneScroll = await page.evaluate(() => window.scrollY);
+  await category.focus();
+  await page.keyboard.press("Enter");
+  const options = page.getByRole("option");
+  await expect(options).toHaveText(["基本信息", "收款账号", "订单设置", "接入与通知", "收银台展示"]);
+  await page.keyboard.press("Home");
+  await expect(options.first()).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await expect(options.nth(1)).toBeFocused();
+  expect(page.url()).toBe(phoneUrl);
+  expect(await page.evaluate(() => window.scrollY)).toBe(phoneScroll);
+  await expect(category).toHaveText("收银台展示");
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(manifest.origin + "/admin" + settingsRoute + "/collection");
+  await expect(category).toHaveText("收款账号");
+  await expect(category).toBeFocused();
+  await record(page, info, { feature: "website-category-keyboard-activation", evidence, desktopEnterNavigated: true, selectedPreservedAfterResize: true, phoneEnterNavigated: true });
 });
 
 test("settings use guarded category selection on phones and scrolling tabs on desktop", async ({ page, manifest }, info) => {
@@ -246,9 +263,9 @@ test("account list and detail retain their console hierarchy across themes and w
     await record(page, info, { feature: "account-list-polish", width, theme });
     await name.click();
     await expect(page).toHaveURL(manifest.origin + href);
-    await page.getByRole("tab", { name: "应用信息", exact: true }).click();
+    await selectSettingsSection(page, page, "支付宝账号配置分组", "应用信息");
     await expect(page.locator("[data-account-public-key]")).toHaveCount(1);
-    await expect(page.getByRole("tab", { name: "应用密钥", exact: true })).toHaveCount(0);
+    await expectSettingsSections(page, page, "支付宝账号配置分组", ["基本信息", "应用信息", "收款码", "使用情况"]);
     await expect(page.getByLabel("密钥内容", { exact: true })).toHaveCount(0);
     await record(page, info, { feature: "account-detail-polish", width, theme, keysRemainHidden: true });
   }

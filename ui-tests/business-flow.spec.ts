@@ -1,3 +1,4 @@
+import { selectSettingsSection, expectSettingsSection } from "./settings-sections";
 import { test, expect, type Locator, type Page, type TestInfo } from "@playwright/test";
 import type { AdminOrderDetail, AdminOrderSummary, AlipayAccount, Order, OrderWebhookDeliveryDetail, Site } from "../web/src/api/generated/types.gen";
 import type { AuditEventDetail, AuditEventPage } from "../src/shared/audit";
@@ -27,13 +28,6 @@ async function closeOverlay(page: Page) {
   const overlay = page.locator("[data-overlay-content]");
   await overlay.getByRole("button", { name: "关闭对话框", exact: true }).click();
   await expect(overlay).toHaveCount(0);
-}
-
-async function selectTab(container: Locator, name: string) {
-  const tab = container.getByRole("tab", { name, exact: true });
-  await tab.scrollIntoViewIfNeeded();
-  await tab.click();
-  await expect(tab).toHaveAttribute("aria-selected", "true");
 }
 
 async function screenshot(page: Page, info: TestInfo, name: string) {
@@ -73,14 +67,14 @@ async function createAccount(page: Page, fixture: BusinessFixture, info: TestInf
   await page.getByRole("link", { name: "添加支付宝账号", exact: true }).click();
   const overlay = page.getByRole("dialog", { name: "支付宝账号", exact: true });
   const name = `连续验收收款账号 ${width}`;
-  await expect(overlay.getByRole("tab", { name: "基本信息", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expectSettingsSection(overlay, "支付宝账号配置分组", "基本信息");
   await overlay.getByRole("textbox", { name: "账号名称", exact: true }).fill(name);
   await page.keyboard.press("Escape");
   const discard = page.getByRole("alertdialog", { name: "放弃未保存的修改？", exact: true });
   await expect(discard).toBeVisible();
   await discard.getByRole("button", { name: "继续编辑", exact: true }).click();
   await expect(overlay.getByRole("textbox", { name: "账号名称", exact: true })).toHaveValue(name);
-  await selectTab(overlay, "应用信息");
+  await selectSettingsSection(page, overlay, "支付宝账号配置分组", "应用信息");
   await overlay.getByRole("textbox", { name: "应用 ID（App ID）", exact: true }).fill(fixture.appId);
   const createdResponse = page.waitForResponse(response => new URL(response.url()).pathname === "/api/admin/v1/alipay-accounts" && response.request().method() === "POST");
   await overlay.getByRole("button", { name: "创建账号并继续", exact: true }).click();
@@ -88,7 +82,7 @@ async function createAccount(page: Page, fixture: BusinessFixture, info: TestInf
   expect(created.status()).toBe(201);
   const account = (await created.json()).data as AlipayAccount;
   await expect.poll(() => new URL(page.url()).searchParams.get("overlay")).toBe("/settings/accounts/" + account.id);
-  await expect(overlay.getByRole("tab", { name: "应用信息", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expectSettingsSection(overlay, "支付宝账号配置分组", "应用信息");
   const keyResponse = page.waitForResponse(response => new URL(response.url()).pathname === `/api/admin/v1/alipay-accounts/${account.id}/application-key` && response.request().method() === "POST");
   await overlay.getByRole("button", { name: "生成应用密钥", exact: true }).click();
   expect((await keyResponse).ok()).toBe(true);
@@ -109,15 +103,17 @@ async function createAccount(page: Page, fixture: BusinessFixture, info: TestInf
   const applicationChecked = page.waitForResponse(response => new URL(response.url()).pathname === `/api/admin/v1/alipay-accounts/${account.id}/check` && response.request().method() === "POST");
   await overlay.getByRole("button", { name: "保存并检查", exact: true }).click();
   expect((await applicationChecked).ok()).toBe(true);
-  await expect(overlay.getByText("连接检查通过", { exact: true })).toBeVisible();
+  await selectSettingsSection(page, overlay, "支付宝账号配置分组", "使用情况");
+  await expect(overlay.getByText("最近连接检查", { exact: true }).locator("..").locator("dd").first()).toHaveText("通过");
   await expect(overlay.getByText("待补充：收款码", { exact: true })).toBeVisible();
   await overlay.getByRole("button", { name: "继续配置收款码", exact: true }).click();
-  await expect(overlay.getByRole("tab", { name: "收款码", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expectSettingsSection(overlay, "支付宝账号配置分组", "收款码");
   await overlay.getByRole("textbox", { name: "支付宝收款码内容", exact: true }).fill(fixture.collectionCode);
   const checked = page.waitForResponse(response => new URL(response.url()).pathname === `/api/admin/v1/alipay-accounts/${account.id}/check` && response.request().method() === "POST");
   await overlay.getByRole("button", { name: "保存并检查", exact: true }).click();
   expect((await checked).ok()).toBe(true);
-  await expect(overlay.getByText("连接检查通过", { exact: true })).toBeVisible();
+  await selectSettingsSection(page, overlay, "支付宝账号配置分组", "使用情况");
+  await expect(overlay.getByText("最近连接检查", { exact: true }).locator("..").locator("dd").first()).toHaveText("通过");
   const stored = await readData<AlipayAccount>(page, fixture.origin, "/api/admin/v1/alipay-accounts/" + account.id);
   expect(stored).toMatchObject({ name, app_id: fixture.appId, code_payload: fixture.collectionCode, configured: true });
   await screenshot(page, info, "02-account-ready");
@@ -126,7 +122,7 @@ async function createAccount(page: Page, fixture: BusinessFixture, info: TestInf
 }
 
 async function createSite(page: Page, fixture: BusinessFixture, info: TestInfo, account: AlipayAccount, width: number) {
-  await navigateSidebar(page, "业务网站");
+  await navigateSidebar(page, "网站管理");
   await page.getByRole("link", { name: "创建业务网站", exact: true }).click();
   const overlay = page.locator("[data-overlay-content]");
   const name = `连续验收网站 ${width}`;
@@ -141,7 +137,7 @@ async function createSite(page: Page, fixture: BusinessFixture, info: TestInfo, 
   expect(site.configuration.collection?.accounts.map(selected => selected.account_id)).toEqual([account.id]);
   expect(site.secrets).toEqual({ api_secret: false, webhook_secret: false });
   await expect.poll(() => new URL(page.url()).searchParams.get("overlay")).toBe(`/sites/${site.client_id}/edit?section=integration`);
-  await expect(overlay.getByRole("tab", { name: "接入与通知", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expectSettingsSection(overlay, "网站设置分组", "接入与通知");
   const protocols = overlay.getByRole("group", { name: "接入协议", exact: true });
   await expect(protocols.getByRole("button", { name: "原生 API", exact: true })).toHaveAttribute("aria-pressed", "true");
   await expect(protocols.getByRole("button", { name: "易支付 V1", exact: true })).toBeVisible();

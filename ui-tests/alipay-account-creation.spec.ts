@@ -1,3 +1,4 @@
+import { selectSettingsSection, expectSettingsSection, expectSettingsSections } from "./settings-sections";
 import { test, expect, type Locator } from "@playwright/test";
 import type { AlipayAccountView } from "../src/alipay-accounts/model";
 import { createSettingsServer } from "./settings-server";
@@ -32,7 +33,7 @@ for (const layout of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]
   test.describe(`${layout.width}px account creation`, () => {
     test.use({ viewport: layout, hasTouch: layout.width < 768, isMobile: layout.width < 768, reducedMotion: "reduce", colorScheme: "dark" });
 
-    test("shows usable configuration tabs until a draft is successfully created, then exposes saved usage", async ({ page }, info) => {
+    test("shows usable configuration sections until a draft is successfully created, then exposes saved usage", async ({ page }, info) => {
       const fixture = await createSettingsServer(Date.now());
       try {
         await page.route("**/*", route => new URL(route.request().url()).origin === fixture.origin ? route.continue() : route.abort("blockedbyclient"));
@@ -55,8 +56,7 @@ for (const layout of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]
         const dialog = page.getByRole("dialog", { name: "支付宝账号", exact: true });
         const editor = dialog.locator("[data-alipay-account-editor]");
         await expect(editor).toBeVisible();
-        await expect(editor.getByRole("tab")).toHaveText(creationSections.map(([, label]) => label));
-        await expect(editor.getByRole("tab", { name: "使用情况", exact: true })).toHaveCount(0);
+        await expectSettingsSections(page, editor, "支付宝账号配置分组", creationSections.map(([, label]) => label));
 
         const accountName = `新增账号回归-${layout.width}`;
         const appId = `202611050000${layout.width}`;
@@ -64,10 +64,7 @@ for (const layout of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]
         const values = [accountName, appId, collectionCode];
         const panels = [];
         for (const [index, [panel, label, fieldName]] of creationSections.entries()) {
-          const tab = editor.getByRole("tab", { name: label, exact: true });
-          await tab.scrollIntoViewIfNeeded();
-          await tab.click();
-          await expect(tab).toHaveAttribute("aria-selected", "true");
+          await selectSettingsSection(page, editor, "支付宝账号配置分组", label);
           const active = editor.locator(`[data-account-panel="${panel}"]`);
           await expect(active).toBeVisible();
           const field = active.getByRole("textbox", { name: fieldName, exact: true });
@@ -86,16 +83,14 @@ for (const layout of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]
         }
         expect(mutations).toEqual([]);
         for (const [index, [, label, fieldName]] of creationSections.entries()) {
-          const tab = editor.getByRole("tab", { name: label, exact: true });
-          await tab.scrollIntoViewIfNeeded();
-          await tab.click();
+          await selectSettingsSection(page, editor, "支付宝账号配置分组", label);
           await expect(editor.getByRole("textbox", { name: fieldName, exact: true })).toHaveValue(values[index]!);
         }
 
-        await editor.getByRole("tab", { name: "应用信息", exact: true }).click();
+        await selectSettingsSection(page, editor, "支付宝账号配置分组", "应用信息");
         const platformKey = editor.getByRole("textbox", { name: "支付宝公钥", exact: true });
         await platformKey.fill("invalid-platform-public-key");
-        await editor.getByRole("tab", { name: "收款码", exact: true }).click();
+        await selectSettingsSection(page, editor, "支付宝账号配置分组", "收款码");
         const rejectedResponse = page.waitForResponse(response => new URL(response.url()).pathname === endpoint && response.request().method() === "POST");
         await dialog.getByRole("button", { name: "更多账号操作", exact: true }).click();
         await page.getByRole("menuitem", { name: "保存草稿", exact: true }).click();
@@ -103,21 +98,18 @@ for (const layout of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]
         expect(rejected.status()).toBe(422);
         const rejection = await rejected.json() as { error: { code: string; message: string; fields: Record<string, string> } };
         expect(rejection.error.fields.platform_public_key).toContain("支付宝公钥");
-        await expect(editor.getByRole("tab", { name: "应用信息", exact: true })).toHaveAttribute("aria-selected", "true");
+        await expectSettingsSection(editor, "支付宝账号配置分组", "应用信息");
         await expect(platformKey).toHaveValue("invalid-platform-public-key");
         await expect(platformKey).toHaveAttribute("aria-invalid", "true");
         await expect(platformKey).toBeFocused();
-        await expect(editor.getByRole("tab", { name: "使用情况", exact: true })).toHaveCount(0);
-        await expect(editor.getByRole("tab")).toHaveText(creationSections.map(([, label]) => label));
+        await expectSettingsSections(page, editor, "支付宝账号配置分组", creationSections.map(([, label]) => label));
         expect(new URL(page.url()).searchParams.get("overlay")).toBe("/settings/accounts/new");
         expect((await catalog()).map(account => account.id)).toEqual(initialAccounts.map(account => account.id));
         await page.screenshot({ path: info.outputPath("new-account-rejected.png") });
 
         await platformKey.fill("");
         for (const [index, [, label, fieldName]] of creationSections.entries()) {
-          const tab = editor.getByRole("tab", { name: label, exact: true });
-          await tab.scrollIntoViewIfNeeded();
-          await tab.click();
+          await selectSettingsSection(page, editor, "支付宝账号配置分组", label);
           await expect(editor.getByRole("textbox", { name: fieldName, exact: true })).toHaveValue(values[index]!);
         }
         const createdResponse = page.waitForResponse(response => new URL(response.url()).pathname === endpoint && response.request().method() === "POST");
@@ -132,15 +124,12 @@ for (const layout of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]
         expect(stored).toMatchObject({ id: account.id, name: accountName, app_id: appId, code_payload: collectionCode, configured: false, sites: [] });
 
         await expect(dialog.getByRole("button", { name: "保存配置", exact: true })).toBeEnabled();
-        const usageTab = editor.getByRole("tab", { name: "使用情况", exact: true });
-        // Creation replaces the keyed editor. Locator.click scrolls and resolves
-        // its target again if that transition detaches the previous tab node.
-        await usageTab.click();
-        await expect(usageTab).toHaveAttribute("aria-selected", "true");
+        await selectSettingsSection(page, editor, "支付宝账号配置分组", "使用情况");
         const usage = editor.locator('[data-account-panel="usage"]');
         await expect(usage).toBeVisible();
         await expect(usage.getByText("账号状态", { exact: true })).toBeVisible();
-        await expect(usage.getByText("配置未完成", { exact: true })).toBeVisible();
+        await expect(usage.getByText("账号状态", { exact: true }).locator("..").locator("dd")).toHaveText("配置未完成");
+        await expect(usage.getByText("收款状态", { exact: true }).locator("..").locator("dd")).toHaveText("配置未完成");
         await expect(usage.getByText("尚未分配给网站。", { exact: true })).toBeVisible();
         await expectReachable(usage.getByRole("button", { name: "删除账号", exact: true }));
         await expect(dialog.getByRole("button", { name: "保存并检查", exact: true })).toHaveCount(0);
@@ -148,9 +137,9 @@ for (const layout of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]
         await page.screenshot({ path: info.outputPath("created-account-usage.png") });
 
         await page.reload();
-        await editor.getByRole("tab", { name: "基本信息", exact: true }).click();
+        await selectSettingsSection(page, editor, "支付宝账号配置分组", "基本信息");
         await expect(editor.getByRole("textbox", { name: "账号名称", exact: true })).toHaveValue(accountName);
-        await expect(editor.getByRole("tab", { name: "使用情况", exact: true })).toHaveCount(1);
+        await expectSettingsSections(page, editor, "支付宝账号配置分组", [...creationSections.map(([, label]) => label), "使用情况"]);
         expect(mutations).toEqual([{ method: "POST", path: endpoint, status: 422 }, { method: "POST", path: endpoint, status: 201 }]);
         expect(pageErrors).toEqual([]);
         await info.attach("account-creation-flow", {

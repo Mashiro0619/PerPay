@@ -1,3 +1,4 @@
+import { selectSettingsSection } from "./settings-sections";
 import { test, expect, type Locator, type Page, type TestInfo } from "@playwright/test";
 import { createSettingsServer } from "./settings-server";
 import { waitForControlAnimations } from "./touch-targets";
@@ -205,7 +206,7 @@ for (const layout of layouts) {
           const account = (await response.json()).data[0] as { name: string };
           await page.goto(fixture.origin + "/admin/settings/accounts");
           await page.getByRole("link", { name: "配置" + account.name, exact: true }).click();
-          await dialog.getByRole("tab", { name: "应用信息", exact: true }).click();
+          await selectSettingsSection(page, dialog, "支付宝账号配置分组", "应用信息");
           if (layout.width === 1440) {
             expect((await editorGeometry(dialog)).scrollbarWidth, "desktop long forms exercise a space-consuming native scrollbar").toBeGreaterThan(0);
           }
@@ -217,7 +218,7 @@ for (const layout of layouts) {
         }
         if (layout.width === 1440 && layout.font === 100 && layout.theme === "dark") {
           await page.goto(fixture.origin + "/admin/sites/defaults");
-          await dialog.getByRole("tab", { name: "收银台展示", exact: true }).click();
+          await selectSettingsSection(page, dialog, "模板分组", "收银台展示");
           const help = dialog.getByRole("textbox", { name: "帮助链接", exact: true });
           await expect(help).toBeVisible();
           const shortForm = await editorGeometry(dialog);

@@ -1,3 +1,4 @@
+import { selectSettingsSection, expectSettingsSection } from "./settings-sections";
 import { test, expect } from "@playwright/test";
 import { AlipayAccountService } from "../src/alipay-accounts/service";
 import type { AlipayAccountView } from "../src/alipay-accounts/model";
@@ -34,7 +35,7 @@ for (const layout of [{ width: 1440, height: 900, font: 100 }, { width: 390, hei
         await page.evaluate(font => document.documentElement.style.fontSize = font + "%", layout.font);
         await page.getByRole("link", { name: "配置" + account.name, exact: true }).click();
         const dialog = page.locator("[data-overlay-content]");
-        await dialog.getByRole("tab", { name: "应用信息", exact: true }).click();
+        await selectSettingsSection(page, dialog, "支付宝账号配置分组", "应用信息");
         const appId = dialog.getByRole("textbox", { name: "应用 ID（App ID）", exact: true });
         await appId.fill("edited-app-id");
         const link = dialog.getByRole("link", { name: "打开支付宝应用管理", exact: true });
@@ -46,13 +47,13 @@ for (const layout of [{ width: 1440, height: 900, font: 100 }, { width: 390, hei
         const privateKey = dialog.getByRole("textbox", { name: "应用私钥（可选）", exact: true });
         await privateKey.fill("invalid-imported-private-key");
         await optional.click();
-        await dialog.getByRole("tab", { name: "基本信息", exact: true }).click();
+        await selectSettingsSection(page, dialog, "支付宝账号配置分组", "基本信息");
         const rejectedImport = page.waitForResponse(response => new URL(response.url()).pathname === accountPath && response.request().method() === "PUT");
         await dialog.getByRole("button", { name: "更多账号操作", exact: true }).click();
         await page.getByRole("menuitem", { name: "保存草稿", exact: true }).click();
         expect((await rejectedImport).status()).toBe(422);
         await expect(optional).toHaveAttribute("aria-expanded", "true");
-        await expect(dialog.getByRole("tab", { name: "应用信息", exact: true })).toHaveAttribute("aria-selected", "true");
+        await expectSettingsSection(dialog, "支付宝账号配置分组", "应用信息");
         await expect(privateKey).toBeFocused();
         await expect(privateKey).toHaveValue("invalid-imported-private-key");
         await expect(privateKey).toHaveAttribute("aria-invalid", "true");
@@ -61,21 +62,23 @@ for (const layout of [{ width: 1440, height: 900, font: 100 }, { width: 390, hei
         await privateError.scrollIntoViewIfNeeded();
         await page.screenshot({ path: info.outputPath("private-key-validation.png") });
         expect((await read()).revision).toBe(account.revision);
-        await dialog.getByRole("tab", { name: "基本信息", exact: true }).click();
-        await expect(dialog.getByRole("tab", { name: "基本信息", exact: true })).toHaveAttribute("aria-selected", "true");
-        await dialog.getByRole("tab", { name: "使用情况", exact: true }).click();
-        await expect(dialog.getByRole("tab", { name: "使用情况", exact: true })).toHaveAttribute("aria-selected", "true");
-        await dialog.getByRole("tab", { name: "应用信息", exact: true }).click();
+        await selectSettingsSection(page, dialog, "支付宝账号配置分组", "基本信息");
+        await expectSettingsSection(dialog, "支付宝账号配置分组", "基本信息");
+        await selectSettingsSection(page, dialog, "支付宝账号配置分组", "使用情况");
+        await expectSettingsSection(dialog, "支付宝账号配置分组", "使用情况");
+        await selectSettingsSection(page, dialog, "支付宝账号配置分组", "应用信息");
         await expect(privateKey).toHaveValue("invalid-imported-private-key");
         await privateKey.fill("");
         await optional.click();
 
         async function failOldCheck() {
-          await dialog.getByRole("tab", { name: "基本信息", exact: true }).click();
+          await selectSettingsSection(page, dialog, "支付宝账号配置分组", "基本信息");
           await dialog.getByRole("button", { name: "更多账号操作", exact: true }).click();
           await page.getByRole("menuitem", { name: "重新检查", exact: true }).click();
           await expect(dialog.getByText("连接检查未通过", { exact: true })).toBeVisible();
-          await dialog.getByRole("tab", { name: "应用信息", exact: true }).click();
+          await selectSettingsSection(page, dialog, "支付宝账号配置分组", "使用情况");
+          await expect(dialog.getByText("最近连接检查", { exact: true }).locator("..").locator("dd").first()).toHaveText("未通过");
+          await selectSettingsSection(page, dialog, "支付宝账号配置分组", "应用信息");
         }
         await failOldCheck();
         await dialog.getByRole("button", { name: "更换应用密钥", exact: true }).click();

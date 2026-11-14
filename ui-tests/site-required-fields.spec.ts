@@ -1,3 +1,4 @@
+import { selectSettingsSection } from "./settings-sections";
 import { test, expect } from "@playwright/test";
 import { createSettingsServer } from "./settings-server";
 
@@ -23,7 +24,7 @@ test("website required fields show custom feedback, suppress native bubbles and 
         { path: "/sites/defaults", label: "收银台名称", button: "保存默认模板", tab: "收银台展示" },
       ]) {
         await page.goto(fixture.origin + "/admin" + form.path);
-        if (form.tab) await page.getByRole("tab", { name: form.tab, exact: true }).click();
+        if (form.tab) await selectSettingsSection(page, page, "模板分组", form.tab);
         const input = page.getByLabel(form.label, { exact: true });
         const original = await input.inputValue();
         await input.evaluate((element: HTMLInputElement) => {

@@ -1,3 +1,4 @@
+import { selectSettingsSection, expectSettingsSections } from "./settings-sections";
 import { test, expect } from "@playwright/test";
 import { AlipayAccountService } from "../src/alipay-accounts/service";
 import { OrderService } from "../src/orders/service";
@@ -81,34 +82,34 @@ for (const width of [390, 1440]) {
       await expect(page.getByText("账号已保存", { exact: true })).toBeVisible();
       await expect.poll(() => new URL(page.url()).searchParams.get("overlay")).toMatch(/^\/settings\/accounts\/alipay_[0-9a-f-]+$/);
       await page.reload();
-      await page.getByRole("tab", { name: "应用信息", exact: true }).click();
+      await selectSettingsSection(page, page, "支付宝账号配置分组", "应用信息");
       await page
         .getByRole("button", { name: "生成应用密钥", exact: true })
         .click();
       await expect(
         page.getByRole("button", { name: "复制应用公钥", exact: true }),
       ).toBeVisible();
-      await expect(page.getByRole("tab", { name: "应用密钥", exact: true })).toHaveCount(0);
+      await expectSettingsSections(page, page, "支付宝账号配置分组", ["基本信息", "应用信息", "收款码", "使用情况"]);
       await expect(page.locator("[data-account-public-key]")).toHaveCount(1);
       await expect(page.getByRole("textbox", { name: "应用公钥", exact: true })).not.toHaveValue("");
       await page.reload();
       await expect(page.getByLabel("账号名称", { exact: true })).toBeVisible();
       await expect(page.getByText("账号已保存", { exact: true })).toHaveCount(0);
-      await page.getByRole("tab", { name: "应用信息", exact: true }).click();
+      await selectSettingsSection(page, page, "支付宝账号配置分组", "应用信息");
       await page
         .getByLabel("应用 ID（App ID）", { exact: true })
         .fill("2026000000000002");
       await page.getByLabel("支付宝公钥", { exact: true }).fill(platformKey);
-      await page.getByRole("tab", { name: "收款码", exact: true }).click();
+      await selectSettingsSection(page, page, "支付宝账号配置分组", "收款码");
       await page
         .getByLabel("支付宝收款码内容", { exact: true })
         .fill("https://qr.alipay.com/browser-second-account");
       await page
         .getByRole("button", { name: "保存并检查", exact: true })
         .click();
-      await expect(
-        page.getByText("连接检查通过", { exact: true }),
-      ).toBeVisible();
+      await selectSettingsSection(page, page.locator("[data-overlay-content]"), "支付宝账号配置分组", "使用情况");
+      const latestCheck = page.getByText("最近连接检查", { exact: true }).locator("..");
+      await expect(latestCheck.locator("dd").first()).toHaveText("通过");
       await page.screenshot({
         path: info.outputPath(`account-configured-${width}.png`),
         fullPage: true,

@@ -1,3 +1,4 @@
+import { selectSettingsSection } from "./settings-sections";
 import type { Locator, Page } from "@playwright/test";
 import { test, expect, login, record } from "./fixtures";
 import { expectTouchTarget } from "./touch-targets";
@@ -116,7 +117,7 @@ test.describe("enlarged admin dialogs keep fields and decisions reachable", () =
       }
       await toggle.evaluate((element, size) => element.setAttribute("data-size", size ?? "default"), initialSize);
       if ((await toggle.getAttribute("data-checked") !== null) !== initialChecked) await toggle.click();
-      await accountDialog.getByRole("tab", { name: "应用信息", exact: true }).click();
+      await selectSettingsSection(page, accountDialog, "支付宝账号配置分组", "应用信息");
       const publicText = accountDialog.locator("[data-account-application]").getByRole("textbox", { name: "应用公钥", exact: true });
       await expect(publicText).toHaveValue(syntheticPublicKey);
       await publicText.scrollIntoViewIfNeeded();

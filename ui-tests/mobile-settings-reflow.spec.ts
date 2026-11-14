@@ -1,6 +1,7 @@
+import { selectSettingsSection, expectSettingsSection } from "./settings-sections";
 import type { Locator, Page } from "@playwright/test";
 import { test, expect, login, record, type Manifest } from "./fixtures";
-import { expectTouchTarget, waitForControlAnimations } from "./touch-targets";
+import { expectTouchTarget } from "./touch-targets";
 
 async function completeSelectValue(trigger: Locator, page: Page) {
   await page.clock.runFor(100);
@@ -64,45 +65,37 @@ async function openAccountDraft(page: Page, manifest: Manifest, legacySection: "
 test.describe("narrow settings and overview controls remain usable", () => {
   test.use({ hasTouch: true, isMobile: true, viewport: { width: 320, height: 560 }, reducedMotion: "reduce" });
 
-  for (const interaction of ["tap", "mouse click"] as const) test(`a partially visible account tab activates on its first ${interaction} and remains keyboard reachable`, async ({ page, manifest }, info) => {
+  for (const interaction of ["tap", "mouse click"] as const) test(`the account category selector activates on its first ${interaction} and remains keyboard reachable`, async ({ page, manifest }, info) => {
     await login(page, manifest);
     const writes = await openAccountDraft(page, manifest, "provider");
     await page.evaluate(() => document.documentElement.style.fontSize = "200%");
     await page.evaluate(() => document.fonts.ready);
-    const collection = page.getByRole("tab", { name: "收款码", exact: true });
-    // Let resize observers finish revealing the selected tab before choosing a pointer coordinate.
-    await waitForControlAnimations(collection);
-    const point = await collection.evaluate(element => {
-      const strip = element.closest<HTMLElement>('[data-settings-tabs-scroll]')!;
-      const viewport = strip.getBoundingClientRect();
-      strip.scrollLeft += element.getBoundingClientRect().left - (viewport.right - 24);
-      const bounds = element.getBoundingClientRect();
-      const x = viewport.right - 2, y = bounds.top + bounds.height / 2;
-      const hit = document.elementFromPoint(x, y);
-      return { x, y, visibleWidth: viewport.right - bounds.left, width: bounds.width,
-        hit: hit === element || element.contains(hit) };
-    });
-    expect(point.visibleWidth).toBeGreaterThan(0);
-    expect(point.visibleWidth).toBeLessThan(point.width);
-    expect(point.hit).toBe(true);
-    if (interaction === "tap") await page.touchscreen.tap(point.x, point.y);
-    else await page.mouse.click(point.x, point.y);
-    await expect(collection).toHaveAttribute("aria-selected", "true");
-    const fitsInStrip = (tab: Locator) => tab.evaluate(element => {
-      const bounds = element.getBoundingClientRect();
-      const viewport = element.closest('[data-settings-tabs-scroll]')!.getBoundingClientRect();
-      return bounds.left >= viewport.left && bounds.right <= viewport.right;
-    });
-    await expect.poll(() => fitsInStrip(collection)).toBe(true);
-    await page.keyboard.press("ArrowLeft");
-    const application = page.getByRole("tab", { name: "应用信息", exact: true });
-    await expect(application).toBeFocused();
-    await expect.poll(() => fitsInStrip(application)).toBe(true);
+    const category = page.getByRole("combobox", { name: "支付宝账号配置分组", exact: true });
+    await expect(page.getByRole("tablist", { name: "支付宝账号配置分组", exact: true })).toHaveCount(0);
+    const triggerGeometry = await completeSelectValue(category, page);
+    if (interaction === "tap") await category.tap(); else await category.click();
+    const collection = page.getByRole("option", { name: "收款码", exact: true });
+    await collection.scrollIntoViewIfNeeded();
+    await page.clock.runFor(100);
+    const optionGeometry = await expectTouchTarget(collection);
+    if (interaction === "tap") await collection.tap(); else await collection.click();
+    await expect(category).toHaveText("收款码");
+    await expect(category).toHaveAttribute("aria-expanded", "false");
+    await expect(page.getByRole("textbox", { name: "支付宝收款码内容", exact: true })).toBeVisible();
+    await category.focus();
     await page.keyboard.press("Enter");
-    await expect(application).toHaveAttribute("aria-selected", "true");
+    await expect(collection).toBeFocused();
+    await page.keyboard.press("ArrowUp");
+    const application = page.getByRole("option", { name: "应用信息", exact: true });
+    await expect(application).toBeFocused();
+    await expect(category, "arrow keys do not change the selected category before Enter").toHaveText("收款码");
+    await expect(collection).toHaveAttribute("aria-selected", "true");
+    await page.keyboard.press("Enter");
+    await expect(category).toHaveText("应用信息");
+    await expect(category).toBeFocused();
     await expect(page.getByRole("button", { name: "导入已有应用私钥（可选）", exact: true })).toBeVisible();
     expect(writes).toEqual([]);
-    await record(page, info, { interaction, point, keyboardTabFits: await fitsInStrip(application), writes });
+    await record(page, info, { interaction, triggerGeometry, optionGeometry, keyboardSelection: "应用信息", writes });
   });
 
   test("account configuration omits the environment selector and remains editable at 200% text after the legacy provider redirect", async ({ page, manifest }, info) => {
@@ -110,8 +103,8 @@ test.describe("narrow settings and overview controls remain usable", () => {
     const writes = await openAccountDraft(page, manifest, "provider");
     await expect(page.getByRole("combobox", { name: "支付宝环境", exact: true })).toHaveCount(0);
     await page.evaluate(() => document.documentElement.style.fontSize = "200%");
-    await page.getByRole("tab", { name: "应用信息", exact: true }).tap();
-    await expect(page.getByRole("tab", { name: "应用信息", exact: true })).toHaveAttribute("aria-selected", "true");
+    await selectSettingsSection(page, page, "支付宝账号配置分组", "应用信息", "tap");
+    await expectSettingsSection(page, "支付宝账号配置分组", "应用信息");
     const disclosure = page.getByRole("button", { name: "导入已有应用私钥（可选）", exact: true });
     const disclosureGeometry = await completeButtonLabel(disclosure, page);
     await disclosure.tap();
@@ -119,14 +112,14 @@ test.describe("narrow settings and overview controls remain usable", () => {
     await expect(page.getByRole("textbox", { name: "应用私钥（可选）", exact: true })).toBeVisible();
     await disclosure.tap();
     await expect(disclosure).toHaveAttribute("aria-expanded", "false");
-    await page.getByRole("tab", { name: "基本信息", exact: true }).tap();
+    await selectSettingsSection(page, page, "支付宝账号配置分组", "基本信息", "tap");
     const name = page.getByRole("textbox", { name: "账号名称", exact: true });
     const appId = page.getByRole("textbox", { name: "应用 ID（App ID）", exact: true });
     await name.fill("主收款账号");
-    await page.getByRole("tab", { name: "应用信息", exact: true }).tap();
+    await selectSettingsSection(page, page, "支付宝账号配置分组", "应用信息", "tap");
     await appId.fill("202610300001");
     await expect(appId).toHaveValue("202610300001");
-    await page.getByRole("tab", { name: "基本信息", exact: true }).tap();
+    await selectSettingsSection(page, page, "支付宝账号配置分组", "基本信息", "tap");
     await expect(name).toHaveValue("主收款账号");
     const primaryGeometry = await completeButtonLabel(page.getByRole("button", { name: "创建账号并继续", exact: true }), page);
     const more = page.getByRole("button", { name: "更多账号操作", exact: true });
@@ -142,7 +135,7 @@ test.describe("narrow settings and overview controls remain usable", () => {
   test("a delayed text reflow keeps the account disclosure fully reachable after the legacy collection redirect", async ({ page, manifest }, info) => {
     await login(page, manifest);
     const writes = await openAccountDraft(page, manifest, "collection");
-    await page.getByRole("tab", { name: "应用信息", exact: true }).tap();
+    await selectSettingsSection(page, page, "支付宝账号配置分组", "应用信息", "tap");
     const disclosure = page.getByRole("button", { name: "导入已有应用私钥（可选）", exact: true });
     await expect(disclosure).toBeVisible();
     await page.evaluate(() => {

@@ -2,6 +2,7 @@ import type { Locator, Page } from "@playwright/test";
 import { test, expect, login, record } from "./fixtures";
 import { settleOverlay } from "./overlay-fixtures";
 import { screenshot } from "./audit";
+import { selectSettingsSection, settingsSectionNavigation } from "./settings-sections";
 
 async function tabFitsAndTargetsItself(tab: Locator) {
   const geometry = await tab.evaluate(element => {
@@ -21,8 +22,61 @@ async function tabFitsAndTargetsItself(tab: Locator) {
   return geometry;
 }
 
-async function exerciseTabs(page: Page, list: Locator) {
-  const choices = list.getByRole('tab');
+async function selectOptionFits(option: Locator) {
+  await option.scrollIntoViewIfNeeded();
+  const geometry = await option.evaluate(element => {
+    const bounds = element.getBoundingClientRect();
+    const popup = element.closest('[data-slot="select-content"]')!.getBoundingClientRect();
+    const range = document.createRange(); range.selectNodeContents(element.querySelector('span') ?? element);
+    const text = range.getBoundingClientRect();
+    const hit = document.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+    return { label: element.textContent, bounds: bounds.toJSON(), popup: popup.toJSON(), text: text.toJSON(), hitsOwnChoice: hit === element || element.contains(hit) };
+  });
+  expect(geometry.text.left).toBeGreaterThanOrEqual(geometry.bounds.left - 1);
+  expect(geometry.text.right).toBeLessThanOrEqual(geometry.bounds.right + 1);
+  expect(geometry.text.top).toBeGreaterThanOrEqual(geometry.bounds.top - 1);
+  expect(geometry.text.bottom).toBeLessThanOrEqual(geometry.bounds.bottom + 1);
+  expect(geometry.bounds.left).toBeGreaterThanOrEqual(geometry.popup.left - 1);
+  expect(geometry.bounds.right).toBeLessThanOrEqual(geometry.popup.right + 1);
+  expect(geometry.bounds.top).toBeGreaterThanOrEqual(geometry.popup.top - 1);
+  expect(geometry.bounds.bottom).toBeLessThanOrEqual(geometry.popup.bottom + 1);
+  expect(geometry.hitsOwnChoice).toBe(true);
+  return geometry;
+}
+
+async function exerciseSections(page: Page, scope: Locator, group: string, labels: string[]) {
+  const navigation = await settingsSectionNavigation(scope, group);
+  if (navigation.kind === 'select') {
+    const trigger = navigation.control;
+    const evidence = [];
+    for (const label of labels) {
+      await trigger.click();
+      await expect(page.getByRole('option')).toHaveText(labels);
+      await page.clock.runFor(100);
+      const option = page.getByRole('option', { name: label, exact: true });
+      evidence.push(await selectOptionFits(option));
+      await option.click();
+      await expect(trigger, 'a normal pointer click selects the requested category').toHaveText(label);
+    }
+    await selectSettingsSection(page, scope, group, labels[0]!);
+    await trigger.focus();
+    await page.keyboard.press('Enter');
+    await page.clock.runFor(100);
+    const choices = page.getByRole('option');
+    await expect(choices.first()).toBeFocused();
+    for (let index = 1; index < labels.length; index++) {
+      await page.keyboard.press('ArrowDown');
+      await expect(choices.nth(index)).toBeFocused();
+      await expect(trigger, 'arrow keys leave the selected category unchanged until Enter').toHaveText(labels[0]!);
+      evidence.push(await selectOptionFits(choices.nth(index)));
+    }
+    await page.keyboard.press('Enter');
+    await expect(trigger).toHaveText(labels.at(-1)!);
+    await expect(trigger).toBeFocused();
+    return { mode: 'select', evidence };
+  }
+  const choices = navigation.control.getByRole('tab');
+  await expect(choices).toHaveText(labels);
   const evidence = [];
   for (let index = 0; index < await choices.count(); index++) {
     const tab = choices.nth(index);
@@ -41,7 +95,7 @@ async function exerciseTabs(page: Page, list: Locator) {
   }
   await page.keyboard.press('Enter');
   await expect(choices.last()).toHaveAttribute('aria-selected', 'true');
-  return evidence;
+  return { mode: 'tabs', evidence };
 }
 
 async function manualScopeFits(group: Locator) {
@@ -104,14 +158,14 @@ for (const layout of [{ width: 320, height: 560, text: 200 }, { width: 640, heig
       const sitePath = siteRoute.replace(/\/settings$/, '/edit?section=integration');
       await page.goto(manifest.origin + '/admin' + sitePath);
       let overlay = await settleOverlay(page);
-      const siteTabs = await exerciseTabs(page, overlay.getByRole('tablist', { name: '网站设置分组', exact: true }));
+      const siteTabs = await exerciseSections(page, overlay, '网站设置分组', ['基本信息', '收款账号', '订单设置', '接入与通知', '收银台展示']);
       expect(await overlay.locator('[data-slot="card-footer"]').evaluateAll(footers => footers.filter(footer => !footer.textContent?.trim()).length), "the moved site actions leave no empty footer surface").toBe(0);
       await record(page, info, { feature: 'site-editor-category-reflow', layout, siteTabs });
       await screenshot(page, info, `site-category-${layout.width}-${layout.text}`);
 
       await page.goto(manifest.origin + '/admin/sites/defaults');
       overlay = await settleOverlay(page);
-      const defaultsTabs = await exerciseTabs(page, overlay.getByRole('tablist', { name: '模板分组', exact: true }));
+      const defaultsTabs = await exerciseSections(page, overlay, '模板分组', ['订单设置', '收银台展示', '通知策略']);
       const defaultWidth = await overlay.locator('[data-overlay-detail]').evaluate(element => ({ width: element.clientWidth, scrollWidth: element.scrollWidth }));
       expect(defaultWidth.scrollWidth).toBeLessThanOrEqual(defaultWidth.width + 1);
       await record(page, info, { feature: 'site-default-category-reflow', layout, defaultsTabs, defaultWidth });

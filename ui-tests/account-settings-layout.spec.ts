@@ -1,3 +1,4 @@
+import { selectSettingsSection, expectSettingsSections } from "./settings-sections";
 import type { Locator } from "@playwright/test";
 import { test, expect, login, record } from "./fixtures";
 import { expectTouchTarget } from "./touch-targets";
@@ -88,7 +89,7 @@ for (const layout of [{ width: 1440, height: 900, font: 100 }, { width: 390, hei
     const dialog = page.locator("[data-overlay-content]");
     const editor = dialog.locator("[data-alipay-account-editor]");
     await expect(editor).toBeVisible();
-    await expect(editor.getByRole("tab", { name: "应用密钥", exact: true })).toHaveCount(0);
+    await expectSettingsSections(page, editor, "支付宝账号配置分组", ["基本信息", "应用信息", "收款码", "使用情况"]);
     await expect(editor.locator("[data-account-public-key]")).toHaveCount(1);
     const accountPath = new URL(page.url()).searchParams.get("overlay")!;
     const accountResponse = await page.request.get(manifest.origin + "/api/admin/v1/alipay-accounts/" + accountPath.split("/").at(-1));
@@ -96,9 +97,7 @@ for (const layout of [{ width: 1440, height: 900, font: 100 }, { width: 390, hei
     const account = (await accountResponse.json()).data as { application_public_key: string | null };
     const evidence = [];
     for (const [panel, name] of [["basic", "基本信息"], ["application", "应用信息"], ["collection", "收款码"], ["usage", "使用情况"]] as const) {
-      const tab = editor.getByRole("tab", { name, exact: true });
-      await tab.scrollIntoViewIfNeeded(); await tab.click();
-      await expect(tab).toHaveAttribute("aria-selected", "true");
+      await selectSettingsSection(page, editor, "支付宝账号配置分组", name);
       const active = editor.locator(`[data-account-panel="${panel}"]`);
       await expect(active).toBeVisible();
       const body = dialog.locator("[data-overlay-detail]");
@@ -153,13 +152,13 @@ for (const layout of [{ width: 1440, height: 900, font: 100 }, { width: 390, hei
       await page.mouse.move(0, 0);
       await page.screenshot({ path: info.outputPath(`account-${panel}.png`), fullPage: false });
     }
-    await editor.getByRole("tab", { name: "基本信息", exact: true }).click();
+    await selectSettingsSection(page, editor, "支付宝账号配置分组", "基本信息");
     const accountName = editor.getByRole("textbox", { name: "账号名称", exact: true });
     await accountName.fill("待保存布局检查");
-    await editor.getByRole("tab", { name: "应用信息", exact: true }).click();
-    await editor.getByRole("tab", { name: "使用情况", exact: true }).click();
+    await selectSettingsSection(page, editor, "支付宝账号配置分组", "应用信息");
+    await selectSettingsSection(page, editor, "支付宝账号配置分组", "使用情况");
     await expect(dialog.getByRole("button", { name: "保存并检查", exact: true })).toBeVisible();
-    await editor.getByRole("tab", { name: "基本信息", exact: true }).click();
+    await selectSettingsSection(page, editor, "支付宝账号配置分组", "基本信息");
     await expect(accountName).toHaveValue("待保存布局检查");
     await dialog.getByRole("button", { name: "关闭对话框", exact: true }).click();
     const guard = page.getByRole("alertdialog", { name: "放弃未保存的修改？", exact: true });
