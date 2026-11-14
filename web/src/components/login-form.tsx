@@ -182,7 +182,7 @@ export function LoginForm({ onLogin }: { onLogin: () => void }) {
   return (
     <main className="flex min-h-svh flex-col p-4 sm:p-6" data-admin-auth>
       <ThemeControl className="shrink-0 self-end" />
-      <div className="mx-auto my-auto flex w-full min-w-0 max-w-sm flex-col gap-6 py-6 sm:py-10">
+      <div className="mx-auto mt-8 mb-auto flex w-full min-w-0 max-w-sm flex-col gap-6 py-6 sm:my-auto sm:py-10">
         <Link
           to="/"
           className="flex min-w-0 max-w-full items-center justify-center gap-2 self-center px-1 py-1 font-medium"

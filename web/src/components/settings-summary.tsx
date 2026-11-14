@@ -30,7 +30,7 @@ export function SettingsSummary({ title, description, rows, editTo, editLabel = 
       </CardHeader>
       <CardContent>
         <dl className="flex min-w-0 flex-col divide-y">
-          {rows.map(([label, value]) => <div key={label} className="flex min-w-0 flex-wrap justify-between gap-x-6 gap-y-1 py-2 first:pt-0 last:pb-0">
+          {rows.map(([label, value]) => <div key={label} className="grid min-w-0 grid-cols-1 items-baseline gap-x-6 gap-y-1 py-2 first:pt-0 last:pb-0 sm:grid-cols-[12rem_minmax(0,1fr)]">
             <dt className="text-sm text-muted-foreground">{label}</dt>
             <dd className="min-w-0 max-w-full break-words text-sm">{value ?? "未设置"}</dd>
           </div>)}
