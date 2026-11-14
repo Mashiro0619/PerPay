@@ -59,7 +59,7 @@ function OrderSummary({ order, scoped }: { order: AdminOrderSummary; scoped: boo
             </Link>
           </ListIdentity>
           <dl className="order-summary-metadata">
-            <div><dt>商户订单号</dt><dd className="list-code" title={order.merchant_order_no}>{order.merchant_order_no}</dd></div>
+            <div><dt className="sr-only">商户订单号</dt><dd className="list-code" title={order.merchant_order_no}>{order.merchant_order_no}</dd></div>
             {!scoped && <div>
               <dt className="sr-only">网站</dt>
               <dd><SiteIdentity clientId={order.api_client_id} name={order.site_name} /></dd>
