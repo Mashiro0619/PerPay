@@ -1470,10 +1470,13 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 
 [data-business-table][data-embedded="false"] .business-table-surface { overflow-x: auto; }
 [data-business-table][data-embedded="false"] .business-table { width: 100%; }
-[data-business-table][data-embedded="false"] .business-table[data-visible-columns="5"] { min-width: 50rem; }
-[data-business-table][data-embedded="false"] .business-table[data-visible-columns="6"] { min-width: 60rem; }
+[data-business-table][data-embedded="false"] .business-table[data-visible-columns="5"] { min-width: 48rem; }
+[data-business-table][data-embedded="false"] .business-table[data-visible-columns="6"] { min-width: 54rem; }
+[data-business-table="notifications"][data-embedded="false"] .business-table[data-visible-columns="7"] { min-width: 66rem; }
 [data-business-table][data-embedded="false"] .business-table col[data-column-layout="identity"] { width: 16rem; }
-[data-business-table][data-embedded="false"] .business-table:is([data-visible-columns="1"], [data-visible-columns="2"], [data-visible-columns="3"], [data-visible-columns="4"], [data-visible-columns="5"], [data-visible-columns="6"]) col[data-column-layout="identity"] { width: auto; }
+[data-business-table][data-embedded="false"] .business-table:is([data-visible-columns="1"], [data-visible-columns="2"], [data-visible-columns="3"], [data-visible-columns="4"], [data-visible-columns="5"], [data-visible-columns="6"]) col[data-column-layout="identity"],
+[data-business-table="notifications"][data-embedded="false"] .business-table[data-visible-columns="7"] col[data-column-id="identity"],
+[data-business-table="administrator-ledger"][data-embedded="false"] .business-table col[data-column-id="identity"] { width: auto; }
 [data-business-table][data-embedded="false"] .business-table col[data-column-layout="text"] { width: 10rem; }
 [data-business-table][data-embedded="false"] .business-table col[data-column-layout="amount"] { width: 8.5rem; }
 [data-business-table][data-embedded="false"] .business-table col[data-column-layout="datetime"] { width: 10rem; }
@@ -1481,8 +1484,6 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 [data-business-table][data-embedded="false"] .business-table col[data-column-layout="number"] { width: 6.5rem; }
 [data-business-table][data-embedded="false"] .business-table col[data-column-layout="actions"] { width: 7rem; }
 [data-business-table="sites"][data-embedded="false"] .business-table col[data-column-id="actions"] { width: 10.5rem; }
-[data-business-table="alipay-accounts"][data-embedded="false"] .business-table col[data-column-id="name"],
-[data-business-table="notifications"][data-embedded="false"] .business-table:is([data-visible-columns="1"], [data-visible-columns="2"], [data-visible-columns="3"], [data-visible-columns="4"], [data-visible-columns="5"], [data-visible-columns="6"]) col[data-column-id="identity"] { width: auto; }
 [data-business-table][data-embedded="false"] .business-table :is(th, td) { padding: 0.45rem 0.5rem; vertical-align: middle; }
 [data-business-table][data-embedded="false"] .business-table th { height: 2.25rem; font-size: 0.75rem; font-weight: 500; }
 [data-business-table][data-embedded="false"] .business-table td { height: 2.375rem; font-size: 0.8125rem; line-height: 1.45; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
