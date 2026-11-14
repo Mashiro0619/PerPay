@@ -148,7 +148,7 @@ export function ListFilterSheet({
           <SheetTitle>{panelTitle}</SheetTitle>
         </SheetHeader>
         <form
-          className="grid min-h-0 auto-rows-max gap-4 overflow-y-auto overscroll-contain"
+          className="flex min-h-0 flex-1 flex-col overflow-hidden"
           data-list-filter-scroll
           onSubmit={(event) => {
             event.preventDefault();
@@ -177,7 +177,7 @@ export function ListFilterSheet({
             });
           }}
         >
-          <FieldGroup className="px-4 py-1" data-list-filter-body>
+          <FieldGroup className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4" data-list-filter-body>
             {filters.map((filter) => (
               <Field key={filter.key}>
                 <FieldLabel htmlFor={id + filter.key}>
@@ -266,7 +266,7 @@ export function ListFilterSheet({
               </ToggleGroup>
             </Field></>}
           </FieldGroup>
-          <SheetFooter className="shrink-0 flex-row justify-end pb-[max(1rem,env(safe-area-inset-bottom))]">
+          <SheetFooter className="mt-auto shrink-0 flex-row justify-end border-t bg-background pt-3 pb-[max(1rem,env(safe-area-inset-bottom))]">
             <SheetClose render={<Button type="button" variant="outline" />}>
               取消
             </SheetClose>

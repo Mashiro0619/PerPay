@@ -376,13 +376,13 @@ export function ListQueryToolbar({
               <SheetHeader className="shrink-0 pr-[calc(max(1.75rem,44px)+1.5rem)]">
                 <SheetTitle>列表显示</SheetTitle>
               </SheetHeader>
-              <div className="flex min-h-0 flex-col gap-4 overflow-y-auto overscroll-contain" data-list-display-scroll>
-                <div className="flex shrink-0 flex-col gap-4 px-4 pb-1" data-list-display-body>
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden" data-list-display-scroll>
+                <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overscroll-contain px-4 pb-4" data-list-display-body>
                   <ListDensityOptions />
                   {!summary && <Separator />}
                   <ListColumnsSlot display />
                 </div>
-                <SheetFooter className="shrink-0 pb-[max(1rem,env(safe-area-inset-bottom))]">
+                <SheetFooter className="mt-auto shrink-0 border-t bg-background pt-3 pb-[max(1rem,env(safe-area-inset-bottom))]">
                   <SheetClose render={<Button type="button" />}>完成</SheetClose>
                 </SheetFooter>
               </div>

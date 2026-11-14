@@ -1176,7 +1176,12 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 [data-overlay-step]:has(> [data-slot="dialog-close"]) [data-overlay-step-scroll] [data-slot="dialog-header"] > [data-slot="dialog-title"] { padding-right: 3rem; }
 [data-overlay-step-scroll] > form > :is([data-admin-dialog-body], [data-slot="field-group"], .overflow-auto) { overflow: visible; }
 [data-overlay-step-scroll] [data-slot="dialog-footer"] { margin: 0; padding: var(--overlay-chrome-space, 1rem); border-radius: 0; }
-[data-overlay-viewport="sheet"]:has(> :is([data-list-filter-scroll], [data-list-display-scroll])) { overflow: clip; }
+[data-overlay-viewport="sheet"]:has(> :is([data-list-filter-scroll], [data-list-display-scroll])) {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding-bottom: 0;
+}
 @media (pointer: coarse) {
   /* Keep the close touch slot separate from adjacent scrolling controls. */
   [data-overlay-viewport="sheet"]:has(> :is([data-list-filter-scroll], [data-list-display-scroll], [data-header-mobile-actions])) > [data-slot="sheet-header"] { min-height: 68px; }
