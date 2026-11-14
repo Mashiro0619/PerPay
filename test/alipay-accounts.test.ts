@@ -271,7 +271,7 @@ describe("Alipay account configuration",()=>{
       assert.equal(settings.status().complete,false);
       assert.equal(settings.instanceView().completion.complete,false);
       assert.equal(settings.instanceView().provider,null);
-      account=await service.update(account.id,edit(account,{code_payload:code}),keyAudit());
+      account=await service.update(account.id,edit(account,{code_payload:"https://qr.alipay.com/complete_account"}),keyAudit());
       assert.equal(settings.status().complete,true);
       assert.equal(settings.instanceView().completion.complete,true);
       await service.update(account.id,edit(account,{enabled:false}),keyAudit());
