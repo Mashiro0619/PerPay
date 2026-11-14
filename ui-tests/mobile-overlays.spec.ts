@@ -190,10 +190,10 @@ test.describe("mobile overlay regression with synthetic visible viewport", () =>
     await page.goto(manifest.origin + manifest.checkouts.open!);
     const trigger = page.getByRole("button", { name: "放大二维码", exact: true });
     await trigger.click();
-    const dialog = page.getByRole("dialog", { name: "支付宝付款二维码", exact: true });
+    const dialog = page.getByRole("dialog", { name: "付款二维码", exact: true });
     await expect(dialog).toBeVisible();
     await visibleArea(page, panned);
-    const close = dialog.getByRole("button", { name: "关闭对话框", exact: true });
+    const close = dialog.getByRole("button", { name: "关闭二维码", exact: true });
     const before = await reachable(close);
     const body = dialog.locator("[data-qr-dialog-body]");
     await body.evaluate(element => element.scrollTop = element.scrollHeight);

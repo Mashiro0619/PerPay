@@ -206,9 +206,9 @@ test.describe("compact mobile button visuals and separate touch targets", () => 
       await download;
       await expect(page.getByRole("dialog")).toHaveCount(0);
       const enlargeTap = await tapOutsideVisible(page, enlarge, "top");
-      const qr = page.getByRole("dialog", { name: "支付宝付款二维码", exact: true });
+      const qr = page.getByRole("dialog", { name: "付款二维码", exact: true });
       await expect(qr).toBeVisible();
-      const qrClose = qr.getByRole("button", { name: "关闭对话框", exact: true });
+      const qrClose = qr.getByRole("button", { name: "关闭二维码", exact: true });
       const closeTap = await tapOutsideVisible(page, qrClose, "left");
       await expect(qr).toHaveCount(0);
       await expect(enlarge).toBeFocused();

@@ -28,12 +28,12 @@ test("checkout keeps one query before order information on phones and scales the
   await page.setViewportSize({ width: 360, height: 560 });
   await page.goto(manifest.origin + manifest.checkouts.open!);
   await page.getByRole("button", { name: "放大二维码" }).click();
-  const dialog = page.getByRole("dialog", { name: "支付宝付款二维码" });
+  const dialog = page.getByRole("dialog", { name: "付款二维码", exact: true });
   await expect(dialog).toBeVisible();
   await expect(dialog.locator("p").filter({ hasText: "¥" })).toHaveCount(1);
   expect((await dialog.boundingBox())!.height).toBeLessThanOrEqual(528);
-  const title = dialog.getByRole("heading", { name: "支付宝付款二维码" });
-  const close = dialog.getByRole("button", { name: "关闭对话框" });
+  const title = dialog.getByRole("heading", { name: "付款二维码", exact: true });
+  const close = dialog.getByRole("button", { name: "关闭二维码", exact: true });
   const titleBox = (await title.boundingBox())!, closeBox = (await close.boundingBox())!;
   expect(titleBox.x + titleBox.width).toBeLessThanOrEqual(closeBox.x);
   await page.keyboard.press("Escape");

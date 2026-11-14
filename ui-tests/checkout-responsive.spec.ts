@@ -98,7 +98,7 @@ test("checkout retains the exact maximum amount and a complete QR on enlarged an
     await page.evaluate(() => document.fonts.ready);
     await readableMoney(page.locator("[data-payable-amount]"), "¥99,999,999.99");
     await page.getByRole("button", { name: "放大二维码", exact: true }).click();
-    const dialog = page.getByRole("dialog", { name: "支付宝付款二维码" });
+    const dialog = page.getByRole("dialog", { name: "付款二维码", exact: true });
     await expect(dialog).toBeVisible();
     await readableMoney(dialog.locator("[data-checkout-money-digits]"), "¥99,999,999.99");
     const geometry = await dialog.evaluate(element => {
@@ -148,6 +148,6 @@ test("a failed checkout QR is replaced and its retried image remains downloadabl
   await page.getByRole("button", { name: "保存二维码", exact: true }).click();
   expect((await downloaded).suggestedFilename()).toMatch(/\.png$/);
   await page.getByRole("button", { name: "放大二维码", exact: true }).click();
-  await expect(page.getByRole("dialog", { name: "支付宝付款二维码" })).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "付款二维码", exact: true })).toBeVisible();
   await record(page, info, { state: "qr-recovered-and-downloaded" });
 });

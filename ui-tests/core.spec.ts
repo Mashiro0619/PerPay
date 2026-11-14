@@ -13,7 +13,7 @@ test("isolated admin routes expose actual records and preserve access boundaries
 test("live payment fixture renders a QR and terminal fixture renders confirmation", async ({ page, manifest }, info) => {
   await page.goto(manifest.origin + manifest.checkouts.open!);
   await expect(page.locator("[data-qr-image]")).toBeVisible();
-  await expect(page.locator("[data-countdown]")).toBeVisible();
+  await expect(page.locator("[data-countdown]:visible")).toHaveCount(1);
   await record(page, info);
   await page.goto(manifest.origin + manifest.checkouts.fullEvidence!);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("收款已确认");

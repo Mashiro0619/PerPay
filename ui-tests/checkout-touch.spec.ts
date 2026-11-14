@@ -26,8 +26,8 @@ test.describe("touch and reduced motion", () => {
     await query.scrollIntoViewIfNeeded();
     await expect(query).toBeInViewport();
     await page.getByRole("button", { name: "放大二维码" }).click();
-    const dialog = page.getByRole("dialog", { name: "支付宝付款二维码" });
-    const close = dialog.getByRole("button", { name: "关闭对话框" });
+    const dialog = page.getByRole("dialog", { name: "付款二维码", exact: true });
+    const close = dialog.getByRole("button", { name: "关闭二维码", exact: true });
     await expect(close).toBeInViewport();
     await dialog.locator("[data-qr-dialog-body]").evaluate(element => element.scrollTop = element.scrollHeight);
     await expect(close).toBeInViewport();
