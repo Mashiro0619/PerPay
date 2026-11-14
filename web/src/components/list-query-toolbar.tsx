@@ -377,12 +377,12 @@ export function ListQueryToolbar({
                 <SheetTitle>列表显示</SheetTitle>
               </SheetHeader>
               <div className="flex min-h-0 flex-1 flex-col overflow-hidden" data-list-display-scroll>
-                <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overscroll-contain px-4 pb-4" data-list-display-body>
+                <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overscroll-contain px-4 pt-1 pb-4" data-list-display-body>
                   <ListDensityOptions />
                   {!summary && <Separator />}
                   <ListColumnsSlot display />
                 </div>
-                <SheetFooter className="mt-auto shrink-0 border-t bg-background pt-3 pb-[max(1rem,env(safe-area-inset-bottom))]">
+                <SheetFooter className="mt-auto shrink-0 border-t bg-popover pt-3 pb-[max(1rem,env(safe-area-inset-bottom))]">
                   <SheetClose render={<Button type="button" />}>完成</SheetClose>
                 </SheetFooter>
               </div>

@@ -177,7 +177,7 @@ export function ListFilterSheet({
             });
           }}
         >
-          <FieldGroup className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4" data-list-filter-body>
+          <FieldGroup className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-1 pb-4" data-list-filter-body>
             {filters.map((filter) => (
               <Field key={filter.key}>
                 <FieldLabel htmlFor={id + filter.key}>
@@ -266,7 +266,7 @@ export function ListFilterSheet({
               </ToggleGroup>
             </Field></>}
           </FieldGroup>
-          <SheetFooter className="mt-auto shrink-0 flex-row justify-end border-t bg-background pt-3 pb-[max(1rem,env(safe-area-inset-bottom))]">
+          <SheetFooter className="mt-auto shrink-0 flex-row justify-end border-t bg-popover pt-3 pb-[max(1rem,env(safe-area-inset-bottom))]">
             <SheetClose render={<Button type="button" variant="outline" />}>
               取消
             </SheetClose>
