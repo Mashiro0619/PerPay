@@ -193,6 +193,14 @@ export function OverlayHost({ routes }: { routes?: ReactNode }) {
     else nestedModals.current.delete(id);
   }, []);
   const registerStep = useCallback((id: string, open: boolean, size: OverlaySize = "md") => {
+    const focused = document.activeElement;
+    const shell = title.current?.closest<HTMLElement>("[data-overlay-content]");
+    if (focused instanceof HTMLElement && shell?.contains(focused)) {
+      const region = focused.closest<HTMLElement>("[data-overlay-primary], [data-overlay-step]");
+      const leavingRegion = region && (open ? region.dataset.overlayStep !== id : region.dataset.overlayStep === id);
+      // Keep focus on the visible shell while its current region is hidden or removed.
+      if (leavingRegion) shell.focus({ preventScroll: true });
+    }
     setSteps(previous => {
       const existing = previous.find(step => step.id === id);
       if (open) return existing ? existing.size === size ? previous : previous.map(step => step.id === id ? { id, size } : step) : [...previous, { id, size }];
@@ -215,12 +223,10 @@ export function OverlayHost({ routes }: { routes?: ReactNode }) {
   }, []);
   const requestStepFocus = useCallback((target: () => HTMLElement | null) => {
     pendingStepFocus.current = target;
-    requestAnimationFrame(() => requestAnimationFrame(restoreStepFocus));
+    requestAnimationFrame(restoreStepFocus);
   }, [restoreStepFocus]);
   useLayoutEffect(() => {
-    // Base UI restores its popup on the next frame when the hidden action blurs.
-    // Let that frame finish before consuming the requested return target.
-    if (overlay?.hasOverlay) requestAnimationFrame(() => requestAnimationFrame(restoreStepFocus));
+    if (overlay?.hasOverlay) restoreStepFocus();
     else pendingStepFocus.current = null;
   }, [activeStep?.id, overlay?.hasOverlay, restoreStepFocus]);
   const stepContext = useMemo(() => ({ portal: stepPortal, activeId: activeStep?.id ?? null, register: registerStep, restoreFocus: requestStepFocus }), [stepPortal, activeStep?.id, registerStep, requestStepFocus]);

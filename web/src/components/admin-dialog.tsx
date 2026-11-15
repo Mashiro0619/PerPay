@@ -107,8 +107,11 @@ export function DialogContent({ className, kind = "form", size, scrollMode = "co
   useLayoutEffect(() => {
     if (!step || !register) return;
     register(step.id, step.open, stepSize);
-    return () => register(step.id, false);
   }, [step?.id, step?.open, stepSize, register]);
+  useLayoutEffect(() => {
+    if (!step || !register) return;
+    return () => register(step.id, false);
+  }, [step?.id, register]);
   if (step && !steps?.portal) return null;
   const stepHidden = !!step && steps?.activeId !== step.id;
   // Reset Tailwind's translation variables too: CSS minification can merge
