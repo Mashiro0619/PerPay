@@ -19,6 +19,7 @@ function mount(path = "/sites/site_test/settings/basic", failSave = false, field
   let rejectFields = !!fieldErrors;
   let saved = structuredClone(initial), defaults = structuredClone(policy);
   let failRead = false;
+  let deleted = false;
   let delayedRead: ((snapshot: Site) => Promise<Response>) | null = null;
   let delayedDelete: (() => Promise<Response>) | null = null;
   let delayedNavigation: (() => Promise<null>) | null = null;
@@ -60,6 +61,8 @@ function mount(path = "/sites/site_test/settings/basic", failSave = false, field
       } satisfies ListSiteOverviewResponse);
     }
     if (path === "/api/admin/v1/sites") return json({ data: [saved], page: { next_cursor: null } });
+    if (path === "/api/admin/v1/sites/" + saved.client_id && deleted)
+      return json({ error: { code: "site_not_found", message: "业务网站不存在。" } }, 404);
     if (failRead) throw new TypeError("latest configuration unavailable");
     if (delayedRead) {
       const read = delayedRead;
@@ -82,6 +85,7 @@ function mount(path = "/sites/site_test/settings/basic", failSave = false, field
       saved = { ...saved, revision: saved.revision + 1, configuration };
     },
     failReads(value: boolean) { failRead = value; },
+    deleteRemote() { deleted = true; },
     delayNextDelete() {
       let release!: () => void;
       delayedDelete = () => new Promise(resolve => {
@@ -264,7 +268,9 @@ describe("business website management", () => {
     const view = mount("/sites/site_test/settings/basic", true); const user = userEvent.setup();
     const name = await screen.findByLabelText("业务网站名称"); await user.clear(name); await user.type(name, "失败后保留");
     await user.click(screen.getByRole("button", { name: "保存业务网站" }));
-    await screen.findByRole("alert");
+    expect(await screen.findByText("操作结果待确认")).toBeVisible();
+    expect(screen.getByRole("button", { name: "读取最新配置并核对" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "保存业务网站" })).toBeDisabled();
     expect(name).toHaveValue("失败后保留"); expect(view.writes).toHaveLength(1);
     expect(queryClient.getMutationCache().getAll().some(m => m.state.isPaused)).toBe(false);
     await queryClient.resumePausedMutations(); expect(view.writes).toHaveLength(1);
@@ -629,7 +635,34 @@ describe("website field feedback", () => {
     await waitFor(() => expect(view.router.state.location.pathname).toBe("/sites"));
     expect(queryClient.getQueryData(["site-editor", "site_test"])).toBeUndefined();
   });
-  it.each(["/orders", "/sites/site_test/settings/basic?view=changed"])("keeps the selected destination after a late deletion response: %s", async destination => {
+  it("stops waiting after leaving the editor and rereads the deleted website on return", async () => {
+    const view = mount(), user = userEvent.setup(), pending = view.delayNextDelete();
+    const siteReads = () => view.fetchMock.mock.calls.filter(([request]) =>
+      request.method === "GET" && new URL(request.url).pathname === "/api/admin/v1/sites/site_test",
+    ).length;
+    await user.click(await screen.findByRole("button", { name: "删除空业务网站" }));
+    await user.click(await screen.findByRole("button", { name: "确认" }));
+    await waitFor(() => expect(view.writes.filter(write => write.method === "DELETE")).toHaveLength(1));
+    const deletion = view.fetchMock.mock.calls.find(([request]) => request.method === "DELETE")![0];
+    const snapshot = queryClient.getQueryData(["site-editor", "site_test"]);
+    await act(async () => { await view.router.navigate("/orders"); });
+    expect(deletion.signal.aborted).toBe(true);
+    expect(queryClient.getQueryState(["site-editor", "site_test"])?.isInvalidated).toBe(true);
+    expect(screen.getByRole("heading", { name: "订单目标页" })).toBeVisible();
+    view.deleteRemote();
+    await act(async () => { pending.release(); });
+    expect(view.router.state.location.pathname).toBe("/orders");
+    expect(queryClient.getQueryData(["site-editor", "site_test"])).toBe(snapshot);
+    expect(queryClient.getQueryState(["site-editor", "site_test"])?.isInvalidated).toBe(true);
+    const readsBeforeReturn = siteReads();
+    await act(async () => { await view.router.navigate("/sites/site_test/settings/basic"); });
+    expect(await screen.findByText("业务网站不存在。")).toBeVisible();
+    expect(siteReads()).toBe(readsBeforeReturn + 1);
+    expect(screen.queryByRole("textbox", { name: "业务网站名称" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "保存业务网站" })).not.toBeInTheDocument();
+  });
+  it("keeps the changed editor location after a confirmed late deletion", async () => {
+    const destination = "/sites/site_test/settings/basic?view=changed";
     const view = mount(), user = userEvent.setup(), pending = view.delayNextDelete();
     queryClient.setQueryData(["workspace-site", "site_test"], { data: initial });
     for (const key of ["sites", "site-overview", "settings"]) queryClient.setQueryData([key], { data: [] });

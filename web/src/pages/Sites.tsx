@@ -244,6 +244,9 @@ function ExistingSiteEditor() {
     !["basic", "collection", "orders", "integration", "display"].includes(section)
   )
     return <ErrorNotice error={new Error("网站设置分组不存在")} />;
+  if (query.error instanceof ApiError && query.error.status === 404 && query.error.code === "site_not_found") {
+    return <ErrorNotice scope="page" error={query.error} retry={() => { void query.refetch(); }} />;
+  }
   return (
     <QueryView query={query}>
       {(data) => (
