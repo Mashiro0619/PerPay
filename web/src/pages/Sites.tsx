@@ -968,7 +968,7 @@ function SiteEditor({
           else if (!open) { setConfirmation(null); if (isSecretConfirmation) hideSecret(); }
         }}
       >
-        <AlertDialogContent finalFocus={() => requiresSecretReview ? reloadTrigger.current : isSecretConfirmation ? secretOrigin.current : null}>
+        <AlertDialogContent finalFocus={() => secretDialog !== null ? false : requiresSecretReview ? reloadTrigger.current : isSecretConfirmation ? secretOrigin.current : null}>
           <AlertDialogHeader>
             <AlertDialogTitle>
               {isSecretConfirmation ? secretActionName(confirmation) + "？"
