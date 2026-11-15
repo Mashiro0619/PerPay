@@ -19,7 +19,7 @@ import {
 
 // JSDOM has no layout engine. Check that the coarse-pointer rules actually match
 // the composed DOM slots, in addition to the real-browser geometry checks.
-const css = readFileSync(resolve(process.cwd(), "web/src/styles.css"), "utf8");
+const css = readFileSync(resolve(process.cwd(), "web/src/styles/primitives.css"), "utf8");
 const sheet = new CSSStyleSheet();
 sheet.insertRule(css.slice(
   css.indexOf("@media (pointer: coarse)"),

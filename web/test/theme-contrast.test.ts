@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-const css = readFileSync(resolve(process.cwd(), "web/src/styles.css"), "utf8");
+const css = readFileSync(resolve(process.cwd(), "web/src/styles/theme.css"), "utf8");
 function variables(selector: string) {
   const content = css.slice(css.indexOf(selector + " {")).split("}")[0]!;
   return Object.fromEntries(
