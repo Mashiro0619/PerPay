@@ -60,7 +60,7 @@ describe("checkout QR recovery", () => {
     render(<CheckoutApp initial={initial()} />);
     fireEvent.click(screen.getByRole("button", { name: "放大二维码" }));
     await act(async () => { await vi.advanceTimersByTimeAsync(0); });
-    expect(screen.getByRole("dialog", { name: "支付宝付款二维码" })).toBeVisible();
+    expect(screen.getByRole("dialog", { name: "付款二维码" })).toBeVisible();
     fireEvent.error(screen.getByRole("img", { name: "放大的支付宝付款二维码" }));
     await act(async () => { await vi.advanceTimersByTimeAsync(200); });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
