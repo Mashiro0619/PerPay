@@ -81,6 +81,9 @@ function mount(
   const fetchMock = vi.fn(async (request: Request) => {
     const path = new URL(request.url).pathname;
     if (path === "/api/admin/v1/sessions") return json({ data: [] });
+    if (path === "/api/admin/v1/alipay-accounts") return json({ data: [] });
+    if (path === "/api/admin/v1/sites")
+      return json({ data: [], page: { next_cursor: null } });
     if (path === "/api/admin/v1/session")
       return json({
         data: {
@@ -358,8 +361,9 @@ describe("navigation and draft protection", () => {
     const actions = await screen.findByRole("menu", { name: "页面操作" });
     const testPayment = within(actions).getByRole("menuitem", { name: "测试收款" });
     await user.click(testPayment);
+    const amount = await screen.findByLabelText("测试金额（元）");
     const payment = await screen.findByRole("dialog", { name: "测试收款" });
-    expect(within(payment).getByLabelText("测试金额（元）")).toBeVisible();
+    expect(amount).toBeVisible();
     await user.click(within(payment).getByRole("button", { name: "取消" }));
     await waitFor(() => expect(more).toHaveFocus());
     expect(screen.queryByRole("menu", { name: "页面操作" })).not.toBeInTheDocument();
@@ -493,11 +497,12 @@ describe("navigation and draft protection", () => {
     expect(screen.getByRole("combobox", { name: "统计周期" })).toHaveTextContent("近 90 天");
   });
   it("sends an unconfigured instance to its next required setup step", async () => {
+    queryClient.removeQueries({ queryKey: ["alipay-accounts"], exact: true });
     const { router } = mount({ path: "/" });
     expect(
       await screen.findByRole("navigation", { name: "配置步骤" }),
     ).toBeVisible();
-    expect(router.state.location.pathname).toMatch(/^\/settings\/onboarding\//);
+    await waitFor(() => expect(router.state.location.pathname).toBe("/settings/onboarding/accounts"));
   });
   it("protects category changes and sidebar navigation, then discards only on confirmation", async () => {
     const { router } = mount();
@@ -677,29 +682,34 @@ describe("overview layout", () => {
   });
 });
 
-describe("page actions in the shared header", () => {
+describe("responsive page actions", () => {
   it.each([false, true])(
-    "places settings actions before appearance without duplicates (mobile: %s)",
+    "keeps settings actions together and moves them into the mobile menu without duplicates (mobile: %s)",
     async (mobile) => {
       const { container, router } = mount({ mobile, configured: true });
       await screen.findByRole("link", { name: "编辑查账设置" });
-      const header = container.querySelector("header")!;
+      const header = container.querySelector<HTMLElement>(".site-header")!;
+      const pageHeading = screen.getByRole("heading", { name: "系统设置", level: 1 }).closest<HTMLElement>("[data-page-heading]")!;
       if (mobile) {
         expect(within(header).queryByRole("link", { name: "配置向导" })).not.toBeInTheDocument();
         await userEvent.click(within(header).getByRole("button", { name: "页面操作" }));
       }
-      const actions = mobile ? await screen.findByRole("menu", { name: "页面操作" }) : header;
+      const actions = mobile ? await screen.findByRole("menu", { name: "页面操作" }) : pageHeading;
       const wizard = within(actions).getByRole(mobile ? "menuitem" : "link", { name: "配置向导" });
       const refresh = within(actions).getByRole(mobile ? "menuitem" : "button", { name: "刷新" });
-      const theme = within(actions).getByRole(mobile ? "menuitem" : "button", { name: /外观/ });
       expect(
-        wizard.compareDocumentPosition(theme) &
+        wizard.compareDocumentPosition(refresh) &
           Node.DOCUMENT_POSITION_FOLLOWING,
       ).toBeTruthy();
-      expect(
-        refresh.compareDocumentPosition(theme) &
-          Node.DOCUMENT_POSITION_FOLLOWING,
-      ).toBeTruthy();
+      if (mobile) {
+        const theme = within(actions).getByRole("menuitem", { name: /外观/ });
+        expect(refresh.compareDocumentPosition(theme) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      } else {
+        expect(within(header).getByRole("button", { name: /外观/ })).toBeVisible();
+        expect(within(header).queryByRole("link", { name: "配置向导" })).not.toBeInTheDocument();
+        expect(within(header).queryByRole("button", { name: "刷新" })).not.toBeInTheDocument();
+        expect(within(pageHeading).queryByRole("button", { name: /外观/ })).not.toBeInTheDocument();
+      }
       expect(screen.getAllByRole(mobile ? "menuitem" : "button", { name: "刷新" })).toHaveLength(1);
       expect(screen.getAllByRole(mobile ? "menuitem" : "link", { name: "配置向导" })).toHaveLength(1);
       await act(async () => {
@@ -727,16 +737,15 @@ describe("page actions in the shared header", () => {
       expect(
         within(header).queryByRole("link", { name: "配置向导" }),
       ).not.toBeInTheDocument();
-      const emptyActions = header.querySelector("[data-page-header-actions]");
       if (mobile) expect(within(header).getByRole("button", { name: "页面操作" })).toHaveAttribute("aria-expanded", "false");
-      else expect(emptyActions).toBeEmptyDOMElement();
+      else expect(container.querySelector("[data-page-heading] [data-page-header-actions]")).toBeEmptyDOMElement();
       await act(async () => {
         await router.navigate("/orders");
       });
       expect(
         within(header).queryByRole("button", { name: "刷新" }),
       ).not.toBeInTheDocument();
-      if (!mobile) expect(header.querySelector("[data-page-header-actions]")).toBeEmptyDOMElement();
+      if (!mobile) expect(container.querySelector("[data-page-heading] [data-page-header-actions]")).toBeEmptyDOMElement();
     },
   );
 
@@ -769,10 +778,10 @@ describe("page actions in the shared header", () => {
     ["/system", "/api/admin/v1/system/status", false],
   ] as const)(
     "disables the page refresh while its request is in flight (%s)",
-    async (path, endpoint, inHeader) => {
+    async (path, endpoint, inPageHeading) => {
       const { fetchMock } = mount({ path, configured: true });
       const refresh = await screen.findByRole("button", { name: "刷新" });
-      if (inHeader) expect(refresh.closest("header")).not.toBeNull();
+      if (inPageHeading) expect(refresh.closest("[data-page-heading]")).not.toBeNull();
       else {
         expect(refresh.closest("header")).toBeNull();
         expect(refresh.closest(".runtime-toolbar")).not.toBeNull();

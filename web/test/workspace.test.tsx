@@ -228,9 +228,9 @@ describe("two-level workspace boundaries", () => {
         return undefined;
       },
     });
-    await screen.findByRole("heading", { name: "本站订单" });
+    await screen.findByRole("heading", { name: "本站订单", level: 1 });
     const nav = screen.getByRole("navigation", { name: "主导航" });
-    const selector = screen.getByRole("navigation", { name: "网站选择" });
+    const selector = within(view.container.querySelector<HTMLElement>("[data-slot=sidebar]")!).getByRole("navigation", { name: "查看范围" });
     expect(within(nav).getByRole("link", { name: "通知" })).toHaveAttribute(
       "href",
       "/sites/a/notifications",
@@ -242,7 +242,7 @@ describe("two-level workspace boundaries", () => {
     expect(
       screen.queryByRole("button", { name: "切换后台" }),
     ).not.toBeInTheDocument();
-    expect(within(screen.getByRole("navigation", { name: "全局管理" })).getByRole("link", { name: "业务网站" })).toHaveAttribute(
+    expect(within(screen.getByRole("navigation", { name: "全局管理" })).getByRole("link", { name: "网站管理" })).toHaveAttribute(
       "href",
       "/sites?selected_site=a",
     );
@@ -255,7 +255,7 @@ describe("two-level workspace boundaries", () => {
     await waitFor(() =>
       expect(view.router.state.location.pathname).toBe("/sites/b/orders"),
     );
-    await screen.findByRole("heading", { name: "本站订单" });
+    await screen.findByRole("heading", { name: "本站订单", level: 1 });
     await waitFor(() => expect(document.title).toContain("网站 B"));
     expect(within(selector).getByRole("link", { name: "网站 B" })).toHaveAttribute(
       "aria-current",
@@ -292,7 +292,8 @@ it("fixes a test-payment request to A while switching to B and retries the origi
   });
   const user = userEvent.setup();
   await user.click(await screen.findByRole("button", { name: "测试收款" }));
-  expect(await within(await screen.findByRole("dialog", { name: "测试收款" })).findByText("a", { exact: true })).toBeVisible();
+  await screen.findByLabelText("测试金额（元）");
+  expect(within(screen.getByRole("dialog", { name: "测试收款" })).getByText("a", { exact: true })).toBeVisible();
   expect(screen.queryByLabelText("搜索业务网站")).not.toBeInTheDocument();
   const create = screen.getByRole("button", { name: "创建测试订单" });
   await waitFor(() => expect(create).toBeEnabled());
@@ -352,8 +353,8 @@ it("keeps a global test-payment dialog and its original request through selectio
   render(<QueryClientProvider client={queryClient}><RouterProvider router={router} /></QueryClientProvider>);
   const user = userEvent.setup();
   await user.click(screen.getByRole("button", { name: "测试收款" }));
+  const picker = await screen.findByRole("combobox", { name: "业务网站" });
   const dialog = await screen.findByRole("dialog", { name: "测试收款" });
-  const picker = within(dialog).getByRole("combobox", { name: "业务网站" });
   await user.click(picker);
   await user.click(await screen.findByRole("option", { name: "网站 A" }));
   const create = within(dialog).getByRole("button", { name: "创建测试订单" });
@@ -472,7 +473,7 @@ it.each([
     });
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "测试收款" }));
-    const create = screen.getByRole("button", { name: "创建测试订单" });
+    const create = await screen.findByRole("button", { name: "创建测试订单" });
     await waitFor(() => expect(create).toBeEnabled());
     await user.click(create);
     await waitFor(() => expect(writes).toHaveLength(1));

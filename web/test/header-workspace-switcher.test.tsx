@@ -48,9 +48,9 @@ function mountHeader({
 }
 
 async function openSwitcher(user: ReturnType<typeof userEvent.setup>) {
-  const trigger = await screen.findByRole("button", { name: "切换网站，当前网站 A" });
+  const trigger = await screen.findByRole("button", { name: "切换查看范围，当前网站 A" });
   await user.click(trigger);
-  const menu = await screen.findByRole("menu", { name: "切换网站" });
+  const menu = await screen.findByRole("menu", { name: "查看范围" });
   await within(menu).findByRole("menuitem", { name: "网站 B" });
   return { trigger, menu };
 }
@@ -60,12 +60,12 @@ describe("desktop breadcrumb website switching", () => {
     mountHeader({ width: 1024 });
     const user = userEvent.setup();
     const { trigger, menu } = await openSwitcher(user);
-    expect(trigger.closest('[aria-label="页面路径"]')).not.toBeNull();
+    expect(trigger.closest('[aria-label="查看范围"]')).not.toBeNull();
     expect(within(menu).getByRole("menuitem", { name: "网站 A" })).toHaveAttribute("aria-current", "location");
     expect(within(menu).getByRole("menuitem", { name: "网站 B" })).toHaveAttribute("href", "/sites/b/orders");
     expect(within(menu).getByRole("menuitem", { name: "全部网站" })).toHaveAttribute("href", "/orders");
     await user.keyboard("{Escape}");
-    await waitFor(() => expect(screen.queryByRole("menu", { name: "切换网站" })).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByRole("menu", { name: "查看范围" })).not.toBeInTheDocument());
     expect(trigger).toHaveFocus();
   });
 
@@ -76,13 +76,13 @@ describe("desktop breadcrumb website switching", () => {
     const previousLocation = view.router.state.location;
     await user.click(within(menu).getByRole("menuitem", { name: "网站 A" }));
     expect(view.router.state.location).toBe(previousLocation);
-    expect(screen.getByRole("menu", { name: "切换网站" })).toBe(menu);
+    expect(screen.getByRole("menu", { name: "查看范围" })).toBe(menu);
     await user.click(within(menu).getByRole("menuitem", { name: "网站 B" }));
     await waitFor(() => expect(view.router.state.location.pathname).toBe("/sites/b/orders"));
     const search = new URLSearchParams(view.router.state.location.search);
     expect(Object.fromEntries(search)).toEqual({ payment: "UNPAID", q: "keyword" });
-    await waitFor(() => expect(screen.queryByRole("menu", { name: "切换网站" })).not.toBeInTheDocument());
-    expect(await screen.findByRole("button", { name: "切换网站，当前网站 B" })).toBeEnabled();
+    await waitFor(() => expect(screen.queryByRole("menu", { name: "查看范围" })).not.toBeInTheDocument());
+    expect(await screen.findByRole("button", { name: "切换查看范围，当前网站 B" })).toBeEnabled();
     await act(async () => { await view.router.navigate(-1); });
     await waitFor(() => expect(view.router.state.location.key).toBe(previousLocation.key));
   });
@@ -106,7 +106,7 @@ describe("desktop breadcrumb website switching", () => {
     await user.click(within(menu).getByRole("menuitem", { name: "网站 B" }));
     await waitFor(() => expect(view.router.state.navigation.state).toBe("loading"));
     expect(view.router.state.location.pathname).toBe("/sites/a/orders");
-    expect(screen.getByRole("menu", { name: "切换网站" })).toBe(menu);
+    expect(screen.getByRole("menu", { name: "查看范围" })).toBe(menu);
     expect(view.container.querySelector("#main-content")).toHaveAttribute("inert");
     await user.click(within(menu).getByRole("menuitem", { name: "网站 A" }));
     await waitFor(() => expect(view.router.state.navigation.state).toBe("idle"));
@@ -157,10 +157,10 @@ describe("desktop breadcrumb website switching", () => {
           : json({ data: [site("a"), site("b")], page: { next_cursor: null } });
     } });
     const user = userEvent.setup();
-    const trigger = await screen.findByRole("button", { name: "切换网站，当前网站 A" });
+    const trigger = await screen.findByRole("button", { name: "切换查看范围，当前网站 A" });
     trigger.focus();
     await user.keyboard("{Enter}");
-    const menu = await screen.findByRole("menu", { name: "切换网站" });
+    const menu = await screen.findByRole("menu", { name: "查看范围" });
     const more = await within(menu).findByRole("menuitem", { name: "加载更多网站" });
     await user.keyboard("{End}");
     expect(more).toHaveFocus();
@@ -185,10 +185,11 @@ describe("desktop breadcrumb website switching", () => {
     { path: "/system?selected_site=a", width: 1440, label: "全局" },
   ])("keeps the existing header on $path at $width px", async ({ path, width, label }) => {
     const view = mountHeader({ path, width });
-    const breadcrumb = await screen.findByRole("navigation", { name: "页面路径" });
+    await screen.findByRole("button", { name: "切换导航" });
+    const breadcrumb = within(view.container.querySelector<HTMLElement>(".site-header")!).getByRole("navigation", { name: "查看范围" });
     await waitFor(() => expect(breadcrumb).toHaveTextContent(label));
-    expect(within(breadcrumb).queryByRole("button", { name: /^切换网站，当前/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole("menu", { name: "切换网站" })).not.toBeInTheDocument();
+    expect(within(breadcrumb).queryByRole("button", { name: /^切换查看范围，当前/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menu", { name: "查看范围" })).not.toBeInTheDocument();
     expect(view.router.state.location.pathname).toBe(path.split("?")[0]);
   });
 });

@@ -1,10 +1,14 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
+import { queryClient } from "../src/api/client";
 import { clearOnboardingDeferrals, isOnboardingDeferred } from "../src/lib/onboarding";
 import { instanceId, mountOnboarding, systemStatus } from "./onboarding-fixture";
 
-beforeEach(() => clearOnboardingDeferrals());
+beforeEach(() => {
+  clearOnboardingDeferrals();
+  queryClient.removeQueries({ queryKey: ["alipay-accounts"], exact: true });
+});
 const pathIs = (view: ReturnType<typeof mountOnboarding>, step: string) => waitFor(() => expect(view.router.state.location.pathname).toBe("/settings/onboarding/" + step));
 const edit = (label: string, value: string) => fireEvent.change(screen.getByLabelText(label), { target: { value } });
 
@@ -64,9 +68,9 @@ describe("first collection onboarding", () => {
   });
   it("defers only this instance in the tab and clears the deferral on logout", async () => {
     const view = mountOnboarding();
-    await screen.findByRole("link", { name: "稍后配置" });
+    await screen.findByRole("link", { name: "稍后继续" });
     const user = userEvent.setup();
-    await user.click(screen.getByRole("link", { name: "稍后配置" }));
+    await user.click(screen.getByRole("link", { name: "稍后继续" }));
     await screen.findByRole("link", { name: "继续配置" });
     expect(view.router.state.location.pathname).toBe("/");
     expect(isOnboardingDeferred(instanceId)).toBe(true);

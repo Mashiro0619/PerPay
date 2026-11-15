@@ -79,10 +79,9 @@ describe("context-preserving secondary dialogs", () => {
     expect(trigger).toHaveTextContent("测试收款");
     const user = userEvent.setup();
     await user.click(trigger);
+    const amount = await screen.findByLabelText("测试金额（元）");
     const dialog = await screen.findByRole("dialog", { name: "测试收款" });
-    expect(within(dialog).getByLabelText("测试金额（元）")).toHaveValue(
-      "0.01",
-    );
+    expect(amount).toHaveValue("0.01");
     expect(dialog.querySelector("[data-overlay-footer]")).toHaveClass("shrink-0");
     expect(view.router.state.location.pathname).toBe("/");
     expect(view.writes()).toHaveLength(0);
