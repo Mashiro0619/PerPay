@@ -215,10 +215,12 @@ export function OverlayHost({ routes }: { routes?: ReactNode }) {
   }, []);
   const requestStepFocus = useCallback((target: () => HTMLElement | null) => {
     pendingStepFocus.current = target;
-    requestAnimationFrame(restoreStepFocus);
+    requestAnimationFrame(() => requestAnimationFrame(restoreStepFocus));
   }, [restoreStepFocus]);
   useLayoutEffect(() => {
-    if (overlay?.hasOverlay) restoreStepFocus();
+    // Base UI restores its popup on the next frame when the hidden action blurs.
+    // Let that frame finish before consuming the requested return target.
+    if (overlay?.hasOverlay) requestAnimationFrame(() => requestAnimationFrame(restoreStepFocus));
     else pendingStepFocus.current = null;
   }, [activeStep?.id, overlay?.hasOverlay, restoreStepFocus]);
   const stepContext = useMemo(() => ({ portal: stepPortal, activeId: activeStep?.id ?? null, register: registerStep, restoreFocus: requestStepFocus }), [stepPortal, activeStep?.id, registerStep, requestStepFocus]);
