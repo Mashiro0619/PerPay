@@ -66,19 +66,29 @@ test("empty reminders stay compact and give recent orders the full dashboard wid
       const records = document.querySelector(".overview-records")!.getBoundingClientRect();
       const work = document.querySelector(".overview-work-panel")!.getBoundingClientRect();
       const orders = document.querySelector(".overview-orders-panel")!.getBoundingClientRect();
-      const grid = document.querySelector(".site-overview-grid")!.getBoundingClientRect();
+      const gridElement = document.querySelector<HTMLElement>(".site-overview-grid")!;
+      const grid = gridElement.getBoundingClientRect();
+      const gridStyle = getComputedStyle(gridElement);
       const cards = [...document.querySelectorAll(".site-overview-grid > li")].map(element => element.getBoundingClientRect());
+      const contentLeft = grid.left + gridElement.clientLeft;
+      const contentRight = contentLeft + gridElement.clientWidth;
       return {
         recordsWidth: records.width, workHeight: work.height, ordersWidth: orders.width,
         ordersBelowWork: orders.top >= work.bottom,
-        sitesFillRow: Math.abs(cards.at(-1)!.right - grid.right) < 1,
+        siteColumns: gridStyle.gridTemplateColumns.split(" ").map(Number.parseFloat).filter(width => width > 0).length,
+        siteContentWidth: gridElement.clientWidth, siteGap: Number.parseFloat(gridStyle.columnGap),
+        siteCardWidths: cards.map(card => card.width),
+        sitesContained: cards.every(card => card.left >= contentLeft - 1 && card.right <= contentRight + 1),
         clipped: document.documentElement.scrollWidth > innerWidth,
       };
     });
     expect(geometry.ordersWidth).toBe(geometry.recordsWidth);
     expect(geometry.ordersBelowWork).toBe(true);
     expect(geometry.workHeight).toBeLessThan(width < 768 ? 100 : 72);
-    expect(geometry.sitesFillRow).toBe(true);
+    expect(geometry.siteColumns).toBe(width < 1024 ? 1 : 2);
+    const siteCardWidth = (geometry.siteContentWidth - (geometry.siteColumns - 1) * geometry.siteGap) / geometry.siteColumns;
+    for (const cardWidth of geometry.siteCardWidths) expect(Math.abs(cardWidth - siteCardWidth)).toBeLessThanOrEqual(1);
+    expect(geometry.sitesContained).toBe(true);
     expect(geometry.clipped).toBe(false);
     await expect(orders.getByText("PerPay 确认", { exact: true })).toHaveCount(0);
     if (width >= 1440) {
@@ -116,6 +126,10 @@ test.describe("touch overview links", () => {
       expect(targets.length).toBeGreaterThan(0);
       expect(targets.filter(target => target.width < MIN_TOUCH_TARGET_SIZE || target.height < MIN_TOUCH_TARGET_SIZE)).toEqual([]);
       await record(page, info, { width, touchTargets: targets });
+      // The chart follows the reminder list on mobile. Its selected control must
+      // be in the viewport for the audit's paint and hit-test evidence.
+      await page.getByRole("group", { name: "趋势指标", exact: true }).scrollIntoViewIfNeeded();
+      await page.clock.runFor(100);
       await audit(page, info, "overview-touch-" + width);
     }
   });
