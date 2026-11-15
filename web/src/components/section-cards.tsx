@@ -65,7 +65,7 @@ export function SectionCards({
                 className="flex min-w-0 items-center justify-between gap-1.5"
               >
                 {card.description ? <span>{card.title}</span> : card.title}
-                {card.description && !pending && (
+                {card.description && (
                   <Popover>
                     <PopoverTrigger render={<Button variant="ghost" size="icon-sm" aria-label={card.title + "统计口径"} />}>
                       <Info aria-hidden="true" />
@@ -89,6 +89,7 @@ export function SectionCards({
                 aria-label={pending || card.href ? undefined : `${card.title}：${card.value}`}
                 className={cn(
                   "overview-metric-value min-w-0 text-xl font-semibold whitespace-nowrap tabular-nums focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+                  card.href && "[@media(pointer:coarse)]:min-h-[40px]",
                   !card.href && "overflow-x-auto",
                 )}
               >

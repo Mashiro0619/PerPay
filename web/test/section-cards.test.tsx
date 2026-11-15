@@ -64,12 +64,19 @@ describe("overview metric keyboard access", () => {
     expect(screen.getByRole("button", { name: "卡片后续操作" })).toHaveFocus();
   });
 
-  it("keeps loading placeholders out of keyboard navigation and does not name stale values", async () => {
+  it("keeps metric definitions reachable while loading without focusing placeholders or naming stale values", async () => {
     mount(true);
     const user = userEvent.setup();
     expect(screen.queryByText("¥9,876,543,210.12")).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/今日确认金额：/)).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /统计口径/ })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /统计口径/ })).toHaveLength(2);
+    await user.tab();
+    expect(screen.getByRole("button", { name: "今日确认金额统计口径" })).toHaveFocus();
+    await user.keyboard("{Enter}");
+    expect(screen.getByText("按 PerPay 的确认时间汇总，不是支付宝账单合计。", { exact: true })).toBeVisible();
+    await user.keyboard("{Escape}");
+    await user.tab();
+    expect(screen.getByRole("button", { name: "今日收款确认笔数统计口径" })).toHaveFocus();
     await user.tab();
     expect(screen.getByRole("button", { name: "卡片后续操作" })).toHaveFocus();
   });
