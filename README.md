@@ -40,17 +40,20 @@ PerPay 将下单、展示收款码、查询支付宝账单和通知业务网站�
 
 以下截图中的网站、商品、付款人和交易编号都是专门生成的示例数据。
 
-### 全部网站总览
-
-集中查看所有网站的今日收款、趋势和待处理数量。
-
-![PerPay 全部网站总览：今日指标、收款趋势与待处理数量](docs/screenshots/dashboard-light.png)
-
-### 单网站工作台
-
-选择一个业务网站，查看商品、订单金额和付款状态。
-
-![PerPay 单网站订单：商品、金额与付款状态](docs/screenshots/workspace-site.png)
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <h3>全部网站总览</h3>
+      <p>集中查看所有网站的今日收款、趋势和待处理数量。</p>
+      <a href="docs/screenshots/dashboard-light.png"><img src="docs/screenshots/dashboard-light.png" alt="PerPay 全部网站总览：今日指标、收款趋势与待处理数量" width="100%"></a>
+    </td>
+    <td width="50%" valign="top">
+      <h3>单网站工作台</h3>
+      <p>选择一个业务网站，查看商品、订单金额和付款状态。</p>
+      <a href="docs/screenshots/workspace-site.png"><img src="docs/screenshots/workspace-site.png" alt="PerPay 单网站订单：商品、金额与付款状态" width="100%"></a>
+    </td>
+  </tr>
+</table>
 
 ## 部署前准备
 
