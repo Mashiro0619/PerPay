@@ -57,6 +57,12 @@ function createDockRegistry(update: (dock: ToastDock | null) => void) {
       // A footer outside its scroll window starts reserving space as it enters view.
       const barTop = selected.rect.bottom <= top ? bottom : Math.min(selected.rect.top, bottom);
       const gap = Math.max(8, (Number.parseFloat(getComputedStyle(document.documentElement).fontSize) || 16) * 0.75);
+      const spaceAboveDialog = top - viewportTop - 2 * gap;
+      // Keep compact content clear when there is room above the dialog.
+      if (selected.surface.dataset.adminDialog === "compact" && spaceAboveDialog >= 48) {
+        update({ bottom: window.innerHeight - top + gap, maxHeight: spaceAboveDialog });
+        return;
+      }
       const spaceBelowFooter = bottom - Math.max(selected.rect.bottom, top) - 2 * gap;
       if (spaceBelowFooter >= 48) {
         update({ bottom: Math.max(gap, window.innerHeight - bottom + gap), maxHeight: spaceBelowFooter });
