@@ -177,7 +177,7 @@ export function ListFilterSheet({
             });
           }}
         >
-          <FieldGroup className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-1 pb-4" data-list-filter-body>
+          <FieldGroup className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-1 pb-4" data-list-filter-body>
             {filters.map((filter) => (
               <Field key={filter.key}>
                 <FieldLabel htmlFor={id + filter.key}>
