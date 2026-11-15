@@ -90,17 +90,14 @@ describe("official shadcn interactive chart", () => {
     const values = container.querySelectorAll("[data-metric-value]");
     expect(values).toHaveLength(1);
     expect(values[0]).toHaveTextContent("¥42,709.37");
+    expect(values[0]).toHaveAttribute("data-value-length", "10");
     expect(screen.getByText("区间累计")).toBeVisible();
     expect(container.querySelector("[data-slot=card-footer]")).toBeNull();
     await userEvent.click(screen.getByRole("button", { name: "新建订单" }));
     expect(values[0]).toHaveTextContent("1,105");
     for (const value of values) {
-      expect(value).not.toHaveClass("overflow-x-auto", "leading-none");
-      expect(value).toHaveClass(
-        "whitespace-normal",
-        "wrap-anywhere",
-        "leading-tight",
-      );
+      expect(value).toHaveClass("trend-value", "leading-tight");
+      expect(value).toHaveAttribute("data-value-length", "5");
     }
     expect(screen.queryByRole("spinbutton")).not.toBeInTheDocument();
   });

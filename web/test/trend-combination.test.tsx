@@ -58,7 +58,7 @@ async function expectTooltip(container: HTMLElement, date: string, amount: strin
     const amountRow = within(tooltip!).getByText("确认金额", { exact: true }).closest(".trend-tooltip-value")!;
     const ordersRow = within(tooltip!).getByText("新建订单", { exact: true }).closest(".trend-tooltip-value")!;
     expect(within(amountRow as HTMLElement).getByText(amount, { exact: true })).toBeVisible();
-    expect(within(ordersRow as HTMLElement).getByText(new RegExp(`^${orders}(?: 笔)?$`))).toBeVisible();
+    expect(within(ordersRow as HTMLElement).getByText(orders + " 笔", { exact: true })).toBeVisible();
     expect(ordersRow).not.toHaveTextContent("¥");
   });
 }
@@ -70,12 +70,12 @@ describe("amount and order combination view", () => {
     await userEvent.setup().click(screen.getByRole("button", { name: "金额与订单" }));
     const summary = screen.getByLabelText("金额与订单汇总");
     expect(value(summary, "amount")).toHaveTextContent("¥98,765.43");
-    expect(value(summary, "orders")).toHaveTextContent("4,321 笔");
+    expect(value(summary, "orders")).toHaveTextContent(/^4,321$/);
     expect(summary.querySelectorAll("[data-metric-value]")).toHaveLength(2);
     expect(within(summary).getByText("确认金额", { exact: true })).toBeVisible();
     expect(within(summary).getByText("新建订单", { exact: true })).toBeVisible();
     expect(screen.getByRole("button", { name: "确认金额" })).toHaveAccessibleDescription("¥98,765.43");
-    expect(screen.getByRole("button", { name: "新建订单" })).toHaveAccessibleDescription("4,321 笔");
+    expect(screen.getByRole("button", { name: "新建订单" })).toHaveAccessibleDescription("4,321");
     expect(screen.getByRole("button", { name: "金额与订单" })).toHaveAccessibleDescription(/确认金额 ¥98,765\.43.*新建订单 4,321 笔/);
     expect(screen.queryByRole("group", { name: "图表类型" })).not.toBeInTheDocument();
     await waitForCombinedChart(container);
@@ -131,7 +131,7 @@ describe("amount and order combination view", () => {
     await userEvent.setup().click(screen.getByRole("button", { name: "金额与订单" }));
     const summary = screen.getByLabelText("金额与订单汇总");
     expect(value(summary, "amount")).toHaveTextContent("¥0.00");
-    expect(value(summary, "orders")).toHaveTextContent("0 笔");
+    expect(value(summary, "orders")).toHaveTextContent(/^0$/);
     expect(screen.queryByText("暂无每日数据")).not.toBeInTheDocument();
     await waitForCombinedChart(container);
     expect(plot(container).querySelectorAll(".recharts-yAxis")).toHaveLength(2);
@@ -201,7 +201,7 @@ describe("amount and order combination view", () => {
     refreshed.orders.created = 9;
     rerender(<ChartAreaInteractive analytics={refreshed} range={30} pending={false} onRangeChange={onRangeChange} />);
     expect(value(screen.getByLabelText("金额与订单汇总"), "amount")).toHaveTextContent("¥1.23");
-    expect(value(screen.getByLabelText("金额与订单汇总"), "orders")).toHaveTextContent("9 笔");
+    expect(value(screen.getByLabelText("金额与订单汇总"), "orders")).toHaveTextContent(/^9$/);
     await waitForCombinedChart(container);
     expect(plot(container)).toBeInTheDocument();
     rerender(<ChartAreaInteractive analytics={undefined} range={30} pending={false} onRangeChange={onRangeChange} />);
