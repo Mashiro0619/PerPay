@@ -48,6 +48,7 @@ async function exerciseSections(page: Page, scope: Locator, group: string, label
   const navigation = await settingsSectionNavigation(scope, group);
   if (navigation.kind === 'select') {
     const trigger = navigation.control;
+    const selectedLabel = trigger.locator('[data-slot="select-value"]');
     const evidence = [];
     for (const label of labels) {
       await trigger.click();
@@ -56,7 +57,7 @@ async function exerciseSections(page: Page, scope: Locator, group: string, label
       const option = page.getByRole('option', { name: label, exact: true });
       evidence.push(await selectOptionFits(option));
       await option.click();
-      await expect(trigger, 'a normal pointer click selects the requested category').toHaveText(label);
+      await expect(selectedLabel, 'a normal pointer click selects the requested category').toHaveText(label);
     }
     await selectSettingsSection(page, scope, group, labels[0]!);
     await trigger.focus();
@@ -67,11 +68,11 @@ async function exerciseSections(page: Page, scope: Locator, group: string, label
     for (let index = 1; index < labels.length; index++) {
       await page.keyboard.press('ArrowDown');
       await expect(choices.nth(index)).toBeFocused();
-      await expect(trigger, 'arrow keys leave the selected category unchanged until Enter').toHaveText(labels[0]!);
+      await expect(selectedLabel, 'arrow keys leave the selected category unchanged until Enter').toHaveText(labels[0]!);
       evidence.push(await selectOptionFits(choices.nth(index)));
     }
     await page.keyboard.press('Enter');
-    await expect(trigger).toHaveText(labels.at(-1)!);
+    await expect(selectedLabel).toHaveText(labels.at(-1)!);
     await expect(trigger).toBeFocused();
     return { mode: 'select', evidence };
   }

@@ -71,6 +71,7 @@ test.describe("narrow settings and overview controls remain usable", () => {
     await page.evaluate(() => document.documentElement.style.fontSize = "200%");
     await page.evaluate(() => document.fonts.ready);
     const category = page.getByRole("combobox", { name: "支付宝账号配置分组", exact: true });
+    const selectedLabel = category.locator('[data-slot="select-value"]');
     await expect(page.getByRole("tablist", { name: "支付宝账号配置分组", exact: true })).toHaveCount(0);
     const triggerGeometry = await completeSelectValue(category, page);
     if (interaction === "tap") await category.tap(); else await category.click();
@@ -79,7 +80,7 @@ test.describe("narrow settings and overview controls remain usable", () => {
     await page.clock.runFor(100);
     const optionGeometry = await expectTouchTarget(collection);
     if (interaction === "tap") await collection.tap(); else await collection.click();
-    await expect(category).toHaveText("收款码");
+    await expect(selectedLabel).toHaveText("收款码");
     await expect(category).toHaveAttribute("aria-expanded", "false");
     await expect(page.getByRole("textbox", { name: "支付宝收款码内容", exact: true })).toBeVisible();
     await category.focus();
@@ -88,10 +89,10 @@ test.describe("narrow settings and overview controls remain usable", () => {
     await page.keyboard.press("ArrowUp");
     const application = page.getByRole("option", { name: "应用信息", exact: true });
     await expect(application).toBeFocused();
-    await expect(category, "arrow keys do not change the selected category before Enter").toHaveText("收款码");
+    await expect(selectedLabel, "arrow keys do not change the selected category before Enter").toHaveText("收款码");
     await expect(collection).toHaveAttribute("aria-selected", "true");
     await page.keyboard.press("Enter");
-    await expect(category).toHaveText("应用信息");
+    await expect(selectedLabel).toHaveText("应用信息");
     await expect(category).toBeFocused();
     await expect(page.getByRole("button", { name: "导入已有应用私钥（可选）", exact: true })).toBeVisible();
     expect(writes).toEqual([]);

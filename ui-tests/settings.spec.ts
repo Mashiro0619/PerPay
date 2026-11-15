@@ -153,8 +153,9 @@ test("website categories preserve keyboard activation across desktop tabs and th
   await expect(choices.last()).toHaveAttribute("aria-selected", "true");
   await page.setViewportSize({ width: 360, height: 844 });
   const category = page.getByRole("combobox", { name: "网站设置分组", exact: true });
+  const selectedLabel = category.locator('[data-slot="select-value"]');
   await expect(category).toBeVisible();
-  await expect(category).toHaveText("收银台展示");
+  await expect(selectedLabel).toHaveText("收银台展示");
   await expect(tabs).toHaveCount(0);
   const phoneUrl = page.url(), phoneScroll = await page.evaluate(() => window.scrollY);
   await category.focus();
@@ -167,10 +168,10 @@ test("website categories preserve keyboard activation across desktop tabs and th
   await expect(options.nth(1)).toBeFocused();
   expect(page.url()).toBe(phoneUrl);
   expect(await page.evaluate(() => window.scrollY)).toBe(phoneScroll);
-  await expect(category).toHaveText("收银台展示");
+  await expect(selectedLabel).toHaveText("收银台展示");
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(manifest.origin + "/admin" + settingsRoute + "/collection");
-  await expect(category).toHaveText("收款账号");
+  await expect(selectedLabel).toHaveText("收款账号");
   await expect(category).toBeFocused();
   await record(page, info, { feature: "website-category-keyboard-activation", evidence, desktopEnterNavigated: true, selectedPreservedAfterResize: true, phoneEnterNavigated: true });
 });

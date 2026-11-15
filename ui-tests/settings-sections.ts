@@ -14,7 +14,7 @@ export async function settingsSectionNavigation(scope: Scope, group: string) {
 
 export async function expectSettingsSection(scope: Scope, group: string, section: string) {
   const navigation = await settingsSectionNavigation(scope, group);
-  if (navigation.kind === "select") await expect(navigation.control).toHaveText(section);
+  if (navigation.kind === "select") await expect(navigation.control.locator('[data-slot="select-value"]')).toHaveText(section);
   else await expect(navigation.control.getByRole("tab", { name: section, exact: true })).toHaveAttribute("aria-selected", "true");
 }
 
