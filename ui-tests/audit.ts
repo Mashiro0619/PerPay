@@ -4,7 +4,7 @@ import { writeFileSync } from "node:fs";
 import { expect } from "./fixtures";
 import { measureAxisContrast, resolveSvgContrast } from "./contrast-evidence";
 import { resolveDialogDescriptionContrast } from "./dialog-contrast-evidence";
-import { resolveDetailTextContrast, resolveScrollingTabContrast } from "./detail-contrast-evidence";
+import { resolveDetailTextContrast, resolveScrollingTabContrast, resolveToastTitleContrast } from "./detail-contrast-evidence";
 export async function audit(page: Page, info: TestInfo, id: string) {
   const activeTechnicalDialog = await page.locator("[data-technical-dialog]:visible").count() > 0;
   const builder = new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"]);
@@ -21,13 +21,16 @@ export async function audit(page: Page, info: TestInfo, id: string) {
   const descriptionReviews = await resolveDialogDescriptionContrast(page, result);
   const detailReviews = await resolveDetailTextContrast(page, result);
   const tabReviews = await resolveScrollingTabContrast(page, result);
+  const toastReviews = await resolveToastTitleContrast(page, result);
   const contrastReviews = svgReviews.map(review => {
     const description = !review.resolved && descriptionReviews.find(item => JSON.stringify(item.target) === JSON.stringify(review.target));
     const described = description ? { ...review, resolved: description.resolved, htmlDescription: description.measurement } : review;
     const detail = !described.resolved && detailReviews.find(item => JSON.stringify(item.target) === JSON.stringify(review.target));
     const detailed = detail ? { ...described, resolved: detail.resolved, detailText: detail.measurement } : described;
     const tab = !detailed.resolved && tabReviews.find(item => JSON.stringify(item.target) === JSON.stringify(review.target));
-    return tab ? { ...detailed, resolved: tab.resolved, scrollingTab: tab.measurement } : detailed;
+    const tabbed = tab ? { ...detailed, resolved: tab.resolved, scrollingTab: tab.measurement } : detailed;
+    const toast = !tabbed.resolved && toastReviews.find(item => JSON.stringify(item.target) === JSON.stringify(review.target));
+    return toast ? { ...tabbed, resolved: toast.resolved, toastText: toast.measurement } : tabbed;
   });
   const unresolvedContrast = contrastReviews.filter(review => !review.resolved);
   const path = info.outputPath(id + "-accessibility.json");
@@ -36,7 +39,7 @@ export async function audit(page: Page, info: TestInfo, id: string) {
     undetermined: result.incomplete, excluded: result.inapplicable.map(rule => rule.id), manualReviewEvidence: { svgAxes: axes,
       colorContrastIncomplete: { nodeCount: contrastReviews.length, resolvedCount: contrastReviews.length - unresolvedContrast.length,
         unresolvedCount: unresolvedContrast.length, nodes: contrastReviews },
-      note: "Raw axe incomplete results are retained. SVG imgNode cases use axis paint/geometry evidence. Selected ToggleGroup bgOverlap cases require opaque, settled decoration and verified plain text or a non-overlapping decorative icon with a plain label. Plain HTML descriptions, detail text and horizontal tabs use actual foreground compositing on an opaque background, per-character hit and clipping evidence. Text can additionally be proven readable after using a real scrollable ancestor, with original scroll positions restored; tab review changes only horizontal scrolling. Keyboard tab visibility is verified separately. Hidden clipping, low contrast, unsupported paint and overlapping paint remain unresolved. Other uncertain nodes remain unresolved." } }, null, 2));
+      note: "Raw axe incomplete results are retained. SVG imgNode cases use axis paint/geometry evidence. Selected ToggleGroup bgOverlap cases require opaque, settled decoration and verified plain text or a non-overlapping decorative icon with a plain label. Plain HTML descriptions, detail text and horizontal tabs use actual foreground compositing on an opaque background, per-character hit and clipping evidence. Visible plain toast titles use the same proof without scrolling. Text can additionally be proven readable after using a real scrollable ancestor, with original scroll positions restored; tab review changes only horizontal scrolling. Keyboard tab visibility is verified separately. Hidden clipping, low contrast, unsupported paint and overlapping paint remain unresolved. Other uncertain nodes remain unresolved." } }, null, 2));
   await info.attach(id + "-accessibility", { path, contentType: "application/json" });
   expect.soft(result.violations, page.url()).toEqual([]);
   if (await surface.locator(".recharts-surface").count()) expect.soft(axes.length, "SVG tick labels were measured").toBeGreaterThan(0);

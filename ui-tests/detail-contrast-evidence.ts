@@ -2,11 +2,14 @@ import type { AxeResults } from "axe-core";
 import type { Page } from "@playwright/test";
 
 /** Measure actual text runs on an opaque surface; uncertain paint stays unresolved. */
-export function measureDetailTextContrast(element: Element, scope: "detail" | "tabs" = "detail") {
+export function measureDetailTextContrast(element: Element, scope: "detail" | "tabs" | "toast" = "detail") {
   const detail = element.closest("[data-overlay-detail], [data-technical-dialog]") ?? (element.matches("h1")
     ? element.closest('[data-overlay-record="true"] [data-overlay-primary] > [data-slot="dialog-header"]') : null);
   const tabScroller = element.closest("[data-settings-tabs-scroll], .audit-view-scroll");
+  const toast = element.closest('[data-slot="toast"][role="dialog"][aria-modal="false"]');
   const eligible = scope === "tabs" ? tabScroller && element.matches('button[role="tab"][data-slot="tabs-trigger"]') && element.getAttribute("aria-disabled") !== "true" && !element.hasAttribute("disabled")
+    : scope === "toast" ? toast && element.matches('h2[data-slot="toast-title"]') && element.childElementCount === 0 &&
+      toast.closest('[data-slot="toast-viewport"][role="region"]') && !toast.matches('[data-limited], [data-starting-style], [data-ending-style]')
     : detail && element.matches('p, h1, h2, h3, h4, h5, h6, dt, dd, span, a, div[data-slot$="-description"], div[data-slot="item-title"]');
   if (!eligible ||
     [...element.querySelectorAll("*")].some(node => !["SPAN", "TIME", "A", "STRONG", "EM", "B", "I", "CODE", "BR", "SMALL"].includes(node.tagName))) return null;
@@ -118,15 +121,15 @@ export function measureDetailTextContrast(element: Element, scope: "detail" | "t
       passed: characters.length > 0 && characters.every(character => character.contained && character.hits.every(hit => hit.passed) && !character.overlappingPaint.length) &&
         !conflicts.length && contrast !== null && contrast >= 4.5 });
   }
-  return { kind: scope === "tabs" ? "opaque-tab-text" as const : "opaque-detail-text" as const, text: element.textContent, box: element.getBoundingClientRect().toJSON(), viewport, runs,
+  return { kind: scope === "tabs" ? "opaque-tab-text" as const : scope === "toast" ? "opaque-toast-text" as const : "opaque-detail-text" as const, text: element.textContent, box: element.getBoundingClientRect().toJSON(), viewport, runs,
     passed: runs.length > 0 && runs.every(run => run.passed) };
 }
 
-async function resolveTextContrast(page: Page, result: AxeResults, scope: "detail" | "tabs") {
+async function resolveTextContrast(page: Page, result: AxeResults, scope: "detail" | "tabs" | "toast") {
   const reviews = [];
   for (const rule of result.incomplete.filter(rule => rule.id === "color-contrast")) for (const node of rule.nodes) {
     const reasons = [...node.any, ...node.all, ...node.none].map(check => check.data?.messageKey);
-    if (!reasons.length || !reasons.every(reason => reason === "elmPartiallyObscuring" || reason === "elmPartiallyObscured")) continue;
+    if (!reasons.length || !reasons.every(reason => reason === "elmPartiallyObscuring" || scope !== "toast" && reason === "elmPartiallyObscured")) continue;
     const selector = node.target.length === 1 && typeof node.target[0] === "string" ? node.target[0] : null;
     const locator = selector ? page.locator(selector) : null;
     if (!locator || await locator.count() !== 1) continue;
@@ -134,7 +137,7 @@ async function resolveTextContrast(page: Page, result: AxeResults, scope: "detai
     if (!initial) continue;
     let revealed: ReturnType<typeof measureDetailTextContrast> = null;
     let scrollChanges: Array<{ tag: string; detail: boolean; before: { left: number; top: number }; after: { left: number; top: number } }> = [];
-    if (!initial.passed && initial.runs.every(run => !run.conflicts.length && run.contrast !== null && run.contrast >= run.requiredRatio)) {
+    if (scope !== "toast" && !initial.passed && initial.runs.every(run => !run.conflicts.length && run.contrast !== null && run.contrast >= run.requiredRatio)) {
       const scrollers = await locator.evaluateHandle(element => {
         const result = [];
         for (let ancestor = element.parentElement; ancestor; ancestor = ancestor.parentElement) result.push({ element: ancestor, top: ancestor.scrollTop, left: ancestor.scrollLeft });
@@ -171,3 +174,4 @@ async function resolveTextContrast(page: Page, result: AxeResults, scope: "detai
 
 export function resolveDetailTextContrast(page: Page, result: AxeResults) { return resolveTextContrast(page, result, "detail"); }
 export function resolveScrollingTabContrast(page: Page, result: AxeResults) { return resolveTextContrast(page, result, "tabs"); }
+export function resolveToastTitleContrast(page: Page, result: AxeResults) { return resolveTextContrast(page, result, "toast"); }
