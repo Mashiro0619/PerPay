@@ -186,8 +186,8 @@ describe("work item table", () => {
 const attemptLabels: Record<WebhookAttemptOutcome, string> = {
   STARTED: "投递已开始",
   ACKNOWLEDGED: "通知已确认",
-  RETRYABLE_FAILURE: "等待自动重试",
-  PERMANENT_FAILURE: "已停止自动重试",
+  RETRYABLE_FAILURE: "投递失败（可重试错误）",
+  PERMANENT_FAILURE: "投递失败（不可重试错误）",
   OUTCOME_UNKNOWN: "投递结果未知",
 };
 
