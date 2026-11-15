@@ -249,10 +249,12 @@ describe("collection QR image upload", () => {
     const { fetchMock } = mount();
     const picker = await screen.findByLabelText("选择收款码二维码图片");
     await userEvent.setup().upload(picker, imageFile());
-    expect(screen.getByRole("button", { name: "正在识别…" })).toHaveAttribute(
+    const upload = screen.getByRole("button", { name: /正在识别…$/, busy: true });
+    expect(upload).toHaveAttribute(
       "aria-busy",
       "true",
     );
+    expect(upload).toBeDisabled();
     expect(screen.getByRole("button", { name: "保存草稿" })).toBeDisabled();
     fireEvent.submit(picker.closest("form")!);
     expect(writes(fetchMock)).toHaveLength(0);
@@ -312,7 +314,7 @@ describe("collection QR image upload", () => {
       if (source === "picker")
         fireEvent.change(picker, { target: { files: [imageFile()] } });
       else
-        dropFiles(screen.getByRole("button", { name: "正在识别…" }), [
+        dropFiles(screen.getByRole("button", { name: /正在识别…$/, busy: true }), [
           imageFile(),
         ]);
       expect(previousSignal.aborted).toBe(true);
@@ -397,7 +399,8 @@ describe("collection QR image upload", () => {
     );
     await screen.findByText("已识别");
     await user.click(screen.getByRole("button", { name: "保存草稿" }));
-    expect(await screen.findByText("配置版本冲突，请刷新")).toBeVisible();
+    expect(await screen.findByText("账号配置已在其他会话中更新")).toBeVisible();
+    expect(screen.getByRole("button", { name: "重新读取账号" })).toBeEnabled();
     expect(screen.getByLabelText("支付宝收款码内容")).toHaveValue(
       recognizedLink,
     );
