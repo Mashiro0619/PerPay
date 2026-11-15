@@ -99,10 +99,15 @@ describe("支付宝账号设置", () => {
       last_check: { ok: true, checked_at: first.created_at, message: "查账连接正常" } };
     mount(<AlipayAccountEditor initial={account} onBack={() => {}} />);
     const user = userEvent.setup();
-    expect(screen.getByText("连接检查通过")).toBeVisible();
     expect(screen.getByText("待补充：收款码")).toBeVisible();
+    await user.click(screen.getByRole("tab", { name: "使用情况" }));
+    const lastCheck = screen.getByText("最近连接检查").closest("dl")!;
+    expect(within(lastCheck).getByText("通过")).toBeVisible();
+    expect(lastCheck.querySelector("time")).toHaveAttribute("datetime", first.created_at);
+    expect(screen.getByText("查账连接正常")).toBeVisible();
     await user.click(screen.getByRole("button", { name: "继续配置收款码" }));
     expect(screen.getByRole("tab", { name: "收款码" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("button", { name: "上传二维码" })).toBeVisible();
     await user.click(screen.getByRole("tab", { name: "基本信息" }));
     const name = screen.getByRole("textbox", { name: "账号名称" });
     await user.clear(name); await user.type(name, "配置草稿");
@@ -289,7 +294,11 @@ describe("支付宝账号设置", () => {
     expect(screen.getByLabelText("账号名称")).toHaveValue("主账号（更新）");
     expect(screen.getByText("账号已保存")).toBeVisible();
     await user.click(screen.getByRole("button", { name: "重新检查" }));
-    expect(await screen.findByText("连接检查通过")).toBeVisible();
+    const lastCheck = screen.getByText("最近连接检查").closest("dl")!;
+    expect(await within(lastCheck).findByText("通过")).toBeVisible();
+    expect(lastCheck.querySelector("time")).toHaveAttribute("datetime", "2026-10-29T00:02:00Z");
+    expect(screen.getByText("查账连接正常")).toBeVisible();
+    expect(screen.queryByText("连接检查未通过")).not.toBeInTheDocument();
     expect(writes.map((write) => write.path)).toEqual([
       "/api/admin/v1/alipay-accounts/" + first.id,
       "/api/admin/v1/alipay-accounts/" + first.id + "/check",

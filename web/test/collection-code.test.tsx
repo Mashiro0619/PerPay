@@ -30,7 +30,12 @@ const collectionAccount = { ...alipayAccount, revision: 3, code_payload: alipayA
 const accountPath = "/settings/accounts/" + collectionAccount.id;
 const imageFile = () =>
   new File(["image"], "支付宝收款码.png", { type: "image/png" });
-const uploadZone = () => screen.getByRole("group", { name: "二维码图片上传" });
+const uploadZone = () => screen.getByRole("group", { name: "已配置的收款码" });
+
+async function openCodeContent() {
+  await userEvent.setup().click(await screen.findByRole("button", { name: "查看内容" }));
+  return screen.getByRole("textbox", { name: "支付宝收款码内容" });
+}
 
 function dropFiles(target: Element, files: File[]) {
   const event = createEvent.drop(target, {
@@ -50,17 +55,18 @@ function pendingDecode() {
   return { promise, resolve, reject };
 }
 
-function mount(conflict = false) {
+function mount(conflict = false, codePayload: string | null = collectionAccount.code_payload) {
+  const account = { ...collectionAccount, code_payload: codePayload };
   const fetchMock = vi.fn(async (request: Request) => {
     if (request.method === "PUT") {
       if (conflict)
         return apiError("alipay_account_revision_conflict", "配置版本冲突，请刷新");
       const { revision, ...configuration } = await request.clone().json();
       return json({
-        data: { ...collectionAccount, ...configuration, revision: revision + 1 },
+        data: { ...account, ...configuration, revision: revision + 1 },
       });
     }
-    if (new URL(request.url).pathname.endsWith("/alipay-accounts/" + collectionAccount.id)) return json({ data: collectionAccount });
+    if (new URL(request.url).pathname.endsWith("/alipay-accounts/" + collectionAccount.id)) return json({ data: account });
     return json({ data: settings });
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -105,7 +111,7 @@ describe("collection QR image upload", () => {
       "https://example.invalid/not-alipay",
     );
     const view = mount();
-    const field = await screen.findByLabelText("支付宝收款码内容");
+    const field = await openCodeContent();
     fireEvent.change(field, {
       target: { value: "https://qr.alipay.com/retained-draft" },
     });
@@ -119,13 +125,21 @@ describe("collection QR image upload", () => {
     expect(writes(view.fetchMock)).toHaveLength(0);
   });
 
-  it("puts a clickable upload card before a separate compact editor", async () => {
-    mount();
+  it.each([null, collectionAccount.code_payload])("shows the upload or replacement action before the compact editor for %s", async codePayload => {
+    mount(false, codePayload);
     const field = await screen.findByLabelText("支付宝收款码内容");
-    const upload = screen.getByRole("button", { name: "上传二维码" });
-    expect(upload).toHaveAccessibleDescription("PNG、JPG、WebP，最大 10 MB");
-    expect(uploadZone()).toContainElement(upload);
-    expect(uploadZone()).not.toContainElement(field);
+    const upload = screen.getByRole("button", { name: codePayload ? "更换二维码" : "上传二维码" });
+    const zone = screen.getByRole("group", { name: codePayload ? "已配置的收款码" : "二维码图片上传" });
+    if (codePayload) {
+      expect(screen.getByText("收款码已配置")).toBeVisible();
+      expect(field).not.toBeVisible();
+      await openCodeContent();
+    } else {
+      expect(upload).toHaveAccessibleDescription("PNG、JPG、WebP，最大 10 MB");
+    }
+    expect(field).toBeVisible();
+    expect(zone).toContainElement(upload);
+    expect(zone).not.toContainElement(field);
     expect(
       upload.compareDocumentPosition(field) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).not.toBe(0);
@@ -143,7 +157,7 @@ describe("collection QR image upload", () => {
     async (source) => {
       vi.mocked(decodeQrImage).mockResolvedValue(recognizedLink);
       const { container, fetchMock } = mount();
-      const field = await screen.findByLabelText("支付宝收款码内容");
+      const field = await openCodeContent();
       const user = userEvent.setup();
       expect(screen.queryByLabelText("收银台有效期（秒）")).not.toBeInTheDocument();
       expect(screen.queryByLabelText("应付金额复用等待（秒）")).not.toBeInTheDocument();
@@ -158,7 +172,9 @@ describe("collection QR image upload", () => {
         );
       expect(await screen.findByText("已识别")).toBeVisible();
       expect(field).toHaveValue(recognizedLink);
-      expect(screen.getByText("未保存")).toBeVisible();
+      expect(field).not.toBeVisible();
+      expect(await openCodeContent()).toHaveValue(recognizedLink);
+      expect(screen.getByRole("button", { name: "保存草稿" })).toBeEnabled();
       expect(writes(fetchMock)).toHaveLength(0);
       expect(container.querySelector("style")).toBeNull();
       await waitFor(() => {
@@ -173,10 +189,10 @@ describe("collection QR image upload", () => {
         revision: 3,
         code_payload: recognizedLink,
       });
-      expect(screen.getByLabelText("支付宝收款码内容")).toHaveValue(
+      expect(await openCodeContent()).toHaveValue(
         recognizedLink,
       );
-      expect(screen.queryByText("未保存")).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "保存草稿" })).toBeDisabled();
     },
   );
 
@@ -194,7 +210,8 @@ describe("collection QR image upload", () => {
     expect(picker).not.toHaveAttribute("name");
     await user.upload(picker, file);
     await waitFor(() => expect(decodeQrImage).toHaveBeenCalledTimes(2));
-    expect(screen.queryByText("未保存")).not.toBeInTheDocument();
+    expect(await screen.findByText("已识别")).toBeVisible();
+    expect(screen.getByRole("button", { name: "保存草稿" })).toBeDisabled();
   });
 
   it("keeps existing content on failure and supports retrying the same file", async () => {
@@ -204,7 +221,7 @@ describe("collection QR image upload", () => {
       )
       .mockResolvedValueOnce(recognizedLink);
     const { fetchMock } = mount();
-    const field = await screen.findByLabelText("支付宝收款码内容");
+    const field = await openCodeContent();
     const picker = screen.getByLabelText("选择收款码二维码图片");
     const user = userEvent.setup();
     const file = imageFile();
@@ -213,13 +230,13 @@ describe("collection QR image upload", () => {
       "未识别到二维码",
     );
     expect(
-      screen.getByRole("button", { name: "上传二维码" }),
+      screen.getByRole("button", { name: "更换二维码" }),
     ).toHaveAccessibleDescription(
       /未识别到二维码，请上传清晰、完整的二维码图片。/,
     );
     expect(field).toHaveValue(collectionAccount.code_payload);
     expect(field).not.toHaveAttribute("aria-invalid", "true");
-    expect(screen.queryByText("未保存")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "保存草稿" })).toBeDisabled();
     expect(writes(fetchMock)).toHaveLength(0);
     await user.upload(picker, file);
     expect(await screen.findByText("已识别")).toBeVisible();
@@ -232,7 +249,7 @@ describe("collection QR image upload", () => {
     const { fetchMock } = mount();
     const picker = await screen.findByLabelText("选择收款码二维码图片");
     await userEvent.setup().upload(picker, imageFile());
-    expect(screen.getByRole("button", { name: "上传二维码" })).toHaveAttribute(
+    expect(screen.getByRole("button", { name: "正在识别…" })).toHaveAttribute(
       "aria-busy",
       "true",
     );
@@ -257,7 +274,7 @@ describe("collection QR image upload", () => {
       const pending = pendingDecode();
       vi.mocked(decodeQrImage).mockReturnValue(pending.promise);
       mount();
-      const field = await screen.findByLabelText("支付宝收款码内容");
+      const field = await openCodeContent();
       const user = userEvent.setup();
       if (source === "picker")
         await user.upload(
@@ -295,7 +312,7 @@ describe("collection QR image upload", () => {
       if (source === "picker")
         fireEvent.change(picker, { target: { files: [imageFile()] } });
       else
-        dropFiles(screen.getByRole("button", { name: "上传二维码" }), [
+        dropFiles(screen.getByRole("button", { name: "正在识别…" }), [
           imageFile(),
         ]);
       expect(previousSignal.aborted).toBe(true);
@@ -338,10 +355,10 @@ describe("collection QR image upload", () => {
       await act(async () => {
         await router.navigate(accountPath);
       });
-      expect(screen.getByLabelText("支付宝收款码内容")).toHaveValue(
+      expect(await openCodeContent()).toHaveValue(
         collectionAccount.code_payload,
       );
-      expect(screen.queryByText("未保存")).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "保存草稿" })).toBeDisabled();
       expect(writes(fetchMock)).toHaveLength(0);
     },
   );
@@ -360,7 +377,7 @@ describe("collection QR image upload", () => {
       await screen.findByRole("alertdialog", { name: "放弃未保存的修改？" }),
     ).toBeVisible();
     await user.click(screen.getByRole("button", { name: "继续编辑" }));
-    expect(screen.getByLabelText("支付宝收款码内容")).toHaveValue(
+    expect(await openCodeContent()).toHaveValue(
       recognizedLink,
     );
     await act(async () => { await router.navigate("/settings/backup"); });
@@ -384,7 +401,10 @@ describe("collection QR image upload", () => {
     expect(screen.getByLabelText("支付宝收款码内容")).toHaveValue(
       recognizedLink,
     );
-    expect(screen.getByText("未保存")).toBeVisible();
+    expect(screen.getByRole("button", { name: "保存草稿" })).toBeDisabled();
+    const unload = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(unload);
+    expect(unload.defaultPrevented).toBe(true);
     expect(await writes(fetchMock)[0]!.json()).toMatchObject({
       revision: 3,
       code_payload: recognizedLink,
@@ -399,19 +419,19 @@ describe("collection QR image upload", () => {
     expect(screen.getByLabelText("支付宝收款码内容")).toHaveValue(
       collectionAccount.code_payload,
     );
-    expect(screen.queryByText("未保存")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "保存草稿" })).toBeDisabled();
   });
 
   it("keeps the drag highlight across nested controls and clears it on leaving the target", async () => {
     mount();
     await screen.findByLabelText("支付宝收款码内容");
     const zone = uploadZone();
-    const nestedControl = screen.getByRole("button", { name: "上传二维码" });
+    const nestedControl = screen.getByRole("button", { name: "更换二维码" });
     const dataTransfer = { types: ["Files"], files: [], dropEffect: "none" };
-    expect(screen.getByText("上传二维码")).toBeVisible();
+    expect(screen.getByText("收款码已配置")).toBeVisible();
     fireEvent.dragEnter(zone, { dataTransfer });
     expect(zone).toHaveClass("bg-accent");
-    expect(screen.getByText("松开即可识别")).toBeVisible();
+    expect(screen.getByText("松开即可更换")).toBeVisible();
     fireEvent.dragEnter(nestedControl, { dataTransfer });
     fireEvent.dragLeave(nestedControl, { dataTransfer });
     expect(zone).toHaveClass("bg-accent");
@@ -421,7 +441,7 @@ describe("collection QR image upload", () => {
     expect(dataTransfer.dropEffect).toBe("copy");
     fireEvent.dragLeave(zone, { dataTransfer });
     expect(zone).not.toHaveClass("bg-accent");
-    expect(screen.getByText("上传二维码")).toBeVisible();
+    expect(screen.getByText("收款码已配置")).toBeVisible();
     expect(decodeQrImage).not.toHaveBeenCalled();
   });
 
@@ -429,7 +449,7 @@ describe("collection QR image upload", () => {
     "leaves native %s dragging alone and never fetches dragged links",
     async (type) => {
       const { fetchMock } = mount();
-      const field = await screen.findByLabelText("支付宝收款码内容");
+      const field = await openCodeContent();
       const dataTransfer = {
         types: [type],
         files: [],
@@ -449,7 +469,7 @@ describe("collection QR image upload", () => {
 
   it("rejects multiple dropped files without choosing one or replacing the draft", async () => {
     const { fetchMock } = mount();
-    const field = await screen.findByLabelText("支付宝收款码内容");
+    const field = await openCodeContent();
     expect(
       dropFiles(uploadZone(), [imageFile(), imageFile()]).defaultPrevented,
     ).toBe(true);
@@ -458,7 +478,7 @@ describe("collection QR image upload", () => {
     );
     expect(decodeQrImage).not.toHaveBeenCalled();
     expect(field).toHaveValue(collectionAccount.code_payload);
-    expect(screen.queryByText("未保存")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "保存草稿" })).toBeDisabled();
     expect(writes(fetchMock)).toHaveLength(0);
   });
 
@@ -473,7 +493,7 @@ describe("collection QR image upload", () => {
       const pending = pendingDecode();
       vi.mocked(decodeQrImage).mockReturnValue(pending.promise);
       const { fetchMock } = mount();
-      const field = await screen.findByLabelText("支付宝收款码内容");
+      const field = await openCodeContent();
       dropFiles(uploadZone(), [imageFile()]);
       const signal = vi.mocked(decodeQrImage).mock.calls[0]![1];
       expect(screen.getByRole("button", { name: "保存草稿" })).toBeDisabled();
@@ -492,7 +512,7 @@ describe("collection QR image upload", () => {
       expect(field).toHaveValue(collectionAccount.code_payload);
       expect(screen.getByRole("alert")).toHaveTextContent(message);
       expect(screen.queryByText("已识别")).not.toBeInTheDocument();
-      expect(screen.queryByText("未保存")).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "保存草稿" })).toBeDisabled();
       expect(decodeQrImage).toHaveBeenCalledOnce();
       expect(writes(fetchMock)).toHaveLength(0);
       fireEvent.change(screen.getByLabelText("支付宝收款码内容"), {
@@ -511,7 +531,7 @@ describe("collection QR image upload", () => {
         );
       vi.mocked(decodeQrImage).mockImplementation(actual.decodeQrImage);
       mount();
-      const field = await screen.findByLabelText("支付宝收款码内容");
+      const field = await openCodeContent();
       const file =
         invalid === "format"
           ? new File(["pdf"], "code.pdf", { type: "application/pdf" })
@@ -536,7 +556,7 @@ describe("collection QR image upload", () => {
   it("prevents accidental file navigation outside the target only while the field is mounted", async () => {
     const { unmount } = mount();
     await screen.findByLabelText("支付宝收款码内容");
-    const zone = screen.getByRole("group", { name: "二维码图片上传" });
+    const zone = uploadZone();
     const dataTransfer = { types: ["Files"], files: [], dropEffect: "copy" };
     fireEvent.dragEnter(zone, { dataTransfer });
     const outside = createEvent.dragOver(document.body, { dataTransfer });
@@ -560,7 +580,7 @@ describe("collection QR image upload", () => {
   it("clears the drag highlight when the browser hides file types on dragleave", async () => {
     mount();
     await screen.findByLabelText("支付宝收款码内容");
-    const zone = screen.getByRole("group", { name: "二维码图片上传" });
+    const zone = uploadZone();
     fireEvent.dragEnter(zone, {
       dataTransfer: { types: ["Files"], files: [] },
     });
@@ -582,7 +602,7 @@ describe("collection QR image upload", () => {
 
   it("respects the disabled fieldset while a configuration save is pending", async () => {
     const { fetchMock } = mount();
-    const field = await screen.findByLabelText("支付宝收款码内容");
+    const field = await openCodeContent();
     let finish: (response: Response) => void = () => {};
     fetchMock.mockImplementationOnce(
       () =>
@@ -590,7 +610,7 @@ describe("collection QR image upload", () => {
           finish = resolve;
         }),
     );
-    const zone = screen.getByRole("group", { name: "二维码图片上传" });
+    const zone = uploadZone();
     fireEvent.dragEnter(uploadZone(), {
       dataTransfer: { types: ["Files"], files: [] },
     });
@@ -606,7 +626,7 @@ describe("collection QR image upload", () => {
       dataTransfer: { types: ["Files"], files: [] },
     });
     expect(
-      screen.getByRole("group", { name: "二维码图片上传" }),
+      uploadZone(),
     ).not.toHaveClass("bg-accent");
     expect(dropFiles(uploadZone(), [imageFile()]).defaultPrevented).toBe(true);
     const picker = screen.getByLabelText("选择收款码二维码图片");
@@ -620,18 +640,23 @@ describe("collection QR image upload", () => {
     expect(screen.getByLabelText("支付宝收款码内容")).toBeEnabled();
   });
 
-  it.each(["{Enter}", " "])(
-    "opens the picker with %s from the upload card without adding a duplicate tab stop",
-    async (key) => {
-      mount();
+  it.each([
+    [null, "{Enter}"],
+    [null, " "],
+    [collectionAccount.code_payload, "{Enter}"],
+    [collectionAccount.code_payload, " "],
+  ] as const)(
+    "opens the picker for %s with %s without adding a duplicate tab stop",
+    async (codePayload, key) => {
+      mount(false, codePayload);
       const picker = await screen.findByLabelText("选择收款码二维码图片");
       const choose = vi.spyOn(picker, "click");
-      const upload = screen.getByRole("button", { name: "上传二维码" });
+      const upload = screen.getByRole("button", { name: codePayload ? "更换二维码" : "上传二维码" });
       upload.focus();
       await userEvent.setup().keyboard(key);
       expect(choose).toHaveBeenCalledOnce();
       expect(
-        screen.getByRole("group", { name: "二维码图片上传" }),
+        screen.getByRole("group", { name: codePayload ? "已配置的收款码" : "二维码图片上传" }),
       ).not.toHaveAttribute("tabindex");
       expect(decodeQrImage).not.toHaveBeenCalled();
     },

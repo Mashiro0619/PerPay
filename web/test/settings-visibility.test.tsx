@@ -24,7 +24,7 @@ const sections = [
 
 describe("settings overlay headings", () => {
   it.each([
-    ["collection-policy", "查账设置", "PerPay 查账设置"],
+    ["collection-policy", "查账设置", "查账设置"],
     ["backup", "自动备份", "自动备份"],
     ["display", "界面显示", "界面显示"],
     ["advanced", "高级设置", "高级设置"],
