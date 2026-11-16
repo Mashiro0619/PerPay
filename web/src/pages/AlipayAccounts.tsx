@@ -29,6 +29,7 @@ import { useOverlayCloseGuard, useOverlayContext } from "@/lib/overlay-context";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CollectionCodeField } from "@/components/CollectionCodeField";
 import { CopyValue } from "@/components/copy-value";
+import { SitePicker } from "@/components/site-picker";
 import { ErrorNotice, QueryView } from "@/components/request-state";
 import { useSuccessToast } from "@/components/Feedback";
 import { OperationRecoveryNotice } from "@/components/operation-recovery-notice";
@@ -245,12 +246,27 @@ function AccountPublicKeyField({ value, title = "应用公钥", copyLabel = "复
     <FieldLabel htmlFor={id}>{title}</FieldLabel>
     <InputGroup>
       <InputGroupTextarea id={id} value={value} readOnly rows={3} className="settings-long-text min-w-0 resize-none" spellCheck={false} />
-      <InputGroupAddon align="inline-end" className="self-start">
+      <InputGroupAddon align="block-end" className="justify-end">
         <CopyValue value={value} label={copyLabel} buttonOnly />
       </InputGroupAddon>
     </InputGroup>
     <FieldDescription>上传到对应的支付宝应用，再将支付宝提供的公钥填入下方。</FieldDescription>
   </Field>;
+}
+
+function AccountSiteSettings() {
+  const navigate = useNavigate();
+  return <Collapsible className="flex min-w-0 flex-col gap-3">
+    <div className="flex flex-wrap gap-2">
+      <CollapsibleTrigger render={<Button type="button" variant="outline" size="sm" />}>
+        网站设置
+      </CollapsibleTrigger>
+      <Link to="/sites/new" className={buttonVariants({ variant: "outline", size: "sm" })}>创建业务网站</Link>
+    </div>
+    <CollapsibleContent>
+      <SitePicker value="" onChange={clientId => navigate("/sites/" + clientId + "/settings/collection")} />
+    </CollapsibleContent>
+  </Collapsible>;
 }
 
 export function AlipayAccountEditor({
@@ -505,12 +521,21 @@ export function AlipayAccountEditor({
     ) => {
       if (!saved) throw new Error("请先保存账号，再生成应用密钥。");
       if (historical && action !== "discard") throw new Error("此账号仅保留历史记录，请添加已上线应用的支付宝账号。");
-      const path = { accountId: saved.id };
+      let account = saved;
+      if ((action === "generate" || action === "regenerate") && dirty) {
+        try {
+          account = (await save.mutateAsync(false)).account;
+        } catch (error) {
+          setConfirmation(null);
+          throw error;
+        }
+      }
+      const path = { accountId: account.id };
       if (action === "generate")
         return runOperation(signal => result(
           api.generateAlipayAccountApplicationKey({
             path,
-            body: { revision: saved.revision },
+            body: { revision: account.revision },
             signal,
           }),
         ));
@@ -519,16 +544,16 @@ export function AlipayAccountEditor({
           api.regenerateAlipayAccountApplicationKey({
             path,
             body: {
-              revision: saved.revision,
+              revision: account.revision,
               change_id: keyChangeId,
-              base_fingerprint: saved.application_key_fingerprint!,
+              base_fingerprint: account.application_key_fingerprint!,
             },
             signal,
           }),
         ));
-      const pending = saved.pending_application_key;
+      const pending = account.pending_application_key;
       if (!pending) throw new Error("没有待启用的应用密钥。");
-      const body = { revision: saved.revision, change_id: pending.change_id };
+      const body = { revision: account.revision, change_id: pending.change_id };
       return action === "activate"
         ? runOperation(signal => result(
             api.activateAlipayAccountApplicationKey({
@@ -635,6 +660,7 @@ export function AlipayAccountEditor({
     setDraft((previous) => ({ ...previous, [field]: value }));
     setSavedMessage("");
     save.reset();
+    key.reset();
     check.reset();
     setInitialCheckFailure(undefined);
   }
@@ -906,15 +932,15 @@ export function AlipayAccountEditor({
                     <Field>
                       <FieldLabel>应用公钥</FieldLabel>
                       <FieldDescription>
-                        {privateKey.trim() ? "保存导入的应用私钥后，这里会显示对应的应用公钥。" : saved ? "点击“生成应用密钥”由系统生成密钥对，再将应用公钥上传到支付宝。" : tabbed ? "先填写账号名称，点击“创建账号并继续”，再生成应用密钥。" : "先填写账号名称并保存草稿，再点击“生成应用密钥”。"}
+                        {privateKey.trim() ? "保存导入的应用私钥后，这里会显示对应的应用公钥。" : saved ? "生成应用密钥后，将应用公钥上传到支付宝。" : tabbed ? "先填写账号名称，点击“创建账号并继续”，再生成应用密钥。" : "先填写账号名称并保存草稿，再点击“生成应用密钥”。"}
                       </FieldDescription>
                     </Field>
                   )}
                   {!historical && <div className="flex min-w-0 flex-wrap items-center gap-2" data-account-key-actions>
                     {!pending && !privateKey.trim() && <Button type="button" variant="outline" size="sm"
-                      className="h-auto min-h-8 max-w-full whitespace-normal py-1.5" disabled={editingBlocked || dirty || !saved}
+                      className="h-auto min-h-8 max-w-full whitespace-normal py-1.5" disabled={editingBlocked || !saved}
                       onClick={() => saved?.application_public_key ? setConfirmation("regenerate") : key.mutate("generate")}>
-                      <KeyRound data-icon="inline-start" />{saved?.application_public_key ? "更换应用密钥" : "生成应用密钥"}
+                      <KeyRound data-icon="inline-start" />{dirty ? "保存并" : ""}{saved?.application_public_key ? "更换应用密钥" : "生成应用密钥"}
                     </Button>}
                     {saved && <a data-external-link href={alipayApplicationUrl(draft.app_id)} target="_blank" rel="noopener noreferrer"
                       className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-auto min-h-8 max-w-full whitespace-normal py-1.5")}>打开支付宝应用管理</a>}
@@ -951,14 +977,14 @@ export function AlipayAccountEditor({
                     <Button type="button" disabled={editingBlocked || dirty || !activationKey.trim()} onClick={() => key.mutate("activate")}>验证并启用</Button>
                     <Button type="button" variant="outline" disabled={editingBlocked || dirty} onClick={() => setConfirmation("discard")}>放弃新密钥</Button>
                   </div>}
-                  <FieldDescription>应用私钥保存在服务器，无需上传到支付宝。{dirty && saved ? "先保存当前修改，再操作应用密钥。" : ""}</FieldDescription>
+                  <FieldDescription>应用私钥保存在服务器，无需上传到支付宝。</FieldDescription>
                 </FieldSet>
                 {!pending && <Collapsible open={privateKeyOpen} onOpenChange={setPrivateKeyOpen} className="flex min-w-0 flex-col gap-2">
                   <CollapsibleTrigger
                     render={<Button type="button" variant="outline" size="sm" className="h-auto min-h-8 max-w-full justify-between whitespace-normal py-1.5" />}
                   >
                     <span className="min-w-0">导入已有应用私钥（可选）</span>
-                    <ChevronDown aria-hidden="true" data-icon="inline-end" />
+                    <ChevronDown aria-hidden="true" data-icon="inline-end" className={cn("transition-transform", privateKeyOpen && "rotate-180")} />
                   </CollapsibleTrigger>
                   <FieldDescription>推荐由系统生成应用密钥；仅使用自己已有的密钥时才需要导入。</FieldDescription>
                   <CollapsibleContent>
@@ -969,6 +995,7 @@ export function AlipayAccountEditor({
                       <Textarea
                         id="alipay-private-key"
                         name="private_key"
+                        autoFocus
                         className="settings-long-text"
                         rows={4}
                         value={privateKey}
@@ -1120,11 +1147,9 @@ export function AlipayAccountEditor({
                 ))}
               </div>
             ) : (
-              <>
-                <p className="text-sm text-muted-foreground">尚未分配给网站。</p>
-                {!historical && <Link to="/sites/new" className={cn(buttonVariants({ variant: "outline", size: "sm" }), "self-start")}>创建业务网站</Link>}
-              </>
+              <p className="text-sm text-muted-foreground">尚未分配给网站。</p>
             )}
+            {!historical && <AccountSiteSettings key={saved.id} />}
             </div>
             <Separator />
             <Item size="xs" className="px-0">
@@ -1169,7 +1194,7 @@ export function AlipayAccountEditor({
                 ? "未被使用的账号可以删除。删除后需要重新配置才能使用。"
                 : confirmation === "discard"
                   ? "待启用密钥将被丢弃，当前使用的密钥保持不变。"
-                  : "新密钥按此账号保存。上传到支付宝并验证启用后生效。"}
+                  : `${dirty ? "当前修改会一并保存。" : ""}新密钥按此账号保存。上传到支付宝并验证启用后生效。`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <ErrorNotice error={remove.error || key.error} />

@@ -1316,12 +1316,12 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 }
 [data-overlay-detail] { min-width: 0; }
 @media (forced-colors: none) {
-  :is([data-overlay-detail], [data-admin-dialog-scroll], [data-overlay-step-scroll], [data-technical-dialog] > [data-admin-dialog-body]) {
+  :is([data-overlay-detail], [data-admin-dialog-scroll], [data-overlay-step-scroll], [data-technical-dialog] > [data-admin-dialog-body], [data-account-public-key] textarea) {
     scrollbar-width: thin;
     scrollbar-color: var(--muted-foreground) transparent;
   }
   @supports selector(::-webkit-scrollbar) {
-    :is([data-overlay-detail], [data-admin-dialog-scroll], [data-overlay-step-scroll], [data-technical-dialog] > [data-admin-dialog-body]) {
+    :is([data-overlay-detail], [data-admin-dialog-scroll], [data-overlay-step-scroll], [data-technical-dialog] > [data-admin-dialog-body], [data-account-public-key] textarea) {
       scrollbar-width: auto;
       scrollbar-color: auto;
       &::-webkit-scrollbar { width: 8px; height: 8px; }
