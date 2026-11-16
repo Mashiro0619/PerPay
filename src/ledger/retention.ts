@@ -2,6 +2,8 @@ import type { DatabaseSync } from "node:sqlite";
 import type { AppDatabase } from "../database/database.ts";
 import { parseAmountCents, parseDirection, parseOccurredAtWithPrecision, semanticFingerprint } from "./model.ts";
 import { retainRequestCheckpoints } from "./request-checkpoints.ts";
+import { compactEvidencePayloads } from "./evidence-payloads.ts";
+import { findArchivedLedgerEntry } from "../archive/keys.ts";
 
 export const INGEST_RETENTION_MILLISECONDS = 7 * 24 * 60 * 60 * 1_000;
 export const INGEST_RETENTION_INTERVAL_MILLISECONDS = 60 * 60 * 1_000;
@@ -15,6 +17,8 @@ export interface IngestRetentionResult {
   readonly deletedPages: number;
   readonly deletedEvents: number;
   readonly deletedObservations: number;
+  readonly compactedPayloadRecords?: number;
+  readonly removedPayloads?: number;
   readonly hasMore: boolean;
 }
 
@@ -35,9 +39,12 @@ export function pruneIngestHistory(
 ): IngestRetentionResult {
   if (!Number.isSafeInteger(now) || now < 0) throw new RangeError("ingest retention time is invalid");
   const state = database.read(readState);
-  if (state.last_completed_at !== null &&
-      now - Number(state.last_completed_at) < INGEST_RETENTION_INTERVAL_MILLISECONDS) return EMPTY_RESULT;
-  return database.write(connection => pruneBatch(connection, now));
+  const pruned = state.last_completed_at !== null &&
+      now - Number(state.last_completed_at) < INGEST_RETENTION_INTERVAL_MILLISECONDS
+    ? EMPTY_RESULT : database.write(connection => pruneBatch(connection, now));
+  const payloads = compactEvidencePayloads(database);
+  return { ...pruned, compactedPayloadRecords: payloads.compactedRecords, removedPayloads: payloads.removedPayloads,
+    hasMore: pruned.hasMore || payloads.hasMore };
 }
 
 function readState(connection: DatabaseSync): RetentionState {
@@ -158,6 +165,7 @@ function pruneBatch(connection: DatabaseSync, now: number): IngestRetentionResul
 
 interface EventCandidate {
   ingest_run_id: string;
+  provider_account_key: string;
   raw_event_id: string;
   external_event_id: string | null;
   occurred_at_text: string | null;
@@ -174,7 +182,7 @@ interface EventCandidate {
 
 function retainOriginalOrUnresolvedEvents(connection: DatabaseSync): void {
   // Keep the bounded batch outermost instead of scanning historical raw events.
-  const events = connection.prepare(`SELECT page.ingest_run_id, event.raw_event_id, event.external_event_id,
+  const events = connection.prepare(`SELECT page.ingest_run_id, event.provider_account_key, event.raw_event_id, event.external_event_id,
       event.occurred_at_text, event.amount_text, event.direction_text, event.alipay_order_no,
       event.merchant_order_no, event.trans_memo, event.other_account,
       entry.raw_event_id AS canonical_event_id, entry.semantic_fingerprint AS canonical_fingerprint,
@@ -189,6 +197,9 @@ function retainOriginalOrUnresolvedEvents(connection: DatabaseSync): void {
   const retain = connection.prepare("DELETE FROM ingest_retention_batch WHERE ingest_run_id = ?");
   for (const event of events) {
     if (retainedRuns.has(event.ingest_run_id)) continue;
+    if (event.canonical_fingerprint === null && event.external_event_id !== null) {
+      event.canonical_fingerprint = findArchivedLedgerEntry(connection, event.provider_account_key, event.external_event_id)?.semanticFingerprint ?? null;
+    }
     if (event.canonical_event_id === event.raw_event_id || Number(event.has_conflict) !== 0 || !isKnownDuplicate(event)) {
       retain.run(event.ingest_run_id);
       retainedRuns.add(event.ingest_run_id);

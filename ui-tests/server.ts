@@ -114,7 +114,7 @@ const server = serve({ fetch: async (request, env) => {
 }, hostname: "127.0.0.1", port: Number(new URL(demo.origin).port) });
 try {
   await new Promise<void>((resolve, reject) => { server.once("listening", resolve); server.once("error", reject); });
-} catch (error) { demo.dispose(); throw error; }
+} catch (error) { await demo.dispose(); throw error; }
 process.send({ type: "ready", origin: demo.origin, epoch, routes, extendedRoutes, details, checkouts, directory: demo.directory,
   sessionCookies: login.headers.getSetCookie().map(value => { const entry = value.split(";")[0]!; const index = entry.indexOf("="); return { name: entry.slice(0, index), value: entry.slice(index + 1) }; }) });
 process.on("message", (message: { type: string; time?: number; id?: number; reset?: boolean; checkoutFailure?: 429 | 503 | null }) => {
@@ -126,7 +126,10 @@ let stopping = false;
 function stop() {
   if (stopping) return;
   stopping = true;
-  server.close(() => { demo.dispose(); process.exit(0); });
+  server.close(async () => {
+    try { await demo.dispose(); process.exit(0); }
+    catch (error) { console.error(error); process.exit(1); }
+  });
   if ("closeAllConnections" in server) server.closeAllConnections();
 }
 process.on("disconnect", stop);

@@ -6,6 +6,8 @@ import type { DatabaseSync } from "node:sqlite";
 import type { AppDatabase } from "../database/database.ts";
 import { pruneIngestHistory, type IngestRetentionResult } from "./retention.ts";
 import { reconsiderRetiredResponse } from "./request-checkpoints.ts";
+import { hasEvidencePayloads, readEvidencePayload, storeEvidencePayload } from "./evidence-payloads.ts";
+import { findArchivedLedgerEntry, isArchivedOperation } from "../archive/keys.ts";
 import { appendAuditEvent } from "../database/identity-store.ts";
 import type { AccountLogDetail } from "../infrastructure/alipay/types.ts";
 import {
@@ -788,14 +790,16 @@ export class LedgerStore {
       if (run.status !== "RUNNING") throw new Error("ingest run is already terminal");
       const cursor = requireCursor(connection, run.providerAccountKey, scanLaneForKind(run.scanKind));
       const now = clampIngestWriteTime(connection, run, cursor, requestedNow);
+      const sharedEvidence = hasEvidencePayloads(connection);
+      const storedEvidence = errorEvidence ? storeEvidencePayload(connection, errorEvidence.rawBody) : null;
       const inserted = connection
         .prepare(
           `INSERT INTO ingest_errors(
              ingest_error_id, ingest_run_id, provider_account_key, page_no,
              error_kind, error_code, retryable, http_status, headers_json,
              raw_body, response_fingerprint, trace_id, signature_verified,
-             details_json, occurred_at
-           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             details_json, occurred_at${sharedEvidence ? ", raw_body_reference" : ""}
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?${sharedEvidence ? ", ?" : ""})`,
         )
         .run(
           randomUUID(),
@@ -807,7 +811,7 @@ export class LedgerStore {
           input.retryable ? 1 : 0,
           errorEvidence?.httpStatus ?? null,
           errorEvidence?.headersJson ?? null,
-          errorEvidence?.rawBody ?? null,
+          storedEvidence?.body ?? null,
           errorEvidence?.responseFingerprint ?? null,
           errorEvidence?.traceId ?? null,
           errorEvidence?.signatureVerified === null || errorEvidence === null
@@ -815,6 +819,7 @@ export class LedgerStore {
             : errorEvidence.signatureVerified ? 1 : 0,
           detailsJson,
           now,
+          ...(sharedEvidence ? [storedEvidence?.reference ?? null] : []),
       );
       assertChangedOnce(inserted.changes, "ingest error insert");
       if (retryIntervalMilliseconds !== null) {
@@ -913,9 +918,9 @@ export class LedgerStore {
   getRawPageBody(rawPageId: string): Uint8Array | null {
     return this.#database.read((connection) => {
       const row = connection
-        .prepare("SELECT raw_body FROM provider_raw_pages WHERE raw_page_id = ?")
-        .get(rawPageId) as { raw_body: Uint8Array } | undefined;
-      return row ? new Uint8Array(row.raw_body) : null;
+        .prepare(`SELECT raw_body${hasEvidencePayloads(connection) ? ", raw_body_reference" : ""} FROM provider_raw_pages WHERE raw_page_id = ?`)
+        .get(rawPageId) as { raw_body: Uint8Array; raw_body_reference?: string | null } | undefined;
+      return row ? readEvidencePayload(connection, row.raw_body, row.raw_body_reference) : null;
     });
   }
 
@@ -1089,6 +1094,9 @@ export class LedgerStore {
         });
       }
 
+      if (isArchivedOperation(connection, "LEDGER_CONFLICT", { operationId: input.conflictOperationId, operationKey: `admin:${input.conflictOperationId}` })) {
+        throw new LedgerConflictError("ledger_conflict_operation_conflict", "此流水处理操作已归档，操作编号不能再次使用");
+      }
       const conflict = readConflict(connection, input.conflictId);
       if (conflict === null) {
         throw new LedgerConflictError(
@@ -1620,14 +1628,16 @@ function insertRawEvent(
   now: number,
 ): RawEventRecord & PreparedRawEvent {
   const prepared = prepareRawEvent(detail);
+  const sharedEvidence = hasEvidencePayloads(connection);
+  const storedEvidence = storeEvidencePayload(connection, prepared.rawPayload);
   const inserted = connection
     .prepare(
       `INSERT INTO provider_raw_events(
          raw_event_id, raw_page_id, provider_account_key, ordinal,
          external_event_id, occurred_at_text, amount_text, direction_text,
          alipay_order_no, merchant_order_no, trans_memo, other_account, payload_fingerprint,
-         raw_payload, observed_at
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         raw_payload, observed_at${sharedEvidence ? ", raw_payload_reference" : ""}
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?${sharedEvidence ? ", ?" : ""})`,
     )
     .run(
       prepared.rawEventId,
@@ -1643,8 +1653,9 @@ function insertRawEvent(
       prepared.transMemo,
       prepared.otherAccount,
       prepared.payloadFingerprint,
-      prepared.rawPayload,
+      storedEvidence.body,
       now,
+      ...(sharedEvidence ? [storedEvidence.reference] : []),
     );
   assertChangedOnce(inserted.changes, "provider raw event insert");
   return {
@@ -1785,6 +1796,18 @@ function normalizeAndInsert(
     rawEvent.providerAccountKey,
     rawEvent.externalEventId,
   );
+  const archived = existing ? undefined : findArchivedLedgerEntry(connection, rawEvent.providerAccountKey, rawEvent.externalEventId);
+  if (archived) {
+    if (archived.semanticFingerprint === semantics) return { kind: "archived_duplicate", ledgerEntryId: archived.ledgerEntryId, archiveId: archived.archiveId, rawEventId: rawEvent.rawEventId };
+    const conflict = insertConflict(connection, {
+      providerAccountKey: rawEvent.providerAccountKey, conflictType: "DUPLICATE_EXTERNAL_ID", rawPageId: rawEvent.rawPageId,
+      rawEventId: rawEvent.rawEventId, existingLedgerEntryId: null, externalEventId: rawEvent.externalEventId,
+      existingSemanticFingerprint: archived.semanticFingerprint, incomingSemanticFingerprint: semantics,
+      details: { reason: "已归档流水的内容与本次查询结果不一致", archived_ledger_entry_id: archived.ledgerEntryId, archive_id: archived.archiveId },
+      fingerprintParts: ["DUPLICATE_EXTERNAL_ID", rawEvent.externalEventId, archived.semanticFingerprint, semantics], now,
+    });
+    return { kind: "conflict", conflict, rawEventId: rawEvent.rawEventId };
+  }
   if (existing) {
     const precisionOnlyDifference =
       existing.occurredAt === occurredAt &&
@@ -2147,6 +2170,9 @@ function insertConflictOperation(
     readonly now: number;
   },
 ): LedgerConflictOperation {
+  if (isArchivedOperation(connection, "LEDGER_CONFLICT", { operationId: input.conflictOperationId, operationKey: input.operationKey })) {
+    throw new LedgerConflictError("ledger_conflict_operation_conflict", "此流水处理操作已归档，操作编号不能再次使用");
+  }
   const requestJson = JSON.stringify(ledgerConflictOperationEvidence(input.request));
   if (Buffer.byteLength(requestJson, "utf8") > 8192) {
     throw new RangeError("ledger conflict operation request exceeds the persistence limit");
@@ -2475,7 +2501,7 @@ function retainSegmentPage(
   );
   if (latest === null && existingExact === null) {
     const previousResponseFingerprint = reconsiderRetiredResponse(
-      connection, run.providerAccountKey, requestHash, prepared.responseHash, prepared.now,
+      connection, run.providerAccountKey, requestHash, prepared.responseHash, prepared.now, segment.windowEnd,
     );
     if (previousResponseFingerprint !== null) {
       return { observation: "reconfirmation_required", requestFingerprint: requestHash, previousResponseFingerprint };
@@ -2499,14 +2525,16 @@ function retainSegmentPage(
   let retainedPage = existingExact;
   if (retainedPage === null) {
     const rawPageId = randomUUID();
+    const sharedEvidence = hasEvidencePayloads(connection);
+    const storedEvidence = storeEvidencePayload(connection, prepared.rawBody);
     const inserted = connection
       .prepare(
         `INSERT INTO provider_raw_pages(
            raw_page_id, ingest_run_id, provider_account_key, window_start,
            window_end, page_no, page_size, total_size, has_more,
            request_fingerprint, response_fingerprint, http_status,
-           headers_json, raw_body, trace_id, signature_verified, received_at
-         ) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           headers_json, raw_body, trace_id, signature_verified, received_at${sharedEvidence ? ", raw_body_reference" : ""}
+         ) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?${sharedEvidence ? ", ?" : ""})`,
       )
       .run(
         rawPageId,
@@ -2521,10 +2549,11 @@ function retainSegmentPage(
         prepared.responseHash,
         prepared.evidence.httpStatus,
         prepared.headersJson,
-        prepared.rawBody,
+        storedEvidence.body,
         prepared.evidence.traceId,
         1,
         prepared.now,
+        ...(sharedEvidence ? [storedEvidence.reference] : []),
       );
     assertChangedOnce(inserted.changes, "provider raw segment page insert");
     retainedPage = requireRawPage(connection, rawPageId);
@@ -2749,16 +2778,19 @@ function recordRetiredRequestReconfirmation(
   prepared: PreparedSegmentPage,
   retryIntervalMilliseconds: number,
 ): void {
+  const sharedEvidence = hasEvidencePayloads(connection);
+  const storedEvidence = storeEvidencePayload(connection, prepared.rawBody);
   connection.prepare(`INSERT INTO ingest_errors(
     ingest_error_id, ingest_run_id, provider_account_key, page_no, error_kind, error_code, retryable,
-    http_status, headers_json, raw_body, response_fingerprint, trace_id, signature_verified, details_json, occurred_at
-  ) VALUES (?, ?, ?, 1, 'pagination', 'pagination_reconfirmation_required', 1, ?, ?, ?, ?, ?, 1, ?, ?)`).run(
+    http_status, headers_json, raw_body, response_fingerprint, trace_id, signature_verified, details_json, occurred_at${sharedEvidence ? ", raw_body_reference" : ""}
+  ) VALUES (?, ?, ?, 1, 'pagination', 'pagination_reconfirmation_required', 1, ?, ?, ?, ?, ?, 1, ?, ?${sharedEvidence ? ", ?" : ""})`).run(
     randomUUID(), run.ingestRunId, run.providerAccountKey, prepared.evidence.httpStatus,
-    prepared.headersJson, prepared.rawBody, prepared.responseHash, prepared.evidence.traceId,
+    prepared.headersJson, storedEvidence.body, prepared.responseHash, prepared.evidence.traceId,
     JSON.stringify({ ingest_segment_id: segment.ingestSegmentId, window_start: segment.windowStart,
       window_end: segment.windowEnd, request_fingerprint: request.requestFingerprint,
       previous_response_fingerprint: request.previousResponseFingerprint,
       incoming_response_fingerprint: prepared.responseHash }), prepared.now,
+    ...(sharedEvidence ? [storedEvidence.reference] : []),
   );
   recordIngestScheduleFailure(connection, {
     providerAccountKey: run.providerAccountKey, errorCode: "pagination_reconfirmation_required", retryable: true,

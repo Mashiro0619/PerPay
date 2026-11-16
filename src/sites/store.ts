@@ -195,7 +195,9 @@ export class SiteStore {
         const latest = connection.prepare("SELECT max(created_at) AS at FROM site_client_id_changes WHERE client_id=?").get(clientId)?.at;
         now = integer(Math.max(now, current.updatedAt, latest == null ? 0 : Number(latest)));
       }
-      if (connection.prepare("SELECT 1 FROM payment_orders WHERE api_client_id = ? LIMIT 1").get(clientId)) {
+      const hasArchivedOrders = connection.prepare("SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'archived_order_keys'").get() &&
+        connection.prepare("SELECT 1 FROM archived_order_keys WHERE api_client_id = ? LIMIT 1").get(clientId);
+      if (hasArchivedOrders || connection.prepare("SELECT 1 FROM payment_orders WHERE api_client_id = ? LIMIT 1").get(clientId)) {
         throw new SiteError("site_has_history", "有历史订单的网站不能删除，请使用暂停接单。");
       }
       connection.prepare("UPDATE api_client_config SET enabled = 0, updated_at = max(updated_at, ?) WHERE client_id = ?").run(now, clientId);

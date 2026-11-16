@@ -173,11 +173,11 @@ describe("isolated documentation preview", () => {
       assert.equal(fetchAttempts, 0, "demo requests must not attempt external fetches");
     } finally {
       globalThis.fetch = originalFetch;
-      demo?.dispose();
+      await demo?.dispose();
     }
     assert.ok(demo);
     assert.equal(existsSync(demo.directory), false);
-    demo.dispose(); // Closing twice is safe.
+    await demo.dispose(); // Closing twice is safe.
   });
 
   it("also seeds safely just after Beijing midnight without running the order clock backwards", async () => {
@@ -203,7 +203,7 @@ describe("isolated documentation preview", () => {
       assert.equal(updated.status, 200);
       assert.deepEqual((await updated.json() as { data: unknown }).data, expected);
       assert.deepEqual(checks, ["stable"], "an explicitly supplied update checker serves the read-only metadata request");
-    } finally { demo.dispose(); }
+    } finally { await demo.dispose(); }
   });
 
   it("edits only disposable administrator data with real guards, audit and honest offline checks", async () => {
@@ -254,7 +254,7 @@ describe("isolated documentation preview", () => {
       assert.equal(fetchAttempts, 0);
     } finally {
       globalThis.fetch = originalFetch;
-      demo?.dispose();
+      await demo?.dispose();
     }
     assert.ok(demo);
     assert.equal(existsSync(demo.directory), false);

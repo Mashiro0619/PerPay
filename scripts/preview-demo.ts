@@ -26,6 +26,8 @@ import { systemAnalytics } from "../src/http/system-analytics.ts";
 import { renderCollectionCodeSvg } from "../src/http/web/collection-code.ts";
 import { OfficialUpdateChecker, UpdateCheckUnavailable } from "../src/update/checker.ts";
 import { ActivityRecorder } from "../src/audit/activity.ts";
+import { createAsyncBackupHealthProvider } from "../src/backup/health.ts";
+import { createApplicationHost } from "../src/maintenance/host.ts";
 import { createAuditContext, runWithAuditContext } from "../src/audit/context.ts";
 import { appendAuditEvent } from "../src/database/identity-store.ts";
 import { APP_VERSION, DATABASE_COMPATIBILITY } from "../src/version.ts";
@@ -66,17 +68,22 @@ export async function createPreviewDemo(options: { port?: number; now?: number; 
   const directory = mkdtempSync(join(temporaryRoot, "perpay-preview-"));
   let database: AppDatabase | undefined;
   let activity: ActivityRecorder | undefined;
-  let disposed = false;
+  let host: Awaited<ReturnType<typeof createApplicationHost>> | undefined;
+  let disposal: Promise<void> | undefined;
   const dispose = () => {
-    if (disposed) return;
-    // Only remove the exact private directory allocated above, never a supplied data path.
-    const target = realpathSync(directory);
-    assert.equal(dirname(target), temporaryRoot);
-    assert.ok(basename(target).startsWith("perpay-preview-"));
-    activity?.stop();
-    database?.close();
-    rmSync(target, { recursive: true, force: true });
-    disposed = true;
+    disposal ??= (async () => {
+      if (host) await host.close();
+      else {
+        activity?.stop();
+        database?.close();
+      }
+      // Only remove the exact private directory allocated above, never a supplied data path.
+      const target = realpathSync(directory);
+      assert.equal(dirname(target), temporaryRoot);
+      assert.ok(basename(target).startsWith("perpay-preview-"));
+      rmSync(target, { recursive: true, force: true });
+    })();
+    return disposal;
   };
   try {
     // Deliberately do not merge process.env: production paths and secrets must not leak in.
@@ -437,59 +444,111 @@ export async function createPreviewDemo(options: { port?: number; now?: number; 
         occurredAt: capturedAt - 30_000, details: { reason: "documentation_preview", exit_code: 0 } });
     });
     activity.flush();
-    activity.start();
-    // Health is explicitly simulated; no scheduler, provider client or webhook transport runs.
-    const healthy = () => ({ enabled: true, state: "healthy" as const, inFlight: false, lastAttemptAt: liveNow() - 3000, lastSuccessAt: liveNow() - 2000, lastErrorCode: null, consecutiveFailures: 0, paymentRevision: settings.instanceSnapshot().paymentRevision });
-    const dependencies: AppDependencies = {
-      config, database: db, activity, identity, settings, sites, orders, ledger, reconciliation, webhookStore: webhooks,
-      startedAt: new Date(capturedAt - 8 * DAY), clock: liveNow, demoMode: true,
-      runtimeStatus: () => ({ configured: true, transitioning: false,
-        paymentRevision: settings.instanceSnapshot().paymentRevision, activeProviderAccountKey: providerAccountKey,
-        scanIntervalMilliseconds: 60_000, maximumSuccessAgeMilliseconds: 120_000 }),
-      ledgerHealth: healthy,
-      accountHealth: () => ({ state: "healthy", lastSuccessAt: liveNow() - 2000, lastErrorCode: null, collectionReady: true }),
-      reconciliationHealth: () => ({ ...healthy(), pendingOrders: systemAnalytics(db, 7, liveNow()).pending.orders, continuationPending: false }),
-      webhookHealth: () => ({ ...healthy(), pendingDeliveries: webhooks.counts().pending, deadLetters: webhooks.counts().dead }),
-      // Default fixtures stay offline. Interactive previews can explicitly supply
-      // the official metadata checker without starting any payment transports.
-      updateChecker: options.updateChecker ?? { check: async () => { throw new UpdateCheckUnavailable(3600); } },
-    };
-    const app = createApp({ ...dependencies, demoMode: !options.interactive });
-    // Payer pages always retain the demo bootstrap and disabled payment probes.
-    const publicApp = options.interactive ? createApp({ ...dependencies, demoMode: true }) : app;
-    const previewInstanceId = db.instanceId();
+    activity.stop();
+    db.close();
+    activity = undefined;
+    database = undefined;
+
+    // Seed once. Maintenance reopens these same files with fresh offline services.
+    host = await createApplicationHost(config, async maintenance => {
+      const currentDb = await AppDatabase.open(config.databasePath, { masterKey: config.masterKey });
+      database = currentDb;
+      let recorder: ActivityRecorder | undefined;
+      try {
+        maintenance.prepareDatabase(currentDb);
+        const currentIdentity = new IdentityService(currentDb, liveNow);
+        await currentIdentity.initialize();
+        const currentSettingsStore = new RuntimeSettingsStore(currentDb, config.masterKey);
+        const currentSettings = new RuntimeSettingsService({ store: currentSettingsStore, verifyProviderApplicationKey: async () => {
+          throw new SettingsError("provider_application_key_verification_failed", "本地演示未连接支付宝，无法检查连接或启用密钥。 当前密钥未更换。");
+        } });
+        currentSettings.initialize();
+        const currentSites = currentSettingsStore.siteStore()!;
+        const currentAccounts = currentSettings.accountService()!;
+        const currentOrders = new OrderService(currentDb, () => currentSettings.instanceSnapshot(), liveNow, currentSites, undefined, {
+          accounts: () => currentAccounts.store().snapshots(), available: () => true,
+        });
+        currentOrders.initialize();
+        const currentLedger = new LedgerStore(currentDb);
+        const currentReconciliation = new ReconciliationStore(currentDb);
+        const currentWebhooks = new WebhookStore(currentDb);
+        const currentActivity = new ActivityRecorder({ database: currentDb, clock: liveNow });
+        recorder = currentActivity;
+        activity = currentActivity;
+        currentActivity.start();
+        // Health is explicitly simulated; no scheduler, provider client or webhook transport runs.
+        const healthy = () => ({ enabled: true, state: "healthy" as const, inFlight: false, lastAttemptAt: liveNow() - 3000, lastSuccessAt: liveNow() - 2000, lastErrorCode: null, consecutiveFailures: 0, paymentRevision: currentSettings.instanceSnapshot().paymentRevision });
+        const dependencies: AppDependencies = {
+          config, database: currentDb, activity: currentActivity, identity: currentIdentity, settings: currentSettings,
+          sites: currentSites, orders: currentOrders, ledger: currentLedger, reconciliation: currentReconciliation,
+          webhookStore: currentWebhooks, maintenance,
+          backupHealth: createAsyncBackupHealthProvider({
+            backupDirectory: config.backupDir,
+            dataDirectory: config.dataDir,
+            intervalMilliseconds: config.backupIntervalMilliseconds,
+          }),
+          startedAt: new Date(capturedAt - 8 * DAY), clock: liveNow, demoMode: true,
+          runtimeStatus: () => ({ configured: true, transitioning: false,
+            paymentRevision: currentSettings.instanceSnapshot().paymentRevision, activeProviderAccountKey: providerAccountKey,
+            scanIntervalMilliseconds: 60_000, maximumSuccessAgeMilliseconds: 120_000 }),
+          ledgerHealth: healthy,
+          accountHealth: () => ({ state: "healthy", lastSuccessAt: liveNow() - 2000, lastErrorCode: null, collectionReady: true }),
+          reconciliationHealth: () => ({ ...healthy(), pendingOrders: systemAnalytics(currentDb, 7, liveNow()).pending.orders, continuationPending: false }),
+          webhookHealth: () => ({ ...healthy(), pendingDeliveries: currentWebhooks.counts().pending, deadLetters: currentWebhooks.counts().dead }),
+          // Official metadata checks never start payment transports.
+          updateChecker: options.updateChecker ?? { check: async () => { throw new UpdateCheckUnavailable(3600); } },
+        };
+        const app = createApp({ ...dependencies, demoMode: !options.interactive });
+        // Payer pages always retain the demo bootstrap and disabled payment probes.
+        const publicApp = options.interactive ? createApp({ ...dependencies, demoMode: true }) : app;
+        const previewInstanceId = currentDb.instanceId();
+        const preview = new Hono<{ Bindings: Partial<HttpBindings> }>();
+        preview.use("*", async (context, next) => {
+          const marker = (options.interactive ? "interactive; storage=temporary" : "read-only") + "; health=simulated";
+          context.header("X-PerPay-Demo", marker);
+          const sessionAction = context.req.method === "POST" && ["/api/admin/v1/session/login", "/api/admin/v1/session/logout"].includes(context.req.path);
+          const exportRead = context.req.method === "POST" && (context.req.path === "/api/admin/v1/audit-events/export" || /^\/api\/admin\/v1\/(?:sites\/[^/]+\/)?orders\/export$/.test(context.req.path));
+          // Authentication, Origin, CSRF, revisions and idempotency stay in the real app.
+          const localEdit = options.interactive && context.req.path.startsWith("/api/admin/v1/");
+          if (!["GET", "HEAD"].includes(context.req.method) && !sessionAction && !exportRead && !localEdit) {
+            return context.json({ error: { code: "demo_read_only", message: "当前操作不可用。" } }, 403);
+          }
+          await next();
+          context.header("X-PerPay-Demo", marker);
+          if (context.req.method === "POST" && context.req.path === "/api/admin/v1/session/login") {
+            context.header("X-PerPay-Preview-Instance", previewInstanceId);
+          }
+        });
+        // Keep QR output non-payable after reopening the database as well.
+        preview.get("/api/public/v1/checkouts/:token/qr.svg", async context => {
+          const response = await publicApp.fetch(context.req.raw, context.env);
+          if (!response.ok) return response;
+          const headers = new Headers(response.headers);
+          headers.delete("content-length");
+          headers.delete("etag");
+          return new Response(renderCollectionCodeSvg(DEMO_QR_TEXT), { headers });
+        });
+        preview.all("*", context => (context.req.path.startsWith("/checkout/") || context.req.path.startsWith("/api/public/") ? publicApp : app).fetch(context.req.raw, context.env));
+        return { app: preview, activity: currentActivity, close: async () => {
+          currentActivity.stop();
+          currentDb.close();
+          activity = undefined;
+          database = undefined;
+        } };
+      } catch (error) {
+        recorder?.stop();
+        currentDb.close();
+        activity = undefined;
+        database = undefined;
+        throw error;
+      }
+    });
+    const managedHost = host;
     const preview = new Hono<{ Bindings: Partial<HttpBindings> }>();
-    preview.use("*", async (context, next) => {
-      const marker = (options.interactive ? "interactive; storage=temporary" : "read-only") + "; health=simulated";
-      context.header("X-PerPay-Demo", marker);
-      const sessionAction = context.req.method === "POST" && ["/api/admin/v1/session/login", "/api/admin/v1/session/logout"].includes(context.req.path);
-      const exportRead = context.req.method === "POST" && (context.req.path === "/api/admin/v1/audit-events/export" || /^\/api\/admin\/v1\/(?:sites\/[^/]+\/)?orders\/export$/.test(context.req.path));
-      // Only existing administrator routes can write the private temporary store.
-      // Authentication, Origin, CSRF, revisions and idempotency stay in the real app.
-      const localEdit = options.interactive && context.req.path.startsWith("/api/admin/v1/");
-      if (!["GET", "HEAD"].includes(context.req.method) && !sessionAction && !exportRead && !localEdit) {
-        return context.json({ error: { code: "demo_read_only", message: "当前操作不可用。" } }, 403);
-      }
-      await next();
-      context.header("X-PerPay-Demo", marker);
-      if (context.req.method === "POST" && context.req.path === "/api/admin/v1/session/login") {
-        context.header("X-PerPay-Preview-Instance", previewInstanceId);
-      }
-    });
-    // Replace the displayed code with plain text, so a screenshot can never initiate payment.
-    // Gate through the real route first, preserving token/status checks and security headers.
-    preview.get("/api/public/v1/checkouts/:token/qr.svg", async context => {
-      const response = await publicApp.fetch(context.req.raw, context.env);
-      if (!response.ok) return response;
-      const headers = new Headers(response.headers);
-      headers.delete("content-length");
-      headers.delete("etag");
-      return new Response(renderCollectionCodeSvg(DEMO_QR_TEXT), { headers });
-    });
-    preview.all("*", context => (context.req.path.startsWith("/checkout/") || context.req.path.startsWith("/api/public/") ? publicApp : app).fetch(context.req.raw, context.env));
-    return { app: preview, database: db, directory, origin, password, capturedAt, stats, scenarios, featured: featured.orderId, failed: failed.orderId, retry: retry.orderId, checkout: checkout.checkoutToken, dispose };
+    preview.all("*", context => managedHost.fetch(context.req.raw, context.env));
+    return { app: preview, get database() { return database!; }, directory, origin, password, capturedAt, stats, scenarios, featured: featured.orderId, failed: failed.orderId, retry: retry.orderId, checkout: checkout.checkoutToken, dispose };
   } catch (error) {
-    dispose();
+    await dispose();
     throw error;
   }
 }
@@ -509,12 +568,16 @@ async function main() {
     console.log(JSON.stringify({ origin: demo.origin, password: demo.password, capturedAt: demo.capturedAt, featured: demo.featured, retry: demo.retry, failed: demo.failed, checkout: demo.checkout, checkoutExpiresAt: new Date(demo.capturedAt + 22 * MINUTE).toISOString(), orders: demo.stats.orders, daily: demo.stats.daily, directory: demo.directory, scenarios: demo.scenarios }, null, 2));
     console.log("\n访问 " + demo.origin + "/admin/，按 Ctrl+C 退出并清理临时数据。");
   });
-  server.on("error", error => { demo.dispose(); console.error(error.message); process.exitCode = 1; });
+  server.on("error", error => {
+    console.error(error.message);
+    process.exitCode = 1;
+    void demo.dispose().catch(disposeError => console.error(disposeError));
+  });
   let stopping = false;
   const stop = () => {
     if (stopping) return;
     stopping = true;
-    server.close(() => demo.dispose());
+    server.close(() => { void demo.dispose().catch(error => { console.error(error); process.exitCode = 1; }); });
     if ("closeAllConnections" in server) server.closeAllConnections();
   };
   process.once("SIGINT", stop);

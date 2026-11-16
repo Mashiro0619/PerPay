@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { auditChanges, auditContextAvailable, currentAuditContext } from "../audit/context.ts";
+import { archivedAccountHistorySql } from "../archive/account-history.ts";
 import type { DatabaseSync } from "node:sqlite";
 import type { AppDatabase } from "../database/database.ts";
 import { appendAuditEvent, IdentityTransaction } from "../database/identity-store.ts";
@@ -364,8 +365,10 @@ export class AlipayAccountStore {
       ORDER BY site.created_at,site.client_id`).all(id) as Array<{client_id:string;name:string}>;
   }
   #hasHistory(db:DatabaseSync,id:string):boolean {
-    return Boolean(db.prepare(`SELECT 1 FROM payment_orders WHERE alipay_account_id=? UNION ALL
-      SELECT 1 FROM ledger_entries AS entry JOIN alipay_account_generations AS generation USING(provider_account_key) WHERE generation.account_id=? LIMIT 1`).get(id,id));
+    if(db.prepare(`SELECT 1 FROM payment_orders WHERE alipay_account_id=? UNION ALL
+      SELECT 1 FROM ledger_entries AS entry JOIN alipay_account_generations AS generation USING(provider_account_key) WHERE generation.account_id=? LIMIT 1`).get(id,id)) return true;
+    if(!db.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='archived_ledger_keys'").get()) return false;
+    return Boolean(db.prepare(`SELECT 1 WHERE ${archivedAccountHistorySql("?")}`).get(id,id));
   }
   #audit(db:DatabaseSync,id:string,audit:SettingsAuditContext,action:string,revision:number,details:Record<string,unknown>,now:number):void {
     const snapshot = accountAuditSnapshots.getStore();

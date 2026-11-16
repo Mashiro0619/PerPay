@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 import { randomUUID } from "node:crypto";
-import { closeSync, fsyncSync, lstatSync, openSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { closeSync, fsyncSync, lstatSync, openSync, readdirSync, readFileSync, renameSync, rmdirSync, rmSync, writeFileSync } from "node:fs";
 import { lstat, readdir, readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import type { DatabaseSync } from "node:sqlite";
+import { DatabaseSync } from "node:sqlite";
 import type { AppDatabase } from "../database/database.ts";
 import { appendAuditEvent } from "../database/identity-store.ts";
 import { ensurePrivateDirectory } from "../infrastructure/storage/permissions.ts";
@@ -12,6 +12,7 @@ import { ACTIVITY_MAX_EVENT_BYTES, ACTIVITY_RETENTION_MILLISECONDS, ActivityReco
   persistActivityEvent, safeErrorCode, sanitizeActivityDetails, type ActivityEvent, type ActivityEventInput } from "./activity.ts";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const RETIRED_DIRECTORY = /^\.retired-([0-9a-f-]{36})$/;
 const EVENT_FILE = /^event-(\d{12})-([0-9a-f-]{36})\.json$/;
 const RETENTION_FILE = /^retention-(\d{12})-([0-9a-f-]{36})\.json$/;
 const TEMPORARY_FILE = /^\.activity-([0-9a-f-]{36})\.tmp$/;
@@ -69,6 +70,7 @@ export interface ActivitySpoolEvent {
 
 export interface ActivitySpoolWriterOptions {
   readonly backupDirectory: string;
+  readonly dataDirectory?: string | undefined;
   readonly kind: "backup" | "maintenance";
   readonly clock?: (() => number) | undefined;
 }
@@ -80,13 +82,17 @@ export class ActivitySpoolWriter {
   readonly #clock: () => number;
   readonly #source: SpoolSource;
   readonly #enabled: boolean;
+  readonly #databasePath: string | null;
   #nextPruneAt = 0;
   #lastWarningAt = -Infinity;
+  #pruneTimer: NodeJS.Timeout | null = null;
+  #closed = false;
 
   constructor(options: ActivitySpoolWriterOptions) {
     this.#enabled = typeof options.backupDirectory === "string" && options.backupDirectory.trim().length > 0;
     this.#clock = options.clock ?? Date.now;
     this.#root = activitySpoolPath(options.backupDirectory);
+    this.#databasePath = options.dataDirectory ? join(resolve(options.dataDirectory), "perpay.sqlite3") : null;
     const now = this.#now(), sourceId = randomUUID();
     this.#directory = join(this.#root, sourceId);
     this.#source = { version: 1, sourceId, kind: options.kind, createdAt: now, lastAttemptAt: now,
@@ -94,7 +100,12 @@ export class ActivitySpoolWriter {
       prunedThroughSequence: 0, prunedThroughAt: null, closedAt: null };
   }
 
+  startCleanup(): void {
+    if (this.#enabled && !this.#closed && !this.#pruneTimer) this.#schedulePrune(5_000);
+  }
+
   record(input: ActivityEventInput, options: { instanceId?: string | null; permanent?: boolean } = {}): boolean {
+    if (this.#closed) return false;
     const sequence = ++this.#source.attemptedSequence;
     this.#source.lastAttemptAt = this.#now();
     if (!this.#enabled) {
@@ -147,6 +158,10 @@ export class ActivitySpoolWriter {
   }
 
   close(): void {
+    if (this.#closed) return;
+    this.#closed = true;
+    if (this.#pruneTimer) clearTimeout(this.#pruneTimer);
+    this.#pruneTimer = null;
     this.#source.closedAt = this.#now();
     if (this.#source.attemptedSequence > 0) this.#saveState();
   }
@@ -168,11 +183,22 @@ export class ActivitySpoolWriter {
     this.#pruneBatch(progress);
   }
 
+  #schedulePrune(delay: number): void {
+    if (this.#closed) return;
+    if (this.#pruneTimer) clearTimeout(this.#pruneTimer);
+    this.#pruneTimer = setTimeout(() => {
+      this.#pruneTimer = null;
+      this.#pruneAutomatically();
+      if (!this.#pruneTimer) this.#schedulePrune(Math.max(1_000, this.#nextPruneAt - this.#now()));
+    }, delay);
+    this.#pruneTimer.unref();
+  }
+
   #cleanupProgress(): CleanupProgress {
     try {
       const value = readSmallJsonSync(join(this.#root, "..", CLEANUP_STATE_FILE));
       if (isRecord(value) && value.version === 1 && integer(value.nextRunAt) &&
-        (value.sourceId === null || typeof value.sourceId === "string" && UUID.test(value.sourceId)) &&
+        (value.sourceId === null || typeof value.sourceId === "string" && cleanupSourceName(value.sourceId)) &&
         (value.fileAfter === null || typeof value.fileAfter === "string" && value.fileAfter.length <= 1_024) &&
         (value.sourceId !== null || value.fileAfter === null)) return value as unknown as CleanupProgress;
     } catch { /* Missing or interrupted progress can safely restart a bounded scan. */ }
@@ -182,10 +208,25 @@ export class ActivitySpoolWriter {
   #pruneBatch(progress: CleanupProgress): void {
     const now = this.#now();
     let filesRemaining = CLEANUP_FILE_BUDGET, sourcesRemaining = CLEANUP_SOURCE_BUDGET;
+    const imports: { connection: DatabaseSync | null; unavailable: boolean } = { connection: null, unavailable: false };
+    const fullyImported = (source: SpoolSource): boolean => {
+      if (this.#databasePath === null || imports.unavailable) return false;
+      try {
+        imports.connection ??= new DatabaseSync(this.#databasePath, { readOnly: true, timeout: 5_000 });
+        const row = imports.connection.prepare("SELECT last_sequence, details_json FROM activity_import_sources WHERE source_id = ?")
+          .get(source.sourceId) as { last_sequence: number; details_json: string } | undefined;
+        return !!row && row.last_sequence >= source.attemptedSequence &&
+          JSON.parse(row.details_json).closedAt === source.closedAt;
+      } catch {
+        // A stopped or unreadable app database cannot authorize source retirement.
+        imports.unavailable = true;
+        return false;
+      }
+    };
     try {
       // Flat legacy directories still require a name listing. Expensive metadata,
       // file reads and deletes are bounded, including entries that cannot expire.
-      const sources = readdirSync(this.#root).filter(name => UUID.test(name)).sort();
+      const sources = readdirSync(this.#root).filter(cleanupSourceName).sort();
       let index = progress.sourceId === null ? 0 : sources.findIndex(name =>
         progress.fileAfter !== null ? name >= progress.sourceId! : name > progress.sourceId!);
       if (index < 0) index = 0;
@@ -194,7 +235,9 @@ export class ActivitySpoolWriter {
         const name = sources[index]!;
         const after = name === progress.sourceId ? progress.fileAfter : null;
         sourcesRemaining--;
-        const scanned = this.#pruneSource(name, after, filesRemaining, now);
+        let scanned: { inspected: number; fileAfter: string | null };
+        try { scanned = this.#pruneSource(name, after, filesRemaining, now, fullyImported); }
+        catch (error) { if (errorCode(error) === "ENOENT") continue; throw error; }
         filesRemaining -= scanned.inspected;
         sourceId = name; fileAfter = scanned.fileAfter;
         if (fileAfter !== null) break;
@@ -206,17 +249,23 @@ export class ActivitySpoolWriter {
       // but neither a crashed command nor a lock can prevent later cleanup.
       atomicJson(resolve(this.#root, ".."), CLEANUP_STATE_FILE, next);
       this.#nextPruneAt = next.nextRunAt;
+      if (this.#pruneTimer) this.#schedulePrune(Math.max(1_000, next.nextRunAt - this.#now()));
     } catch (error) {
+      this.#nextPruneAt = now + (errorCode(error) === "ENOENT" ? HOUR : CLEANUP_CONTINUATION_DELAY);
       if (errorCode(error) === "ENOENT") return;
       this.#source.lastErrorCode = "activity_spool_retention_failed";
-      this.#saveState();
+      if (this.#source.attemptedSequence > 0) this.#saveState();
       this.#warn();
+    } finally {
+      imports.connection?.close();
     }
   }
 
-  #pruneSource(name: string, after: string | null, budget: number, now: number): { inspected: number; fileAfter: string | null } {
+  #pruneSource(name: string, after: string | null, budget: number, now: number,
+    fullyImported: (source: SpoolSource) => boolean): { inspected: number; fileAfter: string | null } {
     const directory = join(this.#root, name), cutoff = now - ACTIVITY_RETENTION_MILLISECONDS;
     if (!ordinaryDirectorySync(directory)) return { inspected: 0, fileAfter: null };
+    if (RETIRED_DIRECTORY.test(name)) return this.#pruneRetired(directory, budget, after);
     let source: SpoolSource | null = null;
     try { source = parseSource(readSmallJsonSync(join(directory, "source.json")), name); }
     catch (error) { if (errorCode(error) !== "ENOENT") return { inspected: 0, fileAfter: null }; }
@@ -225,6 +274,9 @@ export class ActivitySpoolWriter {
     if (source && name !== this.#source.sourceId && source.closedAt === null && source.lastAttemptAt >= cutoff) return { inspected: 0, fileAfter: null };
     if (name === this.#source.sourceId) source = this.#source;
     const files = readdirSync(directory).sort();
+    const previousFile = highestRetentionFile(files);
+    const previous = previousFile ? parseRetention(readSmallJsonSync(join(directory, previousFile)), name, previousFile) : undefined;
+    const markers: Array<{ file: string; value: SpoolRetention }> = [];
     const expired: Array<{ file: string; event: ActivitySpoolEvent }> = [];
     let inspected = 0, fileAfter: string | null = null;
     const candidates = after === null ? files : files.filter(file => file > after);
@@ -237,26 +289,72 @@ export class ActivitySpoolWriter {
         if (stat.isFile() && !stat.isSymbolicLink() && stat.mtimeMs < cutoff) rmSync(path, { force: true });
         continue;
       }
+      if (RETENTION_FILE.test(file)) {
+        try { markers.push({ file, value: file === previousFile ? previous! : parseRetention(readSmallJsonSync(join(directory, file)), name, file) }); }
+        catch (error) { if (errorCode(error) !== "ENOENT") throw error; }
+        continue;
+      }
       if (!EVENT_FILE.test(file)) continue;
       let event: ActivitySpoolEvent;
       try { event = parseEvent(readSmallJsonSync(join(directory, file)), name, file); } catch { continue; }
       if (event.activity.occurredAt >= cutoff) continue;
       expired.push({ file, event });
     }
-    if (expired.length > 0) {
-      const previousFile = highestRetentionFile(files);
-      const previous = previousFile ? parseRetention(readSmallJsonSync(join(directory, previousFile)), name, previousFile) : undefined;
-      const watermark: SpoolRetention = { version: 1, sourceId: name,
-        prunedThroughSequence: Math.max(source?.prunedThroughSequence ?? 0, previous?.prunedThroughSequence ?? 0, ...expired.map(item => item.event.sequence)),
-        prunedThroughAt: Math.max(source?.prunedThroughAt ?? 0, previous?.prunedThroughAt ?? 0, ...expired.map(item => item.event.activity.occurredAt)),
+    let retainedFile = previousFile, watermark = previous;
+    const mergeMarkers = markers.some(marker => marker.value.prunedThroughSequence > (previous?.prunedThroughSequence ?? 0) ||
+      marker.value.prunedThroughAt > (previous?.prunedThroughAt ?? 0));
+    if (expired.length > 0 || mergeMarkers) {
+      watermark = { version: 1, sourceId: name,
+        prunedThroughSequence: Math.max(source?.prunedThroughSequence ?? 0, previous?.prunedThroughSequence ?? 0,
+          ...markers.map(marker => marker.value.prunedThroughSequence), ...expired.map(item => item.event.sequence)),
+        prunedThroughAt: Math.max(source?.prunedThroughAt ?? 0, previous?.prunedThroughAt ?? 0,
+          ...markers.map(marker => marker.value.prunedThroughAt), ...expired.map(item => item.event.activity.occurredAt)),
         publishedAt: now,
-        sourceKind: source?.kind ?? previous?.sourceKind ?? (expired[0]!.event.activity.sourceType === "BACKGROUND" ? "backup" : "maintenance") };
+        sourceKind: source?.kind ?? previous?.sourceKind ?? markers.find(marker => marker.value.sourceKind)?.value.sourceKind ??
+          (expired[0]?.event.activity.sourceType === "BACKGROUND" ? "backup" : "maintenance") };
       // Immutable markers are independent of source.json: a waking producer
       // or another cleaner cannot overwrite or move an established boundary back.
-      atomicJson(directory, `retention-${String(watermark.prunedThroughSequence).padStart(12, "0")}-${randomUUID()}.json`, watermark);
+      retainedFile = `retention-${String(watermark.prunedThroughSequence).padStart(12, "0")}-${randomUUID()}.json`;
+      atomicJson(directory, retainedFile, watermark);
       for (const item of expired) rmSync(join(directory, item.file), { force: true });
     }
+    // The replacement is durable before removing only the immutable markers it
+    // covers. Concurrent cleaners may leave two anchors; a later batch merges them.
+    for (const marker of markers) {
+      if (marker.file !== retainedFile && watermark && marker.value.prunedThroughSequence <= watermark.prunedThroughSequence &&
+        marker.value.prunedThroughAt <= watermark.prunedThroughAt) rmSync(join(directory, marker.file), { force: true });
+    }
+    if (source && source.closedAt !== null && source.closedAt < cutoff && fullyImported(source)) {
+      const remaining = readdirSync(directory);
+      if (remaining.length <= 2 && remaining.every(file => file === "source.json" || file === retainedFile)) {
+        const current = parseSource(readSmallJsonSync(join(directory, "source.json")), name);
+        if (current.closedAt === source.closedAt && current.attemptedSequence === source.attemptedSequence &&
+          current.publishedSequence === source.publishedSequence) {
+          // The rename is the retirement boundary. Interrupted unlinking can
+          // resume without keeping a live source cursor or requiring source.json.
+          const retired = join(this.#root, `.retired-${name}`);
+          renameSync(directory, retired);
+          const cleanup = this.#pruneRetired(retired, Math.max(0, budget - inspected));
+          return { inspected: inspected + cleanup.inspected, fileAfter: null };
+        }
+      }
+    }
     return { inspected, fileAfter: inspected < candidates.length ? fileAfter : null };
+  }
+
+  #pruneRetired(directory: string, budget: number, after: string | null = null): { inspected: number; fileAfter: string | null } {
+    const files = readdirSync(directory).filter(file => after === null || file > after).sort();
+    let inspected = 0;
+    for (const file of files) {
+      if (inspected >= budget) break;
+      inspected++;
+      if (file !== "source.json" && !RETENTION_FILE.test(file) && !TEMPORARY_FILE.test(file)) continue;
+      const path = join(directory, file), stat = lstatSync(path);
+      if (stat.isFile() && !stat.isSymbolicLink()) rmSync(path, { force: true });
+    }
+    try { rmdirSync(directory); }
+    catch (error) { if (errorCode(error) !== "ENOENT" && errorCode(error) !== "ENOTEMPTY") throw error; }
+    return { inspected, fileAfter: inspected < files.length ? files[inspected - 1] ?? null : null };
   }
 
   #now(): number { try { const now = this.#clock(); return integer(now) ? now : Date.now(); } catch { return Date.now(); } }
@@ -298,6 +396,8 @@ export class ActivitySpoolImporter {
   #timer: NodeJS.Timeout | null = null;
   #current: Promise<void> | null = null;
   #position = 0;
+  #retirementAfter: string | null = null;
+  #nextRetirementAt = 0;
   #stopped = false;
 
   constructor(options: ActivitySpoolImporterOptions) {
@@ -335,20 +435,59 @@ export class ActivitySpoolImporter {
     try {
       const stat = await lstat(this.#root);
       if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error("spool must be an ordinary directory");
-      sources = (await readdir(this.#root)).filter(name => UUID.test(name) && !this.#closedSources.has(name)).sort();
+      const present = new Set((await readdir(this.#root)).filter(name => UUID.test(name)));
+      for (const sourceId of this.#closedSources) if (!present.has(sourceId)) this.#closedSources.delete(sourceId);
+      for (const sourceId of this.#failedSources) if (!present.has(sourceId)) this.#failedSources.delete(sourceId);
+      await this.#retireSources(present);
+      sources = [...present].filter(name => !this.#closedSources.has(name)).sort();
     } catch (error) {
       if (errorCode(error) === "ENOENT") return;
       throw error;
     }
-    if (sources.length === 0) return;
+    if (sources.length === 0) { if (this.#failedSources.size === 0) this.#recorder.noteSpoolAvailable(); return; }
     let budget = this.#maximumEvents;
     const start = this.#position % sources.length;
     for (let index = 0; index < Math.min(sources.length, 128) && budget > 0; index += 1) {
       const sourceId = sources[(start + index) % sources.length]!;
-      budget -= await this.#collectSource(sourceId, budget);
+      try { budget -= await this.#collectSource(sourceId, budget); }
+      catch (error) { if (errorCode(error) !== "ENOENT") throw error; }
       this.#position = (start + index + 1) % sources.length;
     }
     if (this.#failedSources.size === 0) this.#recorder.noteSpoolAvailable();
+  }
+
+  async #retireSources(present: ReadonlySet<string>): Promise<void> {
+    const now = this.#now();
+    if (this.#nextRetirementAt > now && this.#nextRetirementAt <= now + HOUR) return;
+    const rows = this.#database.read(db => db.prepare(`SELECT source_id, last_sequence, gap_count, details_json
+      FROM activity_import_sources WHERE source_id > ? ORDER BY source_id LIMIT ?`)
+      .all(this.#retirementAfter ?? "", CLEANUP_SOURCE_BUDGET)) as Array<{
+        source_id: string; last_sequence: number; gap_count: number; details_json: string;
+      }>;
+    const cutoff = now - ACTIVITY_RETENTION_MILLISECONDS;
+    for (const row of rows) {
+      const details = JSON.parse(row.details_json) as Partial<SpoolSource>;
+      if (present.has(row.source_id) || !integer(details.closedAt) || details.closedAt >= cutoff ||
+        !integer(details.attemptedSequence) || Number(row.last_sequence) < details.attemptedSequence) continue;
+      try { await lstat(join(this.#root, row.source_id)); continue; }
+      catch (error) { if (errorCode(error) !== "ENOENT") throw error; }
+      this.#database.write(db => {
+        const current = db.prepare("SELECT gap_count FROM activity_import_sources WHERE source_id = ? AND last_sequence = ? AND details_json = ?")
+          .get(row.source_id, row.last_sequence, row.details_json) as { gap_count: number | bigint } | undefined;
+        if (!current) return;
+        if (Number(current.gap_count) > 0) {
+          const retired = db.prepare("SELECT value_json FROM activity_capture_state WHERE key = 'spool-retired'").get() as { value_json: string } | undefined;
+          const gapCount = Number(current.gap_count) + (retired ? Number(JSON.parse(retired.value_json).gapCount) : 0);
+          db.prepare(`INSERT INTO activity_capture_state(key, value_json, updated_at) VALUES ('spool-retired', ?, ?)
+            ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at`)
+            .run(JSON.stringify({ gapCount }), now);
+        }
+        // Permanent import receipts and their audit chain entries remain intact.
+        db.prepare("DELETE FROM activity_import_sources WHERE source_id = ?").run(row.source_id);
+      });
+    }
+    this.#retirementAfter = rows.length === CLEANUP_SOURCE_BUDGET ? rows.at(-1)!.source_id : null;
+    this.#nextRetirementAt = now + (this.#retirementAfter === null ? HOUR : this.#interval);
   }
 
   async #collectSource(sourceId: string, budget: number): Promise<number> {
@@ -365,7 +504,10 @@ export class ActivitySpoolImporter {
     let retention: SpoolRetention | undefined;
     if (retentionFile) {
       try { retention = parseRetention(await readSmallJson(join(directory, retentionFile)), sourceId, retentionFile); }
-      catch { this.#failedSources.add(sourceId); this.#recorder.noteSpoolFailure("activity_spool_invalid"); return 1; }
+      catch (error) {
+        if (errorCode(error) === "ENOENT") return 0;
+        this.#failedSources.add(sourceId); this.#recorder.noteSpoolFailure("activity_spool_invalid"); return 1;
+      }
     }
     let source: SpoolSource;
     try {
@@ -430,7 +572,10 @@ export class ActivitySpoolImporter {
       }
       let event: ActivitySpoolEvent;
       try { event = parseEvent(await readSmallJson(join(directory, file)), sourceId, file); }
-      catch {
+      catch (error) {
+        // Retention publishes its boundary before unlinking an expired event.
+        // Read that boundary on the next poll instead of reporting an invalid file.
+        if (errorCode(error) === "ENOENT") return processed;
         this.#gap(sourceId, sequence, 1, "source_event_invalid", source);
         cursor.last_sequence = Math.max(cursor.last_sequence, sequence);
         processed += 1;
@@ -454,7 +599,12 @@ export class ActivitySpoolImporter {
       else this.#database.write(db => updateSource(db, sourceId, source.attemptedSequence, this.#now(), source, null));
       cursor.last_sequence = source.attemptedSequence;
     }
-    if (source.closedAt !== null && cursor.last_sequence >= source.publishedSequence && processed < budget) this.#closedSources.add(sourceId);
+    if (source.closedAt !== null && cursor.last_sequence >= source.attemptedSequence && processed < budget) {
+      if (JSON.parse(cursor.details_json).closedAt !== source.closedAt) {
+        this.#database.write(db => updateSource(db, sourceId, cursor!.last_sequence, this.#now(), source, null));
+      }
+      this.#closedSources.add(sourceId);
+    }
     return processed;
   }
 
@@ -594,7 +744,7 @@ function atomicJson(directory: string, name: string, value: unknown): void {
 }
 
 function ensureSpoolDirectory(root: string, directory: string): void {
-  if (!ordinaryDirectorySync(resolve(root, "..", ".."))) throw new TypeError("backup volume must already exist");
+  ensurePrivateDirectory(resolve(root, "..", ".."));
   ensurePrivateDirectory(resolve(root, ".."));
   ensurePrivateDirectory(root);
   ensurePrivateDirectory(directory);
@@ -611,5 +761,6 @@ async function readSmallJson(path: string): Promise<unknown> {
   return JSON.parse(await readFile(path, "utf8"));
 }
 function isRecord(value: unknown): value is Record<string, unknown> { return value !== null && typeof value === "object" && !Array.isArray(value); }
+function cleanupSourceName(name: string): boolean { const retired = RETIRED_DIRECTORY.exec(name); return UUID.test(name) || !!retired && UUID.test(retired[1]!); }
 function integer(value: unknown): value is number { return typeof value === "number" && Number.isSafeInteger(value) && value >= 0; }
 function errorCode(error: unknown): string | null { return isRecord(error) && typeof error.code === "string" ? error.code : null; }

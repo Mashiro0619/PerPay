@@ -156,7 +156,9 @@ export class ActivityRecorder {
       // Source cursors and detected gaps are committed before the recorder's
       // periodic flush. Recover that durable evidence after an interrupted flush.
       const gaps = this.#database.read(db => db.prepare("SELECT COALESCE(SUM(gap_count), 0) AS count FROM activity_import_sources").get());
-      this.#spoolGapCount = Math.max(this.#spoolGapCount, nonnegative(Number(gaps?.count ?? 0)));
+      const retired = this.#database.read(db => db.prepare("SELECT value_json FROM activity_capture_state WHERE key = 'spool-retired'").get()) as { value_json: string } | undefined;
+      const retiredGaps = retired ? nonnegative(JSON.parse(retired.value_json).gapCount ?? 0) : 0;
+      this.#spoolGapCount = Math.max(this.#spoolGapCount, nonnegative(Number(gaps?.count ?? 0)) + retiredGaps);
     } catch { this.#lastErrorCode = "activity_state_unavailable"; }
   }
 

@@ -1,13 +1,15 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import {
   api,
   ApiError,
+  getRestoreSessionHold,
   invalidateSessionRequests,
   queryClient,
   result,
   sessionKey,
+  subscribeRestoreSessionHold,
   type AdminSessionEnvelope,
 } from "@/api/client";
 import { ErrorNotice, Loading } from "@/components/request-state";
@@ -30,6 +32,7 @@ export const useSession = () => useContext(SessionContext);
 
 export function AuthBoundary({ children }: { children: ReactNode }) {
   const authenticated = useRef(false);
+  const restoreSessionHold = useSyncExternalStore(subscribeRestoreSessionHold, getRestoreSessionHold);
   const [resetOverlay, setResetOverlay] = useState(false);
   const finishReset = useCallback(() => setResetOverlay(false), []);
   const session = useQuery<AdminSessionEnvelope | null>({
@@ -37,6 +40,7 @@ export function AuthBoundary({ children }: { children: ReactNode }) {
     queryFn: ({ signal }) => result(api.getAdministratorSession({ signal })),
     retry: false,
     staleTime: 60_000,
+    enabled: restoreSessionHold === null,
   });
   if (session.data && !resetOverlay) authenticated.current = true;
   const forget = () => {
@@ -60,11 +64,12 @@ export function AuthBoundary({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("perpay:session-expired", forget);
   }, []);
   const rejected =
+    restoreSessionHold === null &&
     session.error instanceof ApiError &&
     [401, 403].includes(session.error.status);
   useEffect(() => {
     if (rejected) forget();
-  }, [session.error]);
+  }, [rejected]);
 
   if (session.isPending)
     return (
@@ -102,7 +107,7 @@ export function AuthBoundary({ children }: { children: ReactNode }) {
       value={{
         username: session.data.data.username,
         forget,
-        error: session.error,
+        error: restoreSessionHold === null ? session.error : null,
         retry: () => {
           void session.refetch();
         },

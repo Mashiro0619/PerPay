@@ -25,7 +25,7 @@ const sections = [
 describe("settings overlay headings", () => {
   it.each([
     ["collection-policy", "查账设置", "查账设置"],
-    ["backup", "自动备份", "自动备份"],
+    ["backup", "备份与恢复", "备份与恢复"],
     ["display", "界面显示", "界面显示"],
     ["advanced", "高级设置", "高级设置"],
   ] as const)("keeps the %s field group named without repeating the dialog heading", (section, title, group) => {
@@ -73,7 +73,7 @@ describe("directly visible settings", () => {
     expect(container.querySelector("[data-settings-advanced], [data-settings-backup]")).toBeNull();
     expect(container.querySelectorAll("form")).toHaveLength(1);
     if (["backup", "advanced"].includes(section)) {
-      const title = section === "backup" ? "自动备份" : "高级设置";
+      const title = section === "backup" ? "备份与恢复" : "高级设置";
       expect(screen.getByRole("heading", { name: title })).toBeVisible();
       const group = screen.getByRole("group", { name: title });
       expect(within(group).getByText(title)).toHaveClass("sr-only");

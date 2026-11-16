@@ -1,7 +1,7 @@
 import { RefreshButton } from "@/components/refresh-button";
 import { PageHeaderActionLink, PageHeaderActions } from "@/components/page-header-actions";
 import { useEffect, useRef, useState } from "react";
-import { useIsMutating, useQuery } from "@tanstack/react-query";
+import { useIsMutating, useQuery, type UseQueryResult } from "@tanstack/react-query";
 import {
   DatabaseBackup,
   KeyRound,
@@ -20,10 +20,12 @@ import { SettingsSummary, type SettingsSummaryRow } from "@/components/settings-
 import { ErrorNotice } from "@/components/request-state";
 import {
   api,
+  getRestoreSessionHold,
   queryClient,
   refreshOperationalData,
   result,
   type RuntimeSettings,
+  type RuntimeSettingsEnvelope,
 } from "@/api/client";
 import { useDraftGuard } from "@/drafts";
 import { useOverlayCloseGuard } from "@/lib/overlay-context";
@@ -44,6 +46,9 @@ import { SecuritySettings } from "./SecuritySettings";
 import { AlipayAccountList } from "./AlipayAccounts";
 import { BackupOverview } from "@/components/backup-status";
 import { backupFilesKey } from "@/components/backup-files";
+import { maintenanceKey } from "@/api/maintenance";
+import { useMaintenanceJobs } from "@/hooks/use-maintenance";
+import { MaintenanceJobResult } from "@/components/maintenance-operation";
 import { durationLabel } from "@/lib/format";
 
 const sectionIcons = {
@@ -82,6 +87,10 @@ export default function Settings() {
       ?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [requestedSection, settings.isSuccess, isMobile]);
   function refresh() {
+    if (getRestoreSessionHold() !== null) {
+      void queryClient.invalidateQueries({ queryKey: maintenanceKey });
+      return;
+    }
     requestDiscard(() => {
       setRefreshing(true);
       void Promise.all([
@@ -90,6 +99,7 @@ export default function Settings() {
         ...(requestedSection === "backup" ? [
           queryClient.invalidateQueries({ queryKey: backupFilesKey }),
           queryClient.invalidateQueries({ queryKey: ["status"] }),
+          queryClient.invalidateQueries({ queryKey: maintenanceKey }),
         ] : []),
       ]).then(
         ([response]) => {
@@ -118,7 +128,7 @@ export default function Settings() {
         <RefreshButton disabled={settings.isFetching || refreshing} onClick={refresh} busy={settings.isFetching || refreshing} />
       </PageHeaderActions>
       <PageHeading title="系统设置" />
-      <QueryView query={settings}>
+      {requestedSection === "backup" && settings.data === undefined ? <BackupSettingsPending settings={settings} /> : <QueryView query={settings}>
         {({ data }) => {
           if (requestedSection === "notifications") return <Navigate to="/sites" replace />;
           if (requestedSection === "provider" || requestedSection === "collection") return <Navigate to="/settings/accounts" replace />;
@@ -211,7 +221,13 @@ export default function Settings() {
                   inert={refreshing}
                   aria-busy={refreshing}
                 >
-                  {section === "accounts" ? <AlipayAccountList /> : section === "backup" ? <BackupOverview settings={data} /> : section === "security" ? (
+                  {section === "accounts" ? <AlipayAccountList /> : section === "backup" ? <>
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <p className="text-sm text-muted-foreground">历史数据可归档后长期保留，减少主库和日常备份体积。</p>
+                      <Link global to="/settings/archives" className={buttonVariants({ variant: "outline", size: "sm" })}>历史归档</Link>
+                    </div>
+                    <BackupOverview settings={data} />
+                  </> : section === "security" ? (
                     <SecuritySettings
                       key={"security:" + editorVersion}
                       settings={data}
@@ -224,9 +240,18 @@ export default function Settings() {
             </Tabs>
           );
         }}
-      </QueryView>
+      </QueryView>}
     </div>
   );
+}
+
+function BackupSettingsPending({ settings }: { settings: UseQueryResult<RuntimeSettingsEnvelope> }) {
+  const maintenance = useMaintenanceJobs();
+  return <div className="flex min-w-0 flex-col gap-3">
+    <ErrorNotice error={maintenance.error} retry={() => { void maintenance.refetch(); }} />
+    <MaintenanceJobResult job={maintenance.active ?? maintenance.latest} />
+    {!maintenance.active && !maintenance.requiresLogin && <QueryView query={settings}>{() => null}</QueryView>}
+  </div>;
 }
 
 function settingsSummaryRows(settings: RuntimeSettings, section: Exclude<ConfigurationSection, "backup">): SettingsSummaryRow[] {

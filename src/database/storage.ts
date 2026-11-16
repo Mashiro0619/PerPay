@@ -2,12 +2,6 @@
 import { lstatSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 
-const STORAGE_TABLES = [
-  "payment_orders", "ledger_entries", "audit_events", "activity_events",
-  "provider_raw_pages", "provider_raw_events", "ingest_run_page_observations", "ingest_runs", "ingest_segments", "ingest_errors",
-  "ledger_request_checkpoints", "ledger_retention_state",
-] as const;
-
 export interface DatabaseStoragePages {
   readonly databaseBytes: number;
   readonly walBytes: number;
@@ -50,21 +44,24 @@ export function inspectDatabaseStorage(path: string): DatabaseStorage {
   try {
     database.exec("BEGIN");
     const schema = database.prepare("SELECT name, tbl_name, type FROM sqlite_schema WHERE type IN ('table', 'index')").all();
-    const tables = new Set(schema.filter(row => row.type === "table").map(row => String(row.name)));
-    if (!tables.has("schema_migrations") || !tables.has("payment_orders")) throw new Error("storage inspection requires an existing PerPay database");
+    const tables = schema.filter(row => row.type === "table")
+      .map(row => String(row.name)).filter(name => !name.toLowerCase().startsWith("sqlite_"));
+    if (!tables.includes("schema_migrations") || !tables.includes("payment_orders")) throw new Error("storage inspection requires an existing PerPay database");
     const dbstatAvailable = database.prepare("SELECT 1 FROM pragma_module_list WHERE name = 'dbstat'").get() !== undefined;
     const allocations = dbstatAvailable
       ? new Map(database.prepare("SELECT name, pgsize FROM dbstat WHERE aggregate = TRUE").all().map(row => [String(row.name), Number(row.pgsize)]))
       : null;
     const result: DatabaseStorage = {
       ...readDatabaseStoragePages(database, path), dbstatAvailable,
-      tables: STORAGE_TABLES.filter(name => tables.has(name)).map(name => ({
+      tables: tables.map(name => ({
         name,
-        rows: Number(database.prepare(`SELECT count(*) AS count FROM "${name}"`).get()!.count),
+        rows: Number(database.prepare(`SELECT count(*) AS count FROM "${name.replaceAll('"', '""')}"`).get()!.count),
         tableBytes: allocations?.get(name) ?? (allocations ? 0 : null),
         indexBytes: allocations ? schema.filter(row => row.type === "index" && row.tbl_name === name)
           .reduce((sum, row) => sum + (allocations.get(String(row.name)) ?? 0), 0) : null,
-      })),
+      })).sort((left, right) =>
+        ((right.tableBytes ?? 0) + (right.indexBytes ?? 0)) - ((left.tableBytes ?? 0) + (left.indexBytes ?? 0)) ||
+        right.rows - left.rows || (left.name < right.name ? -1 : left.name > right.name ? 1 : 0)),
     };
     database.exec("COMMIT");
     return result;

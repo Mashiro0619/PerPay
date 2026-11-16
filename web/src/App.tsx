@@ -38,6 +38,8 @@ import { LegacyOverlayRedirect, OverlayHost, OverlayProvider } from "@/component
 import { ErrorNotice, Loading } from "@/components/request-state";
 import { RequestNoticeProvider } from "@/lib/request-notices";
 import { RequestNoticeBanner } from "@/components/request-notice-banner";
+import { MaintenanceContext, useMaintenanceJobs, useMaintenanceMonitor } from "@/hooks/use-maintenance";
+import { MaintenanceJobResult } from "@/components/maintenance-operation";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Toaster } from "@/components/ui/toast";
 import {
@@ -68,9 +70,11 @@ const globalPageTitles: Record<NavigationSection, string> = {
 
 function AppShell() {
   const location = useLocation();
+  const maintenance = useMaintenanceMonitor();
   const { switching } = useWorkspaceNavigation();
   const backgroundInactive = !switching && new URLSearchParams(location.search).has(OVERLAY_PARAMETER);
   return (
+    <MaintenanceContext value={maintenance}>
     <RequestNoticeProvider>
     <Toaster timeout={4000}>
     <SidebarProvider
@@ -94,6 +98,7 @@ function AppShell() {
     </SidebarProvider>
     </Toaster>
     </RequestNoticeProvider>
+    </MaintenanceContext>
   );
 }
 function Workspace() {
@@ -105,6 +110,10 @@ function Workspace() {
   const session = useSession();
   const health = useSystemStatus();
   const location = useLocation();
+  const maintenance = useMaintenanceJobs();
+  const pageShowsMaintenance = /^\/settings\/(?:backup|archives)\/?$/.test(location.pathname);
+  const maintenanceJob = maintenance.active?.kind === "RESTORE" || maintenance.active?.kind === "ARCHIVE"
+    ? maintenance.active : maintenance.requiresLogin ? maintenance.latest : null;
   const localPath = scope.clientId
     ? location.pathname.slice(scope.base.length) || "/"
     : location.pathname;
@@ -154,7 +163,9 @@ function Workspace() {
     ? "找不到这个页面"
     : testPaymentPage
     ? "测试收款"
-    : location.pathname.startsWith("/settings/onboarding")
+    : location.pathname.startsWith("/settings/archives")
+      ? location.pathname.includes("/orders/") ? "归档订单详情" : "历史归档"
+      : location.pathname.startsWith("/settings/onboarding")
       ? "配置向导"
       : scope.clientId
         ? ({
@@ -204,12 +215,15 @@ function Workspace() {
         <PageHeadingProvider routeKey={location.pathname}>
         <AdminContent busy={switching} layout={isReadableDetailPage(location.pathname) ? "detail" : "default"}>
           <PageHeadingSlot title={title} actions={<PageActions overview={overview} busy={switching} />} />
-          <RequestNoticeBanner />
-          <ErrorNotice error={logout.error} />
-          <ErrorNotice scope="page" error={session.error} retry={session.retry} />
-          <ErrorNotice scope="page" error={health.status.error} retry={() => { void health.status.refetch(); }} />
-          <WorkspaceOutlet />
-          <OverlayHost />
+          {!maintenanceJob && <RequestNoticeBanner />}
+          {!pageShowsMaintenance && <MaintenanceJobResult job={maintenanceJob} />}
+          {!maintenanceJob && <>
+            <ErrorNotice error={logout.error} />
+            <ErrorNotice scope="page" error={session.error} retry={session.retry} />
+            <ErrorNotice scope="page" error={health.status.error} retry={() => { void health.status.refetch(); }} />
+          </>}
+          {(!maintenance.requiresLogin || pageShowsMaintenance) && <WorkspaceOutlet />}
+          {!maintenance.requiresLogin && <OverlayHost />}
         </AdminContent>
         </PageHeadingProvider>
       </SidebarInset>
@@ -382,6 +396,14 @@ export const appRoutes = createRoutesFromElements(
       lazy={async () => ({
         Component: (await import("./pages/Onboarding")).default,
       })}
+    />
+    <Route
+      path="settings/archives/:archiveId/orders/:orderId"
+      lazy={async () => ({ Component: (await import("./pages/HistoryArchives")).default })}
+    />
+    <Route
+      path="settings/archives/:archiveId?"
+      lazy={async () => ({ Component: (await import("./pages/HistoryArchives")).default })}
     />
     <Route
       path="settings/:section?"

@@ -40,6 +40,11 @@ export function countSiteDomainViolations(connection: DatabaseSync): number {
   violations += count(
     "SELECT count(*) AS total FROM sites AS site WHERE site.deleted_at IS NOT NULL AND EXISTS (SELECT 1 FROM payment_orders WHERE api_client_id = site.client_id)",
   );
+  if (connection.prepare("SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'archived_order_keys'").get()) {
+    violations += count(
+      "SELECT count(*) AS total FROM sites AS site WHERE site.deleted_at IS NOT NULL AND EXISTS (SELECT 1 FROM archived_order_keys WHERE api_client_id = site.client_id)",
+    );
+  }
   violations += count(
     "SELECT count(*) AS total FROM api_client_config AS identity LEFT JOIN site_secrets AS secret ON secret.client_id = identity.client_id AND secret.secret_name = 'api_secret' WHERE identity.enabled = 1 AND (secret.secret_fingerprint IS NULL OR secret.secret_fingerprint != identity.secret_fingerprint)",
   );

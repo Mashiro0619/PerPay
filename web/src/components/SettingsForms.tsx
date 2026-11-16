@@ -70,7 +70,7 @@ export const sections = [
   ["accounts", "支付宝账号"],
   ["collection-policy", "查账设置"],
   ["security", "密钥与安全"],
-  ["backup", "自动备份"],
+  ["backup", "备份与恢复"],
   ["display", "界面显示"],
   ["advanced", "高级设置"],
 ] as const;

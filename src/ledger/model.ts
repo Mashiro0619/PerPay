@@ -168,7 +168,7 @@ export class LedgerPageReconfirmationRequiredError extends Error {
   readonly code = "pagination_reconfirmation_required";
 
   constructor() {
-    super("retired provider request changed; another matching signed response is required");
+    super("retired provider request requires another matching signed response");
     this.name = "LedgerPageReconfirmationRequiredError";
   }
 }
@@ -441,6 +441,7 @@ export type RecordSegmentPageResult =
 export type PageNormalizationResult =
   | { readonly kind: "created"; readonly entry: LedgerEntry; readonly rawEventId: string }
   | { readonly kind: "duplicate"; readonly entry: LedgerEntry; readonly rawEventId: string }
+  | { readonly kind: "archived_duplicate"; readonly ledgerEntryId: string; readonly archiveId: string; readonly rawEventId: string }
   | { readonly kind: "conflict"; readonly conflict: LedgerConflict; readonly rawEventId: string }
   | { readonly kind: "isolated"; readonly conflict: LedgerConflict; readonly rawEventId: string };
 

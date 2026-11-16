@@ -484,7 +484,7 @@ describe("complete local preview scenarios", () => {
       assert.equal(fetchAttempts, 0, "Scenario seeding and every preview read must stay offline");
     } finally {
       globalThis.fetch = originalFetch;
-      demo?.dispose();
+      await demo?.dispose();
     }
     assert.ok(demo);
     assert.equal(existsSync(demo.directory), false);

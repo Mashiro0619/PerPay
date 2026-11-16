@@ -1,4 +1,5 @@
 import { siteClientIdSchema } from "../sites/model.ts";
+import { archiveIdentityDigest } from "../archive/keys.ts";
 import { insertEpayOrder, readEpayOrder } from "../epay/store.ts";
 import type { EpayOrderCreation } from "../epay/order.ts";
 import { assertSiteCanCreate, readSite, SiteError } from "../sites/store.ts";
@@ -150,6 +151,7 @@ export type CreateStoredOrderResult =
   | { readonly kind: "existing"; readonly aggregate: StoredOrderAggregate }
   | { readonly kind: "idempotency_conflict"; readonly orderId: string }
   | { readonly kind: "merchant_order_conflict"; readonly orderId: string }
+  | { readonly kind: "archived_order"; readonly orderId: string; readonly archiveId: string }
   | {
       readonly kind: "webhook_target_rejected";
       readonly code: WebhookTargetErrorCode;
@@ -426,6 +428,9 @@ export class OrderStore {
         }
         return { kind: "existing", aggregate: withCheckoutToken(connection, migratedReplay) };
       }
+
+      const archived = readArchivedOrderForRequest(connection, input);
+      if (archived) return { kind: "archived_order", orderId: archived.order_id, archiveId: archived.archive_id };
 
       if (input.siteRevision !== undefined) {
         const site = readSite(connection, input.apiClientId);
@@ -989,7 +994,18 @@ function allocateAmountSlot(
       amount_reuse_cooldown_seconds: bigint | number;
     } | undefined;
     // Ascending offsets select the smallest available amount, whether new or reused.
-    if (!latest) return { kind: "allocated", payableAmountCents, generation: 1 };
+    if (!latest) {
+      const archived = hasHistoryArchiveSchema(connection) ? connection.prepare(`SELECT generation, available_at FROM archived_amount_slot_anchors
+        WHERE alipay_account_id = ? AND payable_amount_cents = ?`).get(alipayAccountId, payableAmountCents) as
+          {generation: number | bigint; available_at: number | bigint} | undefined : undefined;
+      if (archived && Number(archived.available_at) > now) {
+        earliestAvailableAt = minimumDefined(earliestAvailableAt, Number(archived.available_at));
+        continue;
+      }
+      const generation = archived ? toSafeInteger(archived.generation, "archived amount slot generation") + 1 : 1;
+      if (!Number.isSafeInteger(generation)) throw new Error("amount slot generation is outside the safe integer range");
+      return { kind: "allocated", payableAmountCents, generation };
+    }
     if (latest.released_at === null) {
       throw new Error("active amount slot is detached from its open order");
     }
@@ -1442,6 +1458,28 @@ function readAggregateByIdempotencyDigest(
     )
     .get(apiClientId, digest) as AggregateRow | undefined;
   return row ? mapAggregate(row) : undefined;
+}
+
+function readArchivedOrderForRequest(connection: DatabaseSync, input: CreateStoredOrderInput): { order_id: string; archive_id: string } | undefined {
+  if (!hasHistoryArchiveSchema(connection)) return undefined;
+  const direct = connection.prepare(`SELECT order_id, archive_id FROM archived_order_keys
+    WHERE api_client_id = ? AND (idempotency_key_digest = ? OR merchant_order_digest = ?) LIMIT 1`)
+    .get(input.apiClientId, input.idempotencyKeyDigest, archiveIdentityDigest(input.request.merchant_order_no)) as
+      {order_id: string; archive_id: string} | undefined;
+  if (direct) return direct;
+  const namespaces = connection.prepare("SELECT namespace_id FROM api_client_idempotency_namespaces WHERE client_id = ?")
+    .all(input.apiClientId) as {namespace_id: string}[];
+  const lookup = connection.prepare("SELECT order_id, archive_id FROM archived_order_keys WHERE api_client_id = ? AND idempotency_key_digest = ?");
+  for (const namespace of namespaces) {
+    const row = lookup.get(input.apiClientId, digestIdempotencyKey(namespace.namespace_id, input.request.idempotency_key)) as
+      {order_id: string; archive_id: string} | undefined;
+    if (row) return row;
+  }
+  return undefined;
+}
+
+function hasHistoryArchiveSchema(connection: DatabaseSync): boolean {
+  return connection.prepare("SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'archived_order_keys'").get() !== undefined;
 }
 
 function readAggregateByLegacyIdempotencyKey(

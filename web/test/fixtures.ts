@@ -1,4 +1,6 @@
 import type { AdminOrderDetail, AlipayAccount, ReconciliationLedgerEntry, RuntimeSettings } from "../src/api/client";
+import { createElement, type ReactNode } from "react";
+import { MaintenanceContext, useMaintenanceMonitor } from "../src/hooks/use-maintenance";
 
 export const alipayAccount: AlipayAccount = {
   id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", revision: 1, name: "默认收款账号", enabled: true,
@@ -55,6 +57,17 @@ export function withSessionList(fetcher: (request: Request) => Response | Promis
     request.method === "GET" && new URL(request.url).pathname === "/api/admin/v1/sessions"
       ? Promise.resolve(json({ data: [] }))
       : Promise.resolve(fetcher(request));
+}
+
+export function withIdleMaintenance(fetcher: (request: Request) => Response | Promise<Response>) {
+  return (request: Request): Promise<Response> =>
+    request.method === "GET" && new URL(request.url).pathname === "/api/admin/v1/maintenance/jobs"
+      ? Promise.resolve(json({ data: { active: null, latest: null } }))
+      : Promise.resolve(fetcher(request));
+}
+
+export function MaintenanceFixture({ children }: { children: ReactNode }) {
+  return createElement(MaintenanceContext, { value: useMaintenanceMonitor() }, children);
 }
 
 export function apiError(code: string, message: string, status = 409): Response {

@@ -57,7 +57,7 @@ test("Compose contract accepts the default services and profile-gated maintenanc
   assert.equal(parsed.services.backup.healthcheck.timeout, "10s");
   assert.deepEqual(parsed.services.app.volumes, [
     "perpay-data:/data",
-    "perpay-backups:/backups:ro",
+    "perpay-backups:/backups",
     "perpay-secrets:/run/perpay-secrets",
   ]);
   assert.deepEqual(parsed.services.backup.volumes, [
@@ -141,7 +141,7 @@ test("Compose contract rejects privilege and volume-boundary escapes", () => {
   }
   for (const mutated of [
     validCompose.replace("perpay-data:/data", "/:/data"),
-    validCompose.replace("perpay-backups:/backups:ro", "perpay-backups:/backups"),
+    validCompose.replace("perpay-backups:/backups", "perpay-backups:/backups:ro"),
     validCompose.replace("perpay-data:/data:ro", "perpay-data:/data"),
     validCompose.replace("  perpay-backups:\n", "  external-backups: {}\n"),
     validCompose.replace('    user: "1000:1000"', '    user: "0:0"'),

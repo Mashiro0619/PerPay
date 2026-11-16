@@ -9,6 +9,9 @@ import { createHash } from "node:crypto";
 import { EPAY_WEBHOOK_SCHEMA_SQL } from "../notifications/epay-schema.ts";
 import { INGEST_RETENTION_SCHEMA_SQL } from "../ledger/retention-schema.ts";
 import { DISPUTE_RECONFIRMATION_SCHEMA_SQL } from "../reconciliation/dispute-schema.ts";
+import { EVIDENCE_PAYLOAD_SCHEMA_SQL } from "../ledger/evidence-payload-schema.ts";
+import { HISTORY_ARCHIVE_SCHEMA_SQL } from "../archive/schema.ts";
+import { REQUEST_CHECKPOINT_ARCHIVE_SCHEMA_SQL } from "../ledger/request-checkpoint-archive-schema.ts";
 
 export interface Migration {
   readonly version: number;
@@ -5039,4 +5042,7 @@ export const migrations: readonly Migration[] = [
   { version: 42, name: "epay_notification_protocols", sql: EPAY_WEBHOOK_SCHEMA_SQL },
   { version: 43, name: "bounded_ingest_history", sql: INGEST_RETENTION_SCHEMA_SQL },
   { version: 44, name: "review_and_reconfirm_disputed_orders", sql: DISPUTE_RECONFIRMATION_SCHEMA_SQL },
+  { version: 45, name: "shared_compressed_ledger_evidence", sql: EVIDENCE_PAYLOAD_SCHEMA_SQL },
+  { version: 46, name: "manual_history_archives", sql: HISTORY_ARCHIVE_SCHEMA_SQL },
+  { version: 47, name: "archived_request_checkpoint_watermarks", sql: REQUEST_CHECKPOINT_ARCHIVE_SCHEMA_SQL },
 ] as const;

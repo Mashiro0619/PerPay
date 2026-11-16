@@ -54,6 +54,7 @@ export {
 
 export type OrderErrorCode =
   | "order_not_found"
+  | "order_archived"
   | "idempotency_conflict"
   | "merchant_order_no_conflict"
   | "amount_slots_exhausted"
@@ -236,6 +237,8 @@ export class OrderService {
         return { created: true, order: this.#projectOrder(result.aggregate) };
       case "existing":
         return { created: false, order: this.#projectOrder(result.aggregate) };
+      case "archived_order":
+        throw new OrderError("order_archived", "订单已归档，请在历史归档中查看；新订单请使用新的商户订单号和幂等键。");
       case "idempotency_conflict":
         throw new OrderError(
           "idempotency_conflict",

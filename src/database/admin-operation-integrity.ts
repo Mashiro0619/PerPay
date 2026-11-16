@@ -12,7 +12,7 @@ const resourceTables: Record<string, [string, string]> = {
 };
 interface OperationRow { operation_id: string; action: string; actor_id: string; request_fingerprint: string; result_json: string; created_at: number | bigint; }
 interface Member { kind: string; item_id: string; }
-interface AuditRow { actor_id: string; action: string; subject_id: string; occurred_at: number | bigint; details_json: string; }
+interface AuditRow { event_id: string; actor_id: string; action: string; subject_id: string; occurred_at: number | bigint; details_json: string; }
 
 /** Offline/backup checks also bind mutable projections and immutable operation results to the audit chain. */
 export function countAdminOperationViolations(connection: DatabaseSync): number {
@@ -21,10 +21,17 @@ export function countAdminOperationViolations(connection: DatabaseSync): number 
   if (present.length !== tables.length) return 1;
   let violations = 0;
   const audits = new Map<string, AuditRow[]>();
-  for (const row of connection.prepare("SELECT actor_id, action, subject_id, occurred_at, details_json FROM audit_events WHERE actor_type = 'ADMIN' AND subject_type = 'admin_operation' AND outcome = 'SUCCESS'").all() as unknown as AuditRow[]) {
+  for (const row of connection.prepare("SELECT event_id, actor_id, action, subject_id, occurred_at, details_json FROM audit_events WHERE actor_type = 'ADMIN' AND subject_type = 'admin_operation' AND outcome = 'SUCCESS'").all() as unknown as AuditRow[]) {
     const details = JSON.parse(row.details_json) as { operation_id?: string };
     if (!details.operation_id) { violations += 1; continue; }
     audits.set(details.operation_id, [...(audits.get(details.operation_id) ?? []), row]);
+  }
+  if (connection.prepare("SELECT 1 FROM sqlite_schema WHERE name = 'archived_admin_operation_keys'").get()) {
+    for (const row of connection.prepare("SELECT operation_id, audit_event_id FROM archived_admin_operation_keys").iterate()) {
+      const linked = audits.get(String(row.operation_id));
+      if (linked?.length !== 1 || linked[0]?.event_id !== row.audit_event_id) violations += 1;
+      audits.delete(String(row.operation_id));
+    }
   }
   const membership = connection.prepare("SELECT kind, item_id FROM admin_work_item_operations WHERE operation_id = ? ORDER BY kind, item_id");
   const markEvent = connection.prepare("SELECT order_id, version, marked, note FROM admin_refund_mark_events WHERE operation_id = ?");

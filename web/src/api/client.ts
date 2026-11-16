@@ -14,12 +14,30 @@ let sessionGeneration = 0;
 let sessionController = new AbortController();
 const requestGenerations = new WeakMap<Request, number>();
 const mutationGenerations = new WeakMap<object, number>();
+let restoreSessionHold: string | null = null;
+const restoreSessionListeners = new Set<() => void>();
+
+export function getRestoreSessionHold(): string | null {
+  return restoreSessionHold;
+}
+
+export function subscribeRestoreSessionHold(listener: () => void): () => void {
+  restoreSessionListeners.add(listener);
+  return () => { restoreSessionListeners.delete(listener); };
+}
+
+export function setRestoreSessionHold(operationId: string | null): void {
+  if (restoreSessionHold === operationId) return;
+  restoreSessionHold = operationId;
+  for (const listener of restoreSessionListeners) listener();
+}
 
 export function getSessionRequestGeneration(): number {
   return sessionGeneration;
 }
 
 export function invalidateSessionRequests(): void {
+  setRestoreSessionHold(null);
   sessionGeneration += 1;
   const previous = sessionController;
   sessionController = new AbortController();
@@ -79,6 +97,12 @@ client.interceptors.request.use((request) => {
     throw new Error("管理请求不能发送到其他业务网站。");
   }
   if (!["GET", "HEAD", "OPTIONS"].includes(request.method)) {
+    if (restoreSessionHold !== null) {
+      throw new ApiError(undefined, { error: {
+        code: "maintenance_in_progress",
+        message: "恢复任务已提交，请在备份设置中查看结果，完成后重新登录。",
+      } });
+    }
     const path = new URL(request.url).pathname;
     if (isReadOnlyDemo() && !["/api/admin/v1/session/login", "/api/admin/v1/session/logout", "/api/admin/v1/orders/export", "/api/admin/v1/audit-events/export"].includes(path)) {
       throw new ApiError(undefined, {error:{code:"demo_read_only",message:"当前操作不可用。"}});
@@ -92,7 +116,7 @@ client.interceptors.request.use((request) => {
 client.interceptors.response.use((response, request) => {
   requireCurrentGeneration(requestGenerations.get(request));
   request.signal.throwIfAborted();
-  if (response.status === 401 && !/\/session(?:\/login)?$|\/setup$/.test(new URL(request.url).pathname)) {
+  if (response.status === 401 && restoreSessionHold === null && !/\/session(?:\/login)?$|\/setup$/.test(new URL(request.url).pathname)) {
     window.dispatchEvent(new Event("perpay:session-expired"));
   }
   return response;

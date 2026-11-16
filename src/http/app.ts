@@ -5,6 +5,12 @@ import { siteOverview } from "./site-overview.ts";
 import { collectionCodeInputSchema, providerApplicationInputSchema, instanceDisplayInputSchema, isProductionProvider } from "../settings/model.ts";
 import { SiteError, type SiteStore } from "../sites/store.ts";
 import { registerEpayRoutes } from "../epay/http.ts";
+import { createReadStream } from "node:fs";
+import { Readable } from "node:stream";
+import { listHistoryArchives, readHistoryArchiveOrders, readHistoryArchiveOrder, readHistoryArchiveRecords, getHistoryArchiveDownload, deleteHistoryArchive, recoverDeletedHistoryArchives } from "../archive/store.ts";
+import { HistoryArchiveError } from "../archive/model.ts";
+import type { MaintenanceController } from "../maintenance/controller.ts";
+import { MaintenanceError, maintenanceRequestSchema } from "../maintenance/model.ts";
 import { EpayError, hasEpaySchema, readEpayOrder } from "../epay/store.ts";
 import { changeSiteClientIdInputSchema, createSiteInputSchema, updateSiteInputSchema, updateSiteDefaultsInputSchema, siteClientIdSchema, type SiteSnapshot } from "../sites/model.ts";
 import { collectionPolicyInputSchema } from "../settings/collection-policy.ts";
@@ -243,6 +249,7 @@ const ledgerConflictResolutionSchema = z.object({
 }).strict();
 
 export interface AppDependencies {
+  readonly maintenance?: MaintenanceController | undefined;
   readonly activity?: ActivityRecorder | undefined;
   readonly alipayAccounts?: AlipayAccountService | undefined;
   readonly accountHealth?: ((accountId: string) => { state: string; lastSuccessAt: number | null; lastErrorCode: string | null; collectionReady: boolean }) | undefined;
@@ -386,6 +393,13 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     if (dependencies.config.secureCookies) {
       context.header("strict-transport-security", "max-age=31536000; includeSubDomains");
     }
+    await next();
+  });
+
+  app.use("*", async (context, next) => {
+    const response = dependencies.maintenance?.response(context.req.raw,
+      remoteAddress(context, dependencies.config.trustedProxy), dependencies.config.secureCookies, adminFrontend);
+    if (response) return response;
     await next();
   });
 
@@ -667,6 +681,27 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
 
   const adminSession = requireAdminSession(dependencies.identity, dependencies.config.secureCookies);
 
+  app.get("/api/admin/v1/maintenance/jobs", adminSession, context => {
+    if (!dependencies.maintenance) throw new MaintenanceError(503, "maintenance_unavailable", "维护服务尚未启动");
+    return context.json({ data: dependencies.maintenance.state() });
+  });
+  app.get("/api/admin/v1/maintenance/jobs/:id", adminSession, context => {
+    if (!dependencies.maintenance) throw new MaintenanceError(503, "maintenance_unavailable", "维护服务尚未启动");
+    return context.json({ data: dependencies.maintenance.get(context.req.param("id")) });
+  });
+  app.post("/api/admin/v1/maintenance/jobs", adminSession, async context => {
+    requireSameOrigin(context, dependencies.config.publicOrigin);
+    requireCsrf(context, dependencies.identity, dependencies.config.secureCookies);
+    requireJsonContentType(context);
+    const request = await readJson(context, maintenanceRequestSchema, MAX_JSON_BODY_BYTES);
+    const session = requireCurrentSession(context, dependencies.identity);
+    if (!dependencies.maintenance) throw new MaintenanceError(503, "maintenance_unavailable", "维护服务尚未启动");
+    const job = dependencies.maintenance.start(request, { session, address: remoteAddress(context, dependencies.config.trustedProxy) });
+    dependencies.activity?.record({ action: "maintenance.requested", sourceType: "HTTP", actorType: "ADMIN",
+      actorId: session.session.username, subjectType: "maintenance", subjectId: job.id, details: { kind: job.kind } });
+    return context.json({ data: job }, 202);
+  });
+
   mountAuditRoutes(app, {
     database: dependencies.database, adminSession, clock: dependencies.clock,
     captureState: () => dependencies.activity?.status(),
@@ -725,6 +760,57 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     } catch {
       throw new HttpApiError(503, "backup_list_unavailable", "备份文件列表暂时无法读取，请检查备份目录及读取权限后重试。");
     }
+  });
+
+  app.get("/api/admin/v1/archives", adminSession, context => {
+    recoverDeletedHistoryArchives(dependencies.database, dependencies.config.dataDir);
+    return context.json({ data: dependencies.database.read(connection => listHistoryArchives(connection, dependencies.config.dataDir)) });
+  });
+
+  app.get("/api/admin/v1/archives/:archiveId", adminSession, context => {
+    const parsed = z.object({ cursor: z.string().uuid().optional(), limit: z.coerce.number().int().min(1).max(100).optional() }).strict().safeParse(context.req.query());
+    if (!parsed.success) throw new HttpApiError(422, "validation_failed", "归档分页参数无效。");
+    const { cursor, limit } = parsed.data;
+    return context.json({ data: dependencies.database.read(connection => readHistoryArchiveOrders(connection, dependencies.config.dataDir,
+      context.req.param("archiveId"), { ...(cursor ? { cursor } : {}), ...(limit ? { limit } : {}) })) });
+  });
+
+  app.get("/api/admin/v1/archives/:archiveId/orders/:orderId", adminSession, context =>
+    context.json({ data: dependencies.database.read(connection => readHistoryArchiveOrder(connection, dependencies.config.dataDir,
+      context.req.param("archiveId"), context.req.param("orderId"))) }));
+
+  app.get("/api/admin/v1/archives/:archiveId/records", adminSession, context => {
+    const parsed = z.object({ table: z.string().min(1).max(128).optional(), cursor: z.string().regex(/^\d{1,15}$/).optional(),
+      limit: z.coerce.number().int().min(1).max(50).optional() }).strict().safeParse(context.req.query());
+    if (!parsed.success) throw new HttpApiError(422, "validation_failed", "归档记录分页参数无效。");
+    const { table, cursor, limit } = parsed.data;
+    return context.json({ data: dependencies.database.read(connection => readHistoryArchiveRecords(connection, dependencies.config.dataDir,
+      context.req.param("archiveId"), { ...(table ? { table } : {}), ...(cursor ? { cursor } : {}), ...(limit ? { limit } : {}) })) });
+  });
+
+  app.get("/api/admin/v1/archives/:archiveId/download", adminSession, context => {
+    const file = dependencies.database.read(connection => getHistoryArchiveDownload(connection, dependencies.config.dataDir, context.req.param("archiveId")));
+    const session = requireCurrentSession(context, dependencies.identity);
+    dependencies.database.write(connection => appendAuditEvent(connection, {
+      occurredAt: dependencies.clock?.() ?? Date.now(), actorType: "ADMIN", actorId: session.session.username,
+      action: "history.archive.download_requested", outcome: "SUCCESS", subjectType: "history_archive", subjectId: file.archive.archive_id,
+      requestId: context.get("requestId"), details: { sha256: file.archive.sha256, size_bytes: file.archive.size_bytes },
+    }));
+    return context.body(Readable.toWeb(createReadStream(file.path)) as ReadableStream, 200, {
+      "content-type": "application/vnd.sqlite3", "content-length": String(file.archive.size_bytes),
+      "content-disposition": `attachment; filename="${file.fileName}"`,
+    });
+  });
+
+  app.delete("/api/admin/v1/archives/:archiveId", adminSession, async context => {
+    requireJsonContentType(context);
+    requireSameOrigin(context, dependencies.config.publicOrigin);
+    requireCsrf(context, dependencies.identity, dependencies.config.secureCookies);
+    if (dependencies.demoMode) throw new HttpApiError(403, "demo_read_only", "当前操作不可用。");
+    const body = await readJson(context, z.object({ expected_sha256: z.string().regex(/^[0-9a-f]{64}$/) }).strict(), MAX_JSON_BODY_BYTES);
+    requireCurrentSession(context, dependencies.identity);
+    return context.json({ data: deleteHistoryArchive(dependencies.database, dependencies.config.dataDir, context.req.param("archiveId"), body.expected_sha256,
+      dependencies.clock?.() ?? Date.now()) });
   });
 
   app.post("/api/admin/v1/system/ledger/scan", adminSession, async (context) => {
@@ -1958,6 +2044,10 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
   );
 
   app.onError((error, context) => {
+    if (error instanceof MaintenanceError) return errorResponse(context, error.status, error.code, error.message);
+    if (error instanceof HistoryArchiveError) return errorResponse(context,
+      error.code === "archive_deleted" ? 410 : error.code === "archive_changed" || error.code === "archive_empty" || error.code === "archive_delete_pending" ? 409 : 404,
+      error.code, error.message);
     if (error instanceof EpayError) {
       return errorResponse(context, error.code === "epay_revision_conflict" ? 409 : 422, error.code, error.message);
     }
@@ -2981,6 +3071,7 @@ function orderStatus(code: OrderErrorCode): 404 | 409 | 422 | 503 {
       return 404;
     case "idempotency_conflict":
     case "merchant_order_no_conflict":
+    case "order_archived":
       return 409;
     case "amount_slots_exhausted":
     case "alipay_accounts_unavailable":

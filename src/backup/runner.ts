@@ -5,6 +5,7 @@ import {
   lstatSync,
   openSync,
   readFileSync,
+  readdirSync,
   renameSync,
   rmSync,
   writeFileSync,
@@ -37,6 +38,7 @@ import {
   LOCAL_BACKUP_NAME_PATTERN,
   listLocalBackups,
   pruneLocalBackups,
+  preserveRestoreSafetyBackup,
   recoverInterruptedBackupFiles,
   restoreLocalBackup,
   type CreateLocalBackupOptions,
@@ -46,9 +48,11 @@ import {
 } from "./repository.ts";
 import { syncDirectory } from "../database/maintenance-lock.ts";
 import {
+  archiveDatabaseHistory,
   clearStalePublicationLock,
   inspectPublicationLock,
 } from "../database/maintenance.ts";
+import type { MaintenanceRequest, MaintenanceResult } from "../maintenance/model.ts";
 import {
   ensurePrivateDirectory,
   hardenExistingPrivateFile,
@@ -231,8 +235,9 @@ export async function runBackupCommand(
   operations: BackupOperations = defaultBackupOperations,
 ): Promise<number> {
   const command = arguments_[0] ?? "schedule";
-  const activity = new ActivitySpoolWriter({ backupDirectory: environment.PERPAY_BACKUP_DIR ?? "/backups",
+  const activity = new ActivitySpoolWriter({ backupDirectory: environment.PERPAY_BACKUP_DIR ?? "/backups", dataDirectory: environment.PERPAY_DATA_DIR ?? "/data",
     kind: command === "schedule" ? "backup" : "maintenance" });
+  if (command === "schedule") activity.startCleanup();
   const action = backupCommandAction(command);
   const startedAt = Date.now();
   let target: MaintenanceAuditTarget | undefined;
@@ -313,7 +318,7 @@ async function executeBackupCommand(
   const quarantineUnreadableCurrent = restoreFlags.includes(QUARANTINE_UNREADABLE_ARGUMENT);
   const config = command === "restore"
     ? withRestorePolicy(baseConfig)
-    : withCurrentPolicy(baseConfig);
+    : command === "schedule" ? baseConfig : withCurrentPolicy(baseConfig);
   ensurePrivateDirectory(config.backupDirectory);
   if (arguments_.length === 1 && command === "run-once") {
     const result = await runTrackedCycle(config, operations, undefined, activity);
@@ -358,15 +363,7 @@ async function executeBackupCommand(
     arguments_[2] !== undefined &&
     arguments_[3] === DELETE_BACKUP_FILE_CONFIRMATION_ARGUMENT
   ) {
-    const deleted = await withBackupLock(config, "delete-backup-file", undefined, () => {
-      const state = readBackupState(config.backupDirectory);
-      return operations.deleteArtifact(
-        config.backupDirectory,
-        arguments_[1]!,
-        arguments_[2]!,
-        state.backupName ?? undefined,
-      );
-    });
+    const deleted = await deleteTrackedBackup(config, arguments_[1]!, arguments_[2]!, operations);
     // A deleted artifact can belong to a different instance. Keep that target
     // identity in details, without binding its spool event to the deleted DB.
     setTarget(artifactAuditTarget("backup", deleted));
@@ -511,8 +508,9 @@ async function schedule(config: BackupConfig, operations: BackupOperations, acti
   let reconcileBeforeDelay = true;
   try {
     while (!controller.signal.aborted) {
-      const activeConfig = withCurrentPolicy(config);
+      let activeConfig = config;
       try {
+        activeConfig = withCurrentPolicy(config);
         const state = readBackupState(activeConfig.backupDirectory);
         if (
           reconcileBeforeDelay ||
@@ -757,7 +755,7 @@ export async function runTrackedCycle(
   signal?: AbortSignal,
   activity?: ActivitySpoolWriter,
 ): Promise<BackupCycleResult> {
-  const writer = activity ?? new ActivitySpoolWriter({ backupDirectory: config.backupDirectory, kind: "backup" });
+  const writer = activity ?? new ActivitySpoolWriter({ backupDirectory: config.backupDirectory, dataDirectory: config.dataDirectory, kind: "backup" });
   try {
     return await writer.run("backup.cycle", {}, () => executeTrackedCycle(config, operations, signal), {
       summarize: result => ({ backup_name: result.backup.name, instance_id: result.backup.instanceId, schema_version: result.backup.schemaVersion,
@@ -920,6 +918,129 @@ async function executeTrackedCycle(config: BackupConfig, operations: BackupOpera
       throw error;
     }
   });
+}
+
+export async function runManagedMaintenance(
+  request: MaintenanceRequest,
+  config: BackupConfig,
+  progress: (stage: string, message: string) => void,
+): Promise<MaintenanceResult> {
+  if (request.kind === "BACKUP") {
+    const operations: BackupOperations = {
+      ...defaultBackupOperations,
+      create: (current, options) => {
+        progress("CREATING_BACKUP", "正在备份当前数据");
+        return createLocalBackup(current, options);
+      },
+      inspect: (directory, name, now) => {
+        progress("VERIFYING_BACKUP", "正在校验备份");
+        return inspectLocalBackup(directory, name, now);
+      },
+      prune: (...arguments_) => {
+        progress("APPLYING_RETENTION", "正在按保留数量整理旧备份");
+        return pruneLocalBackups(...arguments_);
+      },
+    };
+    const result = await runTrackedCycle(config, operations);
+    return { backup_name: result.backup.name };
+  }
+
+  const activity = new ActivitySpoolWriter({ backupDirectory: config.backupDirectory, dataDirectory: config.dataDirectory, kind: "maintenance" });
+  try {
+    if (request.kind === "DELETE_BACKUP") {
+      progress("DELETING_BACKUP", "正在校验并删除备份");
+      const deleted = await activity.run("backup.delete", { operation_id: request.operation_id, backup_name: request.name },
+        () => deleteTrackedBackup(config, request.name, request.expected_sha256), { permanent: true,
+          summarize: result => ({ backup_name: result.name, backup_sha256: result.sha256 }) });
+      return { backup_name: deleted.name };
+    }
+    if (request.kind === "ARCHIVE") {
+      return await activity.run("maintenance.history.archive", { operation_id: request.operation_id, before: request.before },
+        () => withBackupLock(config, "archive-history", undefined, () => {
+          progress("ARCHIVING", "正在归档历史数据并释放数据库空间");
+          const result = archiveDatabaseHistory({ dataDirectory: config.dataDirectory, masterKey: config.masterKey!,
+            before: Date.parse(`${request.before}T00:00:00+08:00`), confirmStoppedServices: true });
+          return { archive_id: result.archive.archive_id };
+        }));
+    }
+
+    const result: MaintenanceResult = {};
+    try {
+      return await activity.run("backup.restore", { operation_id: request.operation_id, backup_name: request.name },
+        () => withBackupLock(config, "restore", undefined, async signal => {
+          progress("VERIFYING_BACKUP", "正在校验要恢复的备份");
+          recoverInterruptedBackupFiles(config.backupDirectory);
+          const startedAt = Date.now();
+          const previousState = readBackupStateForRestore(config.backupDirectory, true);
+          const selected = inspectLocalBackup(config.backupDirectory, request.name, startedAt);
+          if (selected.sha256 !== request.expected_sha256) throw new Error("备份校验值已变化，请刷新列表后重试。");
+          if (previousState?.instanceId && previousState.instanceId !== selected.instanceId) throw new Error("所选备份属于其他 PerPay 实例。");
+
+          progress("SAVING_CURRENT_DATA", "正在保存恢复前的安全备份");
+          const safety = await createLocalBackup(config, { expectedInstanceId: selected.instanceId, signal });
+          result.safety_backup_name = safety.name;
+          preserveRestoreSafetyBackup(config.backupDirectory, safety.name);
+          signal.throwIfAborted();
+          let state = { ...restoredBackupState(config, selected, startedAt, true), retainedCount: countBackupFiles(config.backupDirectory) };
+          writeBackupState(config.backupDirectory, state);
+          try {
+            progress("RESTORING", "正在恢复所选备份");
+            // A restore can publish the replacement and then fail while releasing its locks.
+            // Require session revocation on reopening after every replacement attempt.
+            result.requires_login = true;
+            // 已有已验证且保留的安全副本。
+            restoreLocalBackup(config, selected.name, selected.sha256, selected.instanceId, Date.now(), false, { preserveCurrentDatabase: false });
+            result.backup_name = selected.name;
+            state = { ...state, lastSuccessAt: Date.now(), lastErrorAt: null, lastErrorStage: null };
+            writeBackupState(config.backupDirectory, state);
+            return result;
+          } catch (error) {
+            writeBackupState(config.backupDirectory, { ...state, lastErrorAt: Date.now(), lastErrorStage: "restore" });
+            throw error;
+          }
+        }), { permanent: true, summarize: value => ({ ...value }) });
+    } catch (error) {
+      throw Object.assign(new Error("恢复失败", { cause: error }), { result });
+    }
+  } finally { activity.close(); }
+}
+
+async function deleteTrackedBackup(
+  config: BackupConfig,
+  name: string,
+  expectedSha256: string,
+  operations: BackupOperations = defaultBackupOperations,
+): Promise<LocalBackupArtifact> {
+  return withBackupLock(config, "delete-backup-file", undefined, () => {
+    const state = readBackupState(config.backupDirectory);
+    const artifacts = operations.listArtifacts(config.backupDirectory, Date.now());
+    const selected = artifacts.find(artifact => artifact.name === name);
+    if (!selected) throw new Error("备份文件已不存在，请刷新列表。");
+    if (selected.sha256 !== expectedSha256) throw new Error("备份校验值已变化，请刷新列表后重试。");
+    const remaining = artifacts.filter(artifact => artifact.name !== name);
+    if (state.backupName === name) {
+      const replacement = remaining.find(artifact => artifact.status === "verified" && artifact.instanceId === state.instanceId);
+      // Change the pointer before unlinking so an interrupted deletion cannot leave it dangling.
+      const next: BackupState = replacement ? {
+        ...state, backupName: replacement.name, backupSha256: replacement.sha256, backupSizeBytes: replacement.sizeBytes,
+        instanceId: replacement.instanceId, schemaVersion: replacement.schemaVersion,
+        lastSuccessAt: Date.parse(replacement.createdAt), retainedCount: remaining.length, backupRequired: true,
+      } : {
+        ...emptyBackupState, intervalMilliseconds: config.intervalMilliseconds, keepCount: config.keepCount,
+        lastAttemptAt: state.lastAttemptAt, lastErrorAt: state.lastErrorAt, lastErrorStage: state.lastErrorStage, backupRequired: true,
+      };
+      writeBackupState(config.backupDirectory, next);
+    }
+    const deleted = operations.deleteArtifact(config.backupDirectory, name, expectedSha256);
+    if (state.backupName !== name && state.backupName !== null) {
+      writeBackupState(config.backupDirectory, { ...state, retainedCount: remaining.length });
+    }
+    return deleted;
+  });
+}
+
+function countBackupFiles(backupDirectory: string): number {
+  return readdirSync(backupDirectory).filter(name => LOCAL_BACKUP_NAME_PATTERN.test(name)).length;
 }
 
 function backupCommandAction(command: string): string {

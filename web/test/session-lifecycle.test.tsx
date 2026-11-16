@@ -27,6 +27,8 @@ const session = {
 
 function readResponse(request: Request) {
   const path = new URL(request.url).pathname;
+  if (path === "/api/admin/v1/maintenance/jobs") return json({ data: { active: null, latest: null } });
+  if (path === "/api/admin/v1/system/backups") return json({ data: { items: [] } });
   if (path === "/api/admin/v1/system/status") {
     return json({ data: systemStatus(settings) });
   }

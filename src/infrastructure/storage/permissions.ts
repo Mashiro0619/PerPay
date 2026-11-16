@@ -1,5 +1,6 @@
 import { chmodSync, lstatSync, mkdirSync, readdirSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
+import { isMainThread } from "node:worker_threads";
 
 export const PRIVATE_DIRECTORY_MODE = 0o700;
 export const PRIVATE_FILE_MODE = 0o600;
@@ -7,7 +8,7 @@ const POSIX_MODE_MASK = 0o777;
 
 /** Keeps newly created sensitive files private without weakening a stricter umask. */
 export function hardenProcessFileCreation(): void {
-  if (process.platform === "win32") return;
+  if (process.platform === "win32" || !isMainThread) return;
   const current = process.umask();
   process.umask(current | 0o077);
 }

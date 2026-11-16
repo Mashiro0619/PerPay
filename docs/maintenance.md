@@ -17,6 +17,7 @@
 | 无法登录管理后台 | [重设密码](#忘记管理员密码) · [关闭 IP 白名单](#管理员-ip-白名单与离线恢复) |
 | 磁盘不足或维护受阻 | [查看空间并缩小数据库](#数据库空间与压实) · [清理遗留维护锁](#清理遗留维护锁) |
 | 查找操作与任务记录 | [审计日志与采集状态](#审计日志与采集状态) |
+| 将旧数据移出在线数据库 | [历史归档](#历史归档) |
 
 平时记下最近一次成功备份、复制到其他机器和尝试恢复的日期。这样服务器出问题时，你能知道可以恢复到什么时候。
 
@@ -63,7 +64,9 @@ test "$(docker inspect --format '{{.State.Running}} {{if .State.Health}}{{.State
 
 ## 开启自动备份并检查结果
 
-在 **系统设置 → 自动备份** 设置多久备份一次、保留多少份。默认每 24 小时一份、保留 7 份。保存设置后，还要确保负责备份的程序一直运行。
+打开 **系统设置 → 备份与恢复**，点击“立即备份”即可创建并校验当前数据的副本，页面显示执行进度、结果和生成的文件。未开启定时备份时也可以手动备份。
+
+在同页编辑自动备份策略，设置多久备份一次、保留多少份。默认每 24 小时一份、保留 7 份。保存设置后，还要确保负责定时备份的程序一直运行。
 
 **Compose 部署：** 在部署目录启动备份并检查结果：
 
@@ -73,7 +76,7 @@ docker compose logs --tail=100 backup
 docker compose --profile maintenance run --rm maintenance health
 ```
 
-需要立即生成一份时，先停止定时备份，应用可继续运行：
+也可通过命令行生成一份备份。先停止定时备份，应用可继续运行：
 
 ```sh
 docker compose stop backup
@@ -92,7 +95,7 @@ export PERPAY_BACKUP_DIR=/srv/perpay/backups
 node dist/backup/runner.js schedule
 ```
 
-长期运行时，用 systemd 等工具管理备份进程，确保退出后能重新启动。例如服务名是 `perpay-backup`，可以用 `journalctl -u perpay-backup -n 100 --no-pager` 查看日志。要手动备份，先停止这份定时服务，执行下面的命令，完成后再启动定时服务：
+长期运行时，用 systemd 等工具管理备份进程，确保退出后能重新启动。例如服务名是 `perpay-backup`，可以用 `journalctl -u perpay-backup -n 100 --no-pager` 查看日志。需要从命令行手动备份时，先停止这份定时服务，执行下面的命令，完成后再启动定时服务：
 
 ```sh
 node dist/backup/runner.js run-once
@@ -108,21 +111,25 @@ node dist/backup/runner.js health
 
 ## 查看备份
 
-打开 **系统设置 → 自动备份 → 备份文件**，查看按时间倒序排列的名称、生成时间和大小。刷新页面会更新文件列表及任务状态；目录读取失败会显示错误。
+打开 **系统设置 → 备份与恢复 → 备份文件**，查看按时间倒序排列的名称、生成时间和大小。每份文件都可直接点击“恢复”或“永久删除”，确认后由服务器执行。刷新页面会更新文件列表及任务状态；目录读取失败会显示错误。
+
+标为“恢复前备份”的文件保存了恢复操作之前的数据，长期保留，不计入普通备份的自动清理数量。确认不再需要后，可在列表中手动永久删除。删除备份会移除服务器上的实际文件。
 
 自动备份概览会显示最近一次通过完整内容校验的时间。应用启动后校验最近副本，此后每小时后台校验一次；普通状态刷新读取文件状态并复用校验结果，发现副本更换或文件改变时立即重新校验。校验失败的副本会标为不可用。
 
-页面显示文件名称、时间和大小。真正准备恢复时，再运行下面的命令检查文件，记下要恢复的 `name`（文件名）和 `sha256`（用于确认文件未改变的校验值）：
+网页恢复或删除会自动带上所选文件的校验值。需要使用命令行时，运行下面的命令检查文件，记下要恢复的 `name`（文件名）和 `sha256`（用于确认文件未改变的校验值）：
 
 ```sh
 docker compose --profile maintenance run --rm maintenance list-backups
 ```
 
-默认副本保存在 `perpay-backups` 卷，主密钥另在 `perpay-secrets` 卷。没有备份时先[启用并验证](#启用与验证备份)；提示其他备份操作正在运行时，等待该操作结束。导出或恢复前按对应步骤停止定时备份。
+默认副本保存在 `perpay-backups` 卷，主密钥另在 `perpay-secrets` 卷。没有备份时先[创建并检查备份](#启用与验证备份)；提示其他备份操作正在运行时，等待该操作结束。命令行导出或恢复前按对应步骤停止定时备份。
 
 ## 主密钥与备份的异地保存
 
 恢复需要这套 PerPay 的数据库备份和原主密钥。默认 Compose 把备份放在 `perpay-backups` 卷，主密钥放在 `perpay-secrets` 卷中的 `/run/perpay-secrets/master-key`。如果另外设置了 `PERPAY_MASTER_KEY`，实际使用的是环境变量里的值，需要导出这一份。
+
+使用历史归档后，还要保存 `perpay-data` 卷中的 `/data/archives`。它与归档完成后的数据库备份配套，下面的脚本会一起导出。
 
 把数据库和原主密钥分别加密，复制到另一台机器、移动硬盘等位置，并一起保存版本号和文件校验值。下面使用 age 文件加密工具；解密所需的私钥要单独保存在可信电脑或离线介质上，不要与加密文件放在同一处。
 
@@ -142,7 +149,7 @@ age-keygen -y perpay-recovery.agekey
 
 ### 导出数据库和实际主密钥
 
-在 PerPay 服务器安装 age，确认没有其他备份、恢复或清理操作正在进行，再在部署目录用 Bash 执行下面的脚本。脚本会暂停定时备份、制作新备份，然后分别加密备份目录和原主密钥。原本正在运行的定时备份会在脚本退出时重新启动。
+在 PerPay 服务器安装 age，确认没有其他备份、归档、恢复或清理操作正在进行，再在部署目录用 Bash 执行下面的脚本。脚本会暂停定时备份、制作新备份，然后分别加密备份目录、历史归档和原主密钥。原本正在运行的定时备份会在脚本退出时重新启动。
 
 按实际配置选择主密钥来源：默认 Compose 输入 `secrets`；通过 Compose 给 `app` 设置了 `PERPAY_MASTER_KEY` 时输入 `env`，此时 `app` 须保持运行。应用可以在整个导出期间继续提供服务。
 
@@ -177,6 +184,11 @@ age-keygen -y perpay-recovery.agekey
     age -r "$recipient" -o "$export_directory/perpay-backups.tar.age.part"
   mv "$export_directory/perpay-backups.tar.age.part" "$export_directory/perpay-backups.tar.age"
 
+  docker compose --profile maintenance run --rm --no-deps -T --entrypoint sh maintenance \
+    -ceu 'mkdir -p /data/archives; tar -cf - -C /data archives' |
+    age -r "$recipient" -o "$export_directory/perpay-archives.tar.age.part"
+  mv "$export_directory/perpay-archives.tar.age.part" "$export_directory/perpay-archives.tar.age"
+
   if [ "$key_source" = secrets ]; then
     key_file=perpay-master-key.tar.age
     docker compose --profile maintenance run --rm --no-deps -T --entrypoint tar maintenance \
@@ -197,7 +209,7 @@ age-keygen -y perpay-recovery.agekey
 
   (
     cd "$export_directory"
-    sha256sum perpay-backups.tar.age "$key_file" perpay-version.txt > SHA256SUMS
+    sha256sum perpay-backups.tar.age perpay-archives.tar.age "$key_file" perpay-version.txt > SHA256SUMS
   )
   printf '加密导出目录：%s\n' "$export_directory"
 )
@@ -218,7 +230,7 @@ export_directory="$HOME/perpay-offsite/export.替换为实际目录"
 scp -r "$export_directory" backup-user@backup-host:/srv/private/perpay/
 ```
 
-导出目录应只有两份加密文件、版本号和校验文件。每次保留一个新目录，给自己留下多个可以恢复的时间点；age 私钥、主密钥明文、数据库原文件和环境配置文件不要放进去。丢失原主密钥后，重新生成一把也无法解开原来的配置。
+导出目录应包含数据库备份、历史归档、主密钥三份加密文件，以及版本号和校验文件。每次保留一个新目录，给自己留下多个可以恢复的时间点；age 私钥、主密钥明文、数据库原文件和环境配置文件不要放进去。丢失原主密钥后，重新生成一把也无法解开原来的配置。
 
 第一次导出后，以及之后定期检查时，把导出目录下载到保存 age 私钥的可信电脑，检查文件是否完整、能否解密：
 
@@ -226,6 +238,7 @@ scp -r "$export_directory" backup-user@backup-host:/srv/private/perpay/
 set -euo pipefail
 sha256sum -c SHA256SUMS
 age --decrypt -i /安全路径/perpay-recovery.agekey perpay-backups.tar.age | tar -tf -
+age --decrypt -i /安全路径/perpay-recovery.agekey perpay-archives.tar.age | tar -tf -
 if [ -f perpay-master-key.tar.age ]; then
   age --decrypt -i /安全路径/perpay-recovery.agekey perpay-master-key.tar.age | tar -tf -
 else
@@ -237,9 +250,17 @@ fi
 
 ## 恢复数据库
 
-**恢复会用备份替换当前数据库。** 先另存当前完整数据和原主密钥，再停止应用、自动备份及其他正在使用数据库的维护程序。原服务器沿用当前程序的维护工具；恢复到新服务器时，按下面的步骤使用备份中记录的版本。如果备份之后已经有新交易，先看[回退版本时的数据处理](#固定版本与回滚)，避免丢失新增记录。
+**恢复会用备份替换当前数据库，备份之后新增的交易和配置不会出现在恢复结果中。** 后台可正常访问时直接使用页面恢复；后台无法访问或迁移到新服务器时，使用下面的命令行步骤。恢复到新服务器时使用备份中记录的程序版本和原主密钥。
 
 ### 原服务器恢复
+
+在 **系统设置 → 备份与恢复 → 备份文件** 中选择副本，点击“恢复”，核对生成时间和文件名，输入“恢复备份”确认。
+
+系统自动暂停业务请求、查账和通知，保存当前数据为“恢复前备份”，再替换数据库并重新打开服务。页面持续显示进度；完成后点击“重新登录”，使用所恢复数据中的管理员密码登录，核对网站、订单、支付宝账号和运行状态。
+
+### 原服务器命令行恢复
+
+先另存当前完整数据和原主密钥，再沿用当前程序的维护工具执行：
 
 1. 确认原 `perpay-secrets` 卷仍在；使用环境密钥的部署须向恢复工具提供实际的原 `PERPAY_MASTER_KEY`。停止应用和自动备份，再列出副本：
 
@@ -278,7 +299,7 @@ fi
 
 ### 全新服务器恢复
 
-准备 Linux、Docker Compose、age 私钥，以及同一次导出的两份加密文件、`perpay-version.txt` 和 `SHA256SUMS`。这里先按文件记录的版本恢复，避免在抢修时同时升级；成功后再按[日常更新](#固定版本与回滚)使用 `latest`。下面使用独立项目名 `perpay-recovery`，每条 Compose 命令都要保留这个名字。
+准备 Linux、Docker Compose、age 私钥，以及同一次导出的数据库备份、历史归档、主密钥加密文件、`perpay-version.txt` 和 `SHA256SUMS`。这里先按文件记录的版本恢复，避免在抢修时同时升级；成功后再按[日常更新](#固定版本与回滚)使用 `latest`。下面使用独立项目名 `perpay-recovery`，每条 Compose 命令都要保留这个名字。
 
 1. 新建恢复目录：
 
@@ -331,6 +352,13 @@ fi
    ```
 
    工具会检查备份文件、数据库结构版本和原主密钥，并检查恢复结果。看到成功结果后再继续；失败时保留文件和报错输出。
+
+   如果已经使用历史归档，在启动应用前导入保存的归档目录：
+
+   ```sh
+   age --decrypt -i /安全路径/perpay-recovery.agekey perpay-archives.tar.age |
+     docker compose -p perpay-recovery run --rm --no-deps -T --entrypoint sh app -ceu 'umask 077; tar -xf - -C /data; test -d /data/archives'
+   ```
 
 5. 应用仍停止时，查询恢复的实例与数据数量：
 
@@ -400,7 +428,7 @@ docker compose --profile maintenance run --rm maintenance restore BACKUP_NAME SH
 
 旧沙箱账号只能查看历史，不能再保存收款配置、更换密钥、检查连接、查账或接收新订单。相关流水不再自动对账，订单也不再发送通知。要继续收款，添加已上线且具有对应账号账务查询权限的正式应用，完成连接检查后，把业务网站改为使用新账号。原订单、流水、通知和归属仍保留，详见[接入调整](releases/v1.0.0-rc.1.md#接入调整)。
 
-1.0.0 的数据库结构版本为 44，兼容的结构版本为 24—44。旧数据库在启动时自动升级。从 RC4 的结构版本 42 升级时，会完成两次更新；已经使用结构版本 44 的开发构建无需再次更新结构。具体变化见[1.0.0 版本说明](releases/v1.0.0.md)。
+1.0.0 的数据库结构版本为 47，兼容的结构版本为 24—47。旧数据库在启动时自动升级。从 RC4 的结构版本 42 升级时执行迁移 43—47；结构版本 44 的开发构建执行迁移 45—47。具体变化见[1.0.0 版本说明](releases/v1.0.0.md)。
 
 其他旧版的操作差异可按原版本查阅：[RC4 易支付接入](releases/v1.0.0-rc.4.md)、[RC3 升级前备份](releases/v1.0.0-rc.3.md)、[RC2 审计与客户端 ID](releases/v1.0.0-rc.2.md)、[RC1 多账号与正式应用](releases/v1.0.0-rc.1.md)、[多网站设置](releases/v1.0.0-alpha.1.md)和[退款标记与旧接口](releases/v0.2.2.md)。
 
@@ -491,7 +519,7 @@ docker compose --profile maintenance run --rm maintenance restore BACKUP_NAME SH
 
 ## 查看占用并缩小数据库文件
 
-数据库除了订单，还保存支付宝返回的账单原文和查询记录。程序每小时分批清理超过 7 天、符合条件的空结果和重复副本，日志 `ingest_history_pruned` 会显示清理数量。首次入账、异常、各账号最近一次查询，以及其他记录仍在使用的证据会继续保留。
+数据库除了订单，还保存支付宝返回的账单原文和查询记录。相同正文只存一份，按内容无损压缩；旧正文在后台分批整理。程序每小时清理超过 7 天、符合条件的空结果和重复副本，日志 `ingest_history_pruned` 会显示清理和转存数量。首次入账、异常及仍在使用的证据继续保留，符合条件的历史可手动归档。
 
 先查看数据库文件、WAL 写入日志、可以复用的空间，以及哪些表占用最多：
 
@@ -499,7 +527,7 @@ docker compose --profile maintenance run --rm maintenance restore BACKUP_NAME SH
 docker compose run --rm --no-deps --entrypoint node maintenance dist/database/maintenance.js inspect-storage
 ```
 
-`usedBytes` 是数据和索引已经分配的空间，`reclaimableBytes` 是可以再次使用的空闲空间，`tables` 列出各表的行数和大小。如果 SQLite 没有提供按表统计的能力，大小会显示为 `null`。
+`usedBytes` 是数据和索引已经分配的空间，`reclaimableBytes` 是可以再次使用的空闲空间，`tables` 列出全部应用表的行数及数据、索引大小，按总占用排序。如果 SQLite 没有提供按表统计的能力，大小会显示为 `null`。
 
 删除旧记录后，SQLite 通常会把空位留给后续数据使用，文件不会立即变小。“压实”就是重新整理这些空位，缩小文件；新备份在空间足够时会自动这样处理。要缩小正在使用的数据库，先完成[备份](#启用与验证备份)，等待旧记录清理结束，并在数据卷准备约两倍数据库大小的额外空间，然后停服：
 
@@ -530,6 +558,30 @@ docker compose up -d app backup
 失败时保持停服，按输出排查；主密钥沿用现有 secrets 卷或 `PERPAY_MASTER_KEY`。
 
 清理后的历史查询仍保留响应摘要。如果再次查询同一时间段时结果变了，程序会先重新确认，再将变化记入流水；确认进度会随数据库保留。
+
+## 历史归档
+
+在 **系统设置 → 备份与恢复 → 历史归档** 选择截止日期，点击“创建历史归档”并确认。日期须为有效的四位年份日期，不能晚于今天；按北京时间计算，不含当天。例如选择 `2026-01-01`，处理的是这一天零点之前的历史。
+
+系统自动暂停业务请求、查账和通知，创建归档并缩小在线数据库，完成后重新打开服务。页面显示执行进度和结果，可直接进入新归档查看历史记录。
+
+归档会将已结束的订单、账务、通知及相关采集记录保存为独立文件，再从在线库移除并压实。待通知、争议、未决异常，以及仍被在线业务引用的记录会留下，归档详情列出实际归档数量。核心审计链继续保存，订单号、流水号及操作编号保留小份防重复摘要。
+
+有订单或流水历史的支付宝账号可暂停接收新订单，不能删除重建；归档或永久删除归档后也遵守这一规则，避免同一付款被重复确认。
+
+也可使用命令行归档。先完成备份，再在部署目录停服执行，例如：
+
+```sh
+docker compose stop app backup
+docker compose run --rm --no-deps --entrypoint node maintenance dist/database/maintenance.js archive-history --before 2026-01-01 --confirm-stopped-services
+docker compose up -d app backup
+```
+
+确认归档命令成功后再启动服务。使用环境变量主密钥时，与压实命令一样加上 `-e PERPAY_MASTER_KEY`。归档后，普通列表与统计反映在线数据，历史订单在归档页面查阅。
+
+**归档长期保留，不按期限自动删除。** 可以查看、下载，或在确认框中输入“永久删除”后删除整份归档。页面显示“删除待完成”时，点击重试以清理尚未移除的文件。
+
+归档放在数据目录的 `archives` 文件夹，自动数据库备份不重复打包这些文件。异地保存和迁移服务器时，将该目录与归档完成后的数据库备份一起保存；上面的导出和恢复步骤已经包含它。也可以从归档页面逐份下载。永久删除服务器上的归档不会删除你已经另存的副本。
 
 ## 忘记管理员密码
 

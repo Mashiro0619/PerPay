@@ -1,5 +1,9 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api, result, type BackupHealth, type RuntimeSettings } from "@/api/client";
+import { listManagedBackupFiles } from "@/api/maintenance";
+import { useMaintenanceAction, useMaintenanceJobs } from "@/hooks/use-maintenance";
+import { Link } from "@/navigation";
 import { backupIntervalLabel, dateTime } from "@/lib/format";
 import { FieldDescription } from "@/components/ui/field";
 import { useOptionalSystemStatus } from "@/features/system-status";
@@ -8,22 +12,22 @@ import { RuntimeErrorDetails } from "@/components/runtime-error-details";
 import { SettingsSummary, type SettingsSummaryRow } from "@/components/settings-summary";
 import { ErrorNotice } from "@/components/request-state";
 import { CopyValue } from "@/components/copy-value";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { BackupFiles, backupFilesKey } from "@/components/backup-files";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ChevronDown } from "lucide-react";
+import { MaintenanceConfirmation, MaintenanceJobResult } from "@/components/maintenance-operation";
+import { DatabaseBackup } from "lucide-react";
 
 function backupStatusMessage(backup: BackupHealth): string {
   if (backup.backup_in_progress) return "正在备份";
-  if (backup.recovery_required) return "备份任务需要恢复，请按维护文档处理。";
+  if (backup.recovery_required) return "上次备份中断，等待任务恢复。";
   if (backup.clock_moved_backwards) return "系统时钟发生回退，请检查主机时间同步。";
-  if (backup.configuration_mismatch) return "备份配置与任务不一致，请检查服务器任务。";
+  if (backup.configuration_mismatch) return "备份策略等待同步。";
   if (backup.instance_matches === false) return "备份与当前实例不匹配，请检查备份目录。";
-  if (backup.last_error_stage) return "最近备份失败（" + backupFailureStageName(backup.last_error_stage) + "），请查看备份日志。";
-  if (!backup.enabled) return "备份未启用，保存策略不会启动任务。";
-  if (!backup.backup_available) return "尚无可用备份，请先完成一次备份验证。";
-  if (backup.backup_required) return "当前数据需要重新备份，请检查服务器备份任务。";
-  if (!backup.ok) return "当前备份未通过健康检查，请检查服务器备份任务。";
+  if (backup.last_error_stage) return "最近备份失败（" + backupFailureStageName(backup.last_error_stage) + "）。";
+  if (!backup.enabled) return "定时备份未运行，可立即创建备份。";
+  if (!backup.backup_available) return "尚无已验证可用的备份。";
+  if (backup.backup_required) return "当前数据需要重新备份。";
+  if (!backup.ok) return "当前备份未通过健康检查。";
   return "备份任务已启用";
 }
 
@@ -41,13 +45,15 @@ function useBackupStatus() {
 
 export function BackupOverview({ settings }: { settings: RuntimeSettings }) {
   const status = useBackupStatus();
+  const maintenance = useMaintenanceJobs();
   const files = useQuery({
     queryKey: backupFilesKey,
-    queryFn: ({ signal }) => result(api.listBackupFiles({ signal })),
+    queryFn: ({ signal }) => listManagedBackupFiles(signal),
     refetchOnMount: "always",
     retry: false,
   });
   const backup = status.data?.data.backup;
+  if (maintenance.requiresLogin) return <MaintenanceJobResult job={maintenance.latest} />;
   const current = !!backup && !status.isError && !status.isPaused;
   const notStarted = current && !backup.enabled && backup.status === "disabled" &&
     backup.last_attempt_at === null && backup.last_success_at === null && backup.content_verified_at === null &&
@@ -68,22 +74,32 @@ export function BackupOverview({ settings }: { settings: RuntimeSettings }) {
           : dateTime(backup.last_success_at + (backup.interval_milliseconds ?? settings.backup.interval_seconds * 1000))],
   );
   rows.push(["备份间隔", backupIntervalLabel(settings.backup.interval_seconds)], ["保留备份数量", settings.backup.keep_count]);
-  const guide = "https://github.com/Mashiro0619/PerPay/blob/main/docs/maintenance.md";
   return <div className="flex flex-col gap-3">
+    <ErrorNotice error={maintenance.error} retry={() => { void maintenance.refetch(); }} />
+    <MaintenanceJobResult job={maintenance.active ?? maintenance.latest} />
     <ErrorNotice error={status.error} retry={() => { void status.refetch(); }} retainedData={!!backup} />
-    <SettingsSummary title="自动备份" rows={rows} editTo="/settings/backup/edit" description={notStarted ?
-      <a data-external-link href={guide + "#开启自动备份并检查结果"} target="_blank" rel="noopener noreferrer">启用与验证备份</a>
-    : undefined} actions={<>
-      <a data-external-link className={buttonVariants({ variant: "ghost", size: "sm" })} href={guide + "#主密钥与备份的异地保存"} target="_blank" rel="noopener noreferrer">导出备份步骤</a>
-      <a data-external-link className={buttonVariants({ variant: "ghost", size: "sm" })} href={guide + "#恢复数据库"} target="_blank" rel="noopener noreferrer">恢复说明</a>
-    </>} />
-    {notStarted ? <Collapsible className="flex flex-col gap-3">
-      <CollapsibleTrigger render={<Button type="button" variant="ghost" className="h-auto min-h-8 max-w-full self-start whitespace-normal" />}>
-        查看备份文件<ChevronDown data-icon="inline-end" />
-      </CollapsibleTrigger>
-      <CollapsibleContent><BackupFiles /></CollapsibleContent>
-    </Collapsible> : <BackupFiles />}
+    <SettingsSummary title="自动备份" rows={rows} editTo="/settings/backup/edit"
+      description={notStarted ? "可立即创建备份，也可编辑自动备份策略。" : undefined}
+      actions={<BackupNowButton blocked={maintenance.blocked || !!backup?.backup_in_progress} />} />
+    <BackupFiles blocked={maintenance.blocked || !!backup?.backup_in_progress} />
   </div>;
+}
+
+function BackupNowButton({ blocked }: { blocked: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [request, setRequest] = useState<{ operation_id: string; kind: "BACKUP" } | null>(null);
+  const operation = useMaintenanceAction(() => setOpen(false));
+  return <>
+    <Button variant="outline" size="sm" disabled={operation.pending || (blocked && !operation.unknown)} onClick={() => {
+      if (operation.reset()) setRequest({ operation_id: crypto.randomUUID(), kind: "BACKUP" });
+      setOpen(true);
+    }}><DatabaseBackup data-icon="inline-start" />{operation.unknown ? "查询备份任务" : "立即备份"}</Button>
+    <MaintenanceConfirmation open={open} onOpenChange={setOpen} title="立即创建一份备份？"
+      description="系统会备份当前业务数据和配置，并校验副本是否可用。进度和结果会显示在本页。"
+      confirmLabel="确认立即备份" pending={operation.pending} error={operation.error} unknown={operation.unknown}
+      refreshing={operation.refreshing} onRefresh={operation.refresh}
+      onConfirm={() => { if (request) operation.submit(request); }} />
+  </>;
 }
 
 export function BackupStatus() {
@@ -104,14 +120,7 @@ export function BackupStatus() {
         </FieldDescription>
       )}
       <FieldDescription>
-        <a
-          data-external-link
-          href="https://github.com/Mashiro0619/PerPay/blob/main/docs/maintenance.md#开启自动备份并检查结果"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          启用与验证备份
-        </a>{" "}
+        <Link global to="/settings/backup">查看备份与恢复</Link>{" "}
         · 主密钥须另行保管。
       </FieldDescription>
     </div>

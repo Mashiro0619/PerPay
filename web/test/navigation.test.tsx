@@ -80,6 +80,8 @@ function mount(
   if (options.configured) saved.completion.complete = true;
   const fetchMock = vi.fn(async (request: Request) => {
     const path = new URL(request.url).pathname;
+    if (path === "/api/admin/v1/maintenance/jobs") return json({ data: { active: null, latest: null } });
+    if (path === "/api/admin/v1/system/backups") return json({ data: { items: [] } });
     if (path === "/api/admin/v1/sessions") return json({ data: [] });
     if (path === "/api/admin/v1/alipay-accounts") return json({ data: [] });
     if (path === "/api/admin/v1/sites")
@@ -585,7 +587,7 @@ describe("navigation and draft protection", () => {
     await waitFor(() => expect(unloadIsBlocked()).toBe(false));
     await user.click(within(dialog).getByRole("button", { name: "关闭" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-    await user.click(screen.getByRole("tab", { name: "自动备份" }));
+    await user.click(screen.getByRole("tab", { name: "备份与恢复" }));
     await user.click(await screen.findByRole("link", { name: "编辑自动备份" }));
     expect(await screen.findByLabelText("备份间隔")).toBeVisible();
     expect(screen.queryByRole("alertdialog", { name: "放弃未保存的修改？" })).not.toBeInTheDocument();

@@ -5,6 +5,7 @@ import { manualOrderEligibilitySql, manualProviderAccountEligibilitySql } from "
 import { normalizeListQuery, MATCH_SORT_FIELDS, EXCEPTION_SORT_FIELDS, type MatchSort, type ExceptionSort, type ListQuery, type ListPosition } from "../shared/list-query.ts";
 import { listKeyset, listSearch } from "../database/list-query.ts";
 import { randomUUID } from "node:crypto";
+import { isArchivedOperation } from "../archive/keys.ts";
 import { auditContextAvailable, auditSiteContext } from "../audit/context.ts";
 import { appendAuditEvent } from "../database/identity-store.ts";
 import type { DatabaseSync } from "node:sqlite";
@@ -2040,6 +2041,9 @@ function insertFinancialOperation(
     readonly now: number;
   },
 ): FinancialOperation {
+  if (isArchivedOperation(connection, "FINANCIAL", { operationId: input.financialOperationId, operationKey: input.operationKey })) {
+    throw new ReconciliationError("operation_conflict", "此财务操作已归档，操作编号不能再次使用");
+  }
   const requestFingerprint = financialOperationFingerprint(input.fingerprintInput);
   assertChangedOnce(
     connection
@@ -2088,7 +2092,12 @@ function readDecisionReplay(
   input: FinancialOperationFingerprintInput,
 ): FinancialOperation | null {
   const existing = readOperation(connection, financialOperationId);
-  if (!existing) return null;
+  if (!existing) {
+    if (isArchivedOperation(connection, "FINANCIAL", { operationId: financialOperationId })) {
+      throw new ReconciliationError("operation_conflict", "此财务操作已归档，操作编号不能再次使用");
+    }
+    return null;
+  }
   if (
     existing.operationKey !== `admin:${financialOperationId}` ||
     existing.requestFingerprint !== financialOperationFingerprint(input) ||
@@ -2110,6 +2119,9 @@ function readOperationByKey(connection: DatabaseSync, operationKey: string): Fin
   const row = connection
     .prepare(`${OPERATION_COLUMNS} WHERE operation_key = ?`)
     .get(operationKey) as unknown as FinancialOperationRow | undefined;
+  if (!row && isArchivedOperation(connection, "FINANCIAL", { operationKey })) {
+    throw new ReconciliationError("operation_conflict", "此财务操作已归档，操作编号不能再次使用");
+  }
   return row ? mapOperation(row) : null;
 }
 

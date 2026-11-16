@@ -1,4 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
+import { archivedAccountHistorySql } from "../archive/account-history.ts";
 import { alipayAccountIdSchema } from "./model.ts";
 import { RuntimeSecretCipher, type AlipayCipherSecretName } from "../settings/crypto.ts";
 import { parseProviderApplicationPrivateKey, parsePlatformPublicKey, publicKeyFingerprint } from "../settings/model.ts";
@@ -48,6 +49,10 @@ export function countAlipayAccountDomainViolations(connection: DatabaseSync): nu
       OR EXISTS(SELECT 1 FROM payment_orders AS orders WHERE orders.alipay_account_id=account.account_id)
       OR EXISTS(SELECT 1 FROM ledger_entries AS entry JOIN alipay_account_generations AS generation USING(provider_account_key)
         WHERE generation.account_id=account.account_id))`);
+    if (connection.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='archived_ledger_keys'").get()) {
+      violations += count(`SELECT count(*) AS total FROM alipay_accounts AS account
+        WHERE account.deleted_at IS NOT NULL AND ${archivedAccountHistorySql("account.account_id")}`);
+    }
   }
   return violations;
 }

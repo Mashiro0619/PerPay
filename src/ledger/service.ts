@@ -325,7 +325,7 @@ export class LedgerIngestService {
         details += page.details.length;
         for (const result of recorded.normalized) {
           if (result.kind === "created") createdEntries += 1;
-          else if (result.kind === "duplicate") duplicateEntries += 1;
+          else if (result.kind === "duplicate" || result.kind === "archived_duplicate") duplicateEntries += 1;
           else if (result.kind === "isolated") isolatedDetails += 1;
           else conflicts += 1;
         }

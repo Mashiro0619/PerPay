@@ -2,6 +2,9 @@ import { HealthProbeCache } from "../infrastructure/health-probe-cache.ts";
 import { readAdminAccess } from "../settings/admin-access.ts";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { reconfirmedOrderResolutionSql } from "../reconciliation/dispute-schema.ts";
+import { countEvidencePayloadViolations, hasEvidencePayloads } from "../ledger/evidence-payloads.ts";
+import { findArchivedLedgerEntry } from "../archive/keys.ts";
+import { countArchivedLedgerEvidenceViolations } from "../archive/ledger-integrity.ts";
 import {
   closeSync,
   createReadStream,
@@ -1240,6 +1243,13 @@ function countIdentityDomainViolations(connection: DatabaseSync): number {
 function countOrderDomainViolations(connection: DatabaseSync): number {
   if (!tableExists(connection, "payment_orders")) return 0;
   const amountAccountPartition = columnExists(connection, "amount_slots", "alipay_account_id") ? "alipay_account_id, " : "";
+  const hasArchivedSlots = tableExists(connection, "archived_amount_slot_anchors");
+  const archivedSlotProjection = hasArchivedSlots ? `,
+    COALESCE((SELECT generation FROM archived_amount_slot_anchors AS anchor
+      WHERE anchor.alipay_account_id = amount_slots.alipay_account_id AND anchor.payable_amount_cents = amount_slots.payable_amount_cents), 0) AS archived_generation,
+    COALESCE((SELECT released_at FROM archived_amount_slot_anchors AS anchor
+      WHERE anchor.alipay_account_id = amount_slots.alipay_account_id AND anchor.payable_amount_cents = amount_slots.payable_amount_cents), 0) AS archived_released_at` :
+    ", 0 AS archived_generation, 0 AS archived_released_at";
   // Multi-account orders select an immutable profile explicitly. Only the old
   // singleton path requires an active profile shared by the whole instance.
   const legacyProfilePredicate = amountAccountPartition
@@ -1303,11 +1313,11 @@ function countOrderDomainViolations(connection: DatabaseSync): number {
                  ) AS previous_generation,
                  LAG(released_at) OVER (
                    PARTITION BY ${amountAccountPartition}payable_amount_cents ORDER BY generation
-                 ) AS previous_released_at
+                 ) AS previous_released_at${archivedSlotProjection}
                FROM amount_slots
              ) AS ordered
             WHERE
-              (ordered.position = 1 AND ordered.generation != 1) OR
+              (ordered.position = 1 AND (ordered.generation != ordered.archived_generation + 1 OR ordered.archived_released_at > ordered.occupied_from)) OR
               (
                 ordered.position > 1 AND
                 (
@@ -2086,8 +2096,8 @@ function countReconciliationDomainViolations(connection: DatabaseSync): number {
              UNION ALL
 
              SELECT 'payment_match_event_sequence' AS subject
-              WHERE (SELECT COUNT(*) FROM payment_match_events) !=
-                    (SELECT COALESCE(MAX(event_sequence), 0) FROM payment_match_events)
+              WHERE (SELECT COUNT(*) FROM payment_match_events) ${tableExists(connection, "history_archives") ? "+ (SELECT COALESCE(SUM(payment_match_event_count), 0) FROM history_archives)" : ""} !=
+                    ${tableExists(connection, "history_archives") ? "COALESCE((SELECT seq FROM sqlite_sequence WHERE name = 'payment_match_events'), 0)" : "(SELECT COALESCE(MAX(event_sequence), 0) FROM payment_match_events)"}
            )`,
         "payment match event",
       )
@@ -2951,10 +2961,23 @@ function countLedgerCryptographicDomainViolations(connection: DatabaseSync): num
   ) {
     return violations;
   }
+  const sharedEvidence = hasEvidencePayloads(connection);
+  violations += countEvidencePayloadViolations(connection);
+  violations += countArchivedLedgerEvidenceViolations(connection);
+  if (tableExists(connection, "archived_ledger_keys")) {
+    for (const row of connection.prepare(`SELECT provider_account_key, external_event_id, existing_semantic_fingerprint,
+        json_extract(details_json, '$.archived_ledger_entry_id') AS archived_ledger_entry_id,
+        json_extract(details_json, '$.archive_id') AS archive_id
+      FROM ledger_conflicts WHERE conflict_type = 'DUPLICATE_EXTERNAL_ID' AND existing_ledger_entry_id IS NULL`).iterate()) {
+      const archived = typeof row.external_event_id === "string" ? findArchivedLedgerEntry(connection, String(row.provider_account_key), row.external_event_id) : undefined;
+      if (!archived || archived.ledgerEntryId !== row.archived_ledger_entry_id || archived.archiveId !== row.archive_id ||
+          archived.semanticFingerprint !== row.existing_semantic_fingerprint) violations++;
+    }
+  }
   for (const row of connection
     .prepare(
       `SELECT provider_account_key, window_start, window_end, page_no, page_size,
-              request_fingerprint, raw_body, response_fingerprint
+              request_fingerprint, raw_body, response_fingerprint${sharedEvidence ? ", raw_body_reference" : ""}
          FROM provider_raw_pages`,
     )
     .iterate() as Iterable<{
@@ -2966,6 +2989,7 @@ function countLedgerCryptographicDomainViolations(connection: DatabaseSync): num
       request_fingerprint: string;
       raw_body: Uint8Array;
       response_fingerprint: string;
+      raw_body_reference?: string | null;
     }>) {
     const pageNo = Number(row.page_no);
     const pageSize = Number(row.page_size);
@@ -2981,12 +3005,12 @@ function countLedgerCryptographicDomainViolations(connection: DatabaseSync): num
     ) !== row.request_fingerprint) {
       violations += 1;
     }
-    if (!fingerprintMatches(row.raw_body, row.response_fingerprint)) violations += 1;
+    if (!evidenceFingerprintMatches(row.raw_body, row.response_fingerprint, row.raw_body_reference)) violations += 1;
   }
   for (const row of connection
-    .prepare("SELECT raw_payload, payload_fingerprint FROM provider_raw_events")
-    .iterate() as Iterable<{ raw_payload: Uint8Array; payload_fingerprint: string }>) {
-    if (!fingerprintMatches(row.raw_payload, row.payload_fingerprint)) violations += 1;
+    .prepare(`SELECT raw_payload, payload_fingerprint${sharedEvidence ? ", raw_payload_reference" : ""} FROM provider_raw_events`)
+    .iterate() as Iterable<{ raw_payload: Uint8Array; payload_fingerprint: string; raw_payload_reference?: string | null }>) {
+    if (!evidenceFingerprintMatches(row.raw_payload, row.payload_fingerprint, row.raw_payload_reference)) violations += 1;
   }
   const hasPageObservationStability =
     columnExists(connection, "ingest_run_page_observations", "disposition") &&
@@ -3503,15 +3527,16 @@ function countLedgerCryptographicDomainViolations(connection: DatabaseSync): num
   }
   for (const row of connection
     .prepare(
-      `SELECT raw_body, response_fingerprint
+      `SELECT raw_body, response_fingerprint${sharedEvidence ? ", raw_body_reference" : ""}
          FROM ingest_errors
         WHERE raw_body IS NOT NULL`,
     )
     .iterate() as Iterable<{
       raw_body: Uint8Array;
       response_fingerprint: string | null;
+      raw_body_reference?: string | null;
     }>) {
-    if (!fingerprintMatches(row.raw_body, row.response_fingerprint)) violations += 1;
+    if (!evidenceFingerprintMatches(row.raw_body, row.response_fingerprint, row.raw_body_reference)) violations += 1;
   }
   return violations;
 }
@@ -3926,6 +3951,10 @@ function requireIntegrityString(value: unknown, label: string): string {
 
 function nullableIntegrityString(value: unknown, label: string): string | null {
   return value === null ? null : requireIntegrityString(value, label);
+}
+
+function evidenceFingerprintMatches(value: Uint8Array, expected: string | null, reference: string | null | undefined): boolean {
+  return reference == null ? fingerprintMatches(value, expected) : value.byteLength === 0 && reference === expected;
 }
 
 function fingerprintMatches(value: Uint8Array, expected: string | null): boolean {

@@ -3,6 +3,7 @@ import { ActivitySpoolWriter } from "../audit/spool.ts";
 import { safeErrorCode } from "../audit/activity.ts";
 import { artifactAuditTarget, lockAuditTarget, type MaintenanceAuditTarget } from "../audit/maintenance-target.ts";
 import { verifyAlipayAccountSecrets } from "../alipay-accounts/integrity.ts";
+import { createHistoryArchive, type CreateHistoryArchiveResult } from "../archive/runner.ts";
 import {
   closeSync,
   constants as fsConstants,
@@ -108,6 +109,8 @@ export interface RestoreOperationalBackupOptions {
   readonly confirmReplaceCurrentDatabase: boolean;
   /** Explicit operator confirmation to preserve an unreadable current database after stopping all writers. */
   readonly quarantineUnreadableCurrent?: boolean | undefined;
+  /** 已有已验证且保留的安全副本时，可省略第二份当前数据库副本。 */
+  readonly preserveCurrentDatabase?: boolean | undefined;
   /** Deployment key used to verify the selected backup before swap. */
   readonly masterKey: Uint8Array;
   readonly now?: number | undefined;
@@ -294,6 +297,23 @@ export function listBackupArtifacts(dataDirectory: string): readonly BackupArtif
 
 /** Reclaims unused pages in place after the application has stopped. */
 export function compactDatabase(options: CompactDatabaseOptions): CompactDatabaseResult {
+  return runStoppedDatabaseMaintenance(options, "compact-database");
+}
+
+export function archiveDatabaseHistory(options: CompactDatabaseOptions & { readonly before: number }): CompactDatabaseResult & CreateHistoryArchiveResult {
+  let archived: CreateHistoryArchiveResult | undefined;
+  const compacted = runStoppedDatabaseMaintenance(options, "archive-history", (connection, dataDirectory, now, instanceId) => {
+    archived = createHistoryArchive({ connection, dataDirectory, before: options.before, now, instanceId,
+      validateDatabase: database => assertDatabaseIntegrity(database, "归档前后数据库完整性检查失败。") });
+  });
+  return { ...compacted, ...archived! };
+}
+
+function runStoppedDatabaseMaintenance(
+  options: CompactDatabaseOptions,
+  command: "compact-database" | "archive-history",
+  operation?: (connection: DatabaseSync, dataDirectory: string, now: number, instanceId: string) => void,
+): CompactDatabaseResult {
   if (!options.confirmStoppedServices) throw new Error("database compaction requires confirmation that app and backup services are stopped");
   const now = inspectMaintenanceNow(options.now);
   const directory = inspectDataDirectory(options.dataDirectory, true);
@@ -308,7 +328,7 @@ export function compactDatabase(options: CompactDatabaseOptions): CompactDatabas
   const instanceId = assertBackupMasterKey(target, options.masterKey, true)!;
   const headroom = inspectStorageHeadroom(directory, BigInt(before.totalBytes) * 2n + BACKUP_WRITE_RESERVE_BYTES);
   if (!headroom.sufficient) throw new StorageCapacityError(headroom.availableBytes, headroom.requiredBytes);
-  const lock = acquireDatabaseMaintenanceLock(target, "compact-database", now);
+  const lock = acquireDatabaseMaintenanceLock(target, command, now);
   let claimed = false, retainLock = false;
   try {
     assertFilePathIdentity(target, identity, "application database", false, "compaction was being prepared");
@@ -326,6 +346,7 @@ export function compactDatabase(options: CompactDatabaseOptions): CompactDatabas
         throw new Error("SQLite cannot place compaction temporary files in the data directory");
       }
       assertDatabaseIntegrity(database, "database failed integrity checks before compaction");
+      operation?.(database, directory, now, instanceId);
       database.exec("VACUUM");
       assertDatabaseIntegrity(database, "database failed integrity checks after compaction");
       deleteMaintenanceLease(database, lock.token);
@@ -1217,7 +1238,7 @@ export function restoreOperationalBackup(
       quarantinedDatabaseName = basename(unreadableDirectory.path);
     }
 
-    if (targetIdentity !== null) {
+    if (targetIdentity !== null && options.preserveCurrentDatabase !== false) {
       assertFileIdentity(target, targetIdentity, "application database");
       const targetHash = sha256File(target);
 
@@ -1238,7 +1259,7 @@ export function restoreOperationalBackup(
     if (targetIdentity !== null) {
       assertFileIdentity(target, targetIdentity, "application database");
       assertSelfContainedSqlite(target, "application database");
-      // Replacing an existing path is atomic; its verified quarantine copy is durable first.
+      // Replacing an existing path is atomic; its verified safety copy is durable first.
       renameSync(staging, target);
       targetPublished = true;
       syncDirectory(directory);
@@ -2399,8 +2420,8 @@ export async function runMaintenanceCommand(arguments_: readonly string[], envir
     "prune-pre-restore-quarantines": "maintenance.quarantine.prune", "restore-migration-backup": "maintenance.restore",
     "list-migration-backups": "maintenance.backups.list", "list-pre-restore-quarantines": "maintenance.quarantine.list",
     "inspect-maintenance-lock": "maintenance.lock.inspect", "inspect-publication-lock": "maintenance.publication_lock.inspect",
-    "inspect-storage": "maintenance.storage.inspect", "compact-database": "maintenance.database.compact" };
-  const activity = new ActivitySpoolWriter({ backupDirectory: environment.PERPAY_BACKUP_DIR ?? "/backups", kind: "maintenance" });
+    "inspect-storage": "maintenance.storage.inspect", "compact-database": "maintenance.database.compact", "archive-history": "maintenance.history.archive" };
+  const activity = new ActivitySpoolWriter({ backupDirectory: environment.PERPAY_BACKUP_DIR ?? "/backups", dataDirectory: environment.PERPAY_DATA_DIR ?? "/data", kind: "maintenance" });
   const action = actions[command] ?? "maintenance.command.invalid";
   const startedAt = Date.now(), operationId = randomUUID();
   let targets: readonly MaintenanceAuditTarget[] = [];
@@ -2432,6 +2453,19 @@ async function executeCommand(arguments_: readonly string[], environment: NodeJS
   if (arguments_.length === 1 && arguments_[0] === "inspect-storage") {
     const directory = inspectDataDirectory(dataDirectory, true);
     process.stdout.write(`${JSON.stringify(inspectDatabaseStorage(join(directory, DATABASE_NAME)))}\n`);
+    return;
+  }
+  if (arguments_.length === 4 && arguments_[0] === "archive-history" && arguments_[1] === "--before" && arguments_[3] === "--confirm-stopped-services") {
+    const date = arguments_[2]!;
+    const before = Date.parse(`${date}T00:00:00+08:00`);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(before) || new Date(before + 8 * 3_600_000).toISOString().slice(0, 10) !== date) {
+      throw new Error("归档日期格式应为 YYYY-MM-DD，按北京时间计算，不含当天。");
+    }
+    output(archiveDatabaseHistory({ dataDirectory, masterKey: resolveMaintenanceMasterKey(environment, "history archive"), before, confirmStoppedServices: true }), result => [{
+      subjectType: "history_archive", subjectId: result.archive.archive_id, instanceId: result.instanceId,
+      details: { before, sha256: result.archive.sha256, order_count: result.archive.order_count, ledger_count: result.archive.ledger_count,
+        database_bytes_before: result.before.totalBytes, database_bytes_after: result.after.totalBytes, reclaimed_bytes: result.reclaimedBytes },
+    }]);
     return;
   }
   if (arguments_.length === 2 && arguments_[0] === "compact-database" && arguments_[1] === "--confirm-stopped-services") {
@@ -2602,7 +2636,7 @@ async function executeCommand(arguments_: readonly string[], environment: NodeJS
     return;
   }
   throw new Error(
-    `usage: maintenance <inspect-storage|compact-database --confirm-stopped-services|list-migration-backups|inspect-maintenance-lock|inspect-publication-lock|` +
+    `usage: maintenance <inspect-storage|compact-database --confirm-stopped-services|archive-history --before YYYY-MM-DD --confirm-stopped-services|list-migration-backups|inspect-maintenance-lock|inspect-publication-lock|` +
     `list-pre-restore-quarantines|delete-pre-restore-quarantine NAME SHA256 ` +
     `--confirm-delete-pre-restore-quarantine|prune-pre-restore-quarantines KEEP_COUNT ` +
     `--confirm-prune-pre-restore-quarantines|` +

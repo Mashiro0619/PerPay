@@ -6,32 +6,32 @@ import { queryClient } from "../src/api/client";
 import { BackupOverview, BackupStatus } from "../src/components/backup-status";
 import { RuntimeErrorDetails } from "../src/components/runtime-error-details";
 import { backupFailureStageName, runtimeErrorMessage } from "../src/lib/runtime-copy";
-import { json, settings } from "./fixtures";
-import { createMemoryRouter, RouterProvider } from "react-router";
+import { json, MaintenanceFixture, settings, withIdleMaintenance } from "./fixtures";
+import { createMemoryRouter, MemoryRouter, RouterProvider } from "react-router";
 import { systemStatus } from "./onboarding-fixture";
 
 describe("runtime failure explanations", () => {
   it("shows a disabled task and existing recoverable copy without opening the policy editor", async () => {
     const status = systemStatus();
     Object.assign(status.backup, { enabled: false, backup_available: true, backup_name: "perpay-verified.sqlite3", retained_count: 2, last_success_at: 1_794_268_800_000 });
-    vi.stubGlobal("fetch", vi.fn(async (request: Request) => {
+    vi.stubGlobal("fetch", withIdleMaintenance(vi.fn(async (request: Request) => {
       const path = new URL(request.url).pathname;
       if (path === "/api/admin/v1/system/status") return json({ data: status });
       if (path === "/api/admin/v1/system/backups") return json({ data: { items: [] } });
       throw new Error("Unexpected request: " + request.method + " " + path);
-    }));
+    })));
     const router = createMemoryRouter([{ path: "/settings/backup", element: <BackupOverview settings={settings} /> }], { initialEntries: ["/settings/backup"] });
-    render(<QueryClientProvider client={queryClient}><RouterProvider router={router} /></QueryClientProvider>);
+    render(<QueryClientProvider client={queryClient}><MaintenanceFixture><RouterProvider router={router} /></MaintenanceFixture></QueryClientProvider>);
     expect(await screen.findByText("2 份")).toBeVisible();
     expect(screen.getByText("perpay-verified.sqlite3")).toBeVisible();
-    expect(screen.getByText(/备份未启用/)).toBeVisible();
-    expect(screen.getByRole("link", { name: "恢复说明" })).toBeVisible();
+    expect(screen.getByText("定时备份未运行，可立即创建备份。")).toBeVisible();
+    expect(screen.getByRole("button", { name: "立即备份" })).toBeEnabled();
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
     expect(await screen.findByText("暂无备份文件")).toBeVisible();
   });
 
   it.each([
-    [{ recovery_required: true }, "备份任务需要恢复"],
+    [{ recovery_required: true }, "上次备份中断，等待任务恢复"],
     [{ clock_moved_backwards: true }, "系统时钟发生回退"],
     [{ instance_matches: false }, "备份与当前实例不匹配"],
     [{ backup_required: true }, "当前数据需要重新备份"],
@@ -40,7 +40,7 @@ describe("runtime failure explanations", () => {
     const status = systemStatus();
     Object.assign(status.backup, { enabled: true, ok: false, backup_available: true, backup_required: false }, flags);
     vi.stubGlobal("fetch", vi.fn(async () => json({ data: status })));
-    render(<QueryClientProvider client={queryClient}><BackupStatus /></QueryClientProvider>);
+    render(<QueryClientProvider client={queryClient}><MemoryRouter><BackupStatus /></MemoryRouter></QueryClientProvider>);
     expect(await screen.findByText(new RegExp(message as string))).toBeVisible();
     expect(screen.queryByText("备份任务已启用")).not.toBeInTheDocument();
   });
@@ -52,7 +52,7 @@ describe("runtime failure explanations", () => {
     status.backup.backup_available = false;
     status.backup.last_error_stage = stage;
     vi.stubGlobal("fetch", vi.fn(async () => json({ data: status })));
-    render(<QueryClientProvider client={queryClient}><BackupStatus /></QueryClientProvider>);
+    render(<QueryClientProvider client={queryClient}><MemoryRouter><BackupStatus /></MemoryRouter></QueryClientProvider>);
     expect(await screen.findByText("正在备份")).toBeVisible();
     expect(screen.queryByText(/请先完成一次备份验证|最近备份失败/)).not.toBeInTheDocument();
     if (stage) {
@@ -106,12 +106,12 @@ describe("runtime failure explanations", () => {
     status.backup.enabled = true;
     status.backup.last_error_stage = "verification";
     vi.stubGlobal("fetch", vi.fn(async () => json({ data: status })));
-    render(<QueryClientProvider client={queryClient}><BackupStatus /></QueryClientProvider>);
-    expect(await screen.findByText("最近备份失败（备份校验），请查看备份日志。")).toBeVisible();
+    render(<QueryClientProvider client={queryClient}><MemoryRouter><BackupStatus /></MemoryRouter></QueryClientProvider>);
+    expect(await screen.findByText("最近备份失败（备份校验）。")).toBeVisible();
     expect(screen.queryByText("verification")).not.toBeInTheDocument();
     await userEvent.setup().click(screen.getByRole("button", { name: "备份错误诊断" }));
     expect(screen.getByText("verification")).toBeVisible();
-    expect(screen.getByRole("link", { name: "启用与验证备份" })).toBeVisible();
+    expect(screen.getByRole("link", { name: "查看备份与恢复" })).toHaveAttribute("href", "/settings/backup");
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 });

@@ -31,7 +31,13 @@ export function replayAdminOperation<T>(connection: DatabaseSync, operationId: s
   requestFingerprint: string, actorId: string): T | undefined {
   const row = connection.prepare("SELECT action, actor_id, request_fingerprint, result_json FROM admin_operation_log WHERE operation_id = ?")
     .get(operationId) as { action: string; actor_id: string; request_fingerprint: string; result_json: string } | undefined;
-  if (!row) return undefined;
+  if (!row) {
+    if (connection.prepare("SELECT 1 FROM sqlite_schema WHERE name = 'archived_admin_operation_keys'").get() &&
+        connection.prepare("SELECT 1 FROM archived_admin_operation_keys WHERE operation_id = ?").get(operationId)) {
+      throw new AdminOperationError(409, "admin_operation_conflict", "此操作已归档，请刷新后重试");
+    }
+    return undefined;
+  }
   if (row.action !== action || row.request_fingerprint !== requestFingerprint || row.actor_id !== actorId) {
     throw new AdminOperationError(409, "admin_operation_conflict", "操作编号已经用于其他请求，请刷新后重试");
   }

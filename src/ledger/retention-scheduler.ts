@@ -35,7 +35,7 @@ export class LedgerRetentionScheduler {
       let nextDelay = INGEST_RETENTION_INTERVAL_MILLISECONDS;
       try {
         const result = this.#prune();
-        if (result.deletedRuns > 0) this.#onPruned(result);
+        if (result.deletedRuns > 0 || (result.compactedPayloadRecords ?? 0) > 0 || (result.removedPayloads ?? 0) > 0) this.#onPruned(result);
         if (result.hasMore) nextDelay = 250;
       } catch (error) {
         this.#onError(error);

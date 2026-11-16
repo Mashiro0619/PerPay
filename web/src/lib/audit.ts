@@ -112,6 +112,8 @@ const actions: Readonly<Record<string, string>> = {
   "maintenance.quarantine.delete": "删除隔离数据", "maintenance.quarantine.prune": "清理隔离数据",
   "maintenance.restore": "执行数据恢复", "maintenance.backups.list": "查看维护备份",
   "maintenance.storage.inspect": "查看数据库空间", "maintenance.database.compact": "压实数据库",
+  "maintenance.history.archive": "归档历史数据", "history.archive.created": "创建历史归档",
+  "history.archive.deleted": "永久删除历史归档", "history.archive.download_requested": "下载历史归档",
   "maintenance.quarantine.list": "查看隔离列表", "maintenance.lock.inspect": "检查维护锁",
   "maintenance.publication_lock.inspect": "检查发布锁", "maintenance.command.invalid": "无效维护命令",
   "reconciliation_scheduler_startup_failed": "对账调度器启动失败", "webhook_scheduler_startup_failed": "通知调度器启动失败",

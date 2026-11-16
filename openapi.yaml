@@ -44,6 +44,10 @@ tags:
       signed protocol described under `webhooks`.
   - name: System
     description: Public application probes and authenticated instance status.
+  - name: History Archives
+    description: 创建、查看、下载与手动永久删除历史归档，创建操作由维护任务执行。
+  - name: Maintenance
+    description: 管理员直接创建备份、恢复备份、删除备份和归档历史，查询执行进度与结果。
 paths:
   /api/admin/v1/audit-events:
     get:
@@ -1089,7 +1093,8 @@ paths:
       summary: 列出备份目录中的文件
       description: >-
         按文件名记录的生成时间倒序返回全部备份文件，最多 4096 份，不分页。
-        只读取目录和文件元数据，不执行 SQLite 完整性或摘要校验。
+        返回文件元数据和 SHA-256，未变化的文件复用摘要；列表不执行 SQLite 完整性检查。
+        无法稳定读取的文件返回 sha256 为 null；safety_backup 标明需手动删除的恢复前副本。
         目录尚未创建时返回空列表；读取目录失败或超过扫描上限时返回 503。
       security:
         - AdminSessionCookie: []
@@ -1109,6 +1114,301 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/admin/v1/maintenance/jobs:
+    get:
+      tags: [Maintenance]
+      operationId: getMaintenanceState
+      summary: 查看当前及最近一次维护任务
+      description: >-
+        active 为正在排队或执行的任务，latest 为最近一次提交的任务。
+        归档或恢复暂停业务期间，发起者仍可使用原会话查询进度。
+        恢复使原会话失效后，该发起者可在原会话期限内读取任务结果，然后重新登录。
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+      responses:
+        '200':
+          description: 当前和最近的维护任务
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MaintenanceStateEnvelope' }
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '503':
+          description: maintenance_unavailable、maintenance_in_progress 或 service_stopping；维护查询暂不可用。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    post:
+      tags: [Maintenance]
+      operationId: startMaintenanceJob
+      summary: 提交备份、恢复、删除备份或历史归档任务
+      description: >-
+        返回 202 表示任务已接收，执行结果通过 GET 查询。
+        operation_id 由调用方生成；当前进程保留最近 20 项任务，相同编号和请求内容返回已有任务，
+        相同编号用于不同内容返回 maintenance_operation_conflict。进程重启后不保留这些任务查询记录。
+        ARCHIVE 与 RESTORE 自动暂停业务请求，完成后重新打开数据库和业务服务；
+        RESTORE 会先保存一份需手动删除的恢复前副本，完成后要求重新登录。
+        RESTORE 与 DELETE_BACKUP 的 expected_sha256 必须来自备份文件列表中选中的文件。
+      x-perpay-requires-same-origin: true
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/AdminOrigin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MaintenanceRequest' }
+      responses:
+        '202':
+          description: 任务已接收，或相同请求已有对应任务。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MaintenanceJobEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '403':
+          description: 来源或 CSRF 校验失败，或当前为只读演示模式。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+        '409':
+          description: maintenance_in_progress 或 maintenance_operation_conflict；已有任务执行或操作编号与请求内容冲突。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '422':
+          description: validation_failed；操作编号、操作类型、日期或备份参数无效。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+        '503':
+          description: maintenance_unavailable、maintenance_in_progress 或 service_stopping；服务暂时不能接收任务。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+  /api/admin/v1/maintenance/jobs/{id}:
+    get:
+      tags: [Maintenance]
+      operationId: getMaintenanceJob
+      summary: 按操作编号查询维护进度与结果
+      description: 请求结果不明确时，使用提交时的 operation_id 查询同一任务。
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - name: id
+          in: path
+          required: true
+          description: 提交时使用的 operation_id。
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: 维护任务及其当前进度或最终结果
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MaintenanceJobEnvelope' }
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '404':
+          description: maintenance_job_not_found；没有找到该操作编号对应的任务。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+        '503':
+          description: maintenance_unavailable、maintenance_in_progress 或 service_stopping；维护查询暂不可用。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+  /api/admin/v1/archives:
+    get:
+      tags: [History Archives]
+      operationId: listHistoryArchives
+      summary: 列出历史归档
+      description: 按创建时间倒序返回全部归档，包括删除记录。归档长期保留，不自动过期。
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+      responses:
+        '200':
+          description: 历史归档列表
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HistoryArchiveListEnvelope' }
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+  /api/admin/v1/archives/{archiveId}:
+    get:
+      tags: [History Archives]
+      operationId: getHistoryArchive
+      summary: 查看归档信息和分页订单
+      description: 归档订单按订单编号升序排列，下一页使用上一页返回的 next_cursor。
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/HistoryArchiveId'
+        - name: cursor
+          in: query
+          required: false
+          description: 上一页的 next_cursor；返回此订单编号之后的记录。
+          schema: { type: string, format: uuid }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+      responses:
+        '200':
+          description: 归档信息和当前页订单
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HistoryArchiveOrdersEnvelope' }
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '404': { $ref: '#/components/responses/HistoryArchiveNotFound' }
+        '409': { $ref: '#/components/responses/HistoryArchiveConflict' }
+        '410': { $ref: '#/components/responses/HistoryArchiveDeleted' }
+        '422':
+          description: validation_failed；分页参数无效。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    delete:
+      tags: [History Archives]
+      operationId: deleteHistoryArchive
+      summary: 永久删除归档文件
+      description: >-
+        删除该归档文件及其中保存的历史记录，保留归档摘要和删除时间。
+        expected_sha256 必须与确认删除时读取的归档校验值相同。
+        已确认删除但文件清理中断时返回 archive_delete_pending；使用相同参数重试即可继续清理。
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      x-perpay-requires-same-origin: true
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/AdminOrigin'
+        - $ref: '#/components/parameters/HistoryArchiveId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DeleteHistoryArchiveRequest' }
+      responses:
+        '200':
+          description: 归档文件已删除，返回删除记录；重复删除返回同一记录。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HistoryArchiveEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '403':
+          description: 来源或 CSRF 校验失败，或当前为只读演示模式。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+        '404': { $ref: '#/components/responses/HistoryArchiveNotFound' }
+        '409': { $ref: '#/components/responses/HistoryArchiveConflict' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '422':
+          description: validation_failed；缺少校验值或校验值格式无效。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+  /api/admin/v1/archives/{archiveId}/orders/{orderId}:
+    get:
+      tags: [History Archives]
+      operationId: getArchivedOrder
+      summary: 查看归档订单及关联记录
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/HistoryArchiveId'
+        - $ref: '#/components/parameters/OrderId'
+      responses:
+        '200':
+          description: 归档时保存的订单和关联业务记录
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ArchivedOrderEnvelope' }
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '404': { $ref: '#/components/responses/HistoryArchiveNotFound' }
+        '409': { $ref: '#/components/responses/HistoryArchiveConflict' }
+        '410': { $ref: '#/components/responses/HistoryArchiveDeleted' }
+  /api/admin/v1/archives/{archiveId}/records:
+    get:
+      tags: [History Archives]
+      operationId: getHistoryArchiveRecords
+      summary: 按表分页查看全部归档记录
+      description: 包含订单、流水、采集批次和请求检查点等全部归档记录。即使归档中没有订单，也可以通过此接口查看内容。
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/HistoryArchiveId'
+        - name: table
+          in: query
+          required: false
+          description: 数据表名；未指定时返回全部表的记录。
+          schema: { type: string, minLength: 1, maxLength: 128 }
+        - name: cursor
+          in: query
+          required: false
+          description: 上一页的 next_cursor，表示最后一条记录的内部序号。
+          schema: { type: string, pattern: '^\d{1,15}$' }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+      responses:
+        '200':
+          description: 归档信息、所有数据表的记录数量和当前页记录
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HistoryArchiveRecordsEnvelope' }
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '404': { $ref: '#/components/responses/HistoryArchiveNotFound' }
+        '409': { $ref: '#/components/responses/HistoryArchiveConflict' }
+        '410': { $ref: '#/components/responses/HistoryArchiveDeleted' }
+        '422':
+          description: validation_failed；数据表或分页参数无效。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+  /api/admin/v1/archives/{archiveId}/download:
+    get:
+      tags: [History Archives]
+      operationId: downloadHistoryArchive
+      summary: 下载历史归档文件
+      description: 返回包含归档订单、流水和关联记录的 SQLite 文件，并记录下载请求。
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/HistoryArchiveId'
+      responses:
+        '200':
+          description: 归档 SQLite 文件
+          headers:
+            Content-Disposition:
+              schema: { type: string }
+              description: attachment; filename="history-{archiveId}.sqlite3"
+            Content-Length:
+              schema: { type: integer, minimum: 0 }
+          content:
+            application/vnd.sqlite3:
+              schema: { type: string, format: binary }
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '404': { $ref: '#/components/responses/HistoryArchiveNotFound' }
+        '409': { $ref: '#/components/responses/HistoryArchiveConflict' }
+        '410': { $ref: '#/components/responses/HistoryArchiveDeleted' }
   /api/admin/v1/system/ledger/scan:
     post:
       tags:
@@ -6872,6 +7172,12 @@ components:
       required: true
       schema:
         $ref: '#/components/schemas/ResourceId'
+    HistoryArchiveId:
+      name: archiveId
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/ResourceId'
     AdminOrigin:
       name: Origin
       in: header
@@ -8683,10 +8989,269 @@ components:
           type: integer
           minimum: 0
           description: Latest-generation dead letters that have no administrative successor.
+    HistoryArchiveSummary:
+      type: object
+      additionalProperties: false
+      required: [archive_id, created_at, before, schema_version, size_bytes, sha256, order_count, ledger_count, status, deleted_at]
+      properties:
+        archive_id: { $ref: '#/components/schemas/ResourceId' }
+        created_at:
+          type: integer
+          minimum: 0
+          description: 创建时间，Unix 毫秒。
+        before:
+          type: integer
+          minimum: 0
+          description: 归档截止时间，Unix 毫秒，不含该时刻。离线命令的日期按北京时间零点计算。
+        schema_version:
+          type: integer
+          minimum: 1
+        size_bytes:
+          type: integer
+          minimum: 0
+        sha256: { $ref: '#/components/schemas/Sha256Fingerprint' }
+        order_count:
+          type: integer
+          minimum: 0
+        ledger_count:
+          type: integer
+          minimum: 0
+        status:
+          type: string
+          enum: [AVAILABLE, DELETED]
+        deleted_at:
+          type: [integer, 'null']
+          minimum: 0
+          description: 确认删除的时间，Unix 毫秒；尚未删除时为 null。
+        deletion_pending:
+          type: boolean
+          description: 删除已经确认，但归档文件仍待清理。列表应显示“删除待完成”并提供重试删除。
+    ArchiveOrderSummary:
+      type: object
+      additionalProperties: false
+      required: [order_id, merchant_order_no, site_id, site_name, product_name, requested_amount_cents, payable_amount_cents, received_amount_cents, payment_status, refund_status, created_at, updated_at]
+      properties:
+        order_id: { $ref: '#/components/schemas/ResourceId' }
+        merchant_order_no: { type: string }
+        site_id: { type: string }
+        site_name: { type: string }
+        product_name: { type: string }
+        requested_amount_cents: { type: integer, minimum: 1 }
+        payable_amount_cents: { type: integer, minimum: 1 }
+        received_amount_cents: { type: [integer, 'null'], minimum: 0 }
+        payment_status: { $ref: '#/components/schemas/PaymentStatus' }
+        refund_status:
+          type: string
+          enum: [NONE, PARTIAL, FULL]
+        created_at:
+          type: integer
+          minimum: 0
+          description: 订单创建时间，Unix 毫秒。
+        updated_at:
+          type: integer
+          minimum: 0
+          description: 订单最后更新时间，Unix 毫秒。
+    HistoryArchiveRecord:
+      type: object
+      additionalProperties: false
+      required: [table, key, data]
+      properties:
+        table:
+          type: string
+          description: 原始业务表名。
+        key:
+          type: string
+          description: 记录在归档中的唯一键。
+        data:
+          type: object
+          additionalProperties: true
+          description: 归档时保存的字段；采集正文已解压并展开。
+    HistoryArchiveListEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/HistoryArchiveSummary' }
+    HistoryArchiveEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data: { $ref: '#/components/schemas/HistoryArchiveSummary' }
+    HistoryArchiveOrdersEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [archive, orders, next_cursor]
+          properties:
+            archive: { $ref: '#/components/schemas/HistoryArchiveSummary' }
+            orders:
+              type: array
+              maxItems: 100
+              items: { $ref: '#/components/schemas/ArchiveOrderSummary' }
+            next_cursor:
+              type: [string, 'null']
+              format: uuid
+    HistoryArchiveRecordsEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [archive, tables, records, next_cursor]
+          properties:
+            archive: { $ref: '#/components/schemas/HistoryArchiveSummary' }
+            tables:
+              type: array
+              description: 此归档中有记录的全部数据表及其记录数量，不受当前筛选影响。
+              items:
+                type: object
+                additionalProperties: false
+                required: [table, count]
+                properties:
+                  table: { type: string }
+                  count: { type: integer, minimum: 1 }
+            records:
+              type: array
+              maxItems: 50
+              items: { $ref: '#/components/schemas/HistoryArchiveRecord' }
+            next_cursor:
+              type: [string, 'null']
+              pattern: '^\d{1,15}$'
+    ArchivedOrderEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [order, records]
+          properties:
+            order: { $ref: '#/components/schemas/ArchiveOrderSummary' }
+            records:
+              type: array
+              items: { $ref: '#/components/schemas/HistoryArchiveRecord' }
+    DeleteHistoryArchiveRequest:
+      type: object
+      additionalProperties: false
+      required: [expected_sha256]
+      properties:
+        expected_sha256: { $ref: '#/components/schemas/Sha256Fingerprint' }
+    MaintenanceKind:
+      type: string
+      enum: [BACKUP, RESTORE, DELETE_BACKUP, ARCHIVE]
+    MaintenanceRequest:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [operation_id, kind]
+          properties:
+            operation_id: { type: string, format: uuid }
+            kind: { type: string, const: BACKUP }
+        - type: object
+          additionalProperties: false
+          required: [operation_id, kind, before]
+          properties:
+            operation_id: { type: string, format: uuid }
+            kind: { type: string, const: ARCHIVE }
+            before:
+              type: string
+              format: date
+              pattern: '^\d{4}-\d{2}-\d{2}$'
+              description: 有效且不晚于今天的四位年份日期，按北京时间零点截止，不含当天。
+        - type: object
+          additionalProperties: false
+          required: [operation_id, kind, name, expected_sha256]
+          properties:
+            operation_id: { type: string, format: uuid }
+            kind: { type: string, const: RESTORE }
+            name: { type: string, minLength: 1, maxLength: 255 }
+            expected_sha256: { $ref: '#/components/schemas/Sha256Fingerprint' }
+        - type: object
+          additionalProperties: false
+          required: [operation_id, kind, name, expected_sha256]
+          properties:
+            operation_id: { type: string, format: uuid }
+            kind: { type: string, const: DELETE_BACKUP }
+            name: { type: string, minLength: 1, maxLength: 255 }
+            expected_sha256: { $ref: '#/components/schemas/Sha256Fingerprint' }
+    MaintenanceResult:
+      type: object
+      additionalProperties: false
+      properties:
+        archive_id: { type: string, format: uuid }
+        backup_name: { type: string }
+        safety_backup_name:
+          type: string
+          description: 恢复前保存的副本，长期保留，由管理员手动删除。
+        requires_login:
+          type: boolean
+          description: 恢复使原管理员会话失效，发起者读取结果后需重新登录。
+    MaintenanceJob:
+      type: object
+      additionalProperties: false
+      required: [id, kind, status, stage, message, started_at, finished_at, error, result]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { $ref: '#/components/schemas/MaintenanceKind' }
+        status: { type: string, enum: [QUEUED, RUNNING, SUCCEEDED, FAILED] }
+        stage:
+          type: string
+          description: 当前执行步骤标识。
+        message:
+          type: string
+          description: 可直接显示的执行进度或结果。
+        started_at:
+          type: integer
+          minimum: 0
+          description: 任务接收时间，Unix 毫秒。
+        finished_at:
+          type: [integer, 'null']
+          minimum: 0
+          description: 任务结束时间，Unix 毫秒；执行中为 null。
+        error: { type: [string, 'null'] }
+        result:
+          anyOf:
+            - $ref: '#/components/schemas/MaintenanceResult'
+            - type: 'null'
+    MaintenanceState:
+      type: object
+      additionalProperties: false
+      required: [active, latest]
+      properties:
+        active:
+          anyOf:
+            - $ref: '#/components/schemas/MaintenanceJob'
+            - type: 'null'
+        latest:
+          anyOf:
+            - $ref: '#/components/schemas/MaintenanceJob'
+            - type: 'null'
+    MaintenanceJobEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data: { $ref: '#/components/schemas/MaintenanceJob' }
+    MaintenanceStateEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data: { $ref: '#/components/schemas/MaintenanceState' }
     BackupFile:
       type: object
       additionalProperties: false
-      required: [name, created_at, size_bytes]
+      required: [name, created_at, size_bytes, sha256, safety_backup]
       properties:
         name:
           type: string
@@ -8699,6 +9264,13 @@ components:
           type: [integer, 'null']
           minimum: 0
           description: 文件大小；非普通单链接文件或元数据无法读取时为 null。
+        sha256:
+          type: [string, 'null']
+          pattern: '^[0-9a-f]{64}$'
+          description: 文件摘要，恢复或删除时原样提交；文件无法稳定读取时为 null。
+        safety_backup:
+          type: boolean
+          description: 是否为恢复前副本；这类文件不随普通备份保留数量自动清理，由管理员手动删除。
     BackupFileListEnvelope:
       type: object
       additionalProperties: false
@@ -11688,6 +12260,11 @@ components:
         - asset_not_found
         - auth_rate_limited
         - backup_list_unavailable
+        - maintenance_job_not_found
+        - maintenance_operation_conflict
+        - maintenance_in_progress
+        - maintenance_unavailable
+        - service_stopping
         - candidate_not_found
         - candidate_set_changed
         - checkout_code_generation_failed
@@ -11720,6 +12297,13 @@ components:
         - operation_conflict
         - order_clock_unavailable
         - order_not_found
+        - order_archived
+        - archive_not_found
+        - archive_deleted
+        - archive_changed
+        - archive_empty
+        - archive_order_not_found
+        - archive_delete_pending
         - origin_not_allowed
         - password_unchanged
         - password_work_busy
@@ -12327,6 +12911,21 @@ components:
             notifications_enabled:
               type: boolean
   responses:
+    HistoryArchiveNotFound:
+      description: archive_not_found 或 archive_order_not_found；归档或归档订单不存在。
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    HistoryArchiveConflict:
+      description: archive_changed 表示文件或校验值不符；archive_delete_pending 表示删除已确认，文件仍待清理。
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    HistoryArchiveDeleted:
+      description: archive_deleted；该归档已确认删除，无法查看或下载。
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
     AdminOperationConflict:
       description: Operation UUID reuse, stale mark version, ineligible order, or an ended reminder.
       content:
@@ -12386,7 +12985,7 @@ components:
         application/json:
           schema: { $ref: '#/components/schemas/ErrorEnvelope' }
     Conflict:
-      description: Idempotency, merchant order number, or nonce conflict
+      description: Idempotency, merchant order number, or nonce conflict; order_archived means the previous order is archived and a new order requires a new merchant order number and idempotency key.
       content:
         application/json:
           schema: { $ref: '#/components/schemas/ErrorEnvelope' }

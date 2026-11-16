@@ -25,11 +25,12 @@ services:
     image: *perpay-image
     volumes:
       - perpay-data:/data
-      - perpay-backups:/backups:ro
+      - perpay-backups:/backups
       - perpay-secrets:/run/perpay-secrets
     user: "1000:1000"
     restart: unless-stopped
-    stop_grace_period: 45s
+    # 等待正在执行的维护结束；最长 7 小时，空闲时立即退出。
+    stop_grace_period: 7h
     read_only: true
     tmpfs:
       - /tmp:size=32m,mode=1777
@@ -71,7 +72,8 @@ services:
       app:
         condition: service_healthy
     restart: unless-stopped
-    stop_grace_period: 60s
+    # 与 6 小时备份执行预算及 1 小时收尾窗口保持一致。
+    stop_grace_period: 7h
     read_only: true
     tmpfs:
       - /tmp:size=64m,mode=1777

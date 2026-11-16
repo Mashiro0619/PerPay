@@ -38,7 +38,7 @@ function checkLogging(value, label) {
 }
 function checkCommon(value, label, networkMode) {
   if (value.user !== "1000:1000" || value.read_only !== true || value.init !== true || (networkMode !== undefined && value.network_mode !== networkMode)) throw new Error(`Compose ${label} runtime settings are unsafe`);
-  if (label !== "maintenance" && (value.restart !== "unless-stopped" || value.stop_grace_period !== (label === "app" ? "45s" : "60s"))) throw new Error(`Compose ${label} lifecycle settings are unsafe`);
+  if (label !== "maintenance" && (value.restart !== "unless-stopped" || value.stop_grace_period !== "7h")) throw new Error(`Compose ${label} lifecycle settings are unsafe`);
   array(value.tmpfs, [label === "app" ? "/tmp:size=32m,mode=1777" : "/tmp:size=64m,mode=1777"], `Compose ${label}.tmpfs`);
   array(value.security_opt, ["no-new-privileges:true"], `Compose ${label}.security_opt`);
   array(value.cap_drop, ["ALL"], `Compose ${label}.cap_drop`);
@@ -71,7 +71,7 @@ export function inspectComposeContract(source) {
   alias(document, ["services", "app", "environment", "PERPAY_TRUSTED_PROXY_CIDRS"], "perpay-trusted-proxy-cidrs", "app.environment.PERPAY_TRUSTED_PROXY_CIDRS");
   alias(document, ["services", "app", "environment", "PERPAY_SETUP_TOKEN_ENABLED"], "perpay-setup-token-enabled", "app.environment.PERPAY_SETUP_TOKEN_ENABLED");
   array(app.ports, ["127.0.0.1:6190:6190"], "Compose app.ports");
-  array(app.volumes, ["perpay-data:/data", "perpay-backups:/backups:ro", "perpay-secrets:/run/perpay-secrets"], "Compose app.volumes");
+  array(app.volumes, ["perpay-data:/data", "perpay-backups:/backups", "perpay-secrets:/run/perpay-secrets"], "Compose app.volumes");
   checkCommon(app, "app");
   array(app.healthcheck.test, ["CMD", "node", "-e", "fetch('http://127.0.0.1:6190/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"], "Compose app.healthcheck.test");
   if (app.healthcheck.interval !== "30s" || app.healthcheck.timeout !== "5s" || app.healthcheck.start_period !== "5m" || app.healthcheck.retries !== 3) throw new Error("Compose app healthcheck settings are unsafe");

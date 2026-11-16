@@ -26,11 +26,14 @@ import {
   json,
   ledger,
   ledgerId,
+  MaintenanceFixture,
   order,
   orderId,
   settings,
+  withIdleMaintenance,
   withSessionList,
 } from "./fixtures";
+import { systemStatus } from "./onboarding-fixture";
 
 function renderPage(children: ReactNode, path = "/") {
   vi.stubGlobal("fetch", withSessionList(globalThis.fetch));
@@ -368,11 +371,16 @@ describe("concise settings copy", () => {
   ])("omits revision and implementation notes in %s", async (section) => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => json({ data: settings })),
+      withIdleMaintenance(vi.fn(async (request: Request) => {
+        const path = new URL(request.url).pathname;
+        if (path === "/api/admin/v1/system/status") return json({ data: systemStatus(settings) });
+        if (path === "/api/admin/v1/system/backups") return json({ data: { items: [] } });
+        return json({ data: settings });
+      })),
     );
     const { container } = renderPage(
       <Routes>
-        <Route path="/settings/:section" element={<Settings />} />
+        <Route path="/settings/:section" element={<MaintenanceFixture><Settings /></MaintenanceFixture>} />
       </Routes>,
       `/settings/${section}`,
     );

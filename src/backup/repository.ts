@@ -2,12 +2,14 @@ import { createHash } from "node:crypto";
 import {
   closeSync,
   existsSync,
+  fsyncSync,
   lstatSync,
   openSync,
   readSync,
   readdirSync,
   rmSync,
   unlinkSync,
+  writeFileSync,
 } from "node:fs";
 import { basename, dirname, resolve } from "node:path";
 
@@ -90,6 +92,17 @@ export interface CreateLocalBackupOptions {
   readonly now?: number | undefined;
   readonly expectedInstanceId?: string | undefined;
   readonly signal?: AbortSignal | undefined;
+}
+
+export const RESTORE_SAFETY_BACKUP_SUFFIX = ".restore-safety";
+
+/** A restore safety copy remains available until the administrator deletes it. */
+export function preserveRestoreSafetyBackup(backupDirectory: string, backupName: string): void {
+  const path = `${resolveBackupPath(backupDirectory, backupName)}${RESTORE_SAFETY_BACKUP_SUFFIX}`;
+  writeFileSync(path, "Restore safety backup\n", { flag: "wx", mode: 0o600 });
+  const handle = openSync(path, "r+");
+  try { fsyncSync(handle); } finally { closeSync(handle); }
+  syncDirectory(resolve(backupDirectory));
 }
 
 export async function createLocalBackup(
@@ -253,6 +266,7 @@ export function deleteLocalBackupArtifact(
   assertFileIdentity(path, identity, "backup artifact");
   const createdAt = backupCreatedAt(backupName);
   unlinkSync(path);
+  rmSync(`${path}${RESTORE_SAFETY_BACKUP_SUFFIX}`, { force: true });
   syncDirectory(directory);
   return Object.freeze({
     name: backupName,
@@ -362,14 +376,19 @@ export function pruneLocalBackups(
   const protectedVerified = protectedBackupName === undefined
     ? undefined
     : verified.find((entry) => entry.backup.name === protectedBackupName);
-  const initialKept = verified.slice(0, keepCount);
+  const safetyCopies = verified.filter(entry => existsSync(`${resolveBackupPath(directory, entry.backup.name)}${RESTORE_SAFETY_BACKUP_SUFFIX}`));
+  const safetyNames = new Set(safetyCopies.map(entry => entry.backup.name));
+  const initialKept = verified.filter(entry => !safetyNames.has(entry.backup.name)).slice(0, keepCount);
   const keptEntries = protectedVerified === undefined ||
+      safetyNames.has(protectedVerified.backup.name) ||
       initialKept.some((entry) => entry.backup.name === protectedVerified.backup.name)
     ? initialKept
     : [
         ...initialKept.slice(0, Math.max(0, keepCount - 1)),
         protectedVerified,
       ].sort((left, right) => compareBackupsNewestFirst(left.backup, right.backup));
+  keptEntries.push(...safetyCopies);
+  keptEntries.sort((left, right) => compareBackupsNewestFirst(left.backup, right.backup));
   const keptNames = new Set(keptEntries.map((entry) => entry.backup.name));
   const verifiedForDeletion = verified.filter((entry) => !keptNames.has(entry.backup.name));
   const kept = keptEntries.map((entry) => Object.freeze({
@@ -405,6 +424,7 @@ export function restoreLocalBackup(
   expectedInstanceId?: string,
   now: number = Date.now(),
   quarantineUnreadableCurrent: boolean = false,
+  options: { readonly preserveCurrentDatabase?: boolean | undefined } = {},
 ): RestoreOperationalBackupResult {
   if (!SHA256_PATTERN.test(expectedSha256)) {
     throw new TypeError("expected backup SHA-256 must be 64 lowercase hexadecimal characters");
@@ -432,6 +452,7 @@ export function restoreLocalBackup(
     expectedSha256,
     confirmReplaceCurrentDatabase: true,
     quarantineUnreadableCurrent,
+    preserveCurrentDatabase: options.preserveCurrentDatabase,
     masterKey: config.masterKey,
     now: clock,
   });
