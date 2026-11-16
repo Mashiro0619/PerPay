@@ -197,7 +197,10 @@ test.describe("narrow trend reading", () => {
         await expect(card.locator('[data-slot="chart"]')).toHaveAttribute("data-chart-type", value);
       }
       await types.tap();
-      await page.getByRole("menuitemradio", { name: label, exact: true }).tap();
+      const choice = page.getByRole("menuitemradio", { name: label, exact: true });
+      await choice.evaluate(element => element.scrollIntoView({ block: "center", inline: "nearest" }));
+      await page.clock.runFor(50);
+      await choice.tap();
       const plot = card.locator('[data-slot="chart"]');
       await expect(plot).toHaveAttribute("data-chart-type", type);
       const application = plot.locator('svg[role="application"]');
