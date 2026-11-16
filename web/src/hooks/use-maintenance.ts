@@ -10,25 +10,50 @@ export function useMaintenanceJobs() {
   return useContext(MaintenanceContext)!;
 }
 
+type MonitoredMaintenanceState = MaintenanceState & { restoreJob?: MaintenanceJob };
+
+function heldRestoreJob(state: MonitoredMaintenanceState | undefined, operationId: string | null) {
+  if (operationId === null) return undefined;
+  return state?.restoreJob?.id === operationId ? state.restoreJob
+    : state?.latest?.id === operationId ? state.latest : undefined;
+}
+
 export function useMaintenanceMonitor() {
   const handled = useRef<string | null>(null);
   const restoreSessionHold = useSyncExternalStore(subscribeRestoreSessionHold, getRestoreSessionHold);
-  const query = useQuery({
+  const query = useQuery<MonitoredMaintenanceState>({
     queryKey: maintenanceKey,
-    queryFn: ({ signal }) => getMaintenanceState(signal),
+    queryFn: async ({ signal }) => {
+      const state = await getMaintenanceState(signal);
+      const operationId = getRestoreSessionHold();
+      if (operationId === null || state.latest?.id === operationId) return state;
+      // Another tab may have started a newer task before this tab saw the restore result.
+      return { ...state, restoreJob: await getMaintenanceJob(operationId, signal) };
+    },
     enabled: current => {
-      const latest = current.state.data?.latest;
+      const latest = heldRestoreJob(current.state.data, restoreSessionHold) ?? current.state.data?.latest;
       return !latest?.result?.requires_login || latest.id !== restoreSessionHold;
     },
     staleTime: 0,
-    refetchInterval: current => current.state.data?.active ? 1_000 : 15_000,
+    refetchInterval: current => {
+      const restore = heldRestoreJob(current.state.data, restoreSessionHold);
+      return current.state.data?.active || restore?.status === "QUEUED" || restore?.status === "RUNNING" ? 1_000 : 15_000;
+    },
     retry: false,
   });
-  const active = query.data?.active;
-  const latest = query.data?.latest;
+  const currentActive = query.data?.active;
+  const restore = heldRestoreJob(query.data, restoreSessionHold);
+  const latest = restore ?? query.data?.latest;
+  const requiresLogin = restoreSessionHold === latest?.id && !!latest?.result?.requires_login;
+  const active = requiresLogin ? null : restore?.status === "QUEUED" || restore?.status === "RUNNING" ? restore : currentActive ?? null;
   useEffect(() => {
-    if (active?.kind === "RESTORE" && getRestoreSessionHold() === null) setRestoreSessionHold(active.id);
-  }, [active]);
+    if (currentActive?.kind === "RESTORE" && getRestoreSessionHold() === null) setRestoreSessionHold(currentActive.id);
+  }, [currentActive, restoreSessionHold]);
+  useEffect(() => {
+    if (restoreSessionHold !== null && query.error instanceof ApiError && [401, 404].includes(query.error.status)) {
+      window.dispatchEvent(new Event("perpay:session-expired"));
+    }
+  }, [query.error, restoreSessionHold]);
   useEffect(() => {
     if (!latest || !["SUCCEEDED", "FAILED"].includes(latest.status) || handled.current === latest.id) return;
     handled.current = latest.id;
@@ -40,9 +65,8 @@ export function useMaintenanceMonitor() {
       refetchType: restoreSessionHold === latest.id && latest.result?.requires_login ? "none" : "active",
     });
   }, [latest, restoreSessionHold]);
-  return { ...query, active: query.data?.active ?? null, latest: query.data?.latest ?? null,
-    requiresLogin: restoreSessionHold === latest?.id && !!latest?.result?.requires_login,
-    blocked: query.isPending || query.isError || query.isPaused || query.data?.active != null || restoreSessionHold !== null };
+  return { ...query, active, latest: latest ?? null, requiresLogin,
+    blocked: query.isPending || query.isError || query.isPaused || active !== null || restoreSessionHold !== null };
 }
 
 export function useMaintenanceAction(onAccepted: (job: MaintenanceJob) => void) {
