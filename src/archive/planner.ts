@@ -1,5 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import { ARCHIVE_BUSINESS_TABLES } from "./schema.ts";
+import { ACTIVE_NOTIFICATION_FAILURE } from "../notifications/failure-state.ts";
 
 export interface ArchiveTable {
   readonly name: string;
@@ -81,7 +82,12 @@ export function buildHistoryArchivePlan(connection: DatabaseSync, before: number
       financial_exceptions: "status = 'RESOLVED'",
       ledger_conflicts: "status != 'OPEN'",
       ledger_transactions: "status = 'POSTED'",
-      webhook_deliveries: "status IN ('ACKNOWLEDGED', 'DEAD_LETTER')",
+      webhook_deliveries: `status IN ('ACKNOWLEDGED', 'DEAD_LETTER') AND NOT EXISTS (
+        SELECT 1 FROM webhook_deliveries AS delivery
+        JOIN webhook_targets AS target ON target.target_id = delivery.target_id
+        JOIN outbox_events AS outbox ON outbox.outbox_event_id = delivery.outbox_event_id
+        JOIN payment_orders AS orders ON orders.order_id = outbox.aggregate_id
+        WHERE delivery.delivery_id = webhook_deliveries.delivery_id AND ${ACTIVE_NOTIFICATION_FAILURE})`,
       webhook_attempts: "finished_at IS NOT NULL",
       admin_refund_mark_events: `EXISTS (SELECT 1 FROM admin_operation_log AS operation WHERE operation.operation_id = admin_refund_mark_events.operation_id AND operation.created_at < ${before})`,
     };

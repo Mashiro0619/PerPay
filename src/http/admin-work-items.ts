@@ -11,6 +11,7 @@ import {
 } from "../shared/list-query.ts";
 import { listKeyset, listSearch } from "../database/list-query.ts";
 import type { AppDatabase } from "../database/database.ts";
+import { ACTIONABLE_NOTIFICATION_FAILURE, ENDED_NOTIFICATION_FAILURE } from "../notifications/failure-state.ts";
 import { z } from "zod";
 import {
   AdminOperationError,
@@ -135,14 +136,6 @@ interface WorkItemRow {
 
 // One projection drives tabs, home-page reminders, status counts, bulk selection and restore checks.
 // It includes ended records so ignored history survives the underlying resolution.
-const REVOKED_EPAY_CONFIRMATION = `(target.target_format != 'NATIVE_JSON_V1' AND (
-  orders.payment_status != 'CONFIRMED' OR NOT EXISTS (
-    SELECT 1 FROM payment_matches AS confirmation
-     WHERE confirmation.created_by_operation_id = outbox.financial_operation_id
-       AND confirmation.status = 'SETTLED'
-  )
-))`;
-
 export const WORK_ITEMS_CTE = `
   WITH resources AS (
     SELECT 'FINANCIAL_EXCEPTION' AS kind, exception.exception_id AS item_id,
@@ -170,12 +163,8 @@ export const WORK_ITEMS_CTE = `
       delivery.created_at,
       CASE WHEN delivery.status = 'DEAD_LETTER' THEN COALESCE(delivery.dead_lettered_at, delivery.updated_at) ELSE delivery.updated_at END,
       delivery.updated_at,
-      CASE WHEN delivery.status IN ('RETRY_WAIT', 'DEAD_LETTER') AND NOT ${REVOKED_EPAY_CONFIRMATION} AND NOT EXISTS (
-        SELECT 1 FROM webhook_deliveries AS successor WHERE successor.predecessor_delivery_id = delivery.delivery_id
-      ) THEN 1 ELSE 0 END,
-      CASE WHEN delivery.status = 'ACKNOWLEDGED' OR ${REVOKED_EPAY_CONFIRMATION} OR EXISTS (
-        SELECT 1 FROM webhook_deliveries AS successor WHERE successor.predecessor_delivery_id = delivery.delivery_id
-      ) THEN 1 ELSE 0 END
+      CASE WHEN ${ACTIONABLE_NOTIFICATION_FAILURE} THEN 1 ELSE 0 END,
+      CASE WHEN ${ENDED_NOTIFICATION_FAILURE} THEN 1 ELSE 0 END
     FROM webhook_deliveries AS delivery
     JOIN webhook_targets AS target ON target.target_id = delivery.target_id
     JOIN outbox_events AS outbox ON outbox.outbox_event_id = delivery.outbox_event_id
