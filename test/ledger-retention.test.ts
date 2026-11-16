@@ -6,6 +6,7 @@ import { describe, it } from "node:test";
 import { AppDatabase } from "../src/database/database.ts";
 import { LedgerStore } from "../src/ledger/store.ts";
 import { LedgerIngestService } from "../src/ledger/service.ts";
+import { readEvidencePayload } from "../src/ledger/evidence-payloads.ts";
 import { LedgerPageReconfirmationRequiredError, type IngestScanKind } from "../src/ledger/model.ts";
 import { INGEST_RETENTION_BATCH_SIZE, INGEST_RETENTION_EVENT_BUDGET, INGEST_RETENTION_INTERVAL_MILLISECONDS } from "../src/ledger/retention.ts";
 import type { AccountLogDetail } from "../src/infrastructure/alipay/types.ts";
@@ -317,13 +318,16 @@ describe("ingestion history retention", () => {
       f.poll({ ...window, end: OLD + 62_000 });
       f.poll({ now: NOW });
       let deleted = 0;
+      let scanned = 0;
       let result;
       do {
         result = f.store.pruneIngestHistory(NOW);
         assert.ok(result.deletedEvents <= INGEST_RETENTION_EVENT_BUDGET);
-        assert.equal(result.scannedRuns, 1);
+        assert.ok(result.scannedRuns <= 1);
+        scanned += result.scannedRuns;
         deleted += result.deletedEvents;
       } while (result.hasMore);
+      assert.equal(scanned, 3);
       assert.equal(deleted, details.length * 2);
       assert.equal(f.counts().events, details.length);
       assert.equal(f.counts().entries, details.length);
@@ -386,9 +390,12 @@ describe("ingestion history retention", () => {
       const retired = retirePaymentWindow(f);
       const changed = [retired.payment, paymentDetail("after-restore")];
       assert.throws(() => replayPaymentWindow(f.store, changed, NOW + 5_000), LedgerPageReconfirmationRequiredError);
-      const savedError = f.database.read(connection => connection.prepare(`SELECT raw_body, signature_verified, error_code
-        FROM ingest_errors WHERE error_code = 'pagination_reconfirmation_required'`).get()) as
-        { raw_body: Uint8Array; signature_verified: bigint; error_code: string };
+      const savedError = f.database.read(connection => {
+        const row = connection.prepare(`SELECT raw_body, raw_body_reference, signature_verified, error_code
+          FROM ingest_errors WHERE error_code = 'pagination_reconfirmation_required'`).get() as
+          { raw_body: Uint8Array; raw_body_reference: string | null; signature_verified: bigint; error_code: string };
+        return { ...row, raw_body: readEvidencePayload(connection, row.raw_body, row.raw_body_reference) };
+      });
       assert.equal(Buffer.from(savedError.raw_body).toString(), JSON.stringify({ details: changed }));
       assert.equal(Number(savedError.signature_verified), 1);
       await f.database.backup(f.backupPath);

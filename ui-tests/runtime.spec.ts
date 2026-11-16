@@ -1,6 +1,20 @@
 import { test, expect, login, record } from "./fixtures";
 test("runtime keeps healthy diagnostics collapsed and version check failures concise", async ({ page, manifest }, info) => {
   let updateRequests = 0;
+  let confirmationFailed = false;
+  await page.route("**/api/admin/v1/system/status", async route => {
+    const response = await route.fetch(), data = await response.json();
+    // This scenario starts with every worker healthy; the preview's real backup task is initially idle.
+    Object.assign(data.data.backup, { enabled: true, ok: true, status: "healthy", backup_available: true,
+      backup_required: false, backup_in_progress: false, recovery_required: false, configuration_mismatch: false,
+      clock_moved_backwards: false, last_error_at: null, last_error_stage: null });
+    if (confirmationFailed) {
+      data.data.status = "degraded";
+      data.data.reconciliation.last_error_code = "reconciliation_storage_error";
+      data.data.reconciliation.consecutive_failures = 2;
+    }
+    await route.fulfill({ response, json: data });
+  });
   await page.route("**/api/admin/v1/system/update*", async route => {
     updateRequests++;
     await route.continue();
@@ -19,13 +33,7 @@ test("runtime keeps healthy diagnostics collapsed and version check failures con
   await page.clock.fastForward(3_000);
   await expect(update).toBeDisabled();
   expect(updateRequests).toBe(2);
-  await page.route("**/api/admin/v1/system/status", async route => {
-    const response = await route.fetch(), data = await response.json();
-    data.data.status = "degraded";
-    data.data.reconciliation.last_error_code = "reconciliation_storage_error";
-    data.data.reconciliation.consecutive_failures = 2;
-    await route.fulfill({ response, json: data });
-  });
+  confirmationFailed = true;
   await page.reload();
   await expect(page.getByText(/自动确认收款记录暂时无法读取或保存，请检查数据库和运行诊断。/)).toBeVisible();
   const diagnose = page.getByRole("button", { name: "自动确认收款运行诊断" });

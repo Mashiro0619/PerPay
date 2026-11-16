@@ -350,20 +350,40 @@ describe("local backup state and scheduling", () => {
     assert.equal(JSON.parse(warnings).event, "backup_restore_policy_skipped");
   });
 
-  it("keeps run-once and schedule closed when the current backup policy cannot be read", async () => {
+  it("rejects run-once and retries schedule without backing up when the current policy cannot be read", async context => {
     const config = configuration();
     writeFileSync(join(config.dataDirectory, "perpay.sqlite3"), "damaged SQLite");
     const environment = { PERPAY_DATA_DIR: config.dataDirectory, PERPAY_BACKUP_DIR: config.backupDirectory };
     const fake = fakeOperations(config);
     await assert.rejects(runBackupCommand(["run-once"], environment, fake.operations));
     assert.deepEqual(fake.calls, []);
-    const scheduled = spawnSync(process.execPath, ["--experimental-strip-types", "src/backup/runner.ts", "schedule"], {
-      cwd: resolve(import.meta.dirname, ".."), env: { ...process.env, ...environment },
-      encoding: "utf8", windowsHide: true, timeout: 5_000,
+    context.mock.timers.enable({ apis: ["Date", "setTimeout"], now: Date.parse("2026-11-10T00:00:00Z") });
+    let stderr = "";
+    context.mock.method(process.stderr, "write", (chunk: string | Uint8Array) => {
+      stderr += String(chunk);
+      return true;
     });
-    assert.equal(scheduled.status, 1, scheduled.stderr);
-    assert.equal(scheduled.stderr.includes("backup_restore_policy_skipped"), false);
-    assert.equal(existsSync(join(config.backupDirectory, "perpay-local-backup-state.json")), false);
+    let finished = false;
+    const scheduled = runBackupCommand(["schedule"], environment, fake.operations).then(code => {
+      finished = true;
+      return code;
+    });
+    try {
+      await new Promise<void>(resolve => setImmediate(resolve));
+      assert.equal(finished, false);
+      assert.equal(stderr.match(/"event":"backup_cycle_failed"/gu)?.length, 1);
+      context.mock.timers.tick(5 * 60_000);
+      await new Promise<void>(resolve => setImmediate(resolve));
+      assert.equal(finished, false);
+      assert.equal(stderr.match(/"event":"backup_cycle_failed"/gu)?.length, 2);
+      assert.deepEqual(fake.calls, []);
+      assert.equal(stderr.includes("backup_restore_policy_skipped"), false);
+      assert.equal(existsSync(join(config.backupDirectory, "perpay-local-backup-state.json")), false);
+    } finally {
+      process.emit("SIGTERM");
+      assert.equal(await scheduled, 0);
+      context.mock.timers.reset();
+    }
   });
 
   it("rejects restore before state mutation when the deployment key is unavailable", async () => {
@@ -453,22 +473,18 @@ describe("local backup state and scheduling", () => {
       PERPAY_BACKUP_KEEP_COUNT: "7",
     };
     let deletionCalls = 0;
+    const artifact = Object.freeze({
+      ...fakeBackupRecord(), status: "invalid" as const,
+      schemaVersion: null, instanceId: null, error: "damaged backup",
+    });
     const fake = fakeOperations(config, {
+      listArtifacts: () => [artifact],
       deleteArtifact(_directory, name, expectedSha256, protectedName) {
         deletionCalls += 1;
         assert.equal(name, backupName);
         assert.equal(expectedSha256, sha256);
         assert.equal(protectedName, undefined);
-        return Object.freeze({
-          name,
-          createdAt: "2026-08-17T00:00:00.000Z",
-          status: "invalid",
-          sha256: expectedSha256,
-          sizeBytes: 15,
-          schemaVersion: null,
-          instanceId: null,
-          error: "damaged backup",
-        });
+        return artifact;
       },
     });
     await assert.rejects(

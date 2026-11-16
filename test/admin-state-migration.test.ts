@@ -36,6 +36,8 @@ it("upgrades schema 22 without rewriting historical money, refund evidence, queu
     for (const table of ["payment_orders", "amount_slots"] as const) {
       for (const row of before[table]!) row.alipay_account_id = "default";
     }
+    for (const row of before.provider_raw_pages!) row.raw_body_reference = null;
+    for (const row of before.provider_raw_events!) row.raw_payload_reference = null;
     const databasePath = fixture.services.config.databasePath;
     fixture.database.close();
     const legacy = new DatabaseSync(databasePath, { enableForeignKeyConstraints: true, readBigInts: true });

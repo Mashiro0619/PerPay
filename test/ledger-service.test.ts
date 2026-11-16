@@ -19,6 +19,7 @@ import {
   type LedgerScanResult,
 } from "../src/ledger/service.ts";
 import { LedgerStore } from "../src/ledger/store.ts";
+import { readEvidencePayload } from "../src/ledger/evidence-payloads.ts";
 import { parseOccurredAt } from "../src/ledger/model.ts";
 
 const NOW = Date.parse("2026-08-14T12:00:00+08:00");
@@ -434,9 +435,10 @@ describe("LedgerIngestService", () => {
       assert.deepEqual(
         database.read((connection) => {
           const row = connection.prepare(
-            "SELECT http_status, signature_verified, CAST(raw_body AS TEXT) AS body FROM ingest_errors",
-          ).get() as { http_status: bigint; signature_verified: bigint; body: string };
-          return [Number(row.http_status), Number(row.signature_verified), row.body];
+            "SELECT http_status, signature_verified, raw_body, raw_body_reference FROM ingest_errors",
+          ).get() as { http_status: bigint; signature_verified: bigint; raw_body: Uint8Array; raw_body_reference: string | null };
+          return [Number(row.http_status), Number(row.signature_verified),
+            Buffer.from(readEvidencePayload(connection, row.raw_body, row.raw_body_reference)).toString()];
         }),
         [200, 1, '{"page":1,"total":1}'],
       );

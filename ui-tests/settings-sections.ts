@@ -35,6 +35,7 @@ export async function expectSettingsSections(page: Page, scope: Scope, group: st
   if (navigation.kind === "select") {
     await navigation.control.click();
     await expect(page.getByRole("option")).toHaveText([...sections]);
+    await expect(page.getByRole("option", { selected: true })).toBeFocused();
     await page.keyboard.press("Escape");
     await expect(navigation.control).toHaveAttribute("aria-expanded", "false");
   } else {

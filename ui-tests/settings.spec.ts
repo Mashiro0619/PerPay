@@ -162,6 +162,7 @@ test("website categories preserve keyboard activation across desktop tabs and th
   await page.keyboard.press("Enter");
   const options = page.getByRole("option");
   await expect(options).toHaveText(["基本信息", "收款账号", "订单设置", "接入与通知", "收银台展示"]);
+  await expect(page.getByRole("option", { selected: true })).toBeFocused();
   await page.keyboard.press("Home");
   await expect(options.first()).toBeFocused();
   await page.keyboard.press("ArrowDown");

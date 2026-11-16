@@ -1938,7 +1938,7 @@ describe("LedgerStore segment ingestion", () => {
         () => database.write((connection) => connection.prepare(
           "UPDATE provider_raw_pages SET raw_body = x'00' WHERE raw_page_id = ?",
         ).run(split.page.rawPageId)),
-        /immutable/,
+        /ledger evidence may only move unchanged bytes to shared storage/,
       );
       const failed = store.recordIngestError({
         ingestRunId: run.ingestRunId,
@@ -2114,13 +2114,14 @@ describe("LedgerStore segment ingestion", () => {
         connection.prepare(
           `UPDATE provider_raw_pages
               SET raw_body = x'00',
+                  raw_body_reference = NULL,
                   request_fingerprint =
                     CASE substr(request_fingerprint, 1, 1)
                       WHEN '0' THEN '1' || substr(request_fingerprint, 2)
                       ELSE '0' || substr(request_fingerprint, 2)
                     END`,
         ).run();
-        connection.prepare("UPDATE provider_raw_events SET raw_payload = x'00'").run();
+        connection.prepare("UPDATE provider_raw_events SET raw_payload = x'00', raw_payload_reference = NULL").run();
         connection.prepare(
           `UPDATE ledger_entries
               SET semantic_fingerprint =
@@ -2133,7 +2134,7 @@ describe("LedgerStore segment ingestion", () => {
                     ELSE 1
                   END`,
         ).run();
-        connection.prepare("UPDATE ingest_errors SET raw_body = x'00'").run();
+        connection.prepare("UPDATE ingest_errors SET raw_body = x'00', raw_body_reference = NULL").run();
         for (const trigger of triggerSql) connection.exec(trigger.sql);
       });
 

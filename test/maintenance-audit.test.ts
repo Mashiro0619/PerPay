@@ -59,8 +59,10 @@ async function imported(directory: string, expectedInstanceId: string) {
 describe("verified maintenance audit targets", () => {
   it("preserves restore and foreign-backup deletion identities through permanent import without copying arguments", async () => {
     const test = fixture();
+    const foreignBackup = { ...backup, instanceId: "f".repeat(32), status: "verified" as const, error: "private diagnostic is not projected" };
     await runBackupCommand(["delete-backup-file", backupName, sha256, "--confirm-delete-backup-file"], test.env, operations({
-      deleteArtifact: () => ({ ...backup, instanceId: "f".repeat(32), status: "verified", error: "private diagnostic is not projected" }),
+      listArtifacts: () => [foreignBackup],
+      deleteArtifact: () => foreignBackup,
     }));
     await runBackupCommand(["restore", backupName, sha256, "--confirm-replace-current-database"], test.env, operations());
     const spool = events(test.backupDirectory);

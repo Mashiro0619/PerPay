@@ -26,6 +26,7 @@ import {
   semanticFingerprint,
 } from "../src/ledger/model.ts";
 import { LedgerStore } from "../src/ledger/store.ts";
+import { readEvidencePayload } from "../src/ledger/evidence-payloads.ts";
 import { deriveCheckoutToken, digestCheckoutToken } from "../src/orders/checkout-token.ts";
 import { fingerprintCollectionCodeProfile } from "../src/orders/collection-profile.ts";
 import { createOrderRequestSchema, orderEventDetailsFingerprint } from "../src/orders/model.ts";
@@ -1895,6 +1896,7 @@ async function createVersionTwelveTerminalConflictDatabase(
       record.run(migration.version, migration.name, migrationChecksum(migration));
     }
     connection.exec(`ATTACH DATABASE '${sourcePath.replaceAll("'", "''")}' AS source`);
+    const evidenceSource = new DatabaseSync(sourcePath, { readOnly: true, readBigInts: true });
     try {
       connection.exec("PRAGMA defer_foreign_keys = ON; BEGIN IMMEDIATE");
       try {
@@ -1910,15 +1912,23 @@ async function createVersionTwelveTerminalConflictDatabase(
           "ledger_cursors",
           "ledger_conflicts",
         ]) {
-          const columns = (connection.prepare(`PRAGMA main.table_info(${table})`).all() as Array<{
+          const columnNames = (connection.prepare(`PRAGMA main.table_info(${table})`).all() as Array<{
             name: string;
-          }>).map((column) => `"${column.name}"`).join(", ");
+          }>).map((column) => column.name);
+          const columns = columnNames.map(column => `"${column}"`).join(", ");
           const insert = table === "system_metadata" || table === "checkout_token_keys"
             ? "INSERT OR IGNORE"
             : "INSERT";
-          connection.exec(
-            `${insert} INTO main.${table}(${columns}) SELECT ${columns} FROM source.${table}`,
-          );
+          if (table === "provider_raw_pages" || table === "provider_raw_events") {
+            const body = table === "provider_raw_pages" ? "raw_body" : "raw_payload";
+            const save = connection.prepare(`${insert} INTO main.${table}(${columns}) VALUES (${columnNames.map(() => "?").join(", ")})`);
+            for (const row of evidenceSource.prepare(`SELECT * FROM ${table}`).iterate()) {
+              row[body] = Buffer.from(readEvidencePayload(evidenceSource, row[body] as Uint8Array, row[`${body}_reference`] as string | null));
+              save.run(...columnNames.map(column => row[column]!));
+            }
+          } else {
+            connection.exec(`${insert} INTO main.${table}(${columns}) SELECT ${columns} FROM source.${table}`);
+          }
         }
         connection.exec("COMMIT");
       } catch (error) {
@@ -1926,6 +1936,7 @@ async function createVersionTwelveTerminalConflictDatabase(
         throw error;
       }
     } finally {
+      evidenceSource.close();
       connection.exec("DETACH DATABASE source");
     }
     const conflict = connection.prepare(

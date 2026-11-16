@@ -11,6 +11,7 @@ import { AlipayProviderError } from '../../../src/infrastructure/alipay/errors.t
 import { NodeV3Transport } from '../../../src/infrastructure/alipay/node-transport.ts';
 import { LedgerIngestService } from '../../../src/ledger/service.ts';
 import { LedgerStore } from '../../../src/ledger/store.ts';
+import { readEvidencePayload } from '../../../src/ledger/evidence-payloads.ts';
 import { parseProviderKeys } from '../../../src/settings/model.ts';
 import { verifyProviderApplicationKey } from '../../../src/settings/provider-key-verification.ts';
 import { createFixture } from './fixture.mjs';
@@ -318,7 +319,10 @@ test('the real ingest service persists the SDK raw response in temporary SQLite'
   const result = await service.run('sdk-validation');
   assert.equal(result.status, 'COMPLETED');
   assert.equal(result.createdEntries, 1);
-  const evidence = database.read(connection => connection.prepare('SELECT raw_body, signature_verified FROM provider_raw_pages').get());
+  const evidence = database.read(connection => {
+    const row = connection.prepare('SELECT raw_body, raw_body_reference, signature_verified FROM provider_raw_pages').get();
+    return { ...row, raw_body: readEvidencePayload(connection, row.raw_body, row.raw_body_reference) };
+  });
   assert.equal(Buffer.from(evidence.raw_body).toString(), body);
   assert.equal(Number(evidence.signature_verified), 1);
   assert.equal(createHash('sha256').update(evidence.raw_body).digest('hex'), createHash('sha256').update(body).digest('hex'));
@@ -340,7 +344,10 @@ test('the real ingest service persists SDK rejection evidence without creating l
   const result = await service.run('sdk-rejected-response');
   assert.equal(result.status, 'FAILED');
   assert.equal(result.errorCode, 'response_signature_invalid');
-  const evidence = database.read(connection => connection.prepare('SELECT raw_body, signature_verified, error_code FROM ingest_errors').get());
+  const evidence = database.read(connection => {
+    const row = connection.prepare('SELECT raw_body, raw_body_reference, signature_verified, error_code FROM ingest_errors').get();
+    return { ...row, raw_body: readEvidencePayload(connection, row.raw_body, row.raw_body_reference) };
+  });
   assert.deepEqual(Buffer.from(evidence.raw_body), reply.body);
   assert.equal(Number(evidence.signature_verified), 0);
   assert.equal(store.listLedgerEntries().length, 0);

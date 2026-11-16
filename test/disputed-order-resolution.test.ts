@@ -2,11 +2,14 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { it } from "node:test";
-import { AppDatabase } from "../src/database/database.ts";
-import { migrations } from "../src/database/migrations.ts";
+import { AppDatabase, inspectDatabaseIntegrity } from "../src/database/database.ts";
+import { migrationChecksum, migrations } from "../src/database/migrations.ts";
+import { migrateSiteData } from "../src/sites/migrations/data.ts";
+import { migrateAlipayAccounts } from "../src/alipay-accounts/migration.ts";
 import { ReconciliationStore } from "../src/reconciliation/store.ts";
 import { financialHeaders, login, postFinancial, recordLedgerEntry, responseData, withHttpFixture, type ReconciliationHttpFixture } from "./reconciliation-http-fixture.ts";
 import { configureTestSiteNotifications } from "./site-notification-fixture.ts";
+import { withLegacyPaymentFixture } from "./legacy-payment-fixture.ts";
 
 const manual = "/api/admin/v1/reconciliation/settlements/manual";
 const openExceptions = (f: ReconciliationHttpFixture) => f.reconciliation.listOpenExceptions(f.services.settings.instanceSnapshot().activeProviderAccountKey!);
@@ -130,24 +133,27 @@ it("refuses an allocated original payment and a refunded disputed order, and can
 });
 
 it("upgrades a schema 43 dispute without rewriting the original evidence", async () => {
-  await withHttpFixture(async f => {
+  await withLegacyPaymentFixture(async f => {
     const settled = f.createSettlement("upgrade-dispute", 4999);
+    assert.ok(settled.result.kind === "auto_settled");
     f.reconciliation.reverseSettlement({ financialOperationId: randomUUID(), paymentMatchId: settled.result.paymentMatchId,
       actorId: "admin", reason: "待升级后继续核对" });
     const before = f.database.read(db => db.prepare("SELECT * FROM payment_matches").all());
     const path = f.services.config.databasePath;
     f.database.close();
-    const previous = new DatabaseSync(path);
+    const previous = new DatabaseSync(path, { enableForeignKeyConstraints: true, readBigInts: true });
     try {
-      const trigger = (version: number, name: string) => {
-        const sql = migrations.find(migration => migration.version === version)!.sql;
-        const start = sql.indexOf("CREATE TRIGGER " + name);
-        return sql.slice(start, sql.indexOf("END;", start) + 4);
-      };
-      previous.exec("DROP TRIGGER payment_orders_payment_state_transition; DROP TRIGGER financial_exceptions_resolution_once; DROP TRIGGER disputed_manual_settlement_reason;");
-      previous.exec(trigger(5, "payment_orders_payment_state_transition"));
-      previous.exec(trigger(9, "financial_exceptions_resolution_once"));
-      previous.exec("DELETE FROM schema_migrations WHERE version = 44;");
+      previous.exec("BEGIN IMMEDIATE");
+      for (const migration of migrations.filter(item => item.version > 33 && item.version <= 43)) {
+        previous.exec(migration.sql);
+        if (migration.postApply === "migrate_websites_v1") migrateSiteData(previous, f.services.config.masterKey);
+        if (migration.postApply === "migrate_alipay_accounts_v1") migrateAlipayAccounts(previous, f.services.config.masterKey);
+        previous.prepare("INSERT INTO schema_migrations(version, name, checksum, applied_at) VALUES (?, ?, ?, ?)")
+          .run(migration.version, migration.name, migrationChecksum(migration), new Date().toISOString());
+      }
+      previous.exec("COMMIT");
+      assert.equal(Number(previous.prepare("SELECT max(version) AS version FROM schema_migrations").get()!.version), 43);
+      assert.equal(inspectDatabaseIntegrity(previous).ok, true);
     } finally { previous.close(); }
     const upgraded = await AppDatabase.open(path, { masterKey: f.services.config.masterKey });
     try {
