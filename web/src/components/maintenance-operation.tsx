@@ -1,6 +1,6 @@
 import { useEffect, useId, useState, useSyncExternalStore, type ReactNode } from "react";
 import { CircleCheck } from "lucide-react";
-import type { MaintenanceJob } from "@/api/maintenance";
+import { maintenanceJobRequiresLogin, type MaintenanceJob } from "@/api/maintenance";
 import { getRestoreSessionHold, subscribeRestoreSessionHold } from "@/api/client";
 import { dateTime } from "@/lib/format";
 import { Link } from "@/navigation";
@@ -50,7 +50,7 @@ export function MaintenanceJobResult({ job }: { job: MaintenanceJob | null }) {
     {job.result?.backup_name && <CopyValue value={job.result.backup_name} label="复制备份文件名" />}
     {job.result?.safety_backup_name && <span>恢复前副本：<CopyValue value={job.result.safety_backup_name} label="复制恢复前备份文件名" /></span>}
     {job.result?.archive_id && <Link global to={"/settings/archives/" + encodeURIComponent(job.result.archive_id)}>查看归档</Link>}
-    {job.result?.requires_login && restoreSessionHold === job.id && <><span>请重新登录后继续使用系统。</span><Button variant="outline" size="sm" className="self-start" onClick={() => window.dispatchEvent(new Event("perpay:session-expired"))}>重新登录</Button></>}
+    {maintenanceJobRequiresLogin(job) && restoreSessionHold === job.id && <><span>请重新登录后继续使用系统。</span><Button variant="outline" size="sm" className="self-start" onClick={() => window.dispatchEvent(new Event("perpay:session-expired"))}>重新登录</Button></>}
   </MaintenanceJobNotice>;
 }
 

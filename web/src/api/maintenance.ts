@@ -22,6 +22,10 @@ export type MaintenanceRequest = { operation_id: string } & (
 export type ManagedBackupFile = BackupFile & { sha256: string | null; safety_backup?: boolean };
 export const maintenanceKey = ["maintenance"] as const;
 
+export function maintenanceJobRequiresLogin(job: MaintenanceJob | null | undefined): boolean {
+  return (job?.status === "SUCCEEDED" || job?.status === "FAILED") && job.result?.requires_login === true;
+}
+
 export async function getMaintenanceState(signal: AbortSignal): Promise<MaintenanceState> {
   const response = await result(client.get<{ 200: { data: MaintenanceState } }>({ url: "/api/admin/v1/maintenance/jobs", signal }));
   return response.data;

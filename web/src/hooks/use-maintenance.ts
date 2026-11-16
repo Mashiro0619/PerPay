@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useSyncExternalStore } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { ApiError, getRestoreSessionHold, queryClient, setRestoreSessionHold, subscribeRestoreSessionHold } from "@/api/client";
-import { getMaintenanceJob, getMaintenanceState, maintenanceKey, startMaintenance, type MaintenanceJob, type MaintenanceRequest, type MaintenanceState } from "@/api/maintenance";
+import { getMaintenanceJob, getMaintenanceState, maintenanceJobRequiresLogin, maintenanceKey, startMaintenance, type MaintenanceJob, type MaintenanceRequest, type MaintenanceState } from "@/api/maintenance";
 import { isOperationResultUnknown, useOperationWait } from "@/hooks/use-operation-wait";
 
 export const MaintenanceContext = createContext<ReturnType<typeof useMaintenanceMonitor> | null>(null);
@@ -32,7 +32,7 @@ export function useMaintenanceMonitor() {
     },
     enabled: current => {
       const latest = heldRestoreJob(current.state.data, restoreSessionHold) ?? current.state.data?.latest;
-      return !latest?.result?.requires_login || latest.id !== restoreSessionHold;
+      return !maintenanceJobRequiresLogin(latest) || latest?.id !== restoreSessionHold;
     },
     staleTime: 0,
     refetchInterval: current => {
@@ -44,7 +44,7 @@ export function useMaintenanceMonitor() {
   const currentActive = query.data?.active;
   const restore = heldRestoreJob(query.data, restoreSessionHold);
   const latest = restore ?? query.data?.latest;
-  const requiresLogin = restoreSessionHold === latest?.id && !!latest?.result?.requires_login;
+  const requiresLogin = restoreSessionHold === latest?.id && maintenanceJobRequiresLogin(latest);
   const active = requiresLogin ? null : restore?.status === "QUEUED" || restore?.status === "RUNNING" ? restore : currentActive ?? null;
   useEffect(() => {
     if (currentActive?.kind === "RESTORE" && getRestoreSessionHold() === null) setRestoreSessionHold(currentActive.id);
