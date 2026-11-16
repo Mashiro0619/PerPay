@@ -399,7 +399,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
   app.use("*", async (context, next) => {
     const response = dependencies.maintenance?.response(context.req.raw,
       remoteAddress(context, dependencies.config.trustedProxy), dependencies.config.secureCookies, adminFrontend);
-    if (response) return response;
+    if (response) return context.newResponse(response.body, response);
     await next();
   });
 
