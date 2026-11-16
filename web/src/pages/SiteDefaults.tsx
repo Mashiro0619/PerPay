@@ -202,6 +202,17 @@ function DefaultsEditor({ initial }: { initial: DefaultsSnapshot }) {
           </TabsList>
         </ScrollingTabs>
       </Tabs>
+      {timeoutError && section !== "integration" && (
+        <Alert variant="destructive">
+          <AlertTitle>通知超时填写有误，暂时无法保存</AlertTitle>
+          <AlertDescription className="flex flex-col items-start gap-2">
+            <span>{timeoutError}</span>
+            <Button type="button" variant="outline" disabled={busy} onClick={() => setSection("integration")}>
+              返回通知设置
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
       <ErrorNotice error={save.error} />
       <ErrorNotice error={reload.error} />
       {requiresReview && (

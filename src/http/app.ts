@@ -1564,7 +1564,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
 
   app.get("/api/admin/v1/reconciliation/settlements/manual/orders", adminSession, context => {
     const {query, encode} = readManualCandidateQuery(new URL(context.req.url).searchParams, "orders");
-    const page = requireReconciliationStore(dependencies).manualOrderPage(query);
+    const page = requireReconciliationStore(dependencies).manualOrderPage(query, dependencies.clock?.() ?? Date.now());
     if (!page) throw new HttpApiError(404, "ledger_entry_not_found", "流水不存在");
     const identities = adminOrderIdentities(dependencies.database, page.items.map(item => item.record.orderId));
     return context.json({data: page.items.map(item => ({order: serializeReconciliationOrder(item.record, identities.get(item.record.orderId)!), recommendation: serializeManualRecommendation(item.recommendation)})), page: {next_cursor: encode(page.nextPosition)}});

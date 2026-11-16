@@ -578,13 +578,17 @@ export class ReconciliationStore {
   }
 
 
-  manualOrderPage(query: ManualCandidateQuery): ManualCandidatePage<ReconciliationOrderProjection> | null {
+  manualOrderPage(query: ManualCandidateQuery, now = Date.now()): ManualCandidatePage<ReconciliationOrderProjection> | null {
     return this.#database.read(connection => {
       const page = readManualCandidates(connection, "orders", query);
       if (!page) return null;
       const rows = connection.prepare(REVIEW_ORDER_COLUMNS + " WHERE order_id IN (SELECT value FROM json_each(?))")
         .all(JSON.stringify(page.selections.map(item => item.id))) as unknown as ReviewOrderRow[];
-      const records = new Map(rows.map(row => [row.order_id, mapReviewOrder(row)]));
+      const records = new Map(rows.map(row => {
+        const order = mapReviewOrder(row);
+        return [row.order_id, order.checkoutStatus === "OPEN" && order.expiresAt <= now
+          ? { ...order, checkoutStatus: "EXPIRED" as const } : order] as const;
+      }));
       return { items: page.selections.map(item => ({record: records.get(item.id)!, recommendation: item.recommendation})), nextPosition: page.nextPosition };
     });
   }

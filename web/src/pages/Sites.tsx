@@ -716,6 +716,17 @@ function SiteEditor({
       )}
       <ErrorNotice error={save.error || (action.variables === "delete" || !visible("integration") ? action.error : null)} />
       <ErrorNotice error={reload.error} />
+      {timeoutError && !visible("integration") && (
+        <Alert variant="destructive">
+          <AlertTitle>通知超时填写有误，暂时无法保存</AlertTitle>
+          <AlertDescription className="flex flex-col items-start gap-2">
+            <span>{timeoutError}</span>
+            <Button type="button" variant="outline" disabled={busy} onClick={() => setActiveSection("integration")}>
+              返回接入与通知
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
       {requiresReview && (
         <Alert>
           <AlertTitle>{writeResultUnknown ? "操作结果待确认" : requiresConfigurationReview ? "业务网站配置已变更" : "核对密钥操作结果"}</AlertTitle>
@@ -862,6 +873,7 @@ function SiteEditor({
                 {visible("collection") && <SiteCollectionFields value={draft.collection ?? { mode: "FIXED", accounts: [] }} disabled={busy || requiresReview} error={Object.entries(errors).find(([field]) => field.startsWith("configuration.collection"))?.[1]} onChange={collection => change(next => { next.collection = collection; })} />}
                 <SitePolicyFields
                   section={section === "all" ? undefined : section}
+                  expandedNotificationPolicy={!!timeoutError}
                   disabled={busy || requiresReview}
                   value={draft.policy}
                   secondsDraft={timeoutRaw}
