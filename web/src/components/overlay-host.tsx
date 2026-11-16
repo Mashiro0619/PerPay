@@ -13,6 +13,7 @@ import { ErrorNotice, Loading } from "@/components/request-state";
 import { RequestNoticeProvider } from "@/lib/request-notices";
 import { RequestNoticeBanner } from "@/components/request-notice-banner";
 import { Button } from "@/components/ui/button";
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { useToastFooterDock } from "@/lib/toast-layout";
 
 type RootPosition = { trigger: HTMLElement | null; triggerId: string | null; y: number; canReturn: boolean };
@@ -149,7 +150,20 @@ const ReconciliationRecovery = lazy(() => import("@/pages/ReconciliationDetail")
 class OverlayFailure extends Component<{ children: ReactNode }, { error: Error | null }> {
   state = { error: null as Error | null };
   static getDerivedStateFromError(error: unknown) { return { error: error instanceof Error ? error : new Error("详情暂时无法显示") }; }
-  render() { return this.state.error ? <ErrorNotice error={this.state.error} /> : this.props.children; }
+  render() {
+    if (!this.state.error) return this.props.children;
+    return (
+      <Empty>
+        <EmptyHeader>
+          <EmptyTitle>详情加载失败</EmptyTitle>
+          <EmptyDescription>重新加载会丢失未保存内容。</EmptyDescription>
+        </EmptyHeader>
+        <EmptyContent>
+          <Button type="button" onClick={() => window.location.reload()}>重新加载页面</Button>
+        </EmptyContent>
+      </Empty>
+    );
+  }
 }
 
 /** A scoped declarative route keeps existing params/search hooks without creating another Router. */
