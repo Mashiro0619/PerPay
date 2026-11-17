@@ -12,6 +12,8 @@ test("save and refresh feedback keep dimensions, stop decorative loops and recov
   const geometry: unknown[] = [];
   try {
     await page.context().addCookies(fixture.cookies);
+    // This spec checks the spinner in both motion modes, starting with full motion.
+    await page.emulateMedia({ reducedMotion: "no-preference" });
     await page.route("**/*", route => new URL(route.request().url()).origin === fixture.origin ? route.continue() : route.abort());
     await page.route("**/api/admin/v1/settings/display", async route => {
       writes++;

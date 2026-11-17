@@ -146,7 +146,15 @@ for (const width of [390, 740, 1440]) {
       await expect(view).toBeFocused();
       await view.click();
       await expect(dialog(page)).toBeVisible();
-      await page.mouse.click(1, 1);
+      if (width === 1440) {
+        await page.mouse.click(1, 1);
+      } else {
+        // Below 768px the dialog fills the viewport: nothing lies outside it, and a press on its edge keeps it open.
+        expect(await dialog(page).boundingBox()).toEqual({ x: 0, y: 0, width, height: 900 });
+        await page.mouse.click(1, 1);
+        await expect(dialog(page)).toBeVisible();
+        await page.keyboard.press("Escape");
+      }
       await expect(dialog(page)).not.toBeVisible();
       await expect(view).toBeFocused();
 

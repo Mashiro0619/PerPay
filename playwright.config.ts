@@ -9,6 +9,8 @@ export default defineConfig({
   fullyParallel: false,
   outputDir: `${output}/artifacts`,
   reporter: [["list"], ["json", { outputFile: `${output}/results.json` }]],
-  use: { browserName: "chromium", channel: "chromium", locale: "zh-CN", timezoneId: "Asia/Shanghai", trace: "retain-on-failure", screenshot: "only-on-failure" },
+  use: { browserName: "chromium", channel: "chromium", locale: "zh-CN", timezoneId: "Asia/Shanghai", trace: "retain-on-failure", screenshot: "only-on-failure",
+    // Layout specs measure settled geometry. Specs that verify motion opt back in with emulateMedia.
+    reducedMotion: "reduce" },
   projects: [{ name: "core", testIgnore: /full\.spec\.ts/ }, { name: "full", testMatch: /full\.spec\.ts/ }],
 });

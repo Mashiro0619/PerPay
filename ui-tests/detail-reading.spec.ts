@@ -328,6 +328,8 @@ test("summaries and credentials retain reading order in stable responsive column
         const samples: Awaited<ReturnType<typeof expectDetailFields>> = [];
         for (const requestedWidth of [320, 480, 720, 960]) {
           await container.evaluate((element, width) => { (element as HTMLElement).style.width = width + "px"; }, requestedWidth);
+          // With reduced motion every style change still runs a 0.01ms transition, so the new width applies a frame later.
+          await waitForControlAnimations(container);
           const measured = (await expectDetailFields(container))[0]!;
           expect(measured.width).toBe(requestedWidth);
           expect(measured.fields.map(field => field.name)).toEqual(names);
