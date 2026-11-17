@@ -12,6 +12,7 @@ import { AlertCircle } from "lucide-react";
 import { ApiError, result } from "@/api/client";
 import { refreshFinancialRecords } from "@/lib/record-refresh";
 import { useOperationKey } from "@/lib/idempotency";
+import { money } from "@/lib/format";
 import { operationReasonError, useFixedOperation } from "@/lib/fixed-operation";
 import { OperationRecoveryNotice } from "@/components/operation-recovery-notice";
 import { OperationNavigationDialog } from "@/components/operation-navigation-dialog";
@@ -31,7 +32,7 @@ import {
   FieldDescription,
   FieldError,
 } from "@/components/ui/field";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Dialog,
   DialogContent,
@@ -350,6 +351,11 @@ export function FinancialDialog({
                   preview.data.ledger.amount_cents && (
                   <Alert>
                     <AlertCircle />
+                    <AlertTitle>
+                      流水 {money(preview.data.ledger.amount_cents)}，订单应付 {money(preview.data.order.payable_amount_cents)}，
+                      {preview.data.ledger.amount_cents < preview.data.order.payable_amount_cents ? "少收" : "多收"}{" "}
+                      {money(Math.abs(preview.data.ledger.amount_cents - preview.data.order.payable_amount_cents))}
+                    </AlertTitle>
                     <AlertDescription>
                       支付宝交易金额与订单应付不同，请核对后确认。
                     </AlertDescription>

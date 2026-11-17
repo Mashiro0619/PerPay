@@ -16,6 +16,7 @@ import {
   type ManualSettlementLedgerCandidate,
 } from "../src/api/client";
 import { FinancialDialog } from "../src/pages/FinancialDialog";
+import { money } from "../src/lib/format";
 import { paymentMatch } from "./detail-fixtures";
 import { json, apiError, order, ledger, orderId, ledgerId } from "./fixtures";
 const recommendation = {
@@ -346,7 +347,10 @@ describe("manual settlement selection instead of ID entry", () => {
     const user = userEvent.setup();
     const note = await screen.findByLabelText("操作理由（可选）");
     expect(note).not.toBeRequired();
-    expect(screen.getByText("支付宝交易金额与订单应付不同，请核对后确认。")).toBeVisible();
+    const mismatch = screen.getByText("支付宝交易金额与订单应付不同，请核对后确认。");
+    expect(mismatch).toBeVisible();
+    expect(mismatch.closest("[role=alert]")).toHaveTextContent(
+      "流水 " + money(order.payable_amount_cents + 100) + "，订单应付 " + money(order.payable_amount_cents) + "，多收 " + money(100));
     expect(screen.queryByText(/请在理由中说明/)).not.toBeInTheDocument();
     if (reason) await user.type(note, reason);
     expect(view.requests.filter(r => r.method === "POST")).toHaveLength(0);
