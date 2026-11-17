@@ -30,6 +30,24 @@ export function dateTime(value: string | number | null | undefined): string {
   return Number.isNaN(date.getTime()) ? "—" : timeFormatter.format(date);
 }
 
+const preciseTimeFormatter = new Intl.DateTimeFormat("zh-CN", {
+  timeZone: BUSINESS_TIME_ZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hour12: false,
+});
+
+/** Record details show times to the second; lists keep minutes. */
+export function preciseDateTime(value: string | number | null | undefined): string {
+  if (value === null || value === undefined) return "—";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "—" : preciseTimeFormatter.format(date);
+}
+
 export function shortId(value: string | null | undefined): string {
   if (!value) return "—";
   return value.length > 20 ? `${value.slice(0, 8)}…${value.slice(-6)}` : value;

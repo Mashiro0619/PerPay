@@ -9,12 +9,14 @@ export function CopyValue({
   secret = false,
   tooltip = false,
   buttonOnly = false,
+  size = "icon-sm",
 }: {
   value: string;
   label?: string;
   secret?: boolean;
   tooltip?: boolean;
   buttonOnly?: boolean;
+  size?: "icon-sm" | "icon-xs";
 }) {
   const [state, setState] = useState<"idle" | "success" | "error">("idle");
   const request = useRef(0);
@@ -49,7 +51,7 @@ export function CopyValue({
   const button = (
     <Button
       variant="ghost"
-      size="icon-sm"
+      size={size}
       type="button"
       data-copy-state={state}
       aria-label={label ?? "复制内容"}
