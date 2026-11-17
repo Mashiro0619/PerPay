@@ -23,6 +23,25 @@ describe("administrator API boundary", () => {
     expect(fetchMock.mock.calls[1]![0].signal.aborted).toBe(false);
   });
 
+  it("marks reads as unattended once the administrator has stopped using the page, and never marks writes", async () => {
+    const fetchMock = vi.fn(async (_request: Request) => json({ data: [] }));
+    vi.stubGlobal("fetch", fetchMock);
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const unattended = () => fetchMock.mock.calls.at(-1)![0].headers.get("X-PerPay-Unattended");
+    window.dispatchEvent(new Event("keydown"));
+    vi.setSystemTime(Date.now() + 59_000);
+    await result(api.listAdministratorOrders());
+    expect(unattended()).toBeNull();
+    vi.setSystemTime(Date.now() + 2_000);
+    await result(api.listAdministratorOrders());
+    expect(unattended()).toBe("1");
+    await result(api.updateBackupSettings({ body: { revision: 1, interval_seconds: 3600, keep_count: 7 } }));
+    expect(unattended()).toBeNull();
+    window.dispatchEvent(new Event("pointermove"));
+    await result(api.listAdministratorOrders());
+    expect(unattended()).toBeNull();
+  });
+
   it("never sends a queued write after its session was invalidated", async () => {
     const fetchMock = vi.fn(); vi.stubGlobal("fetch", fetchMock);
     const pending = result(api.updateBackupSettings({ body: { revision: 1, interval_seconds: 3600, keep_count: 7 } }));

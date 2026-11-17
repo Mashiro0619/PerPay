@@ -2142,7 +2142,11 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
 function requireAdminSession(identity: IdentityService, secureCookies: boolean): MiddlewareHandler<AppEnvironment> {
   return async (context, next) => {
     const token = getCookie(context, sessionCookieName(secureCookies));
-    const authenticated = token ? identity.authenticate(token) : undefined;
+    // The console marks reads made without recent input, such as status polling.
+    // They are served but do not postpone the idle expiry. Omitting the header
+    // only restores the default, so it grants nothing to a caller.
+    const unattended = ["GET", "HEAD"].includes(context.req.method) && context.req.header("x-perpay-unattended") === "1";
+    const authenticated = token ? identity.authenticate(token, { touch: !unattended }) : undefined;
     if (!authenticated) throw new HttpApiError(401, "session_invalid", "会话不存在或已过期");
     context.set("adminSession", authenticated);
     const auditScope = currentAuditContext();

@@ -298,7 +298,12 @@ export class IdentityService {
     };
   }
 
-  authenticate(token: string): AuthenticatedSession | undefined {
+  /**
+   * `touch: false` checks the session without extending its idle expiry. Reads
+   * the browser sends on its own timers use it, so only the administrator's
+   * own activity keeps a session alive.
+   */
+  authenticate(token: string, options: { touch?: boolean } = {}): AuthenticatedSession | undefined {
     let sessionDigest: string;
     try {
       sessionDigest = digestSessionToken(token);
@@ -309,7 +314,7 @@ export class IdentityService {
     let session = this.#store.read((transaction) => transaction.activeSession(sessionDigest, now));
     if (!session) return undefined;
 
-    if (now - session.lastSeenAt >= SESSION_TOUCH_INTERVAL_MS) {
+    if (options.touch !== false && now - session.lastSeenAt >= SESSION_TOUCH_INTERVAL_MS) {
       this.#store.transaction((transaction) => {
         const current = transaction.activeSession(sessionDigest, now);
         if (!current) return;

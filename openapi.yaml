@@ -7127,6 +7127,10 @@ components:
       description: >-
         HttpOnly administrator session cookie used with production HTTPS. Development
         configurations without secure cookies use the `perpay_session` name instead.
+        Every authenticated request postpones the session's 30-minute idle expiry, except
+        `GET` and `HEAD` requests sent with `X-PerPay-Unattended: 1`. The console adds that
+        header to reads made more than a minute after the administrator's last input, so
+        background polling on a page left open does not keep the session alive.
     AdminCsrfCookie:
       type: apiKey
       in: cookie

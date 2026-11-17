@@ -5,6 +5,7 @@ import { MutationCache, QueryClient } from "@tanstack/react-query";
 import { client } from "./generated/client.gen";
 import type { ErrorEnvelope } from "./generated/types.gen";
 import { apiErrorMessage } from "../lib/api-errors";
+import { userIsAttending } from "../lib/user-activity";
 
 export * as api from "./generated/sdk.gen";
 export type * from "./generated/types.gen";
@@ -109,6 +110,9 @@ client.interceptors.request.use((request) => {
     }
     const token = readCsrfToken();
     if (token) request.headers.set("X-CSRF-Token", token);
+  } else if (!userIsAttending()) {
+    // Polling on a page nobody is using must not keep the session alive.
+    request.headers.set("X-PerPay-Unattended", "1");
   }
   return request;
 });

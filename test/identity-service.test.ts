@@ -257,6 +257,27 @@ describe("IdentityService", () => {
     }
   });
 
+  it("checks a session without postponing its idle expiry when told not to touch it", async () => {
+    const test = await fixture();
+    try {
+      const watched = await test.identity.login(adminPassword, { sourceAddress: "127.0.0.1" });
+      const used = await test.identity.login(adminPassword, { sourceAddress: "127.0.0.2" });
+      test.clock.now += IDENTITY_LIMITS.sessionIdleMs - 60_000;
+
+      const checked = test.identity.authenticate(watched.sessionToken, { touch: false });
+      assert.equal(checked?.session.idleExpiresAt, watched.idleExpiresAt);
+      assert.equal(checked?.session.lastSeenAt, watched.createdAt);
+      const touched = test.identity.authenticate(used.sessionToken);
+      assert.equal(touched?.session.idleExpiresAt, test.clock.now + IDENTITY_LIMITS.sessionIdleMs);
+
+      test.clock.now += 60_001;
+      assert.equal(test.identity.authenticate(watched.sessionToken, { touch: false }), undefined);
+      assert.ok(test.identity.authenticate(used.sessionToken, { touch: false }));
+    } finally {
+      test.close();
+    }
+  });
+
   it("extends remembered sessions to a fixed 30-day window without idle sliding", async () => {
     const test = await fixture();
     try {

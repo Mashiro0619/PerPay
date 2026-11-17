@@ -704,6 +704,46 @@ describe("identity HTTP contract", () => {
     }
   });
 
+  it("serves unattended reads without postponing the session's idle expiry", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "perpay-http-unattended-"));
+    let now = Date.now();
+    const { config, database, identity, settings, orders } = await createConfiguredHttpServices({
+      directory,
+      apiSecret,
+      collectionCodePayload,
+      publicUrl: "http://localhost:6190",
+      identityClock: () => now,
+    });
+    const app = createApp({ config, database, identity, settings, orders, startedAt: new Date(0) });
+    const login = async () => {
+      const response = await app.request("/api/admin/v1/session/login", {
+        method: "POST",
+        headers: { "content-type": "application/json", origin: "http://localhost:6190" },
+        body: JSON.stringify({ password: HTTP_TEST_ADMIN_PASSWORD }),
+      });
+      assert.equal(response.status, 200);
+      return response.headers.getSetCookie().map((value) => value.split(";", 1)[0]).join("; ");
+    };
+    const read = async (cookie: string, unattended: boolean) => (await app.request("/api/admin/v1/session", {
+      headers: { cookie, ...(unattended ? { "x-perpay-unattended": "1" } : {}) },
+    })).status;
+    try {
+      const watched = await login();
+      const used = await login();
+      // 20 minutes in, both sessions are still inside the 30-minute idle window.
+      now += 20 * 60_000;
+      assert.equal(await read(watched, true), 200);
+      assert.equal(await read(used, false), 200);
+      // 40 minutes in, only the read that counted as activity has kept its session.
+      now += 20 * 60_000;
+      assert.equal(await read(watched, true), 401);
+      assert.equal(await read(used, true), 200);
+    } finally {
+      database.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("removes step-up and changes the password from an authenticated session", async () => {
     const directory = mkdtempSync(join(tmpdir(), "perpay-http-password-change-"));
     const { config, database, identity, settings, orders } = await createConfiguredHttpServices({
