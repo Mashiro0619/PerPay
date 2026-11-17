@@ -166,6 +166,36 @@ a:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
   overflow-y: auto;
   overscroll-behavior: contain;
 }
+/* Dialogs enter by rising a little while fading in, and leave faster with a
+   plain fade. Transitions, unlike keyframes, reverse cleanly when a dialog is
+   closed while still opening. The backdrop and popup rules must stay free of
+   animate-in/animate-out classes: a running keyframe animation would win. */
+:is([data-slot="dialog-overlay"], [data-slot="alert-dialog-overlay"]) { transition: opacity var(--motion-base) linear; }
+:is([data-slot="dialog-overlay"], [data-slot="alert-dialog-overlay"]):is([data-starting-style], [data-ending-style]) { opacity: 0; }
+:is([data-slot="dialog-overlay"], [data-slot="alert-dialog-overlay"])[data-ending-style] { transition-duration: var(--motion-fast); }
+[data-overlay-viewport="dialog"] {
+  transition:
+    opacity var(--motion-slow) var(--motion-ease-enter),
+    translate var(--motion-slow) var(--motion-ease-enter),
+    scale var(--motion-slow) var(--motion-ease-enter);
+}
+[data-overlay-viewport="dialog"][data-starting-style] {
+  --tw-translate-y: calc(-50% + var(--motion-shift-md));
+  opacity: 0;
+  scale: var(--motion-scale-in);
+}
+[data-overlay-viewport="dialog"][data-ending-style] {
+  opacity: 0;
+  transition-duration: var(--motion-fast);
+  transition-timing-function: var(--motion-ease-exit);
+}
+@media (max-width: 47.999rem) {
+  /* Full-screen panels on phones slide up instead of scaling. */
+  [data-overlay-viewport="dialog"]:is([data-overlay-content], [data-admin-dialog="form"], [data-admin-dialog="technical"])[data-starting-style] {
+    translate: 0 var(--motion-shift-lg);
+    scale: none;
+  }
+}
 [data-overlay-viewport="dialog"] > :not(button) { min-width: 0; }
 [data-overlay-viewport="dialog"] :is([data-slot="dialog-title"], [data-slot="dialog-description"], [data-slot="alert-dialog-description"]) { overflow-wrap: anywhere; }
 [data-overlay-viewport="dialog"] :is([data-slot="dialog-footer"], [data-slot="alert-dialog-footer"]) { min-width: 0; }

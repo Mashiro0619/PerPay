@@ -1,4 +1,5 @@
 import { test, expect, login, record } from "./fixtures";
+import { waitForControlAnimations } from "./touch-targets";
 
 test("copy success, failure and retry keep one focused control with only icon feedback", async ({ page, manifest }, info) => {
   await page.addInitScript(() => {
@@ -16,6 +17,8 @@ test("copy success, failure and retry keep one focused control with only icon fe
   const copy = page.locator('button[data-copy-state]').first();
   await expect(copy).toBeVisible();
   const original = await copy.elementHandle();
+  // The overlay is still scaling in when its content first becomes visible.
+  await waitForControlAnimations(copy);
   const before = await copy.boundingBox();
   await copy.click();
   await expect(copy).toHaveAttribute("data-copy-state", "success");

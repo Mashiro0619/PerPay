@@ -38,6 +38,8 @@
 }
 
 .checkout-qr-dialog[data-overlay-viewport="dialog"] {
+  /* The enlarged code must be scannable the moment it appears. */
+  transition: none;
   display: flex;
   flex-direction: column;
   width: min(32rem, calc(var(--overlay-viewport-width, 100vw) - 16px));
