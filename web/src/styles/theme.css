@@ -89,6 +89,20 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: var(--ring);
+  /* Motion. Defined on the root so portalled dialogs, toasts and the checkout
+     inherit them. Exits use the next step down and only fade. Do not rename
+     the easings to --ease-*: that would replace Tailwind's own theme keys. */
+  --motion-instant: 90ms;
+  --motion-fast: 140ms;
+  --motion-base: 200ms;
+  --motion-slow: 280ms;
+  --motion-ease-enter: cubic-bezier(0.22, 1, 0.36, 1);
+  --motion-ease-exit: cubic-bezier(0.4, 0, 1, 1);
+  --motion-ease-move: cubic-bezier(0.4, 0, 0.2, 1);
+  --motion-shift-sm: 4px;
+  --motion-shift-md: 8px;
+  --motion-shift-lg: 16px;
+  --motion-scale-in: 0.98;
 }
 .dark {
   --background: oklch(0.145 0 0);

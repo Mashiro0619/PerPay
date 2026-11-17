@@ -926,9 +926,9 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 /* Console candidates stay within the administrator shell. Public checkout
    continues to use the unmodified Nova tokens and component defaults. */
 [data-admin-console] {
-  --console-motion-fast: 140ms;
-  --console-motion: 200ms;
-  --console-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --console-motion-fast: var(--motion-fast);
+  --console-motion: var(--motion-base);
+  --console-ease: var(--motion-ease-enter);
   --console-page: color-mix(in oklch, var(--background) 96%, var(--muted));
   --console-hairline: color-mix(in oklch, var(--foreground) 9%, transparent);
   --console-shadow: 0 1px 2px color-mix(in oklch, var(--foreground) 3%, transparent);
