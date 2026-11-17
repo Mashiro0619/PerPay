@@ -76,6 +76,7 @@ export const HTTP_ERROR_CODES = Object.freeze([
   "archive_delete_pending",
   "origin_not_allowed",
   "password_unchanged",
+  "current_password_incorrect",
   "password_work_busy",
   "provider_application_key_missing",
   "provider_application_key_rotation_not_supported",

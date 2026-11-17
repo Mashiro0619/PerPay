@@ -169,6 +169,7 @@ test("security overlay drafts and validation survive resize and content-width ch
   await page.getByRole("link", { name: "修改登录密码", exact: true }).click();
   const password = page.getByLabel("新密码", { exact: true });
   const confirmation = page.getByLabel("再次输入新密码", { exact: true });
+  await page.getByLabel("当前密码", { exact: true }).fill("synthetic-unsubmitted-current");
   await password.fill("tiny");
   await confirmation.fill("different-unsubmitted-confirmation");
   await page.getByRole("button", { name: "修改并重新登录", exact: true }).click();

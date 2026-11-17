@@ -1909,7 +1909,11 @@ paths:
       tags: [Admin Session]
       operationId: changeAdministratorPassword
       summary: Change the administrator password and revoke every session
-      description: Successful password replacement clears the active authentication cookies.
+      description: >-
+        The request must carry the current password as well as a valid session. A wrong
+        current password returns `current_password_incorrect`, leaves the session signed
+        in, and counts against the same per-source limit as failed logins. Successful
+        password replacement clears the active authentication cookies.
       x-perpay-requires-same-origin: true
       security:
         - AdminSessionCookie: []
@@ -1927,11 +1931,12 @@ paths:
         '204': { description: 'Password changed, all sessions revoked, and cookies cleared' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/AdminUnauthorized' }
-        '403': { $ref: '#/components/responses/FinancialWriteForbidden' }
+        '403': { $ref: '#/components/responses/PasswordChangeForbidden' }
         '409': { $ref: '#/components/responses/PasswordUnchanged' }
         '413': { $ref: '#/components/responses/TooLarge' }
         '415': { $ref: '#/components/responses/UnsupportedMediaType' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
+        '429': { $ref: '#/components/responses/AdminRateLimited' }
         '503': { $ref: '#/components/responses/AdminUnavailable' }
   /api/admin/v1/settings:
     get:
@@ -9531,8 +9536,12 @@ components:
     AdminPasswordChangeRequest:
       type: object
       additionalProperties: false
-      required: [new_password]
+      required: [current_password, new_password]
       properties:
+        current_password:
+          type: string
+          minLength: 1
+          x-perpay-max-utf8-bytes: 1024
         new_password:
           type: string
           minLength: 6
@@ -12310,6 +12319,7 @@ components:
         - archive_delete_pending
         - origin_not_allowed
         - password_unchanged
+        - current_password_incorrect
         - password_work_busy
         - provider_application_key_missing
         - provider_application_key_rotation_not_supported
@@ -12998,6 +13008,14 @@ components:
         Financial facts or state changed, the candidate set changed, the cumulative refund
         would exceed the received amount, or the operation identifier was reused with different
         input (`match_state_conflict`, `candidate_set_changed`, or `operation_conflict`).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    PasswordChangeForbidden:
+      description: >-
+        The supplied current password is wrong (`current_password_incorrect`), same-origin
+        or CSRF validation failed (`origin_not_allowed` or `csrf_invalid`), or the
+        administrator IP allowlist denied the client (`admin_ip_not_allowed`).
       content:
         application/json:
           schema: { $ref: '#/components/schemas/ErrorEnvelope' }

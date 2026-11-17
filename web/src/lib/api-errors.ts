@@ -7,6 +7,7 @@ const messages: Record<string, string> = {
   auth_rate_limited: "尝试过于频繁，请等待后再试。",
   password_work_busy: "密码处理繁忙，请稍后再试。",
   password_unchanged: "新密码不能与当前密码相同。",
+  current_password_incorrect: "当前密码不正确。",
   session_invalid: "登录已过期，请重新登录。",
   csrf_invalid: "安全校验失败，请重新登录后再操作。",
   origin_not_allowed: "访问来源不匹配，请使用配置的系统地址并检查反向代理。",

@@ -100,6 +100,7 @@ describe("administrator authentication", () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     renderPage(<PasswordEditorPage />);
+    fireEvent.change(screen.getByLabelText("当前密码"), { target: { value: "current-test-password" } });
     const password = screen.getByLabelText("新密码");
     const confirmation = screen.getByLabelText("再次输入新密码");
     fireEvent.change(password, { target: { value: "test-password-one" } });
@@ -125,6 +126,7 @@ describe("administrator authentication", () => {
       );
       vi.stubGlobal("fetch", fetchMock);
       renderPage(<PasswordEditorPage />);
+      fireEvent.change(screen.getByLabelText("当前密码"), { target: { value: "current-test-password" } });
       const field = screen.getByLabelText("新密码");
       const confirmation = screen.getByLabelText("再次输入新密码");
       const short = Array.from(password).slice(0, 5).join("");
@@ -142,10 +144,38 @@ describe("administrator authentication", () => {
       await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
       const request = fetchMock.mock.calls[0]![0];
       expect(new URL(request.url).pathname).toBe("/api/admin/v1/password");
-      expect(await request.clone().json()).toEqual({ new_password: password });
+      expect(await request.clone().json()).toEqual({ current_password: "current-test-password", new_password: password });
       await waitFor(() => expect(field).toHaveValue(""));
+      expect(screen.getByLabelText("当前密码")).toHaveValue("");
     },
   );
+
+  it("keeps the administrator signed in and marks the current password when the server rejects it", async () => {
+    const fetchMock = vi.fn(async (_request: Request) => apiError("current_password_incorrect", "当前密码不正确", 403));
+    vi.stubGlobal("fetch", fetchMock);
+    const expired = vi.fn();
+    window.addEventListener("perpay:session-expired", expired);
+    try {
+      renderPage(<PasswordEditorPage />);
+      const current = screen.getByLabelText("当前密码");
+      expect(current).toHaveAttribute("autocomplete", "current-password");
+      const submit = screen.getByRole("button", { name: "修改并重新登录" });
+      fireEvent.change(screen.getByLabelText("新密码"), { target: { value: "next-test-password" } });
+      fireEvent.change(screen.getByLabelText("再次输入新密码"), { target: { value: "next-test-password" } });
+      expect(submit).toBeDisabled();
+      fireEvent.change(current, { target: { value: "wrong-test-password" } });
+      await userEvent.setup().click(submit);
+      await waitFor(() => expect(current).toHaveAccessibleDescription("当前密码不正确"));
+      expect(current).toHaveAttribute("aria-invalid", "true");
+      expect(current).toHaveFocus();
+      expect(screen.getAllByText("当前密码不正确")).toHaveLength(1);
+      expect(screen.getByLabelText("新密码")).toHaveValue("next-test-password");
+      expect(expired).not.toHaveBeenCalled();
+      fireEvent.change(current, { target: { value: "another-test-password" } });
+      expect(current).not.toHaveAttribute("aria-describedby");
+      expect(fetchMock).toHaveBeenCalledOnce();
+    } finally { window.removeEventListener("perpay:session-expired", expired); }
+  });
 
   it.each(["login", "setup"])(
     "uses a text-only brand while preserving authentication controls on %s",

@@ -50,6 +50,7 @@ export type IdentityErrorCode =
   | "session_invalid"
   | "csrf_invalid"
   | "password_unchanged"
+  | "current_password_incorrect"
   | "api_client_invalid"
   | "api_nonce_replayed";
 
@@ -440,13 +441,21 @@ export class IdentityService {
     });
   }
 
+  /**
+   * A signed-in browser is not enough to replace the password: the caller must
+   * also know the current one. Wrong guesses count against the same per-source
+   * limit as failed logins.
+   */
   async changePassword(
     session: AuthenticatedSession,
+    currentPassword: string,
     nextPassword: string,
     context: IdentityContext = {},
   ): Promise<void> {
     const now = this.#clock();
     const sourceHash = this.sourceHash(context.sourceAddress);
+    const authSourceHash = this.authSourceHash(context.sourceAddress);
+    this.#assertAuthAttemptAllowed(authSourceHash, sourceHash, now);
     const sessionBeforeWork = this.#store.read((transaction) =>
       transaction.activeSession(session.session.tokenDigest, now),
     );
@@ -456,12 +465,37 @@ export class IdentityService {
     assertNewPasswordLength(nextPassword);
     const identity = this.#store.read((transaction) => transaction.adminIdentity());
     if (!identity) throw new IdentityError("identity_not_initialized", "管理员身份尚未初始化");
-    const unchanged = await this.#verifyCredentialPassword(
-      nextPassword,
+    const verified = await this.#verifyCredentialPassword(
+      currentPassword,
       identity.passwordHash,
       "authenticated",
     );
-    if (unchanged) {
+    if (!verified) {
+      const failureAt = this.#clock();
+      this.#store.transaction((transaction) => {
+        const current = transaction.activeSession(session.session.tokenDigest, failureAt);
+        if (!current || current.sessionId !== session.session.sessionId) {
+          throw new IdentityError("session_invalid", "会话不存在或已过期");
+        }
+        const next = transaction.recordAuthFailure(authSourceHash, failureAt);
+        transaction.appendAudit({
+          occurredAt: failureAt,
+          actorType: "ADMIN",
+          actorId: identity.username,
+          action: "admin.password_changed",
+          context,
+          outcome: "FAILURE",
+          subjectType: "admin_identity",
+          requestId: context.requestId,
+          remoteAddressHash: sourceHash,
+          details: {
+            reason: next.failureCount >= AUTH_FAILURE_THRESHOLD ? "throttled" : "current_password_incorrect",
+          },
+        });
+      });
+      throw new IdentityError("current_password_incorrect", "当前密码不正确");
+    }
+    if (currentPassword === nextPassword) {
       throw new IdentityError("password_unchanged", "新密码不能与当前密码相同");
     }
     const nextHash = await this.#runPasswordWork(

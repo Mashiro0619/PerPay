@@ -191,6 +191,7 @@ describe("navigation and draft protection", () => {
       const view = mount({ path: "/settings/security" });
       const user = userEvent.setup();
       await user.click(await screen.findByRole("link", { name: "修改登录密码" }));
+      await user.type(await screen.findByLabelText("当前密码"), "current-test-password");
       await user.type(
         await screen.findByLabelText("新密码"),
         "offline-test-password",
@@ -250,6 +251,7 @@ describe("navigation and draft protection", () => {
     const view = mount({ path: "/settings/security" });
     const user = userEvent.setup();
     await user.click(await screen.findByRole("link", { name: "修改登录密码" }));
+    await user.type(await screen.findByLabelText("当前密码"), "current-test-password");
     await user.type(
       await screen.findByLabelText("新密码"),
       "resubmit-test-password",
@@ -278,6 +280,7 @@ describe("navigation and draft protection", () => {
       ).toBeVisible();
       expect(writes()).toHaveLength(1);
       expect(await writes()[0]![0].clone().json()).toEqual({
+        current_password: "current-test-password",
         new_password: "resubmit-test-password",
       });
     } finally {

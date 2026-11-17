@@ -1,7 +1,7 @@
-import { useId, useRef, useState, type FormEvent } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { onlineManager, useMutation } from "@tanstack/react-query";
 import { ShieldCheck } from "lucide-react";
-import { api, result, type RuntimeSettings } from "@/api/client";
+import { api, ApiError, result, type RuntimeSettings } from "@/api/client";
 import { useSession } from "@/auth";
 import { useDirtyDraft } from "@/drafts";
 import { isOperationResultUnknown, useOperationWait } from "@/hooks/use-operation-wait";
@@ -47,13 +47,15 @@ export function PasswordEditorPage() {
 function PasswordForm() {
   const overlay = useOverlayContext();
   const formId = useId();
+  const [current, setCurrent] = useState("");
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
   const [validation, setValidation] = useState<Error | null>(null);
   const [invalidField, setInvalidField] = useState<
     "password" | "confirmation" | null
   >(null);
-  const clearDraft = useDirtyDraft(password !== "" || confirmation !== "");
+  const currentField = useRef<HTMLInputElement>(null);
+  const clearDraft = useDirtyDraft(current !== "" || password !== "" || confirmation !== "");
   const session = useSession();
   const wait = useOperationWait();
   const submitting = useRef(false);
@@ -61,17 +63,18 @@ function PasswordForm() {
     // A password change must never be queued for a later reconnection.
     networkMode: "always",
     retry: false,
-    mutationFn: (newPassword: string) => {
+    mutationFn: (input: { current: string; next: string }) => {
       if (!onlineManager.isOnline() || !navigator.onLine)
         throw new Error("网络已断开，密码未提交。恢复连接后请重新提交。");
       return wait(signal => result(
         api.changeAdministratorPassword({
           signal,
-          body: { new_password: newPassword },
+          body: { current_password: input.current, new_password: input.next },
         }),
       ));
     },
     onSuccess: () => {
+      setCurrent("");
       setPassword("");
       setConfirmation("");
       session.forget();
@@ -81,6 +84,11 @@ function PasswordForm() {
     },
   });
   const resultUnknown = isOperationResultUnknown(change.error);
+  // The server refused the current password; the session is still signed in.
+  const wrongCurrent = change.error instanceof ApiError && change.error.code === "current_password_incorrect";
+  useEffect(() => {
+    if (wrongCurrent) currentField.current?.focus();
+  }, [wrongCurrent]);
   useOverlayCloseGuard(() => submitting.current || change.isPending);
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -102,7 +110,7 @@ function PasswordForm() {
     submitting.current = true;
     setInvalidField(null);
     setValidation(null);
-    change.mutate(password);
+    change.mutate({ current, next: password });
   }
   function edited() {
     setValidation(null);
@@ -123,6 +131,29 @@ function PasswordForm() {
           <FieldSet disabled={change.isPending || resultUnknown}>
             <FieldGroup>
               <FieldGroup className="settings-fields">
+                <Field data-invalid={wrongCurrent}>
+                  <FieldLabel htmlFor="current-password">当前密码</FieldLabel>
+                  <Input
+                    ref={currentField}
+                    id="current-password"
+                    name="current-password"
+                    type="password"
+                    autoComplete="current-password"
+                    required
+                    value={current}
+                    onChange={(event) => {
+                      setCurrent(event.target.value);
+                      edited();
+                    }}
+                    aria-invalid={wrongCurrent}
+                    aria-describedby={wrongCurrent ? "current-password-error" : undefined}
+                  />
+                  {wrongCurrent && (
+                    <FieldError id="current-password-error">
+                      {change.error?.message}
+                    </FieldError>
+                  )}
+                </Field>
                 <Field data-invalid={invalidField === "password"}>
                   <FieldLabel htmlFor="new-password">新密码</FieldLabel>
                   <Input
@@ -181,13 +212,14 @@ function PasswordForm() {
                   )}
                 </Field>
               </FieldGroup>
-              <ErrorNotice error={change.error} />
+              <ErrorNotice error={wrongCurrent ? null : change.error} />
             </FieldGroup>
           </FieldSet>
         </CardContent>
         <OverlayFormActions className="justify-end">
           {overlay && <Button type="button" variant="outline" disabled={change.isPending} onClick={() => overlay.requestClose()}>取消</Button>}
           {resultUnknown && <Button type="button" variant="outline" onClick={() => {
+            setCurrent("");
             setPassword("");
             setConfirmation("");
             clearDraft();
@@ -196,7 +228,7 @@ function PasswordForm() {
           <Button
             form={formId}
             type="submit"
-            disabled={!password || !confirmation || change.isPending || resultUnknown}
+            disabled={!current || !password || !confirmation || change.isPending || resultUnknown}
           >
             {change.isPending ? (
               <Spinner aria-hidden="true" data-icon="inline-start" />

@@ -177,12 +177,12 @@ describe("first-run administrator HTTP flow", () => {
         const cookie = login.headers.getSetCookie().map((value) => value.split(";", 1)[0]).join("; ");
         const headers = { ...jsonHeaders(), cookie, "x-csrf-token": body.data.csrf_token };
         const invalidChange = await fixture.app.request("/api/admin/v1/password", {
-          method: "POST", headers, body: JSON.stringify({ new_password: short }),
+          method: "POST", headers, body: JSON.stringify({ current_password: password, new_password: short }),
         });
         assert.equal(invalidChange.status, 422);
         assert.equal((await fixture.app.request("/api/admin/v1/session", { headers: { cookie } })).status, 200);
         const change = await fixture.app.request("/api/admin/v1/password", {
-          method: "POST", headers, body: JSON.stringify({ new_password: replacement }),
+          method: "POST", headers, body: JSON.stringify({ current_password: password, new_password: replacement }),
         });
         assert.equal(change.status, 204);
         assert.equal((await fixture.app.request("/api/admin/v1/session", { headers: { cookie } })).status, 401);

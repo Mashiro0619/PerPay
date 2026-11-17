@@ -683,6 +683,7 @@ describe("identity HTTP contract", () => {
         method: "POST",
         headers: authenticatedHeaders,
         body: JSON.stringify({
+          current_password: HTTP_TEST_ADMIN_PASSWORD,
           new_password: "malformed-\ud800-new-password",
         }),
       });
@@ -744,7 +745,7 @@ describe("identity HTTP contract", () => {
     }
   });
 
-  it("removes step-up and changes the password from an authenticated session", async () => {
+  it("keeps step-up removed and changes the password only with the current password", async () => {
     const directory = mkdtempSync(join(tmpdir(), "perpay-http-password-change-"));
     const { config, database, identity, settings, orders } = await createConfiguredHttpServices({
       directory,
@@ -791,7 +792,10 @@ describe("identity HTTP contract", () => {
       const sessionBody = await sessionResponse.json() as { data: Record<string, unknown> };
       assert.equal(Object.hasOwn(sessionBody.data, "step_up_active"), false);
 
-      const passwordRequestBody = JSON.stringify({ new_password: "next-secure-local-password" });
+      const passwordRequestBody = JSON.stringify({
+        current_password: HTTP_TEST_ADMIN_PASSWORD,
+        new_password: "next-secure-local-password",
+      });
       const passwordWithoutOrigin = await app.request("/api/admin/v1/password", {
         method: "POST",
         headers: {
@@ -835,6 +839,42 @@ describe("identity HTTP contract", () => {
       );
 
       const identityBefore = identity.store.read((transaction) => transaction.adminIdentity());
+      const authenticatedPasswordHeaders = {
+        "content-type": "application/json",
+        origin: "http://localhost:6190",
+        cookie: loginCookie,
+        "x-csrf-token": loginBody.data.csrf_token,
+      };
+      // A signed-in browser alone cannot replace the password.
+      const withoutCurrent = await app.request("/api/admin/v1/password", {
+        method: "POST",
+        headers: authenticatedPasswordHeaders,
+        body: JSON.stringify({ new_password: "next-secure-local-password" }),
+      });
+      assert.equal(withoutCurrent.status, 422);
+      const wrongCurrent = await app.request("/api/admin/v1/password", {
+        method: "POST",
+        headers: authenticatedPasswordHeaders,
+        body: JSON.stringify({
+          current_password: "not-the-current-password",
+          new_password: "next-secure-local-password",
+        }),
+      });
+      assert.equal(wrongCurrent.status, 403);
+      assert.equal(
+        (await wrongCurrent.json() as { error: { code: string } }).error.code,
+        "current_password_incorrect",
+      );
+      assert.deepEqual(wrongCurrent.headers.getSetCookie(), []);
+      assert.deepEqual(
+        identity.store.read((transaction) => transaction.adminIdentity()),
+        identityBefore,
+      );
+      assert.equal(
+        (await app.request("/api/admin/v1/session", { headers: { cookie: loginCookie } })).status,
+        200,
+      );
+
       const auditBefore = identity.store.read((transaction) => transaction.auditEvents());
       const unchanged = await app.request("/api/admin/v1/password", {
         method: "POST",
@@ -845,6 +885,7 @@ describe("identity HTTP contract", () => {
           "x-csrf-token": loginBody.data.csrf_token,
         },
         body: JSON.stringify({
+          current_password: HTTP_TEST_ADMIN_PASSWORD,
           new_password: "a-secure-local-password",
         }),
       });
@@ -871,7 +912,7 @@ describe("identity HTTP contract", () => {
           cookie: loginCookie,
           "x-csrf-token": loginBody.data.csrf_token,
         },
-        body: JSON.stringify({ new_password: "next-secure-local-password" }),
+        body: passwordRequestBody,
       });
       assert.equal(changed.status, 204);
       assert.ok(changed.headers.getSetCookie().length >= 2);

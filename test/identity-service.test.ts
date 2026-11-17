@@ -8,7 +8,7 @@ import { describe, it } from "node:test";
 
 import { loadConfig } from "../src/config.ts";
 import { AppDatabase } from "../src/database/database.ts";
-import { ANONYMOUS_PASSWORD_BURST, ANONYMOUS_PASSWORD_INTERVAL_MS, appendAuditEvent } from "../src/database/identity-store.ts";
+import { ANONYMOUS_PASSWORD_BURST, ANONYMOUS_PASSWORD_INTERVAL_MS, AUTH_FAILURE_THRESHOLD, appendAuditEvent } from "../src/database/identity-store.ts";
 import { PasswordInputError } from "../src/identity/crypto.ts";
 import { IDENTITY_LIMITS, IdentityError, IdentityService } from "../src/identity/service.ts";
 
@@ -57,11 +57,11 @@ describe("IdentityService", () => {
       const authenticated = test.identity.authenticate(login.sessionToken);
       assert.ok(authenticated);
       for (const password of ["short", "🔐".repeat(5)]) {
-        await assert.rejects(test.identity.changePassword(authenticated, password), PasswordInputError);
+        await assert.rejects(test.identity.changePassword(authenticated, "aB3!xY", password), PasswordInputError);
         assert.ok(test.identity.authenticate(login.sessionToken));
       }
       const replacement = "🔐".repeat(6);
-      await test.identity.changePassword(authenticated, replacement);
+      await test.identity.changePassword(authenticated, "aB3!xY", replacement);
       assert.equal(test.identity.authenticate(login.sessionToken), undefined);
       const replacementLogin = await test.identity.login(replacement);
       assert.ok(test.identity.authenticate(replacementLogin.sessionToken));
@@ -341,7 +341,7 @@ describe("IdentityService", () => {
         const session = test.identity.authenticate(login.sessionToken);
         assert.ok(session);
         if (action === "logout") test.identity.logout(session);
-        else if (action === "change_password") await test.identity.changePassword(session, "replacement-remembered-password");
+        else if (action === "change_password") await test.identity.changePassword(session, adminPassword, "replacement-remembered-password");
         else test.identity.revokeAllSessions(session);
         assert.equal(test.identity.authenticate(login.sessionToken), undefined);
         assert.equal(test.identity.verifyCsrf(session, login.csrfToken), false);
@@ -427,7 +427,7 @@ describe("IdentityService", () => {
       const expectBudget = (error: unknown): boolean => error instanceof IdentityError &&
         error.code === "auth_rate_limited" && error.retryAfterSeconds === 5;
       await assert.rejects(test.identity.login(adminPassword, { sourceAddress: "203.0.113.1" }), expectBudget);
-      await test.identity.changePassword(authenticated, "next-secure-password");
+      await test.identity.changePassword(authenticated, adminPassword, "next-secure-password");
       test.clock.now += ANONYMOUS_PASSWORD_INTERVAL_MS;
       await test.identity.login("next-secure-password", { sourceAddress: "203.0.113.2" });
       await assert.rejects(test.identity.login("next-secure-password", { sourceAddress: "203.0.113.3" }), expectBudget);
@@ -475,6 +475,7 @@ describe("IdentityService", () => {
       await assert.rejects(
         test.identity.changePassword(
           authenticated,
+          adminPassword,
           malformedPassword,
           { sourceAddress: malformedNewPasswordSource },
         ),
@@ -670,7 +671,7 @@ describe("IdentityService", () => {
       });
       const authenticated = test.identity.authenticate(login.sessionToken);
       assert.ok(authenticated);
-      const pending = test.identity.changePassword(authenticated, "next-secure-password", {
+      const pending = test.identity.changePassword(authenticated, adminPassword, "next-secure-password", {
         sourceAddress: "192.0.2.30",
       });
       test.clock.now += IDENTITY_LIMITS.sessionIdleMs + 1;
@@ -700,7 +701,7 @@ describe("IdentityService", () => {
           sourceAddress: `192.0.2.${suffix}`,
         })
       );
-      const passwordChange = test.identity.changePassword(authenticated, "next-secure-password", {
+      const passwordChange = test.identity.changePassword(authenticated, adminPassword, "next-secure-password", {
         sourceAddress: "192.0.2.54",
       });
       const [anonymousResults] = await Promise.all([
@@ -827,10 +828,10 @@ describe("IdentityService", () => {
       const authenticated = test.identity.authenticate(login.sessionToken);
       assert.ok(authenticated);
       const results = await Promise.allSettled([
-        test.identity.changePassword(authenticated, "next-password-value-one", {
+        test.identity.changePassword(authenticated, adminPassword, "next-password-value-one", {
           sourceAddress: "192.0.2.11",
         }),
-        test.identity.changePassword(authenticated, "next-password-value-two", {
+        test.identity.changePassword(authenticated, adminPassword, "next-password-value-two", {
           sourceAddress: "192.0.2.12",
         }),
       ]);
@@ -875,6 +876,7 @@ describe("IdentityService", () => {
         test.identity.changePassword(
           authenticated,
           adminPassword,
+          adminPassword,
           { sourceAddress: "198.51.100.60" },
         ),
         (error: unknown) => error instanceof IdentityError && error.code === "password_unchanged",
@@ -891,6 +893,44 @@ describe("IdentityService", () => {
       const stillAuthenticated = test.identity.authenticate(login.sessionToken);
       assert.ok(stillAuthenticated);
       assert.equal(test.identity.verifyCsrf(stillAuthenticated, login.csrfToken), true);
+    } finally {
+      test.close();
+    }
+  });
+
+  it("refuses a password change without the current password and counts wrong guesses like failed logins", async () => {
+    const test = await fixture();
+    try {
+      const sourceAddress = "198.51.100.70";
+      const login = await test.identity.login(adminPassword, { sourceAddress });
+      const authenticated = test.identity.authenticate(login.sessionToken);
+      assert.ok(authenticated);
+      const before = test.identity.store.read((transaction) => transaction.adminIdentity());
+      const failures = () => test.database.read((connection) => connection.prepare(
+        "SELECT details_json FROM audit_events WHERE action = 'admin.password_changed' AND outcome = 'FAILURE' ORDER BY sequence",
+      ).all().map((row) => JSON.parse(String(row.details_json)).reason as string));
+
+      for (let attempt = 1; attempt <= AUTH_FAILURE_THRESHOLD; attempt += 1) {
+        await assert.rejects(
+          test.identity.changePassword(authenticated, "not-the-current-password", "next-secure-password", { sourceAddress }),
+          (error: unknown) => error instanceof IdentityError && error.code === "current_password_incorrect",
+        );
+        assert.equal(failures().length, attempt);
+      }
+      // Holding the session is not enough: nothing changed and it stays signed in.
+      assert.deepEqual(test.identity.store.read((transaction) => transaction.adminIdentity()), before);
+      assert.ok(test.identity.authenticate(login.sessionToken));
+
+      // Once the source is locked out, even the right password has to wait.
+      await assert.rejects(
+        test.identity.changePassword(authenticated, adminPassword, "next-secure-password", { sourceAddress }),
+        (error: unknown) => error instanceof IdentityError && error.code === "auth_rate_limited",
+      );
+      assert.deepEqual(failures(), [...Array(AUTH_FAILURE_THRESHOLD - 1).fill("current_password_incorrect"), "throttled"]);
+
+      await test.identity.changePassword(authenticated, adminPassword, "next-secure-password", { sourceAddress: "198.51.100.71" });
+      assert.equal(test.identity.authenticate(login.sessionToken), undefined);
+      assert.ok(await test.identity.login("next-secure-password", { sourceAddress: "198.51.100.71" }));
     } finally {
       test.close();
     }

@@ -234,6 +234,7 @@ const testPaymentRequestSchema = z.object({
   amount_cents: z.number().int().min(1).max(TEST_PAYMENT_MAX_AMOUNT_CENTS),
 }).strict();
 const changePasswordSchema = z.object({
+  current_password: passwordValueSchema,
   new_password: newPasswordValueSchema,
 }).strict();
 const ledgerConflictResolutionSchema = z.object({
@@ -961,6 +962,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     const body = await readJson(context, changePasswordSchema, MAX_JSON_BODY_BYTES);
     await dependencies.identity.changePassword(
       context.get("adminSession"),
+      body.current_password,
       body.new_password,
       identityContext(context, dependencies.config.trustedProxy),
     );
@@ -3055,6 +3057,7 @@ function identityStatus(code: IdentityError["code"]): 401 | 403 | 409 | 429 | 50
     case "api_client_invalid":
       return 401;
     case "csrf_invalid":
+    case "current_password_incorrect":
       return 403;
     case "password_unchanged":
     case "api_nonce_replayed":
