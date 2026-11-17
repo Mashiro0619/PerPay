@@ -58,10 +58,15 @@ function useStatusObservation() {
     const data = status.data?.data;
     if (!view.active || !status.isSuccess || !data) return;
     const requests = [data.ledger.manual_scan?.request, ...(data.alipay_accounts?.map(account => account.manual_scan?.request) ?? [])].filter(request => request && !manualScanActive(request));
-    if (!requests.length) return;
-    const completed = `${manualScanSource(data)}:${requests.map(request => `${request!.id}:${request!.state}:${request!.finished_at}`).join("|")}`;
-    if (completedScan.current === completed) return;
+    const completed = requests.length
+      ? `${manualScanSource(data)}:${requests.map(request => `${request!.id}:${request!.state}:${request!.finished_at}`).join("|")}`
+      : "";
+    const previous = completedScan.current;
     completedScan.current = completed;
+    // The server keeps a finished request until its configuration changes, so one
+    // that is already there on the first read is history. Only a change seen by
+    // this page means a scan just ended.
+    if (previous === null || !completed || previous === completed) return;
     // The server's terminal state, rather than the POST's 202 response, proves
     // this attempt ended. Refresh ledger/summary views without polling status twice.
     void refreshOperationalData({ includeStatus: false });

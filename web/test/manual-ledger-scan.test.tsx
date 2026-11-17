@@ -126,6 +126,17 @@ describe("manual ledger scan", () => {
     expect(view.writes().filter(isScan)).toHaveLength(0);
   });
 
+  it("treats a scan that finished before this page loaded as history and leaves other queries alone", async () => {
+    const data = ready();
+    data.ledger.manual_scan!.request = request("COMPLETED");
+    queryClient.setQueryData(["ledger", "finished-before-load"], { data: [] });
+    mountOnboarding({ stage: 4, path: "/system", status: () => data });
+    await screen.findByRole("table", { name: "运行环节" });
+    expect(screen.getByRole("status", { name: "手动查账状态" })).toHaveTextContent("手动查账已完成");
+    await act(async () => { await queryClient.invalidateQueries({ queryKey: ["status"] }); });
+    expect(queryClient.getQueryState(["ledger", "finished-before-load"])?.isInvalidated).toBe(false);
+  });
+
   it("allows retry after the server Retry-After deadline and never resubmits automatically", async () => {
     const data = ready();
     const view = mountOnboarding({ stage: 4, path: "/system", status: () => data, handle: req => isScan(req)
