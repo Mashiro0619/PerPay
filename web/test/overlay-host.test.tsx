@@ -14,7 +14,7 @@ import { RequestNoticeProvider } from "../src/lib/request-notices";
 import { RequestNoticeBanner } from "../src/components/request-notice-banner";
 import { ErrorNotice } from "../src/components/request-state";
 import { LegacyOverlayRedirect, OverlayHost, OverlayProvider } from "../src/components/overlay-host";
-import { OverlayActions } from "../src/components/overlay-actions";
+import { OverlayActions, OverlaySummary } from "../src/components/overlay-actions";
 import { PageHeading } from "../src/components/page-heading";
 import { PageHeaderActions, PageHeaderActionsProvider, PageHeaderActionsSlot } from "../src/components/page-header-actions";
 import { Dialog, DialogContent, DialogHeader, DialogBody, DialogFooter, DialogTitle, AlertDialog, AlertDialogContent, AlertDialogTitle, AlertDialogCancel } from "../src/components/admin-dialog";
@@ -72,7 +72,8 @@ function Detail() {
     anchor?.focus();
   }, [location.hash]);
   return <>
-    <PageHeading title={"记录 " + (orderId ?? deliveryId)} />
+    <PageHeading title={"记录 " + (orderId ?? deliveryId)} eyebrow="示例网站" />
+    <OverlaySummary><p>固定摘要 {orderId ?? deliveryId}</p></OverlaySummary>
     <PageHeaderActions><button>详情刷新</button></PageHeaderActions>
     <output data-testid="detail-identity">{`${orderId ?? deliveryId}:${clientId ?? "global"}:${resourceScope ?? "global"}`}</output>
     <output data-testid="detail-section">{search.get("section") ?? "summary"}</output>
@@ -400,6 +401,22 @@ describe("one routed detail surface", () => {
     expect(screen.getByLabelText("父页面草稿")).toHaveValue("父页面内容");
     await user.click(screen.getByRole("link", { name: "其他列表" }));
     await screen.findByRole("alertdialog", { name: "放弃未保存的修改？" });
+  });
+
+  it("names the record type above the title and keeps the summary outside the scrolling content", async () => {
+    mount();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("link", { name: "打开记录" }));
+    // The eyebrow is not part of the dialog's name.
+    const detail = await screen.findByRole("dialog", { name: "记录 order-1" });
+    const eyebrow = detail.querySelector("[data-overlay-eyebrow-text]")!;
+    expect(eyebrow).toHaveTextContent("订单详情 · 示例网站");
+    expect(eyebrow).not.toHaveAttribute("aria-hidden");
+    const summary = detail.querySelector("[data-overlay-summary]")!;
+    expect(summary).toHaveTextContent("固定摘要 order-1");
+    expect(summary.previousElementSibling).toHaveAttribute("data-slot", "dialog-header");
+    expect(summary.nextElementSibling).toHaveAttribute("data-overlay-detail");
+    expect(detail.querySelector("[data-overlay-detail]")).not.toHaveTextContent("固定摘要");
   });
 
   it("moves business dialogs into the same container and retains their form under a short confirmation", async () => {

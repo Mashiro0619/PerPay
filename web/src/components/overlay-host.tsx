@@ -1,18 +1,20 @@
 import { Component, Suspense, createContext, lazy, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Navigate, Route, Routes, UNSAFE_NavigationContext, UNSAFE_RouteContext, createPath, useLocation, useNavigate, useParams, type Location, type NavigateOptions, type Navigator, type Path, type To } from "react-router";
 import { ArrowLeft, XIcon } from "lucide-react";
-import { OverlayActionsContext, OverlayCloseGuardContext, OverlayContext, OverlayNavigationContext, OverlayNestedModalContext, OverlayStepsContext, type OverlayNavigation, type OverlaySize } from "@/lib/overlay-context";
+import { OverlayActionsContext, OverlayCloseGuardContext, OverlayContext, OverlayNavigationContext, OverlayNestedModalContext, OverlayStepsContext, OverlaySummaryContext, type OverlayNavigation, type OverlaySize } from "@/lib/overlay-context";
 import { OVERLAY_HISTORY_KEY, OVERLAY_PARAMETER, isRecordDetailRoute, legacyOverlayLocation, overlayBackground, overlayRoute, overlayRouteDefinitions, parseOverlayTarget, readOverlayHistory, readOverlayTarget, stateRecord, withOverlayTarget, type OverlayHistory, type OverlayRouteKind } from "@/lib/overlay-navigation";
 import { workspaceScope } from "@/lib/workspace-scope";
 import { ResourceWorkspaceProvider } from "@/workspace";
 import { useSession } from "@/auth";
-import { PageHeadingProvider, PageHeadingSlot } from "@/components/page-heading";
+import { PageHeadingProvider, PageHeadingSlot, usePageHeading } from "@/components/page-heading";
 import { InlinePageHeaderActions, PageHeaderActionsProvider, PageHeaderActionsSlot } from "@/components/page-header-actions";
 import { Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle } from "@/components/admin-dialog";
 import { ErrorNotice, Loading } from "@/components/request-state";
 import { RequestNoticeProvider } from "@/lib/request-notices";
 import { RequestNoticeBanner } from "@/components/request-notice-banner";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { useToastFooterDock } from "@/lib/toast-layout";
 
@@ -185,6 +187,19 @@ function OverlayRoutes({ location, children }: { location: Location; children?: 
   </UNSAFE_NavigationContext>;
 }
 
+/**
+ * The line above a record's title: what kind of record this is and what it
+ * belongs to. It keeps its place while the record loads, so the title below
+ * does not move when the data arrives.
+ */
+function OverlayEyebrow({ type }: { type: string }) {
+  const heading = usePageHeading();
+  const repeated = !heading || (heading.title === type && !heading.eyebrow);
+  return <p data-overlay-eyebrow-text aria-hidden={repeated || undefined} className={cn("min-w-0 truncate text-xs leading-5 font-medium text-muted-foreground", repeated && "invisible")}>
+    {type}{heading?.eyebrow ? " · " + heading.eyebrow : ""}
+  </p>;
+}
+
 /** Optional routes make the complete navigation contract testable without domain fixtures. */
 export function OverlayHost({ routes }: { routes?: ReactNode }) {
   const session = useSession();
@@ -197,6 +212,7 @@ export function OverlayHost({ routes }: { routes?: ReactNode }) {
   const target = overlay?.target ?? last.current;
   const definition = target ? overlayRoute(target.pathname) : null;
   const [actionsTarget, setActionsTarget] = useState<HTMLElement | null>(null);
+  const [summaryTarget, setSummaryTarget] = useState<HTMLElement | null>(null);
   const [stepPortal, setStepPortal] = useState<HTMLElement | null>(null);
   const [steps, setSteps] = useState<Array<{ id: string; size: OverlaySize }>>([]);
   const pendingStepFocus = useRef<(() => HTMLElement | null) | null>(null);
@@ -264,11 +280,18 @@ export function OverlayHost({ routes }: { routes?: ReactNode }) {
       role={activeStep ? "presentation" : "dialog"} aria-modal={activeStep ? false : true}
       initialFocus={() => nestedModals.current.size ? false : title.current} finalFocus={overlay.restoreFocus} showCloseButton={false}>
       <OverlayContext value={presentation}><OverlayCloseGuardContext value={overlay.registerCloseGuard}>
-        <OverlayActionsContext value={actionsTarget}><OverlayStepsContext value={stepContext}><OverlayNestedModalContext value={registerNestedModal}>
+        <OverlayActionsContext value={actionsTarget}><OverlaySummaryContext value={summaryTarget}><OverlayStepsContext value={stepContext}><OverlayNestedModalContext value={registerNestedModal}>
           <PageHeadingProvider routeKey={target?.pathname ?? "invalid"}><InlinePageHeaderActions><PageHeaderActionsProvider presentation="inline">
             <div data-overlay-primary hidden={!!activeStep} inert={!!activeStep} className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden">
               <DialogHeader>
                 <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-1 sm:gap-2">
+                  {drawer && <div data-overlay-eyebrow className="flex min-w-0 items-center gap-1">
+                    {overlay.canGoBack && <Tooltip>
+                      <TooltipTrigger render={<Button className="-ml-1.5" size="icon-sm" variant="ghost" aria-label="返回上一步" onClick={overlay.back} />}><ArrowLeft /></TooltipTrigger>
+                      <TooltipContent>返回上一步</TooltipContent>
+                    </Tooltip>}
+                    <OverlayEyebrow type={definition!.title} />
+                  </div>}
                   <DialogTitle className="min-w-0" render={<div ref={title} tabIndex={-1} data-overlay-heading />}><PageHeadingSlot title={definition?.title ?? "无法打开详情"} /></DialogTitle>
                   <PageHeaderActionsSlot className="max-w-full flex-wrap justify-end" />
                   <DialogClose className="col-start-3" render={<Button variant="ghost" size="icon" />}>
@@ -276,8 +299,9 @@ export function OverlayHost({ routes }: { routes?: ReactNode }) {
                     <span className="sr-only">关闭对话框</span>
                   </DialogClose>
                 </div>
-                {overlay.canGoBack && <Button className="w-fit" size="sm" variant="ghost" onClick={overlay.back}><ArrowLeft data-icon="inline-start" />返回上一步</Button>}
+                {!drawer && overlay.canGoBack && <Button className="w-fit" size="sm" variant="ghost" onClick={overlay.back}><ArrowLeft data-icon="inline-start" />返回上一步</Button>}
               </DialogHeader>
+              <div ref={setSummaryTarget} data-overlay-summary className="shrink-0 empty:hidden" />
               <div data-overlay-detail className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
                 {target && definition ? <RequestNoticeProvider key={target.pathname}>
                   <RequestNoticeBanner showRuntimeLink={false} />
@@ -293,7 +317,7 @@ export function OverlayHost({ routes }: { routes?: ReactNode }) {
             </div>
             <div ref={setStepPortal} data-overlay-step-host className="flex min-h-0 flex-1 flex-col empty:hidden" />
           </PageHeaderActionsProvider></InlinePageHeaderActions></PageHeadingProvider>
-        </OverlayNestedModalContext></OverlayStepsContext></OverlayActionsContext>
+        </OverlayNestedModalContext></OverlayStepsContext></OverlaySummaryContext></OverlayActionsContext>
       </OverlayCloseGuardContext></OverlayContext>
     </DialogContent>
   </Dialog>;

@@ -1123,6 +1123,17 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
     --tw-translate-y: 0px;
     scale: none;
   }
+  /* The drawer's areas carry their own padding, so the rules between them span its full width. */
+  [data-overlay-content][data-overlay-viewport="dialog"][data-overlay-presentation="drawer"] { padding: 0; }
+  [data-overlay-presentation="drawer"] > [data-overlay-primary] { gap: 0; }
+  [data-overlay-presentation="drawer"] > [data-overlay-primary] > [data-slot="dialog-header"] { padding: var(--overlay-chrome-space, 1rem) 1.5rem 0.75rem; }
+  [data-overlay-presentation="drawer"] > [data-overlay-primary] > [data-overlay-summary] { padding-inline: 1.5rem; }
+  [data-overlay-presentation="drawer"] > [data-overlay-primary] > [data-overlay-detail] {
+    padding: 1.25rem 0.75rem 1.25rem 1.5rem;
+    scrollbar-gutter: stable;
+  }
+  [data-overlay-presentation="drawer"] > [data-overlay-primary] > [data-overlay-footer]:not(:empty) { padding: 0.75rem 1.5rem; }
+  [data-overlay-presentation="drawer"] > [data-overlay-step-host]:not(:empty) { padding: var(--overlay-chrome-space, 1rem) 1.5rem; }
   /* A lighter, unblurred scrim keeps the list legible behind the drawer. */
   .overlay-drawer-backdrop { background-color: rgb(0 0 0 / 0.2); backdrop-filter: none; }
 }
@@ -1388,9 +1399,15 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 /* Record reading has its own rhythm; editors and confirmation steps retain
    their existing form layout even though they use the same overlay host. */
 [data-overlay-record="true"] [data-overlay-primary] > [data-slot="dialog-header"] h1 {
-  font-size: 1.25rem;
-  line-height: 1.4;
+  font-size: 1rem;
+  line-height: 1.5;
 }
+/* The eyebrow shares the first line with the header buttons; the title takes the whole second line. */
+[data-overlay-eyebrow] { grid-row: 1; grid-column: 1; min-height: 1.75rem; }
+[data-overlay-eyebrow] ~ * { grid-row: 1; }
+[data-overlay-eyebrow] ~ [data-overlay-heading] { grid-row: 2; grid-column: 1 / -1; }
+[data-overlay-presentation="drawer"] [data-overlay-detail] { border-top: 1px solid var(--border); }
+[data-overlay-summary]:not(:has([data-record-nav])) { padding-bottom: var(--overlay-chrome-space, 1rem); }
 [data-overlay-record="true"] [data-overlay-detail] {
   padding-block: 0.25rem;
   padding-inline-end: 0.5rem;
@@ -1408,13 +1425,13 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 }
 [data-overlay-record="true"] [data-overlay-detail] :is([aria-level="3"], [aria-level="4"], .detail-section > div > :is(h3, h4)) { font-size: 0.875rem; font-weight: 500; }
 [data-overlay-record="true"] [data-overlay-detail] [data-slot="card-description"] { font-size: 0.875rem; line-height: 1.5; }
-[data-overlay-record="true"] [data-overlay-detail] [data-detail-fields] > dl {
+[data-overlay-record="true"] [data-overlay-detail] [data-detail-fields]:not([data-record-fields]) > dl {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   align-items: start;
   gap: 0.75rem 1.5rem;
 }
-[data-overlay-record="true"] [data-overlay-detail] [data-detail-fields] > dl > div {
+[data-overlay-record="true"] [data-overlay-detail] [data-detail-fields]:not([data-record-fields]) > dl > div {
   display: grid;
   grid-template-columns: 8rem minmax(0, 1fr);
   align-items: baseline;
@@ -1423,14 +1440,14 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   max-inline-size: 100%;
   gap: 0.25rem 0.75rem;
 }
-[data-overlay-record="true"] [data-overlay-detail] [data-detail-fields] > dl > [data-field-wide] { grid-column: 1 / -1; grid-template-columns: minmax(0, 1fr); }
-[data-overlay-record="true"] [data-overlay-detail] [data-detail-fields] dt {
+[data-overlay-record="true"] [data-overlay-detail] [data-detail-fields]:not([data-record-fields]) > dl > [data-field-wide] { grid-column: 1 / -1; grid-template-columns: minmax(0, 1fr); }
+[data-overlay-record="true"] [data-overlay-detail] [data-detail-fields]:not([data-record-fields]) dt {
   max-inline-size: 100%;
   color: var(--muted-foreground);
   font-size: 0.8125rem;
   line-height: 1.5;
 }
-[data-overlay-record="true"] [data-overlay-detail] [data-detail-fields] dd {
+[data-overlay-record="true"] [data-overlay-detail] [data-detail-fields]:not([data-record-fields]) dd {
   margin: 0;
   min-width: 0;
   max-inline-size: 100%;
@@ -1438,16 +1455,16 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   line-height: 1.5;
 }
 @container detail-fields (max-width: 22rem) {
-  [data-overlay-record="true"] [data-overlay-detail] [data-detail-fields] > dl > div { grid-template-columns: minmax(0, 1fr); }
+  [data-overlay-record="true"] [data-overlay-detail] [data-detail-fields]:not([data-record-fields]) > dl > div { grid-template-columns: minmax(0, 1fr); }
 }
 @container detail-fields (min-width: 44rem) {
-  [data-overlay-record="true"] [data-overlay-detail] [data-detail-fields] > dl { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  [data-overlay-record="true"] [data-overlay-detail] [data-detail-fields]:not([data-record-fields]) > dl { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
-[data-overlay-record="true"] [data-overlay-detail] [data-detail-fields] :is(.list-time, .list-money-secondary, .list-site-identity, .list-code) {
+[data-overlay-record="true"] [data-overlay-detail] [data-detail-fields]:not([data-record-fields]) :is(.list-time, .list-money-secondary, .list-site-identity, .list-code) {
   font-size: 0.875rem;
   line-height: 1.5;
 }
-[data-overlay-record="true"] [data-overlay-detail] [data-detail-fields] .list-time { white-space: normal; }
+[data-overlay-record="true"] [data-overlay-detail] [data-detail-fields]:not([data-record-fields]) .list-time { white-space: normal; }
 [data-delivery-attempts] .business-summary-fields { grid-template-columns: minmax(0, 1fr); }
 [data-overlay-record="true"] [data-overlay-detail] [data-technical-information] { width: 100%; }
 [data-overlay-record="true"] [data-overlay-detail] [data-technical-information] > button { width: auto; max-width: 100%; justify-content: flex-start; gap: 0.5rem; }

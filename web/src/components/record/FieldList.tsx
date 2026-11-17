@@ -30,7 +30,7 @@ export function FieldList({ items, className }: {
 }) {
   const fields = items.filter((item): item is Field => !!item);
   if (!fields.length) return null;
-  return <div className={cn("@container/fields min-w-0", className)} data-detail-fields>
+  return <div className={cn("@container/fields min-w-0", className)} data-detail-fields data-record-fields>
     <dl className="grid min-w-0 grid-cols-[7.5rem_minmax(0,1fr)] gap-x-4 gap-y-1 @max-[22rem]/fields:grid-cols-1">
       {fields.map(field => {
         const empty = field.value === "" || field.value == null || field.value === false;

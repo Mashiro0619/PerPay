@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useLayoutEffect, useMemo, useState, type ReactNode } from "react";
 
-type Heading = { title: string; description?: string };
+/** `eyebrow` names what the record belongs to; only record overlays show it, above the title. */
+type Heading = { title: string; description?: string; eyebrow?: string | undefined };
 const HeadingContext = createContext<{ heading: Heading | null; setHeading: (heading: Heading | null) => void } | null>(null);
 
 /** The route owns the title; refreshes update its text without moving focus. */
@@ -20,16 +21,21 @@ function HeadingContent({ title, description, actions }: Heading & { actions?: R
     {actions}
   </div>;
 }
+/** The heading registered by the current route, if any. */
+export function usePageHeading(): Heading | null {
+  return useContext(HeadingContext)?.heading ?? null;
+}
 export function PageHeadingSlot({ title, actions }: { title: string; actions?: ReactNode }) {
   const host = useContext(HeadingContext);
-  return <HeadingContent {...(host?.heading ?? { title })} actions={actions} />;
+  const heading = host?.heading;
+  return <HeadingContent title={heading?.title ?? title} {...(heading?.description ? { description: heading.description } : {})} actions={actions} />;
 }
-export function PageHeading({ title, description }: Heading) {
+export function PageHeading({ title, description, eyebrow }: Heading) {
   const host = useContext(HeadingContext);
   const setHeading = host?.setHeading;
   useLayoutEffect(() => {
-    setHeading?.({ title, ...(description ? { description } : {}) });
+    setHeading?.({ title, ...(description ? { description } : {}), ...(eyebrow ? { eyebrow } : {}) });
     return () => setHeading?.(null);
-  }, [setHeading, title, description]);
+  }, [setHeading, title, description, eyebrow]);
   return host ? null : <HeadingContent title={title} {...(description ? { description } : {})} />;
 }

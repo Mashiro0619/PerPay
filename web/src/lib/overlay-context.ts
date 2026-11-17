@@ -24,6 +24,8 @@ export const OverlayContext = createContext<OverlayPresentation | null>(null);
 export const OverlayCloseGuardContext = createContext<((id: string, check: (() => boolean) | null) => void) | null>(null);
 export const OverlayNavigationGuardContext = createContext<((id: string, check: (() => boolean) | null, owner: string) => void) | null>(null);
 export const OverlayActionsContext = createContext<HTMLElement | null>(null);
+/** The fixed slot between an overlay's header and its scrolling content. */
+export const OverlaySummaryContext = createContext<HTMLElement | null>(null);
 export interface OverlaySteps {
   readonly portal: HTMLElement | null;
   readonly activeId: string | null;
