@@ -1097,6 +1097,34 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   }
   [data-overlay-content][data-overlay-viewport="dialog"][data-overlay-size="lg"] { max-width: 56rem; }
   [data-overlay-content][data-overlay-viewport="dialog"][data-overlay-size="xl"] { max-width: 72rem; }
+  /* Records open as a full-height drawer on the right, so the list they came
+     from stays in view. Position through the translate variables rather than
+     `translate: none`: minification can fold that into `transform`. */
+  [data-overlay-content][data-overlay-viewport="dialog"][data-overlay-presentation="drawer"] {
+    --tw-translate-x: 0px;
+    --tw-translate-y: 0px;
+    top: var(--overlay-viewport-top, 0px);
+    right: 0;
+    left: auto;
+    width: min(36rem, var(--overlay-viewport-width, 100vw));
+    max-width: none;
+    height: var(--overlay-viewport-height, 100dvh);
+    max-height: none;
+    border-radius: 0;
+    /* A hairline keeps the edge visible on dark themes, where the shadow alone disappears. */
+    box-shadow: -1px 0 0 var(--border), -16px 0 40px rgb(0 0 0 / 0.12);
+  }
+  [data-overlay-content][data-overlay-viewport="dialog"][data-overlay-presentation="drawer"][data-overlay-size="lg"] {
+    width: min(44rem, var(--overlay-viewport-width, 100vw));
+    max-width: none;
+  }
+  [data-overlay-content][data-overlay-viewport="dialog"][data-overlay-presentation="drawer"][data-starting-style] {
+    --tw-translate-x: var(--motion-shift-lg);
+    --tw-translate-y: 0px;
+    scale: none;
+  }
+  /* A lighter, unblurred scrim keeps the list legible behind the drawer. */
+  .overlay-drawer-backdrop { background-color: rgb(0 0 0 / 0.2); backdrop-filter: none; }
 }
 @media (max-width: 47.999rem) {
   [data-overlay-viewport="dialog"]:is([data-overlay-content], [data-admin-dialog="form"], [data-admin-dialog="technical"]) {

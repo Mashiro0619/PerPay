@@ -253,9 +253,14 @@ export function OverlayHost({ routes }: { routes?: ReactNode }) {
   useLayoutEffect(() => { if (overlay?.hasOverlay && !activeStep && !nestedModals.current.size) title.current?.focus({ preventScroll: true }); }, [target?.pathname, overlay?.hasOverlay]);
   if (!overlay) return null;
   const presentation = target && definition ? { target, resourceScope, size: definition.size, requestClose: overlay.close } : null;
+  // Records open as a drawer beside the list they came from and keep one width
+  // through their steps. Editors stay centred and follow the step's size.
+  const drawer = isRecordDetailRoute(definition);
+  const size = drawer ? definition!.size : activeStep?.size ?? definition?.size ?? "md";
   return <Dialog open={overlay.hasOverlay} onOpenChange={(open, event) => { if (!open) { event.cancel(); overlay.close(); } }}>
-    <DialogContent kind="detail" size={activeStep?.size ?? definition?.size ?? "md"} data-overlay-content data-overlay-size={activeStep?.size ?? definition?.size ?? "md"}
-      data-overlay-record={isRecordDetailRoute(definition) && !activeStep || undefined}
+    <DialogContent kind="detail" size={size} data-overlay-content data-overlay-size={size}
+      data-overlay-presentation={drawer ? "drawer" : undefined} backdropProps={drawer ? { className: "overlay-drawer-backdrop" } : undefined}
+      data-overlay-record={drawer && !activeStep || undefined}
       role={activeStep ? "presentation" : "dialog"} aria-modal={activeStep ? false : true}
       initialFocus={() => nestedModals.current.size ? false : title.current} finalFocus={overlay.restoreFocus} showCloseButton={false}>
       <OverlayContext value={presentation}><OverlayCloseGuardContext value={overlay.registerCloseGuard}>

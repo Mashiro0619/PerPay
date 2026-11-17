@@ -85,6 +85,33 @@ test.describe("dialog motion", () => {
     expect(closing.translate).toBe(last.translate);
   });
 
+  test("a record opens as a full-height drawer that slides in from the right and fades out in place", async ({ page, manifest }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await login(page, manifest);
+    const overlay = await openFirstOrder(page, manifest.origin);
+    const opening = (await recorded(page)).opening;
+    const first = opening[0]!;
+    const last = opening.at(-1)!;
+    expect(first.opacity).toBeLessThan(0.2);
+    expect(first.translate).toBe("16px");
+    expect(first.scale).toBe("none");
+    expect(opening.some(sample => sample.opacity > 0.05 && sample.opacity < 0.95), "opacity passes through intermediate values").toBe(true);
+    expect(last.opacity).toBe(1);
+    expect(last.translate).toBe("0px");
+    // 44rem wide, flush with the top, right and bottom edges; the list stays visible to its left.
+    expect(await overlay.boundingBox()).toEqual({ x: 1440 - 704, y: 0, width: 704, height: 900 });
+    const backdrop = page.locator('[data-slot="dialog-overlay"]');
+    await expect(backdrop).toHaveCSS("background-color", "rgba(0, 0, 0, 0.2)");
+    await expect(backdrop).toHaveCSS("backdrop-filter", "none");
+
+    await overlay.locator('[data-slot="dialog-close"]').click();
+    await expect(overlay).toHaveCount(0);
+    const closing = (await recorded(page)).closing!;
+    expect(closing.duration).toBe("0.14s");
+    expect(closing.translate).toBe("0px");
+  });
+
   test("a full-screen overlay on a phone slides up instead of scaling", async ({ page, manifest }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.emulateMedia({ reducedMotion: "no-preference" });

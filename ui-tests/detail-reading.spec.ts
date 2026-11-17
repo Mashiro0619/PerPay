@@ -369,10 +369,10 @@ test("summaries and credentials retain reading order in stable responsive column
   const flows = await readingFlowGeometry(page);
   const twoFacts = flows.find(group => group.fields.length === 2 && group.fields.map(field => field.name).join("/") === "关联方式/关联时间");
   expect(twoFacts, "the genuine inferred match has two short processing facts").toBeTruthy();
-  expect(twoFacts!.rows).toEqual([["关联方式", "关联时间"]]);
-  expect(Math.abs(twoFacts!.fields[0]!.width - twoFacts!.fields[1]!.width), "processing facts align in equal columns").toBeLessThanOrEqual(1);
-  const occupiedWidth = twoFacts!.fields.at(-1)!.right - twoFacts!.fields[0]!.left;
-  expect(Math.abs(twoFacts!.width - occupiedWidth), "processing columns use the available width").toBeLessThanOrEqual(1);
+  // A record drawer is narrower than the two-column threshold: the facts stack in one full-width column.
+  expect(twoFacts!.rows).toEqual([["关联方式"], ["关联时间"]]);
+  expect(Math.abs(twoFacts!.fields[0]!.width - twoFacts!.fields[1]!.width), "processing facts share one column width").toBeLessThanOrEqual(1);
+  expect(Math.abs(twoFacts!.width - twoFacts!.fields[0]!.width), "the column uses the available width").toBeLessThanOrEqual(1);
   await record(page, info, { feature: "detail-flow-two-facts", evidence: "local-synthetic-domain", geometry: twoFacts });
   await screenshot(page, info, "reading-flow-two-facts");
 

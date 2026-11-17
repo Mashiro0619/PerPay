@@ -68,7 +68,8 @@ async function measure(dialog: Locator) {
   });
 }
 
-function bounded(geometry: Awaited<ReturnType<typeof measure>>, mobile: boolean) {
+/** Phones fill the screen; records are a full-height drawer on the right; editors are a centred dialog of limited height. */
+function bounded(geometry: Awaited<ReturnType<typeof measure>>, shape: "screen" | "drawer" | "dialog") {
   const { box, viewport } = geometry;
   expect(box.top).toBeGreaterThanOrEqual(viewport.top - 1);
   expect(box.bottom).toBeLessThanOrEqual(viewport.top + viewport.height + 1);
@@ -76,9 +77,14 @@ function bounded(geometry: Awaited<ReturnType<typeof measure>>, mobile: boolean)
   expect(box.right).toBeLessThanOrEqual(viewport.left + viewport.width + 1);
   expect(geometry.overflowX).toBe(false);
   expect(geometry.body.height).toBeGreaterThan(0);
-  if (mobile) {
+  if (shape === "screen") {
     expect(Math.abs(box.height - viewport.height)).toBeLessThanOrEqual(1);
     expect(Math.abs(box.width - viewport.width)).toBeLessThanOrEqual(1);
+  } else if (shape === "drawer") {
+    expect(Math.abs(box.height - viewport.height)).toBeLessThanOrEqual(1);
+    expect(Math.abs(box.right - (viewport.left + viewport.width))).toBeLessThanOrEqual(1);
+    // An order drawer is 44rem wide, or the whole viewport when that is narrower.
+    expect(Math.abs(box.width - Math.min(44 * geometry.rootFont, viewport.width))).toBeLessThanOrEqual(1);
   } else expect(box.height).toBeLessThanOrEqual(Math.min(viewport.height * .85, 900) + 1);
 }
 
@@ -119,7 +125,7 @@ for (const layout of layouts) {
     await expect(dialog.getByText("订单备注", { exact: true })).toBeVisible();
     await expect(dialog.locator('[data-slot="skeleton"]')).toHaveCount(0);
     const initial = await measure(dialog);
-    bounded(initial, layout.width < 768);
+    bounded(initial, layout.width < 768 ? "screen" : "drawer");
     expect(initial.rootFont).toBe(16 * layout.text / 100);
     await reachable(dialog.locator("[data-overlay-heading]"));
     await reachable(dialog.getByRole("button", { name: "关闭对话框", exact: true }));
@@ -136,7 +142,7 @@ for (const layout of layouts) {
     await expect(dialog.getByRole("button", { name: "高级设置", exact: true })).toBeVisible();
     await dialog.getByRole("button", { name: "高级设置", exact: true }).click();
     const editor = await measure(dialog);
-    bounded(editor, layout.width < 768);
+    bounded(editor, layout.width < 768 ? "screen" : "dialog");
     const footer = dialog.locator("[data-overlay-footer]");
     expect(editor.footer.height).toBeGreaterThan(0);
     await reachable(dialog.locator("[data-overlay-heading]"));
@@ -183,7 +189,8 @@ for (const layout of layouts) {
         await reachable(manual.getByRole("button", { name: "关闭对话框", exact: true }));
       }
       const stepHeight = await dialog.evaluate(element => ({ height: element.getBoundingClientRect().height, visibleHeight: visualViewport?.height ?? innerHeight }));
-      expect(stepHeight.height).toBeLessThanOrEqual(Math.min(stepHeight.visibleHeight * .85, 900) + 1);
+      // A step replaces the drawer content in place: the drawer keeps its full height.
+      expect(Math.abs(stepHeight.height - stepHeight.visibleHeight)).toBeLessThanOrEqual(1);
       await screenshot(page, info, "manual-association-short-viewport");
       await manual.getByRole("button", { name: "返回选择", exact: true }).click();
       await expect(manual.getByRole("searchbox", { name: "搜索收入流水", exact: true })).toBeVisible();
@@ -204,7 +211,7 @@ test("short content keeps its natural height instead of filling the desktop limi
   const dialog = page.locator("[data-overlay-content]");
   await expect(dialog.getByRole("textbox", { name: "测试金额（元）", exact: true })).toBeVisible();
   const geometry = await measure(dialog);
-  bounded(geometry, false);
+  bounded(geometry, "dialog");
   expect(geometry.box.height).toBeLessThan(Math.min(geometry.viewport.height * .85, 900) - 80);
   expect(geometry.body.scrollHeight).toBeLessThanOrEqual(geometry.body.height + 1);
   const cancel = dialog.locator("[data-overlay-footer]").getByRole("button", { name: "取消", exact: true });

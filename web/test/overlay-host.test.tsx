@@ -408,10 +408,15 @@ describe("one routed detail surface", () => {
     await user.click(screen.getByRole("link", { name: "打开记录" }));
     const detail = await screen.findByRole("dialog", { name: "记录 order-1" });
     const trigger = within(detail).getByRole("button", { name: "编辑内部步骤" });
+    expect(detail).toHaveAttribute("data-overlay-presentation", "drawer");
+    expect(detail).toHaveAttribute("data-overlay-size", "lg");
+    expect(document.querySelector("[data-slot=dialog-overlay]")).toHaveClass("overlay-drawer-backdrop");
     await user.click(trigger);
     const step = await screen.findByRole("dialog", { name: "编辑内部步骤" });
     expect(screen.getAllByRole("dialog")).toHaveLength(1);
     expect(detail).toHaveAttribute("role", "presentation");
+    // The step asks for the narrower default size; a record drawer keeps its own width.
+    expect(detail).toHaveAttribute("data-overlay-size", "lg");
     expect(step.closest("[data-overlay-content]")).toBe(detail);
     expect(document.querySelectorAll("[data-slot=dialog-overlay]")).toHaveLength(1);
     expect(detail.querySelector("[data-overlay-primary]")).not.toBeVisible();
