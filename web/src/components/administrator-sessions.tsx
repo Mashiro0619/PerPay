@@ -4,8 +4,8 @@ import { onlineManager, useMutation, useQuery, useQueryClient } from "@tanstack/
 import { LogOut, MoreHorizontal } from "lucide-react";
 import { Link } from "@/navigation";
 import { BusinessTable, type BusinessColumn } from "@/components/business-table";
-import { OverlayActions } from "@/components/overlay-actions";
-import { useOverlayCloseGuard, useOverlayContext } from "@/lib/overlay-context";
+import { OverlaySummary } from "@/components/overlay-actions";
+import { useOverlayCloseGuard } from "@/lib/overlay-context";
 import { api, result, type AdminLoginSession } from "@/api/client";
 import { useSession } from "@/auth";
 import { useDraftGuard } from "@/drafts";
@@ -16,8 +16,12 @@ import { RefreshButton } from "@/components/refresh-button";
 import { ErrorNotice, Loading } from "@/components/request-state";
 import { PageHeading } from "@/components/page-heading";
 import { PageHeaderActions } from "@/components/page-header-actions";
-import { DetailFields, DetailPage } from "@/components/detail/DetailPrimitives";
-import { DetailSection } from "@/components/detail/DetailSections";
+import { DetailPage } from "@/components/detail/DetailPrimitives";
+import { ActionBar } from "@/components/record/ActionBar";
+import { Disclosure } from "@/components/record/Disclosure";
+import { FieldList } from "@/components/record/FieldList";
+import { RecordSummary } from "@/components/record/RecordSummary";
+import { RecordTime } from "@/components/record/Timeline";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -60,8 +64,12 @@ function confirmation(action: SessionAction) {
   }
 }
 
+/** When the session was last used and from where: what tells one session from another. */
+function conclusion(session: AdminLoginSession) {
+  return <>最近活跃：<RecordTime value={session.last_seen_at} /> · 登录 IP：{session.ip_address ?? "未记录"}</>;
+}
+
 export function AdministratorSessions({ detailSessionId }: { detailSessionId?: string } = {}) {
-  const overlay = useOverlayContext();
   const queryClient = useQueryClient();
   const session = useSession();
   const { requestDiscard } = useDraftGuard();
@@ -137,17 +145,32 @@ export function AdministratorSessions({ detailSessionId }: { detailSessionId?: s
   return (
     <>
       {detailSessionId ? <DetailPage>
-        <PageHeading title="登录会话详情" />
+        {/* Until a session is found, the overlay shows its route title as the heading. */}
+        {selected && <PageHeading title={sessionDevice(selected.user_agent).label} />}
         <PageHeaderActions><RefreshButton disabled={operation.isPending || sessions.isFetching} busy={sessions.isFetching} onClick={() => { void sessions.refetch(); }} /></PageHeaderActions>
         <ErrorNotice error={sessions.error} retry={() => { void sessions.refetch(); }} />
-        {sessions.isPending ? <Loading label="正在读取登录会话…" /> : selected ? <DetailSection title={sessionDevice(selected.user_agent).label}>
-          <DetailFields wide={["登录 IP", "设备信息"]} items={[
-          ["当前会话", selected.is_current ? "是" : "否"], ["登录方式", "密码"], ["最近活跃", dateTime(selected.last_seen_at)], ["到期时间", dateTime(selected.expires_at)], ["登录 IP", selected.ip_address ?? "未记录"], ["设备信息", selected.user_agent ?? "未记录"],
-        ]} /></DetailSection> : !sessions.error && <Empty><EmptyHeader><EmptyTitle>此会话已结束</EmptyTitle><EmptyDescription>已失效的会话不再出现在有效会话列表中。</EmptyDescription></EmptyHeader></Empty>}
-        <OverlayActions>
-          {overlay && <Button type="button" variant="outline" disabled={operation.isPending} onClick={() => overlay.requestClose()}>关闭</Button>}
-          {selected && <Button variant="destructive" disabled={operation.isPending} onClick={event => open(selected.is_current ? { kind: "logout" } : { kind: "single", session: selected }, event.currentTarget)}>{selected.is_current ? "退出当前会话" : "撤销此会话"}</Button>}
-        </OverlayActions>
+        {sessions.isPending ? <Loading label="正在读取登录会话…" /> : selected ? <>
+          <OverlaySummary>
+            {/* Only the current session has a badge to lead with. */}
+            <RecordSummary label="会话概况" status={selected.is_current && <Badge variant="secondary">当前会话</Badge>} meta={[conclusion(selected)]} />
+          </OverlaySummary>
+          <div className="flex min-w-0 flex-col gap-3">
+            <FieldList items={[
+              { label: "当前会话", value: selected.is_current ? "是" : "否" },
+              { label: "登录方式", value: "密码" },
+              { label: "最近活跃", value: <RecordTime value={selected.last_seen_at} />, kind: "time" },
+              { label: "到期时间", value: <RecordTime value={selected.expires_at} />, kind: "time" },
+              { label: "登录 IP", value: selected.ip_address ?? "未记录", kind: selected.ip_address ? "id" : "text" },
+              !selected.user_agent && { label: "设备信息", value: "未记录" },
+            ]} />
+            {/* The title already names the browser and system; the raw User-Agent is kept for checking. */}
+            {selected.user_agent && <Disclosure label="设备信息">
+              <p className="font-mono text-xs leading-5 text-muted-foreground wrap-anywhere">{selected.user_agent}</p>
+            </Disclosure>}
+          </div>
+        </> : !sessions.error && <Empty><EmptyHeader><EmptyTitle>此会话已结束</EmptyTitle><EmptyDescription>已失效的会话不再出现在有效会话列表中。</EmptyDescription></EmptyHeader></Empty>}
+        {selected && <ActionBar menuLabel="更多操作，会话操作" primary={<Button variant="destructive" disabled={operation.isPending}
+          onClick={event => open(selected.is_current ? { kind: "logout" } : { kind: "single", session: selected }, event.currentTarget)}>{selected.is_current ? "退出当前会话" : "撤销此会话"}</Button>} />}
       </DetailPage> : <Card className="administrator-sessions-card" data-login-sessions>
         <CardHeader className="administrator-sessions-header">
           <CardTitle ref={heading} tabIndex={-1} role="heading" aria-level={2}>登录会话</CardTitle>

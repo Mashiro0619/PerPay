@@ -703,8 +703,25 @@ describe("settings summaries and owned editing overlays", () => {
     const user = userEvent.setup();
     expect(screen.queryByLabelText("新密码")).not.toBeInTheDocument();
     await user.click(await screen.findByRole("link", { name: "Chrome · Android" }));
-    const dialog = await screen.findByRole("dialog", { name: "登录会话详情" });
-    expect(await within(dialog).findByText("2001:db8::1")).toBeVisible();
+    // The record is titled by its browser and system; the route title moves to the line above.
+    const dialog = await screen.findByRole("dialog", { name: "Chrome · Android" });
+    expect(within(dialog).getAllByRole("heading", { level: 1 }).map(heading => heading.textContent)).toEqual(["Chrome · Android"]);
+    expect(dialog.querySelector("[data-overlay-eyebrow-text]")).toHaveTextContent(/^登录会话详情$/);
+    const body = dialog.querySelector<HTMLElement>("[data-overlay-detail]")!;
+    expect(await within(body).findByText("2001:db8::1")).toBeVisible();
+    const summary = within(dialog.querySelector<HTMLElement>("[data-overlay-summary]")!).getByRole("group", { name: "会话概况" });
+    expect(summary).toHaveTextContent(/^最近活跃：2026\/10\/29 08:00:00 · 登录 IP：2001:db8::1$/);
+    expect(within(summary).queryByText("当前会话")).not.toBeInTheDocument();
+    expect(Array.from(body.querySelectorAll("[data-detail-fields] > dl > div")).map(row => [row.querySelector("dt")!.textContent, row.querySelector("dd")!.textContent])).toEqual([
+      ["当前会话", "否"], ["登录方式", "密码"], ["最近活跃", "2026/10/29 08:00:00"], ["到期时间", "2099/01/01 08:00:00"], ["登录 IP", "2001:db8::1"],
+    ]);
+    const device = within(body).getByRole("button", { name: "设备信息" });
+    expect(device).toHaveAttribute("aria-expanded", "false");
+    expect(within(body).getByText(sessions[0]!.user_agent!)).not.toBeVisible();
+    await user.click(device);
+    expect(within(body).getByText(sessions[0]!.user_agent!)).toBeVisible();
+    // The header already closes the drawer; the footer keeps only the session's own action.
+    expect(footer(dialog).getAllByRole("button").map(button => button.textContent)).toEqual(["撤销此会话"]);
     await user.click(footer(dialog).getByRole("button", { name: "撤销此会话" }));
     const confirm = await screen.findByRole("alertdialog", { name: "撤销此会话？" });
     expect(view.writes()).toHaveLength(0);
@@ -712,6 +729,28 @@ describe("settings summaries and owned editing overlays", () => {
     expect(await within(dialog).findByText("此会话已结束")).toBeVisible();
     expect(view.writes()).toHaveLength(1);
     expect(queryClient.getQueryData(["administrator-sessions"])).toEqual({ data: [] });
+    // An ended session has no record of its own: the route title returns and nothing is left to act on.
+    expect(dialog).toHaveAccessibleName("登录会话详情");
+    expect(dialog.querySelector("[data-overlay-summary]")).toBeEmptyDOMElement();
+    expect(dialog.querySelector("[data-overlay-footer]")).toBeEmptyDOMElement();
+  });
+
+  it("marks the current session in its summary and offers to leave it", async () => {
+    const current: AdminLoginSession = { session_id: "11111111-1111-4111-8111-111111111111", is_current: true, user_agent: null, ip_address: null, auth_method: "password", last_seen_at: "2026-10-29T00:00:00Z", expires_at: "2099-01-01T00:00:00Z" };
+    mountOnboarding({ stage: 4, path: "/settings/security/sessions/" + current.session_id, handle: request =>
+      new URL(request.url).pathname === "/api/admin/v1/sessions" ? json({ data: [current] }) : undefined });
+    const dialog = await screen.findByRole("dialog", { name: "未知浏览器 · 未知系统" });
+    const summary = within(dialog.querySelector<HTMLElement>("[data-overlay-summary]")!).getByRole("group", { name: "会话概况" });
+    expect(within(summary).getByText("当前会话", { exact: true })).toBeVisible();
+    expect(summary.querySelector("[data-record-summary-meta]")).toHaveTextContent(/^最近活跃：2026\/10\/29 08:00:00 · 登录 IP：未记录$/);
+    const body = dialog.querySelector<HTMLElement>("[data-overlay-detail]")!;
+    expect(within(body).getByText("当前会话", { selector: "dt" }).nextElementSibling).toHaveTextContent(/^是$/);
+    // Without a recorded User-Agent there is nothing to disclose.
+    expect(within(body).getByText("设备信息", { selector: "dt" }).nextElementSibling).toHaveTextContent(/^未记录$/);
+    expect(within(body).queryByRole("button", { name: "设备信息" })).not.toBeInTheDocument();
+    expect(footer(dialog).getAllByRole("button").map(button => button.textContent)).toEqual(["退出当前会话"]);
+    await userEvent.click(footer(dialog).getByRole("button", { name: "退出当前会话" }));
+    expect(await screen.findByRole("alertdialog", { name: "退出当前会话？" })).toBeVisible();
   });
 });
 
