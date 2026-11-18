@@ -1429,6 +1429,13 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   /* The navigation marks the section in view below a fixed summary; here there is none. */
   [data-overlay-record="true"] [data-record-nav] { display: none; }
 }
+/* Shorter still, a fixed title and actions would leave the content a sliver or
+   nothing at all (640x280 with doubled text leaves none). The drawer then
+   reads as one page: title, summary, content and actions scroll together. */
+@container record-drawer (height < 20rem) {
+  [data-overlay-record="true"] > [data-overlay-primary] { overflow-y: auto; overscroll-behavior: contain; scroll-padding-block: 1rem; }
+  [data-overlay-record="true"] > [data-overlay-primary] > [data-overlay-body] { flex: none; min-height: auto; overflow: visible; scrollbar-gutter: auto; }
+}
 [data-overlay-record="true"] [data-overlay-detail] {
   padding-block: 1rem;
   padding-inline-end: 0.5rem;
