@@ -46,6 +46,60 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 type DeliveryContext = WebhookDeliveryDetail & {
   attempts: readonly WebhookAttempt[];
 };
+/** The redelivery confirmation and the call that opens it; a created delivery is opened afterwards. */
+export function useRedelivery(detail: DeliveryContext) {
+  const api = useWorkspaceApi();
+  const navigate = useNavigate();
+  const [snapshot, setSnapshot] = useState<DeliveryContext | null>(null);
+  const [sent, setSent] = useState(false);
+  const [newDeliveryId, setNewDeliveryId] = useState<string | null>(null);
+  useEffect(() => {
+    if (newDeliveryId) navigate("/notifications/" + newDeliveryId);
+  }, [newDeliveryId, navigate]);
+  const setMessage = useSuccessToast();
+  const finalFocus = useRef<HTMLElement | null>(null);
+  const open = (trigger: HTMLElement | null) => {
+    finalFocus.current = trigger;
+    setSnapshot(detail);
+  };
+  const dialog = snapshot && (
+        <ReasonDialog
+          finalFocus={() => finalFocus.current}
+          title="重新发送通知"
+          description="再次发送同一事件，业务方需避免重复处理。"
+          action="确认重新发送"
+          onClose={() => setSnapshot(null)}
+          execute={(reason, operationId, signal) =>
+            result(
+              api.redeliverWebhookDelivery({
+                signal,
+                path: { deliveryId: snapshot.delivery.delivery_id },
+                body: { reason, redelivery_id: operationId },
+              }),
+            )
+          }
+          onSuccess={({ data }) => {
+            // A successful redelivery creates a newer record and removes this
+            // action. Restore focus to content that remains on the page.
+            finalFocus.current = document.getElementById("main-content");
+            setSnapshot(null);
+            setSent(true);
+            setNewDeliveryId(data.delivery.delivery_id);
+            setMessage("已创建新投递，等待发送");
+            void refreshNotificationRecords(detail.event.order_id, detail.delivery.delivery_id);
+          }}
+        >
+          <DetailFields
+            wide={["通知地址"]}
+            items={[
+              ["事件", label(snapshot.event.event_type)],
+              ["通知地址", snapshot.target.target_url],
+            ]}
+          />
+        </ReasonDialog>
+  );
+  return { sent, open, dialog };
+}
 export function DeliveryCard({
   detail,
   embedded = false,
@@ -65,18 +119,9 @@ export function DeliveryCard({
   retryAttempts?: (() => void) | undefined;
   section?: "all" | "overview" | "attempts";
 }) {
-  const api = useWorkspaceApi();
-  const navigate = useNavigate();
   const { clientId } = useWorkspace();
   const overlay = useOverlayContext();
-  const [snapshot, setSnapshot] = useState<DeliveryContext | null>(null);
-  const [sent, setSent] = useState(false);
-  const [newDeliveryId, setNewDeliveryId] = useState<string | null>(null);
-  useEffect(() => {
-    if (newDeliveryId) navigate("/notifications/" + newDeliveryId);
-  }, [newDeliveryId, navigate]);
-  const setMessage = useSuccessToast();
-  const finalFocus = useRef<HTMLElement | null>(null);
+  const { sent, open, dialog: confirmation } = useRedelivery(detail);
   const delivery = detail.delivery;
   const last = latestAttempt(detail.attempts);
   const confirmationRevoked = detail.redelivery_blocked_reason === "payment_confirmation_revoked" ||
@@ -109,10 +154,7 @@ export function DeliveryCard({
       variant="outline"
       className="w-fit"
       disabled={sent || confirmationRevoked}
-      onClick={(event) => {
-        finalFocus.current = event.currentTarget;
-        setSnapshot(detail);
-      }}
+      onClick={(event) => open(event.currentTarget)}
     >
       重新发送
     </Button>
@@ -142,10 +184,7 @@ export function DeliveryCard({
               {
                 label: "重新发送",
                 disabled: sent || confirmationRevoked,
-                onSelect: (trigger) => {
-                  finalFocus.current = trigger;
-                  setSnapshot(detail);
-                },
+                onSelect: open,
               },
             ]
           : []
@@ -202,42 +241,6 @@ export function DeliveryCard({
         通知接入说明
       </a>
     </>
-  );
-  const confirmation = snapshot && (
-        <ReasonDialog
-          finalFocus={() => finalFocus.current}
-          title="重新发送通知"
-          description="再次发送同一事件，业务方需避免重复处理。"
-          action="确认重新发送"
-          onClose={() => setSnapshot(null)}
-          execute={(reason, operationId, signal) =>
-            result(
-              api.redeliverWebhookDelivery({
-                signal,
-                path: { deliveryId: snapshot.delivery.delivery_id },
-                body: { reason, redelivery_id: operationId },
-              }),
-            )
-          }
-          onSuccess={({ data }) => {
-            // A successful redelivery creates a newer record and removes this
-            // action. Restore focus to content that remains on the page.
-            finalFocus.current = document.getElementById("main-content");
-            setSnapshot(null);
-            setSent(true);
-            setNewDeliveryId(data.delivery.delivery_id);
-            setMessage("已创建新投递，等待发送");
-            void refreshNotificationRecords(detail.event.order_id, delivery.delivery_id);
-          }}
-        >
-          <DetailFields
-            wide={["通知地址"]}
-            items={[
-              ["事件", label(snapshot.event.event_type)],
-              ["通知地址", snapshot.target.target_url],
-            ]}
-          />
-        </ReasonDialog>
   );
   if (comfortable) return <>
     {section !== "attempts" && <Card aria-label="通知信息" className="detail-section" data-notification-information>
