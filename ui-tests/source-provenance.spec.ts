@@ -6,7 +6,8 @@ import { expectOverlayTarget, settleOverlay } from "./overlay-fixtures";
 import type { AdminLedgerDetail, AdminOrderDetail } from "../web/src/api/generated/types.gen";
 
 const currency = (cents: number | null) => cents === null ? "—" : new Intl.NumberFormat("zh-CN", { style: "currency", currency: "CNY", minimumFractionDigits: 2 }).format(cents / 100);
-const timestamp = (value: string) => new Intl.DateTimeFormat("zh-CN", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(value));
+// A record states its times to the second.
+const timestamp = (value: string) => new Intl.DateTimeFormat("zh-CN", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }).format(new Date(value));
 
 test("order and ledger sources remain distinct at desktop and 320 pixels", async ({ page, manifest }, info) => {
   await login(page, manifest);
@@ -28,7 +29,7 @@ test("order and ledger sources remain distinct at desktop and 320 pixels", async
     await page.goto(manifest.origin + "/admin" + orderRoute);
     await expectOverlayTarget(page, orderRoute!);
     const orderOverlay = await settleOverlay(page);
-    const websiteOrder = orderOverlay.locator('[data-detail-section="overview"]').getByRole("region", { name: "订单信息", exact: true });
+    const websiteOrder = orderOverlay.getByRole("region", { name: "订单信息", exact: true });
     await expect(websiteOrder).toBeVisible();
     await expect(websiteOrder.getByText("下单金额", { exact: true }).locator("..").locator("dd")).toHaveText(currency(order.requested_amount_cents));
     await expect(websiteOrder.getByText("加价金额", { exact: true }).locator("..").locator("dd")).toHaveText(currency(order.payable_amount_cents - order.requested_amount_cents));
@@ -45,11 +46,14 @@ test("order and ledger sources remain distinct at desktop and 320 pixels", async
     await websiteOrder.screenshot({ path: orderPath });
     await info.attach(`order-sources-${width}`, { path: orderPath, contentType: "image/png" });
     await revealDetailSection(page, "payments");
-    const associations = detailSection(page, "payments").getByRole("group", { name: "收款关联记录", exact: true });
+    // Each association in force is a record of its own; reversed ones stay folded away.
+    const associations = detailSection(page, "payments").getByRole("article").filter({ has: page.getByRole("heading", { name: "收款关联记录", exact: true }) });
     await expect(associations).toHaveCount(matches.length);
     for (const [index, match] of matches.entries()) {
       const association = associations.nth(index);
-      const credentials = association.getByRole("button", { name: "核对凭据", exact: true });
+      await expect(association).toHaveAttribute("id", "match-" + match.payment_match_id);
+      // The disclosure's name ends with how many facts it holds.
+      const credentials = association.getByRole("button", { name: /^核对凭据/ });
       if (await credentials.count()) {
         await credentials.click();
         await expect(credentials).toHaveAttribute("aria-expanded", "true");
