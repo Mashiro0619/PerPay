@@ -16,7 +16,10 @@ test("order details show all business sections and load notifications with the o
   page.on("request", request => { if (request.method() === "GET") reads.push(new URL(request.url()).pathname); });
   const dialog = await openRecord(page, manifest, path);
   const overview = detailSection(page, "overview"), notifications = detailSection(page, "notifications");
-  await expect(overview.getByRole("region", { name: "订单信息", exact: true })).toContainText(order.note!);
+  // Each section is itself the named region; nothing is nested inside it under the same name.
+  await expect(overview).toHaveRole("region");
+  await expect(overview).toHaveAccessibleName("订单信息");
+  await expect(overview).toContainText(order.note!);
   await expect(overview.getByRole("button", { name: "复制商户订单号" })).toBeVisible();
   await expect(dialog.locator('[data-overlay-footer]').getByRole("link", { name: "打开收银台", exact: true })).toHaveAttribute("target", "_blank");
   await expect(dialog.getByRole("tab")).toHaveCount(0);
@@ -29,7 +32,7 @@ test("order details show all business sections and load notifications with the o
   await revealDetailSection(page, "notifications");
   await expectOverlayFits(page);
   await revealDetailSection(page, "overview");
-  await expect(overview.getByRole("region", { name: "订单信息", exact: true })).toContainText(order.note!);
+  await expect(overview).toContainText(order.note!);
   expect(page.url()).toBe(address);
   expect(reads.filter(path => path === notificationsApi)).toHaveLength(1);
   await record(page, info, { feature: "order-continuous-record-sections", noteLength: order.note!.length, layout: overviewLayout });
@@ -53,21 +56,25 @@ test("notification loading and historical deliveries stay within their order sec
     // must be usable before the common loading checks can settle.
     await page.goto(manifest.origin + "/admin" + path);
     const dialog = page.locator("[data-overlay-content]");
-    await expect(detailSection(page, "overview").getByRole("region", { name: "订单信息", exact: true })).toBeVisible();
+    await expect(detailSection(page, "overview")).toHaveAccessibleName("订单信息");
     const notifications = detailSection(page, "notifications");
     await expect(notifications.getByText("正在读取通知结果…", { exact: true })).toBeAttached();
-    await expect(detailSection(page, "overview").getByRole("region", { name: "订单信息", exact: true })).toBeVisible();
+    await expect(detailSection(page, "overview").getByText("商户订单号", { exact: true })).toBeVisible();
     await expect(dialog.getByRole("tab")).toHaveCount(0);
     release();
-    await expect(notifications.getByRole("group", { name: "通知记录", exact: true })).toHaveCount(1);
-    // The first older delivery is selected from this order's notification history.
-    const history = notifications.locator('[data-slot="accordion-trigger"]').first();
+    // The current delivery of each event stays in view; deliveries replaced by a resend share one collapsed group.
+    const current = original.data.filter(detail => detail.is_latest).length;
+    expect(current).toBeLessThan(original.data.length);
+    const deliveries = notifications.locator("article[data-sub-record]:visible");
+    await expect(deliveries).toHaveCount(current);
+    const history = notifications.getByRole("button", { name: /^历史投递/ });
+    await expect(history).toHaveAccessibleName("历史投递" + (original.data.length - current));
     await history.focus(); await page.keyboard.press("Enter");
     await expect(history).toHaveAttribute("aria-expanded", "true");
-    await expect(notifications.getByRole("group", { name: "通知记录", exact: true })).toHaveCount(2);
+    await expect(deliveries).toHaveCount(original.data.length);
     await page.keyboard.press("Enter");
     await expect(history).toHaveAttribute("aria-expanded", "false");
-    await expect(notifications.getByRole("group", { name: "通知记录", exact: true })).toHaveCount(1);
+    await expect(deliveries).toHaveCount(current);
     await expectOverlayFits(page);
     await screenshot(page, info, "order-notification-history");
   } finally { release(); }
