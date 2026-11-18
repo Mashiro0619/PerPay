@@ -1127,8 +1127,8 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   [data-overlay-content][data-overlay-viewport="dialog"][data-overlay-presentation="drawer"] { padding: 0; }
   [data-overlay-presentation="drawer"] > [data-overlay-primary] { gap: 0; }
   [data-overlay-presentation="drawer"] > [data-overlay-primary] > [data-slot="dialog-header"] { padding: var(--overlay-chrome-space, 1rem) 1.5rem 0.75rem; }
-  [data-overlay-presentation="drawer"] > [data-overlay-primary] > [data-overlay-summary] { padding-inline: 1.5rem; }
-  [data-overlay-presentation="drawer"] > [data-overlay-primary] > [data-overlay-detail] {
+  [data-overlay-presentation="drawer"] > [data-overlay-primary] > [data-overlay-body] > [data-overlay-summary] { padding-inline: 1.5rem; }
+  [data-overlay-presentation="drawer"] > [data-overlay-primary] > [data-overlay-body] > [data-overlay-detail] {
     padding: 1.25rem 0.75rem 1.25rem 1.5rem;
     scrollbar-gutter: stable;
   }
@@ -1408,6 +1408,27 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 [data-overlay-eyebrow] ~ [data-overlay-heading] { grid-row: 2; grid-column: 1 / -1; }
 [data-overlay-presentation="drawer"] [data-overlay-detail] { border-top: 1px solid var(--border); }
 [data-overlay-summary]:not(:has([data-record-nav])) { padding-bottom: var(--overlay-chrome-space, 1rem); }
+/* A short drawer cannot spare a fixed summary: the title and the actions stay
+   in place, and the summary scrolls with the content in the box around both.
+   Container lengths follow the root font size, so enlarged text counts too. */
+[data-overlay-content][data-overlay-presentation="drawer"] { container: record-drawer / size; }
+@container record-drawer (height < 36rem) {
+  [data-overlay-record="true"] [data-overlay-body] {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: inherit;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+    scroll-padding-block: 1rem;
+  }
+  [data-overlay-record="true"] [data-overlay-body] > [data-overlay-summary] { padding-bottom: var(--overlay-chrome-space, 1rem); }
+  [data-overlay-record="true"] [data-overlay-body] > [data-overlay-detail] { flex: none; overflow: visible; scrollbar-gutter: auto; }
+  /* The navigation marks the section in view below a fixed summary; here there is none. */
+  [data-overlay-record="true"] [data-record-nav] { display: none; }
+}
 [data-overlay-record="true"] [data-overlay-detail] {
   padding-block: 0.25rem;
   padding-inline-end: 0.5rem;

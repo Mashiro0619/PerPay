@@ -58,7 +58,7 @@ export function RecordSummary({ label, value, size = "amount", status, tone = "d
   tone?: "default" | "danger";
   meta?: ReadonlyArray<ReactNode | false | null | undefined>;
   compare?: ReadonlyArray<{ label: string; left: ReactNode; right: ReactNode; differs: boolean }>;
-  /** Shown when the record has at least three sections. */
+  /** Shown when the record has at least three sections, while the summary stays fixed above the content. */
   nav?: readonly SectionLink[];
 }) {
   const hasValue = value !== undefined && value !== null && value !== false && value !== "";
@@ -70,7 +70,7 @@ export function RecordSummary({ label, value, size = "amount", status, tone = "d
         tone === "danger" ? "text-destructive" : "text-foreground")}>{value}</p>}
       {status}
     </div>}
-    {lines.length > 0 && <div data-record-summary-meta className="flex min-w-0 flex-col text-[0.8125rem] leading-5 text-muted-foreground tabular-nums [@media(max-height:31.999rem)]:hidden">
+    {lines.length > 0 && <div data-record-summary-meta className="flex min-w-0 flex-col text-[0.8125rem] leading-5 text-muted-foreground tabular-nums">
       {lines.map((line, index) => <p key={index} className="min-w-0 wrap-anywhere">{line}</p>)}
     </div>}
     {compare.length > 0 && <dl data-record-compare className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_minmax(0,1fr)] gap-x-4 gap-y-1 text-sm leading-5">
@@ -80,7 +80,7 @@ export function RecordSummary({ label, value, size = "amount", status, tone = "d
         <dd className={cn("min-w-0 tabular-nums wrap-anywhere", row.differs && "font-medium text-destructive")}>{row.right}</dd>
       </div>)}
     </dl>}
-    {nav.length >= 3 && <div className="[@media(max-height:31.999rem)]:hidden"><SectionNav items={nav} /></div>}
+    {nav.length >= 3 && <SectionNav items={nav} />}
   </div>;
 }
 

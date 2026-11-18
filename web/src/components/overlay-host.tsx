@@ -311,6 +311,8 @@ export function OverlayHost({ routes }: { routes?: ReactNode }) {
                 </div>
                 {!drawer && overlay.canGoBack && <Button className="w-fit" size="sm" variant="ghost" onClick={overlay.back}><ArrowLeft data-icon="inline-start" />返回上一步</Button>}
               </DialogHeader>
+              {/* Laid out as if absent. A record's drawer that is too short for a fixed summary scrolls this box instead of the detail. */}
+              <div data-overlay-body className="contents">
               <div ref={setSummaryTarget} data-overlay-summary className="shrink-0 empty:hidden" />
               <div data-overlay-detail className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
                 {target && definition ? <RequestNoticeProvider key={target.pathname}>
@@ -322,6 +324,7 @@ export function OverlayHost({ routes }: { routes?: ReactNode }) {
                     </Suspense></OverlayFailure>
                   </ResourceWorkspaceProvider>
                 </RequestNoticeProvider> : <ErrorNotice error={new Error("详情地址无效，请关闭后重新选择记录。 ")} />}
+              </div>
               </div>
               <div ref={setActionsTarget} data-overlay-footer className="shrink-0 empty:hidden" />
             </div>

@@ -442,8 +442,11 @@ describe("one routed detail surface", () => {
     expect(eyebrow).not.toHaveAttribute("aria-hidden");
     const summary = detail.querySelector("[data-overlay-summary]")!;
     expect(summary).toHaveTextContent("固定摘要 order-1");
-    expect(summary.previousElementSibling).toHaveAttribute("data-slot", "dialog-header");
+    // The summary and the detail share one box below the header, which a short drawer scrolls as a whole.
+    expect(summary.parentElement).toHaveAttribute("data-overlay-body");
+    expect(summary.parentElement!.previousElementSibling).toHaveAttribute("data-slot", "dialog-header");
     expect(summary.nextElementSibling).toHaveAttribute("data-overlay-detail");
+    expect(summary.parentElement!.nextElementSibling).toHaveAttribute("data-overlay-footer");
     expect(detail.querySelector("[data-overlay-detail]")).not.toHaveTextContent("固定摘要");
   });
 
