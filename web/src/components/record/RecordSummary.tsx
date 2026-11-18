@@ -95,7 +95,7 @@ export function RecordNotice({ tone, children, jump }: {
     tone === "danger" ? "border-destructive" : "border-warning-foreground")}>
     <div className="min-w-0 wrap-anywhere">{children}</div>
     {jump && ("section" in jump
-      ? <Button type="button" variant="link" size="sm" className={button} onClick={() => showSection(root.current, jump.section)}>{jump.label}<span aria-hidden="true"> ›</span></Button>
+      ? <Button type="button" variant="link" size="sm" className={button} onClick={() => showSection(root.current, jump.section)}>{jump.label}<span aria-hidden="true" className="whitespace-pre"> ›</span></Button>
       : <Link to={jump.to} className={link}>{jump.label}<span aria-hidden="true"> ›</span></Link>)}
   </div>;
 }
