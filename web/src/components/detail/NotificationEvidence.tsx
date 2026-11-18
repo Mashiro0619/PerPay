@@ -33,6 +33,8 @@ import { DetailFields, TechnicalDetails } from "./DetailPrimitives";
 import { RecordTools } from "./RecordTools";
 import { DeliveryAttempts } from "./DeliveryAttempts";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import type { Field } from "@/components/record/FieldList";
+import { RecordTime, type TimelineEntry } from "@/components/record/Timeline";
 type DeliveryContext = WebhookDeliveryDetail & {
   attempts: readonly WebhookAttempt[];
 };
@@ -90,6 +92,83 @@ export function useRedelivery(detail: DeliveryContext) {
   );
   return { sent, open, dialog };
 }
+/** A revoked payment confirmation ends a delivery whatever its own status says. */
+export function deliveryState(detail: WebhookDeliveryDetail) {
+  const status = detail.delivery.status;
+  const confirmationRevoked = detail.redelivery_blocked_reason === "payment_confirmation_revoked" ||
+    detail.delivery.last_error_code === "payment_confirmation_revoked";
+  return {
+    confirmationRevoked,
+    /** No further attempt will be made on its own. */
+    terminal: status === "ACKNOWLEDGED" || status === "DEAD_LETTER",
+    /** Ended by the revocation before the other side confirmed it. */
+    terminated: confirmationRevoked && status !== "ACKNOWLEDGED",
+  };
+}
+
+export function DeliveryStatus({ detail }: { detail: WebhookDeliveryDetail }) {
+  const { terminated } = deliveryState(detail);
+  return <StatusBadge value={terminated ? "REVERSED" : detail.delivery.status} label={terminated ? "已终止" : undefined} />;
+}
+
+/** One sentence on where the delivery stands. */
+export function deliveryPhrase(detail: WebhookDeliveryDetail): string {
+  const status = detail.delivery.status;
+  if (deliveryState(detail).confirmationRevoked) return status === "ACKNOWLEDGED" ? "对方已返回有效确认回执；原付款确认现已撤销" : "原付款确认已撤销，成功通知已终止";
+  if (!detail.is_latest) return status === "ACKNOWLEDGED" ? "历史投递 · 对方已返回有效确认回执" : "历史投递";
+  if (status === "DEAD_LETTER") return "已停止重试，需要处理";
+  if (status === "RETRY_WAIT") return "等待自动重试";
+  if (status === "ACKNOWLEDGED") return "对方已返回有效确认回执";
+  return "等待投递结果";
+}
+
+/** What to do about a delivery that failed or was ended; nothing when it needs no action. */
+export function deliveryAdvice(detail: WebhookDeliveryDetail, attempts: readonly WebhookAttempt[]) {
+  if (deliveryState(detail).confirmationRevoked) return notificationRecoveryHint("payment_confirmation_revoked");
+  if (!detail.is_latest || !["DEAD_LETTER", "RETRY_WAIT"].includes(detail.delivery.status)) return null;
+  return <>
+    {notificationRecoveryHint(detail.delivery.last_error_code ?? latestAttempt(attempts)?.error_code ?? null)}{" "}
+    <a data-external-link className="underline underline-offset-4" href="https://github.com/Mashiro0619/PerPay/blob/main/USAGE.md#5-回调通知" target="_blank" rel="noopener noreferrer">通知接入说明</a>
+  </>;
+}
+
+/** The facts of one delivery besides its event, status and attempts. */
+export function deliveryFields(detail: WebhookDeliveryDetail, attempts: readonly WebhookAttempt[]): Array<Field | false> {
+  const delivery = detail.delivery;
+  const { confirmationRevoked, terminal } = deliveryState(detail);
+  return [
+    { label: "通知地址", kind: "id", value: detail.target.target_url, copy: detail.target.target_url },
+    !detail.is_latest && !!detail.latest_delivery_id && { label: "后续结果", value: <Link className="underline underline-offset-4" to={"/notifications/" + detail.latest_delivery_id}>已重新发送，查看最新结果</Link> },
+    !!delivery.predecessor_delivery_id && { label: "原投递", value: <Link className="underline underline-offset-4" to={"/notifications/" + delivery.predecessor_delivery_id}>查看原投递</Link> },
+    !!delivery.next_attempt_at && !terminal && !confirmationRevoked && { label: "下次重试", kind: "time", value: <RecordTime value={delivery.next_attempt_at} /> },
+    !!delivery.acknowledged_at && { label: "通知确认时间（PerPay 记录）", kind: "time", value: <RecordTime value={delivery.acknowledged_at} /> },
+    !!delivery.last_error_code && delivery.last_error_code !== latestAttempt(attempts)?.error_code && { label: "最近错误", value: notificationErrorName(delivery.last_error_code) },
+    delivery.requested_by_type === "ADMIN" && { label: "发起人", value: delivery.requested_by_actor_id ?? "管理员" },
+    !!delivery.reason && { label: "重发理由", value: delivery.reason },
+  ];
+}
+
+const attemptTones = {
+  ACKNOWLEDGED: "success",
+  RETRYABLE_FAILURE: "danger",
+  PERMANENT_FAILURE: "danger",
+  STARTED: "muted",
+  OUTCOME_UNKNOWN: "muted",
+} as const;
+
+/** Attempts newest first, each titled with its number and what came back. */
+export function attemptEntries(attempts: readonly WebhookAttempt[]): TimelineEntry[] {
+  return [...attempts]
+    .sort((a, b) => Date.parse(b.started_at) - Date.parse(a.started_at) || b.attempt_number - a.attempt_number || b.attempt_id.localeCompare(a.attempt_id))
+    .map(attempt => ({
+      id: attempt.attempt_id,
+      title: "第 " + attempt.attempt_number + " 次 · " + attemptResult(attempt),
+      time: attempt.started_at,
+      tone: attemptTones[attempt.outcome],
+      ...(attempt.outcome === "RETRYABLE_FAILURE" || attempt.outcome === "PERMANENT_FAILURE" ? { body: label(attempt.outcome) } : {}),
+    }));
+}
+
 export function DeliveryCard({
   detail,
   embedded = false,
