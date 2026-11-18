@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link } from "@/navigation";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import { showSection } from "./Sections";
 
 export type SectionLink = { id: string; label: string; count?: number };
@@ -33,11 +34,11 @@ export function SectionNav({ items, label = "分区导航" }: { items: readonly 
   }, [ids]);
 
   return <nav ref={root} aria-label={label} data-record-nav className="-mb-px flex min-w-0 gap-4 overflow-x-auto">
-    {items.map(item => <button key={item.id} type="button" aria-current={active === item.id ? "true" : undefined}
+    {items.map(item => <Button key={item.id} type="button" variant="link" size="sm" aria-current={active === item.id ? "true" : undefined}
       onClick={() => { if (showSection(root.current, item.id)) setActive(item.id); }}
-      className="shrink-0 border-b-2 border-transparent pt-1 pb-2 text-[0.8125rem] leading-5 whitespace-nowrap text-muted-foreground outline-none transition-colors duration-(--motion-instant) hover:text-foreground focus-visible:text-foreground focus-visible:underline aria-[current=true]:border-foreground aria-[current=true]:text-foreground pointer-coarse:min-h-10">
+      className="h-auto gap-0 rounded-none border-0 border-b-2 border-transparent px-0 pt-1 pb-2 text-[0.8125rem] leading-5 font-normal text-muted-foreground transition-colors duration-(--motion-instant) hover:text-foreground hover:no-underline focus-visible:text-foreground focus-visible:underline focus-visible:ring-0 aria-[current=true]:border-foreground aria-[current=true]:text-foreground pointer-coarse:min-h-10">
       {item.label}{item.count !== undefined && <span className="ml-1 tabular-nums">{item.count}</span>}
-    </button>)}
+    </Button>)}
   </nav>;
 }
 
@@ -89,11 +90,12 @@ export function RecordNotice({ tone, children, jump }: {
 }) {
   const root = useRef<HTMLDivElement>(null);
   const link = "w-fit text-left underline underline-offset-4 outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring";
+  const button = "h-auto w-fit gap-0 rounded-sm border-0 p-0 text-sm leading-5 font-normal whitespace-normal text-foreground underline";
   return <div ref={root} data-record-notice={tone} className={cn("flex min-w-0 flex-col gap-1 border-l-2 pl-3 text-sm leading-5",
     tone === "danger" ? "border-destructive" : "border-warning-foreground")}>
     <div className="min-w-0 wrap-anywhere">{children}</div>
     {jump && ("section" in jump
-      ? <button type="button" className={link} onClick={() => showSection(root.current, jump.section)}>{jump.label}<span aria-hidden="true"> ›</span></button>
+      ? <Button type="button" variant="link" size="sm" className={button} onClick={() => showSection(root.current, jump.section)}>{jump.label}<span aria-hidden="true"> ›</span></Button>
       : <Link to={jump.to} className={link}>{jump.label}<span aria-hidden="true"> ›</span></Link>)}
   </div>;
 }
