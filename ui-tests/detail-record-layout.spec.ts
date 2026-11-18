@@ -1,4 +1,4 @@
-import type { AuditEventPage } from "../src/shared/audit";
+import type { AuditEventDetail, AuditEventPage } from "../src/shared/audit";
 import type { AdminLedgerDetail } from "../web/src/api/generated/types.gen";
 import { test, expect, login, record } from "./fixtures";
 import { audit, screenshot } from "./audit";
@@ -63,11 +63,19 @@ for (const layout of layouts) {
     expect(auditResponse.status()).toBe(200);
     const savedAudit = (await auditResponse.json() as AuditEventPage).data[0];
     expect(savedAudit, "a saved local audit event supplies the real detail identity").toBeTruthy();
-    const scenarios = [
-      { name: "order", path: manifest.details.orderLong!, copy: "复制内部订单编号", technicalSelector: '[data-detail-section="history"] > .detail-section-content > [data-technical-information]', sections: ["overview", "payments", "notifications", "history"] },
+    const auditPath = `/audit/${savedAudit!.source}/${savedAudit!.event_id}`;
+    const auditDetailResponse = await page.request.get(manifest.origin + "/api/admin/v1" + auditPath.replace("/audit/", "/audit-events/"));
+    expect(auditDetailResponse.status()).toBe(200);
+    const auditDetail = (await auditDetailResponse.json() as { data: AuditEventDetail }).data;
+    // An audit record always states the operation; the other sections follow what was recorded.
+    const auditSections = ["overview", ...(auditDetail.is_aggregate ? ["aggregate"] : []), ...(auditDetail.changes.length ? ["changes"] : []),
+      ...(auditDetail.related_events.length || auditDetail.related_activity_available === false ? ["related"] : [])];
+    // A record with a footer keeps its technical entries in the footer's menu; the others end their content with one entry.
+    const scenarios: Array<{ name: string; path: string; copy: string; sections: string[]; technicalSelector?: string; technicalMenu?: { trigger: string; item: string } }> = [
+      { name: "order", path: manifest.details.orderLong!, copy: "复制内部订单编号", technicalMenu: { trigger: "更多操作，订单操作", item: "订单技术信息" }, sections: ["overview", "payments", "notifications", "history"] },
       { name: "notification", path: manifest.details.notificationDns!, copy: "复制投递编号", technicalSelector: '[data-notification-information] > [data-slot="card-content"] > [data-technical-information]', sections: ["overview", "attempts", "order"] },
       { name: "exception", path: manifest.details.exceptionOpen!, copy: "复制异常编号", technicalSelector: '[data-financial-exception] > [data-slot="card-content"] > [data-technical-information]', sections: [] },
-      { name: "audit", path: `/audit/${savedAudit!.source}/${savedAudit!.event_id}`, copy: "复制日志编号", technicalSelector: '[data-detail-page] > [data-technical-information]', sections: [] },
+      { name: "audit", path: auditPath, copy: "复制日志编号", technicalSelector: '[data-detail-page] > [data-technical-information]', sections: auditSections },
     ];
     const writes: string[] = [], errors: string[] = [];
     page.on("request", request => { if (!["GET", "HEAD", "OPTIONS"].includes(request.method())) writes.push(request.method() + " " + new URL(request.url()).pathname); });
@@ -98,12 +106,19 @@ for (const layout of layouts) {
         const id = `${scenario.name}-${layout.width}-${layout.text}-${layout.theme}`;
         if (layout.width !== 320 || layout.text === 200) await screenshot(page, info, "detail-flow-" + id);
         if (scenario.name === "order") await revealDetailSection(page, "history");
-        const technical = overlay.locator('[data-overlay-detail]').locator(scenario.technicalSelector);
+        const menu = scenario.technicalMenu;
+        // Found by attribute: the page behind an open dialog is hidden from role queries.
+        const technical = menu
+          ? overlay.locator("[data-overlay-footer]").locator(`button[aria-label="${menu.trigger}"]`)
+          : overlay.locator('[data-overlay-detail]').locator(scenario.technicalSelector!);
         await expect(technical).toBeVisible();
-        const placement = await expectTechnicalPlacement(technical);
-        const session = await openTechnicalDialog(page, technical);
+        if (menu) await expect(overlay.locator("[data-overlay-detail] [data-technical-information]"), "a record with a footer has no technical entry in its content").toHaveCount(0);
+        const placement = menu ? [] : await expectTechnicalPlacement(technical);
+        const session = await openTechnicalDialog(page, technical, menu?.item);
         if (scenario.name === "order" && layout.width === 320 && layout.text === 200) {
-          expect(session.opened.before.scroll.top, "the long main detail starts this preservation check at a nonzero scroll position").toBeGreaterThan(0);
+          // Whichever box scrolls at this size, the record is not at its top.
+          const { scroll, contentScroll, primaryScroll } = session.opened.before;
+          expect(scroll.top + contentScroll.top + primaryScroll.top, "the long main detail starts this preservation check at a nonzero scroll position").toBeGreaterThan(0);
         }
         await page.keyboard.press("Tab");
         await expect(session.close).toBeFocused();

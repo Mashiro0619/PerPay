@@ -231,6 +231,8 @@ async function captureParentDetail(parent: Locator) {
         shell,
         primary: shell?.querySelector<HTMLElement>("[data-overlay-primary]") ?? null,
         body: shell?.querySelector<HTMLElement>("[data-overlay-detail]") ?? null,
+        // A short record drawer scrolls the box around the summary and the detail instead of the detail.
+        content: shell?.querySelector<HTMLElement>("[data-overlay-body]") ?? null,
         page: shell?.querySelector<HTMLElement>("[data-detail-page]") ?? null,
         footer: shell?.querySelector<HTMLElement>("[data-overlay-footer]") ?? null,
         fields: [...(shell?.querySelectorAll('[data-overlay-detail] [data-detail-fields] > dl > div') ?? [])],
@@ -249,7 +251,7 @@ async function captureParentDetail(parent: Locator) {
       return {
         url: location.href,
         boxes: { shell: box(current.shell), primary: box(current.primary), body: box(body), page: box(current.page), footer: box(current.footer) },
-        scroll: scroll(body), shellScroll: scroll(current.shell), primaryScroll: scroll(current.primary),
+        scroll: scroll(body), contentScroll: scroll(current.content), shellScroll: scroll(current.shell), primaryScroll: scroll(current.primary),
         fieldCount: current.fields.length,
       };
     };
@@ -281,29 +283,40 @@ async function expectParentDetailPreserved(state: Awaited<ReturnType<typeof capt
   }
   expect(shifted, phase + ": the main detail keeps its position and dimensions").toEqual([]);
   expect(comparison.after.scroll, phase + ": the main detail keeps its scroll position and content extent").toEqual(comparison.before.scroll);
+  expect(comparison.after.contentScroll, phase + ": the box around the summary and the detail keeps its scroll position").toEqual(comparison.before.contentScroll);
   expect(comparison.after.shellScroll, phase + ": the main shell does not acquire its own scroll offset or overflow").toEqual(comparison.before.shellScroll);
   expect(comparison.after.primaryScroll, phase + ": the main primary container keeps its scroll state").toEqual(comparison.before.primaryScroll);
   expect(comparison.after.url, phase + ": opening or reading technical information does not navigate").toBe(comparison.before.url);
   return comparison;
 }
 
-export async function openTechnicalDialog(page: Page, technical: Locator) {
+/**
+ * Opens a record's technical information by keyboard. A record with a footer
+ * keeps its technical entries in the footer's menu: pass that menu's trigger as
+ * `technical` and the entry's name as `menuItem`.
+ */
+export async function openTechnicalDialog(page: Page, technical: Locator, menuItem?: string) {
   const parent = page.locator('[data-overlay-content][data-overlay-record="true"]');
-  const trigger = technical.locator(':scope > button[aria-haspopup="dialog"]');
-  const titleText = (await trigger.innerText()).trim();
+  const trigger = menuItem ? technical : technical.locator(':scope > button[aria-haspopup="dialog"]');
+  const titleText = menuItem ?? (await trigger.innerText()).trim();
   expect(titleText).toMatch(/技术信息$/);
-  await expect(trigger).toHaveAccessibleName(titleText);
+  if (!menuItem) await expect(trigger).toHaveAccessibleName(titleText);
   await expect(trigger).toHaveAttribute("aria-expanded", "false");
   await expect(technical.locator("pre, [data-detail-fields]")).toHaveCount(0);
-  const frameScroll = () => parent.evaluate(parent => ({ top: parent.scrollTop, left: parent.scrollLeft,
-    primaryTop: parent.querySelector("[data-overlay-primary]")!.scrollTop, primaryLeft: parent.querySelector("[data-overlay-primary]")!.scrollLeft }));
+  const frameScroll = () => parent.evaluate(parent => {
+    const primary = parent.querySelector<HTMLElement>("[data-overlay-primary]")!;
+    // A drawer too short for a fixed title and actions scrolls its primary column as one page; otherwise that column never scrolls.
+    const paged = /^(auto|scroll)$/.test(getComputedStyle(primary).overflowY);
+    return { top: parent.scrollTop, left: parent.scrollLeft, primaryTop: paged ? null : primary.scrollTop, primaryLeft: primary.scrollLeft };
+  });
   const originalFrameScroll = await frameScroll();
   await trigger.scrollIntoViewIfNeeded();
   await trigger.focus();
   await waitForControlAnimations(trigger);
-  expect(await frameScroll(), "revealing technical information scrolls only the main body, never its shell").toEqual(originalFrameScroll);
+  expect(await frameScroll(), "revealing technical information scrolls only the record's own scroller, never its shell").toEqual(originalFrameScroll);
   const parentState = await captureParentDetail(parent);
   await page.keyboard.press("Enter");
+  if (menuItem) await page.getByRole("menuitem", { name: menuItem, exact: true }).click();
   const dialog = page.locator("[data-technical-dialog]:visible");
   await expect(dialog).toHaveCount(1);
   await expect(dialog).toHaveAttribute("role", "dialog");
@@ -315,7 +328,8 @@ export async function openTechnicalDialog(page: Page, technical: Locator) {
   const body = dialog.locator(":scope > [data-admin-dialog-body]");
   const pre = body.getByRole("group", { name: titleText, exact: true }).and(body.locator("pre"));
   await expect(title).toBeFocused();
-  await expect(trigger).toHaveAttribute("aria-expanded", "true");
+  // A direct entry stays marked as expanded while its dialog is open; a menu has closed by then.
+  await expect(trigger).toHaveAttribute("aria-expanded", menuItem ? "false" : "true");
   await expect(pre).toBeVisible();
   await expect(technical.locator("pre, [data-detail-fields]")).toHaveCount(0);
   expect(await dialog.evaluate(element => !element.closest('[data-overlay-content]')), "technical information is portaled outside the main detail").toBe(true);
