@@ -9,6 +9,10 @@ export type TechnicalEntry = {
   title: string;
   data: unknown;
   identifiers?: ReadonlyArray<readonly [string, string | null]>;
+  /** Distinguishes entries that share a title; defaults to the title. */
+  id?: string;
+  /** Shown after the title in the menu, to tell entries with the same title apart. */
+  note?: string;
 };
 
 /**
@@ -28,11 +32,14 @@ export function ActionBar({ primary, secondary, menu = [], menuLabel, technical 
   const [shown, setShown] = useState<string | null>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   if (!primary && !secondary && !menu.length && !technical.length) return null;
+  const key = (entry: TechnicalEntry) => entry.id ?? entry.title;
   return <OverlayActions className="justify-start">
     <ActionMenu align="start" actions={menu} label={menuLabel} text="更多" triggerRef={trigger}
-      extra={technical.map(entry => <DropdownMenuItem key={entry.title} onClick={() => setShown(entry.title)}><Code aria-hidden="true" />{entry.title}</DropdownMenuItem>)} />
+      extra={technical.map(entry => <DropdownMenuItem key={key(entry)} onClick={() => setShown(key(entry))}>
+        <Code aria-hidden="true" />{entry.title}{entry.note && <> · <span className="text-muted-foreground">{entry.note}</span></>}
+      </DropdownMenuItem>)} />
     {(primary || secondary) && <div data-record-primary-actions className="ml-auto flex min-w-0 flex-wrap justify-end gap-2 max-md:flex-1 max-md:[&>*]:flex-1">{secondary}{primary}</div>}
-    {technical.map(entry => <TechnicalDetailsDialog key={entry.title} open={shown === entry.title} onOpenChange={open => setShown(open ? entry.title : null)}
+    {technical.map(entry => <TechnicalDetailsDialog key={key(entry)} open={shown === key(entry)} onOpenChange={open => setShown(open ? key(entry) : null)}
       finalFocus={() => trigger.current} data={entry.data} identifiers={entry.identifiers ?? []} title={entry.title} />)}
   </OverlayActions>;
 }

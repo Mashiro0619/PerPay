@@ -334,4 +334,18 @@ describe("record action bar", () => {
     expect(pathname(await screen.findByRole("menuitem", { name: elsewhere.label }))).toBe(elsewhere.to);
     expect(pathname(screen.getByRole("menuitem", { name: here.label }))).toBe("/sites/site-a" + here.to);
   });
+
+  it("keeps technical entries with the same title apart by a note", async () => {
+    at("/record", <ActionBar menuLabel="更多操作，订单操作" technical={[
+      { id: "match-1", title: "收款关联技术信息", note: "12:03:40", data: { match: 1 } },
+      { id: "match-2", title: "收款关联技术信息", note: "12:08:11", data: { match: 2 } },
+    ]} />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "更多操作，订单操作" }));
+    expect((await screen.findAllByRole("menuitem")).map(item => item.textContent)).toEqual(["收款关联技术信息 · 12:03:40", "收款关联技术信息 · 12:08:11"]);
+    await user.click(screen.getByRole("menuitem", { name: /12:08:11$/ }));
+    const dialog = await screen.findByRole("dialog", { name: "收款关联技术信息" });
+    expect(dialog).toHaveTextContent('"match": 2');
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+  });
 });
