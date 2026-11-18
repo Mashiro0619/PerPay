@@ -9,13 +9,15 @@ for (const touch of [false, true]) {
       await login(page, manifest);
       await page.goto(manifest.origin + "/admin" + manifest.details.orderLong!);
       const parent = await settleOverlay(page);
-      const technical = parent.locator('[data-detail-section="history"] > .detail-section-content > [data-technical-information]');
+      // The order keeps its technical entries in the footer's menu. Found by attribute: the page behind an open dialog is hidden from role queries.
+      const technical = parent.locator('[data-overlay-footer] button[aria-label="更多操作，订单操作"]');
+      const entry = "订单技术信息";
       const url = page.url();
       const writes: string[] = [];
       page.on("request", request => { if (!["GET", "HEAD", "OPTIONS"].includes(request.method())) writes.push(request.method()); });
       const dismissals = [];
       for (const target of ["parent-close", "page-background"] as const) {
-        const session = await openTechnicalDialog(page, technical);
+        const session = await openTechnicalDialog(page, technical, entry);
         await session.pre.click();
         await expect(session.dialog).toBeVisible();
         const corner = parent.locator('[data-overlay-primary] > [data-slot="dialog-header"] [data-slot="dialog-close"]');
@@ -38,7 +40,7 @@ for (const touch of [false, true]) {
         dismissals.push({ target, point, restored });
       }
       if (!touch) {
-        const session = await openTechnicalDialog(page, technical);
+        const session = await openTechnicalDialog(page, technical, entry);
         const inside = (await session.body.boundingBox())!;
         await page.mouse.move(inside.x + 12, inside.y + inside.height / 2);
         await page.mouse.down();
