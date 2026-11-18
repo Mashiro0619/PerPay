@@ -9,6 +9,8 @@ export type Field = {
   kind?: "text" | "money" | "id" | "time";
   /** Text placed on the clipboard by the row's copy button. */
   copy?: string | null | undefined;
+  /** Accessible name of the copy button; "复制" followed by the label when omitted. */
+  copyLabel?: string;
   hint?: ReactNode;
 };
 
@@ -40,7 +42,7 @@ export function FieldList({ items, className }: {
             <div className="flex min-w-0 items-start gap-1">
               <span className={cn("min-w-0 whitespace-pre-wrap wrap-anywhere", valueKinds[field.kind ?? "text"])}>{empty ? "—" : field.value}</span>
               {field.copy && <span data-field-copy className="-my-0.5 shrink-0 opacity-0 transition-opacity duration-(--motion-instant) group-focus-within/field:opacity-100 group-hover/field:opacity-100 has-[[data-copy-state]:not([data-copy-state=idle])]:opacity-100 pointer-coarse:opacity-100">
-                <CopyValue buttonOnly size="icon-xs" value={field.copy} label={"复制" + field.label} />
+                <CopyValue buttonOnly size="icon-xs" value={field.copy} label={field.copyLabel ?? "复制" + field.label} />
               </span>}
             </div>
             {field.hint && <p className="text-xs leading-4 text-muted-foreground">{field.hint}</p>}

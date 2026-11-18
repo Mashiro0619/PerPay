@@ -48,6 +48,14 @@ describe("record field list", () => {
     await waitFor(() => expect(copy).toHaveAttribute("data-copy-state", "success"));
   });
 
+  it("names the copy button after the label unless a name is given", () => {
+    render(<FieldList items={[
+      { label: "商户订单号", value: "M2026", copy: "M2026" },
+      { label: "操作编号", value: "op-1", copy: "op-1", copyLabel: "复制标记操作编号" },
+    ]} />);
+    expect(screen.getAllByRole("button").map(button => button.getAttribute("aria-label"))).toEqual(["复制商户订单号", "复制标记操作编号"]);
+  });
+
   it("renders nothing when no field is present", () => {
     const { container } = render(<FieldList items={[false, undefined]} />);
     expect(container).toBeEmptyDOMElement();
