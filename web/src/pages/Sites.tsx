@@ -9,11 +9,13 @@ import { useLocation, useNavigation, useParams } from "react-router";
 import { PageHeading } from "@/components/page-heading";
 import { PageHeaderActions } from "@/components/page-header-actions";
 import { RefreshButton } from "@/components/refresh-button";
-import { DetailFields, DetailPage } from "@/components/detail/DetailPrimitives";
-import { DetailSection } from "@/components/detail/DetailSections";
+import { DetailPage } from "@/components/detail/DetailPrimitives";
+import { ActionBar } from "@/components/record/ActionBar";
+import { FieldList } from "@/components/record/FieldList";
+import { RecordSummary } from "@/components/record/RecordSummary";
 import { ScrollingTabs } from "@/components/scrolling-tabs";
 import { SettingsSummary, type SettingsSummaryRow } from "@/components/settings-summary";
-import { OverlayActions } from "@/components/overlay-actions";
+import { OverlayActions, OverlaySummary } from "@/components/overlay-actions";
 import { useOverlayCloseGuard, useOverlayContext } from "@/lib/overlay-context";
 import { overviewQueries, overviewRange } from "@/api/workspace-queries";
 import { count, dateTime, durationLabel, money } from "@/lib/format";
@@ -188,29 +190,42 @@ export function SiteSummaryOverlay() {
   const queries = overviewQueries(clientId ?? null, range);
   const analytics = useQuery({ ...queries.analytics, enabled: !!clientId, placeholderData: undefined });
   const work = useQuery(queries.workSummary);
-  return <QueryView query={site}>{({ site: current }) => <DetailPage>
-    <PageHeading title={current.configuration.name} />
-    <PageHeaderActions><RefreshButton disabled={site.isFetching || analytics.isFetching || work.isFetching} busy={site.isFetching || analytics.isFetching || work.isFetching} onClick={() => {
-      void site.refetch();
-      void analytics.refetch();
-      void work.refetch();
-    }} /></PageHeaderActions>
-    <ErrorNotice error={analytics.error} retry={() => { void analytics.refetch(); }} />
-    <ErrorNotice error={work.error} retry={() => { void work.refetch(); }} />
-    <DetailSection title="网站概况"><DetailFields wide={["客户端 ID"]} items={[
-      ["接单状态", <Badge variant={current.configuration.accepting_orders ? "success" : "warning"}>{current.configuration.accepting_orders ? "接单中" : "暂停接单"}</Badge>],
-      ["通知", current.configuration.notifications_enabled ? "开启" : "关闭"],
-      ["近 " + range + " 天实收", analytics.data ? money(analytics.data.data.confirmations.amount_cents) : analytics.isPending ? "正在读取…" : "暂不可用"],
-      ["收款确认笔数", analytics.data ? count(analytics.data.data.confirmations.count) : "—"],
-      ["当前待付款", analytics.data ? count(analytics.data.data.pending.orders) : "—"],
-      ["待处理", work.data?.data ? count(work.data.data.total) : "—"],
-      ["客户端 ID", <CopyValue value={current.api_client_id ?? current.client_id} label="复制客户端 ID" />],
-    ]} /></DetailSection>
-    <OverlayActions>
-      <Link to={"/sites/" + encodeURIComponent(current.client_id) + "/edit?section=basic"} className={buttonVariants({ variant: "outline" })}>编辑网站</Link>
-      <Link to={"/sites/" + encodeURIComponent(current.client_id) + "?range=" + range} className={buttonVariants()}>查看网站总览</Link>
-    </OverlayActions>
-  </DetailPage>}</QueryView>;
+  return <QueryView query={site}>{({ site: current }) => {
+    const period = analytics.data?.data;
+    const pending = work.data?.data;
+    // A statistic that has not been read is left out rather than shown as a number.
+    const conclusion = [
+      "近 " + range + " 天实收",
+      period && "收款确认 " + count(period.confirmations.count) + " 笔",
+      period && "当前待付款 " + count(period.pending.orders),
+      pending && "待处理 " + count(pending.total),
+    ].filter(Boolean).join(" · ");
+    return <DetailPage>
+      <PageHeading title={current.configuration.name} />
+      <PageHeaderActions><RefreshButton disabled={site.isFetching || analytics.isFetching || work.isFetching} busy={site.isFetching || analytics.isFetching || work.isFetching} onClick={() => {
+        void site.refetch();
+        void analytics.refetch();
+        void work.refetch();
+      }} /></PageHeaderActions>
+      <OverlaySummary>
+        {/* The placeholder keeps the height of the amount, so the fixed area does not move when it arrives. */}
+        <RecordSummary label="网站概况" size={period ? "amount" : "phrase"}
+          value={period ? money(period.confirmations.amount_cents)
+            : <span className="inline-flex min-h-9 items-center max-md:min-h-8">{analytics.isPending ? "正在读取…" : "暂不可用"}</span>}
+          status={<Badge variant={current.configuration.accepting_orders ? "success" : "warning"}>{current.configuration.accepting_orders ? "接单中" : "暂停接单"}</Badge>}
+          meta={[conclusion]} />
+      </OverlaySummary>
+      <ErrorNotice error={analytics.error} retry={() => { void analytics.refetch(); }} />
+      <ErrorNotice error={work.error} retry={() => { void work.refetch(); }} />
+      <FieldList items={[
+        { label: "通知", value: current.configuration.notifications_enabled ? "开启" : "关闭" },
+        { label: "客户端 ID", value: current.api_client_id ?? current.client_id, kind: "id", copy: current.api_client_id ?? current.client_id },
+      ]} />
+      <ActionBar menuLabel="更多操作，网站操作"
+        primary={<Link to={"/sites/" + encodeURIComponent(current.client_id) + "?range=" + range} className={buttonVariants()}>查看网站总览</Link>}
+        secondary={<Link to={"/sites/" + encodeURIComponent(current.client_id) + "/edit?section=basic"} className={buttonVariants({ variant: "outline" })}>编辑网站</Link>} />
+    </DetailPage>;
+  }}</QueryView>;
 }
 
 export function SiteEditorPage() {
