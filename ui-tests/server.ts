@@ -1,8 +1,8 @@
 import { serve } from "@hono/node-server";
-import { createServer } from "node:net";
 import { createPreviewDemo } from "../scripts/preview-demo.ts";
 import { PublicCheckoutRateLimiter } from "../src/http/public-checkout-rate-limit.ts";
 import { renderCheckoutPage } from "../src/http/web/checkout.ts";
+import { loopbackPort } from "./loopback-port.ts";
 
 if (!process.send) throw new Error("UI fixture requires an IPC parent");
 const epoch = Date.UTC(2026, 9, 15, 6);
@@ -21,15 +21,7 @@ PublicCheckoutRateLimiter.prototype.take = function (address: string) {
 };
 // This test process uses only isolated synthetic stores and never external transports.
 globalThis.fetch = async () => { throw new Error("External fetch is forbidden in UI fixtures"); };
-async function freePort() {
-  const probe = createServer();
-  await new Promise<void>((resolve, reject) => { probe.once("error", reject); probe.listen(0, "127.0.0.1", resolve); });
-  const address = probe.address();
-  if (!address || typeof address === "string") throw new Error("Missing loopback port");
-  await new Promise<void>((resolve, reject) => probe.close(error => error ? reject(error) : resolve()));
-  return address.port;
-}
-const demo = await createPreviewDemo({ port: process.env.PERPAY_UI_PORT ? Number(process.env.PERPAY_UI_PORT) : await freePort(), now, clock: () => now });
+const demo = await createPreviewDemo({ port: process.env.PERPAY_UI_PORT ? Number(process.env.PERPAY_UI_PORT) : await loopbackPort(), now, clock: () => now });
 const login = await demo.app.request(demo.origin + "/api/admin/v1/session/login", {
   method: "POST", headers: { "Content-Type": "application/json", Origin: demo.origin }, body: JSON.stringify({ password: demo.password }),
 });

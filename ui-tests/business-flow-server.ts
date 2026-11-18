@@ -3,7 +3,6 @@ import { serve } from "@hono/node-server";
 import { createHash, generateKeyPairSync, randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { mkdtempSync, rmSync } from "node:fs";
-import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { AlipayAccountService } from "../src/alipay-accounts/service.ts";
@@ -27,6 +26,7 @@ import { UpdateCheckUnavailable } from "../src/update/checker.ts";
 import { createConfiguredHttpServices, HTTP_TEST_ADMIN_PASSWORD } from "../test/http-fixture.ts";
 import { recordLedgerEntry } from "../test/reconciliation-http-fixture.ts";
 import type { AdminOrderDetail, FinancialException, Order, OrderWebhookDeliveryDetail, Site } from "../web/src/api/generated/types.gen.ts";
+import { loopbackPort } from "./loopback-port.ts";
 
 export type NotificationMode = "retryable-failure" | "success";
 export interface ReceiverCall {
@@ -41,12 +41,8 @@ export interface ReceiverCall {
  * synthetic. No RuntimeController or NodeWebhookTransport is started.
  */
 export async function createBusinessFlowFixture(epoch = Date.now()) {
-  const probe = createServer();
-  probe.listen(0, "127.0.0.1"); await once(probe, "listening");
-  const address = probe.address();
-  if (!address || typeof address === "string") throw new Error("Missing business fixture address");
-  await new Promise<void>(done => probe.close(() => done()));
-  const origin = `http://127.0.0.1:${address.port}`;
+  const port = await loopbackPort();
+  const origin = `http://127.0.0.1:${port}`;
   const directory = mkdtempSync(join(tmpdir(), "perpay-business-browser-"));
   let ownedServices: Awaited<ReturnType<typeof createConfiguredHttpServices>> | undefined;
   let ownedActivity: ActivityRecorder | undefined, ownedServer: ReturnType<typeof serve> | undefined;
@@ -132,7 +128,7 @@ export async function createBusinessFlowFixture(epoch = Date.now()) {
     webhookHealth: () => ({ ...healthy(), pendingDeliveries: webhooks.counts().pending, deadLetters: webhooks.counts().dead }),
     onWebhookAvailable: () => undefined, // Tests explicitly tick the real processor to observe failure/retry states.
   });
-  const server = serve({ fetch: app.fetch, hostname: "127.0.0.1", port: address.port }); ownedServer = server; await once(server, "listening");
+  const server = serve({ fetch: app.fetch, hostname: "127.0.0.1", port }); ownedServer = server; await once(server, "listening");
   activity.start();
   const login = await app.request(origin + "/api/admin/v1/session/login", { method: "POST", headers: { origin, "content-type": "application/json" },
     body: JSON.stringify({ password: HTTP_TEST_ADMIN_PASSWORD }) });

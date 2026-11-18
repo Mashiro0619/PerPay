@@ -1,7 +1,6 @@
 import { serve } from "@hono/node-server";
 import { once } from "node:events";
 import { mkdtempSync, rmSync } from "node:fs";
-import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { createApp, type AppDependencies } from "../src/http/app";
@@ -11,6 +10,7 @@ import { ReconciliationStore } from "../src/reconciliation/store";
 import { UpdateCheckUnavailable } from "../src/update/checker";
 import { createConfiguredHttpServices, HTTP_TEST_ADMIN_PASSWORD } from "../test/http-fixture";
 import { recordLedgerEntry } from "../test/reconciliation-http-fixture";
+import { loopbackPort } from "./loopback-port";
 
 /** Writable temporary SQLite fixture; no provider or notification transport runs. */
 export async function createSettingsServer(epoch: number, options: {
@@ -20,13 +20,8 @@ export async function createSettingsServer(epoch: number, options: {
   runtime?: (services: Awaited<ReturnType<typeof createConfiguredHttpServices>>) => Partial<Pick<AppDependencies,
     "runtimeStatus" | "ledgerHealth" | "ledgerNextRunAt" | "ledgerManualScan" | "requestLedgerScan" | "alipayAccounts" | "accountHealth" | "reconciliationHealth" | "orders" | "ledger" | "reconciliation">>;
 } = {}) {
-  const probe = createServer();
-  probe.listen(0, "127.0.0.1");
-  await once(probe, "listening");
-  const address = probe.address();
-  if (!address || typeof address === "string") throw new Error("Missing fixture address");
-  await new Promise<void>(resolveClose => probe.close(() => resolveClose()));
-  const origin = `http://127.0.0.1:${address.port}`;
+  const port = await loopbackPort();
+  const origin = `http://127.0.0.1:${port}`;
   const directory = mkdtempSync(join(tmpdir(), "perpay-settings-browser-"));
   const services = await createConfiguredHttpServices({ directory, publicUrl: origin,
     apiSecret: null, collectionCodePayload: "https://qr.alipay.com/isolated-settings-fixture", identityClock: () => epoch });
@@ -34,7 +29,7 @@ export async function createSettingsServer(epoch: number, options: {
     updateChecker: options.updateChecker ?? { check: async () => { throw new UpdateCheckUnavailable(3600); } },
     demoMode: options.demoMode ?? false,
   });
-  const server = serve({ fetch: app.fetch, hostname: "127.0.0.1", port: address.port });
+  const server = serve({ fetch: app.fetch, hostname: "127.0.0.1", port });
   await once(server, "listening");
   const response = await app.request(origin + "/api/admin/v1/session/login", {
     method: "POST", headers: { "content-type": "application/json", origin },
