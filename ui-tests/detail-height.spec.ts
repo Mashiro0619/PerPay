@@ -57,9 +57,17 @@ async function measure(dialog: Locator) {
   return dialog.evaluate(element => {
     const viewport = window.visualViewport;
     const header = element.querySelector<HTMLElement>('[data-slot="dialog-header"]')!;
-    const body = element.querySelector<HTMLElement>("[data-overlay-detail]")!;
+    // Editors and tall record drawers scroll the detail. A record drawer too short for a fixed summary scrolls the box
+    // around the summary and the detail; one too short for a fixed title and actions scrolls its whole column as a page.
+    const boxes = { page: element.querySelector<HTMLElement>("[data-overlay-primary]")!, content: element.querySelector<HTMLElement>("[data-overlay-body]")!,
+      detail: element.querySelector<HTMLElement>("[data-overlay-detail]")! };
+    const mode = (["page", "content", "detail"] as const).find(name => {
+      const style = getComputedStyle(boxes[name]);
+      return style.display !== "contents" && /^(auto|scroll)$/.test(style.overflowY);
+    })!;
+    const body = boxes[mode];
     const footer = element.querySelector<HTMLElement>("[data-overlay-footer]")!;
-    return { viewport: { width: viewport?.width ?? innerWidth, height: viewport?.height ?? innerHeight,
+    return { mode, viewport: { width: viewport?.width ?? innerWidth, height: viewport?.height ?? innerHeight,
       left: viewport?.offsetLeft ?? 0, top: viewport?.offsetTop ?? 0 }, box: element.getBoundingClientRect().toJSON(),
       header: header.getBoundingClientRect().toJSON(), footer: footer.getBoundingClientRect().toJSON(),
       body: { box: body.getBoundingClientRect().toJSON(), height: body.clientHeight, scrollHeight: body.scrollHeight, scrollTop: body.scrollTop },
@@ -91,14 +99,22 @@ function bounded(geometry: Awaited<ReturnType<typeof measure>>, shape: "screen" 
 async function scrollBody(page: Page, dialog: Locator) {
   const before = await measure(dialog);
   expect(before.body.scrollHeight).toBeGreaterThan(before.body.height + 1);
-  const body = dialog.locator("[data-overlay-detail]");
+  const body = dialog.locator({ page: "[data-overlay-primary]", content: "[data-overlay-body]", detail: "[data-overlay-detail]" }[before.mode]);
   await body.hover();
   await page.mouse.wheel(0, 10_000);
   await expect.poll(() => body.evaluate(element => element.scrollTop)).toBeGreaterThan(before.body.scrollTop);
   await expect.poll(() => body.evaluate(element => element.scrollTop + element.clientHeight >= element.scrollHeight - 2)).toBe(true);
   const after = await measure(dialog);
-  expect(after.header).toEqual(before.header);
-  expect(after.footer).toEqual(before.footer);
+  expect(after.mode).toBe(before.mode);
+  if (before.mode === "page") {
+    // Nothing is fixed: the title leaves with the content, and the actions arrive inside the drawer at the end.
+    expect(after.header.bottom).toBeLessThan(before.header.bottom);
+    expect(after.footer.top).toBeLessThan(before.footer.top);
+    expect(after.footer.bottom).toBeLessThanOrEqual(after.box.bottom + 1);
+  } else {
+    expect(after.header).toEqual(before.header);
+    expect(after.footer).toEqual(before.footer);
+  }
   expect(after.box).toEqual(before.box);
   expect(after.windowScroll).toEqual(before.windowScroll);
   return { before, after };
@@ -127,12 +143,17 @@ for (const layout of layouts) {
     const initial = await measure(dialog);
     bounded(initial, layout.width < 768 ? "screen" : "drawer");
     expect(initial.rootFont).toBe(16 * layout.text / 100);
+    // The drawer's height in rem decides how much stays fixed, so enlarged text counts as a shorter drawer.
+    const drawerRem = initial.box.height / initial.rootFont;
+    expect(initial.mode).toBe(drawerRem < 20 ? "page" : drawerRem < 36 ? "content" : "detail");
+    expect(initial.body.height, "fixed parts never leave the record's content less than a third of the drawer").toBeGreaterThanOrEqual(initial.box.height / 3);
     await reachable(dialog.locator("[data-overlay-heading]"));
     await reachable(dialog.getByRole("button", { name: "关闭对话框", exact: true }));
     await screenshot(page, info, "long-detail-top");
     const detailScroll = await scrollBody(page, dialog);
-    const technical = dialog.locator('[data-detail-section="history"]').getByRole("button", { name: "订单技术信息", exact: true });
-    await reachable(technical);
+    // At the end of the record its last section is in view, and the actions are within reach whether fixed or scrolled to.
+    await expect(dialog.locator('[data-detail-section="history"]')).toBeInViewport();
+    await reachable(dialog.locator("[data-overlay-footer]").getByRole("button", { name: "更多操作，订单操作", exact: true }));
     await screenshot(page, info, "long-detail-bottom");
     await dialog.getByRole("button", { name: "关闭对话框", exact: true }).click();
     await expect(dialog).toHaveCount(0);
@@ -155,7 +176,7 @@ for (const layout of layouts) {
     await expect(dialog).toHaveCount(0);
     if (layout.width === 768) {
       await page.goto(fixture.origin + "/admin/orders/" + fixture.orderId);
-      const associate = dialog.locator("[data-order-association-prompt]").getByRole("button", { name: "人工关联收款", exact: true });
+      const associate = dialog.locator("[data-overlay-footer] [data-record-primary-actions]").getByRole("button", { name: "人工关联收款", exact: true });
       await associate.click();
       const manual = page.getByRole("dialog", { name: "人工关联收款", exact: true });
       await manual.getByRole("searchbox", { name: "搜索收入流水", exact: true }).fill("detail-height-income");
