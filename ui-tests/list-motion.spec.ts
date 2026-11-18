@@ -8,15 +8,29 @@ async function completeText(target: Locator) {
   const geometry = await target.evaluate(element => {
     const box = element.getBoundingClientRect();
     const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
-    const lines: { left: number; right: number; top: number; bottom: number }[] = [];
+    // pre-wrap may hang a line-ending space outside its line box. Only visible
+    // characters are text here; they are gathered into one box per line.
+    const rows = new Map<number, { left: number; right: number; top: number; bottom: number }>();
+    const range = document.createRange();
     while (walker.nextNode()) {
       const node = walker.currentNode;
       if (!node.textContent?.trim() || node.parentElement?.closest('.sr-only, [aria-hidden="true"]')) continue;
-      const range = document.createRange();
-      range.selectNodeContents(node);
-      lines.push(...Array.from(range.getClientRects(), rect => ({ left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom })));
+      let offset = 0;
+      for (const character of node.textContent) {
+        const start = offset;
+        offset += character.length;
+        if (!character.trim()) continue;
+        range.setStart(node, start);
+        range.setEnd(node, offset);
+        for (const rect of range.getClientRects()) {
+          if (!rect.width || !rect.height) continue;
+          const row = rows.get(Math.round(rect.top));
+          if (!row) rows.set(Math.round(rect.top), { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom });
+          else { row.left = Math.min(row.left, rect.left); row.right = Math.max(row.right, rect.right); row.bottom = Math.max(row.bottom, rect.bottom); }
+        }
+      }
     }
-    return { box: { left: box.left, right: box.right, top: box.top, bottom: box.bottom }, lines };
+    return { box: { left: box.left, right: box.right, top: box.top, bottom: box.bottom }, lines: [...rows.values()] };
   });
   expect(geometry.lines.length).toBeGreaterThan(0);
   expect(geometry.lines.every(line => line.left >= geometry.box.left - 1 && line.right <= geometry.box.right + 1), "complete detail text fits horizontally").toBe(true);
