@@ -33,7 +33,12 @@ export async function expectOverlayFits(page: Page) {
       return box.width > 0 && box.height > 0 && getComputedStyle(node).overflowY === "auto" && node.scrollHeight > node.clientHeight + 2;
     }).map(node => ({ tag: node.tagName, detail: node.hasAttribute("data-overlay-detail"), step: node.hasAttribute("data-admin-dialog-scroll") }));
     const footer = element.querySelector<HTMLElement>("[data-overlay-footer]");
-    return { viewport, rect: rect.toJSON(), scrolling,
+    // A record drawer too short for a fixed title and actions scrolls them with its content.
+    let footerPaged = false;
+    for (let node = footer?.parentElement ?? null; node && node !== element; node = node.parentElement) {
+      if (getComputedStyle(node).overflowY === "auto" && node.scrollHeight > node.clientHeight + 2) footerPaged = true;
+    }
+    return { viewport, rect: rect.toJSON(), scrolling, footerPaged,
       footer: footer?.getBoundingClientRect().toJSON(),
       documentOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1 };
   });
@@ -52,7 +57,7 @@ export async function expectOverlayFits(page: Page) {
       expect(Math.abs(geometry.rect.height - geometry.viewport.height)).toBeLessThanOrEqual(1);
     }
     expect(geometry.scrolling).toHaveLength(geometry.scrolling.length ? 1 : 0);
-    if (geometry.footer?.height) expect(geometry.footer.bottom).toBeLessThanOrEqual(geometry.rect.bottom + 1);
+    if (geometry.footer?.height && !geometry.footerPaged) expect(geometry.footer.bottom).toBeLessThanOrEqual(geometry.rect.bottom + 1);
   }).toPass({ timeout: 10_000 });
   return geometry;
 }
