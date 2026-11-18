@@ -24,7 +24,7 @@ export function Disclosure({ label, count, defaultOpen = false, children }: {
     return () => element.removeEventListener(REVEAL_EVENT, reveal);
   }, []);
   return <Collapsible ref={root} open={open} onOpenChange={setOpen} data-record-disclosure className="flex min-w-0 flex-col">
-    <CollapsibleTrigger render={<Button variant="ghost" size="sm" className="group/disclosure -ml-2 h-auto min-h-7 max-w-full self-start whitespace-normal text-left text-[0.8125rem] font-medium text-muted-foreground" />}>
+    <CollapsibleTrigger render={<Button variant="ghost" size="sm" className="group/disclosure -ml-2 h-auto min-h-7 max-w-full self-start whitespace-normal text-left text-[0.8125rem] font-medium text-muted-foreground aria-expanded:bg-transparent aria-expanded:text-muted-foreground aria-expanded:hover:bg-muted aria-expanded:hover:text-foreground" />}>
       <ChevronRight data-icon="inline-start" aria-hidden="true" className="transition-transform duration-(--motion-base) ease-(--motion-ease-move) group-aria-expanded/disclosure:rotate-90" />
       <span>{label}{count !== undefined && <span className="ml-1 font-normal tabular-nums">{count}</span>}</span>
     </CollapsibleTrigger>
