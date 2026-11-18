@@ -32,8 +32,11 @@ test("audit reads actual saved events, opens a detail, and exports the matching 
   await page.locator(`a[data-row-link][href*="${first.event_id}"]`).click();
   const overlay = page.locator("[data-overlay-content]");
   await expect(overlay).toBeVisible();
-  await expect(page.getByRole("heading", { level: 1, name: "审计日志详情" })).toBeVisible();
+  // The record is titled by its action; the record type moves to the line above the title.
   await expect(page.getByRole("group", { name: "日志概况", exact: true })).toBeVisible();
+  await expect(overlay.locator("[data-overlay-eyebrow-text]")).toContainText("审计日志详情");
+  await expect(overlay.getByRole("heading", { level: 1 })).not.toHaveText("审计日志详情");
+  await expect(overlay.getByRole("region", { name: "操作信息", exact: true }).getByText(first.event_id, { exact: true })).toBeVisible();
   await overlay.locator('[data-slot="dialog-close"]').click();
   await expect(page).toHaveURL(/\/admin\/audit\?source=core/);
   if (selectedSite) expect(new URL(page.url()).searchParams.get("selected_site")).toBe(selectedSite);
@@ -116,7 +119,7 @@ test("audit summaries, source details and configuration changes stay readable ac
     await link.click();
     const overlay = page.locator("[data-overlay-content]");
     await expect(overlay).toBeVisible();
-    await expect(page.getByRole("group", { name: "配置变更", exact: true })).toBeVisible();
+    await expect(page.getByRole("region", { name: "配置变更", exact: true })).toBeVisible();
     await expect(page.getByText("已更换（值不记录）", { exact: true })).toBeVisible();
     const closedLayout = await expectDetailRecordLayout(page);
     await record(page, info, { auditSource: "synthetic edge cases", width, theme, view: "detail", layout: closedLayout });
