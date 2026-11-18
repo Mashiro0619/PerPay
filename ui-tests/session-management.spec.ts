@@ -123,10 +123,18 @@ test("session rows fill their own card across themes and narrow or wide content"
     await record(page, info, { feature: "login-session-card", width, theme, mode, geometry, source: "synthetic-public-session-metadata" });
     if (width === 320 || width === 390 || width === 1180 || width === 1440) await screenshot(page, info, `sessions-${width}-${theme}`);
     await card.getByRole("link", { name: "Chrome · Android", exact: true }).click();
-    const detail = page.getByRole("dialog", { name: "登录会话详情", exact: true });
-    await expect(detail.getByText(ipv6, { exact: true })).toBeVisible();
-    await expect(detail.getByText(state.rows[1]!.user_agent!, { exact: true })).toBeVisible();
-    await detail.locator('[data-overlay-actions]').getByRole("button", { name: "关闭", exact: true }).click();
+    // The drawer is titled by the browser and system; the record type moves to the line above.
+    const detail = page.getByRole("dialog", { name: "Chrome · Android", exact: true });
+    await expect(detail.locator("[data-overlay-eyebrow-text]")).toHaveText("登录会话详情");
+    await expect(detail.locator("[data-overlay-detail]").getByText(ipv6, { exact: true })).toBeVisible();
+    // The raw User-Agent stays collapsed until it is asked for.
+    const agent = detail.getByText(state.rows[1]!.user_agent!, { exact: true });
+    await expect(agent).toBeHidden();
+    await detail.getByRole("button", { name: "设备信息", exact: true }).click();
+    await expect(agent).toBeVisible();
+    // Only the session's own action is left in the footer; the drawer closes from its header.
+    await expect(detail.locator("[data-overlay-footer]").getByRole("button")).toHaveText(["撤销此会话"]);
+    await detail.locator('[data-slot="dialog-close"]').click();
     await expect(detail).toBeHidden();
   }
   expect(state.writes).toEqual([]);
