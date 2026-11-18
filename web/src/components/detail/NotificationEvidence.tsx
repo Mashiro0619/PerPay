@@ -1,4 +1,3 @@
-import { useQuery } from '@/lib/workspace-query';
 import { useWorkspace, useWorkspaceApi } from "@/workspace";
 import { Button } from "@/components/ui/button";
 import { SiteIdentity } from "@/components/site-identity";
@@ -6,9 +5,8 @@ import { useEffect, useRef, useState } from "react";
 import { Info } from "lucide-react";
 import { Link, useNavigate } from "@/navigation";
 
-import { result, type OrderWebhookDeliveryDetail, type WebhookDeliveryDetail, type WebhookAttempt } from "@/api/client";
+import { result, type WebhookDeliveryDetail, type WebhookAttempt } from "@/api/client";
 import { refreshNotificationRecords } from "@/lib/record-refresh";
-import { useCursor } from "@/lib/cursor";
 import { useOverlayContext } from "@/lib/overlay-context";
 import {
   attemptResult,
@@ -17,12 +15,10 @@ import {
   notificationRecoveryHint,
 } from "@/lib/detail-summary";
 import { dateTime } from "@/lib/format";
-import { ListDateTime, ListIdentity } from "@/components/list-primitives";
 import { label } from "@/lib/labels";
 import { StatusBadge } from "@/components/business-status";
 import { CopyValue } from "@/components/copy-value";
-import { ErrorNotice, Loading } from "@/components/request-state";
-import { CursorPagination } from "@/components/cursor-pagination";
+import { ErrorNotice } from "@/components/request-state";
 import { ReasonDialog } from "@/components/ReasonDialog";
 import { useSuccessToast } from "@/components/Feedback";
 import {
@@ -33,12 +29,6 @@ import {
   CardAction,
   CardContent,
 } from "@/components/ui/card";
-import {
-  Accordion,
-  AccordionItem,
-  AccordionTrigger,
-  AccordionContent,
-} from "@/components/ui/accordion";
 import { DetailFields, TechnicalDetails } from "./DetailPrimitives";
 import { RecordTools } from "./RecordTools";
 import { DeliveryAttempts } from "./DeliveryAttempts";
@@ -307,106 +297,5 @@ export function DeliveryCard({
       </CardContent>
       {confirmation}
     </Card>
-  );
-}
-export function OrderNotifications({
-  orderId,
-  notifyUrl,
-}: {
-  orderId: string;
-  notifyUrl: string | null;
-}) {
-  const api = useWorkspaceApi();
-  const pagination = useCursor("notifications_cursor");
-  const query = useQuery({
-    queryKey: ["order-notifications", orderId, pagination.cursor],
-    queryFn: ({ signal }) =>
-      result(
-        api.listAdministratorOrderWebhookDeliveries({
-          path: { orderId },
-          signal,
-          query: {
-            limit: 10,
-            ...(pagination.cursor ? { cursor: pagination.cursor } : {}),
-          },
-        }),
-      ),
-  });
-  return (
-    <div className="flex min-w-0 flex-col gap-4">
-      <ErrorNotice
-        scope="page"
-        error={query.error}
-        retry={() => {
-          void query.refetch();
-        }}
-      />
-      {query.isPending ? (
-        <Loading label="正在读取通知结果…" />
-      ) : (
-        query.data && (
-          <>
-            {query.data.data.length ? (
-              <>
-                <DeliveryCard
-                  detail={query.data.data[0]!}
-                  embedded
-                  sectionTitle="通知"
-                />
-                {query.data.data.length > 1 && (
-                  <Accordion className="record-list" data-density="compact">
-                    {query.data.data
-                      .slice(1)
-                      .map((detail: OrderWebhookDeliveryDetail) => (
-                        <AccordionItem
-                          className="record-list-row"
-                          key={detail.delivery.delivery_id}
-                          value={detail.delivery.delivery_id}
-                        >
-                          <AccordionTrigger className="items-center gap-3 py-0">
-                            <div className="min-w-0 flex-1">
-                              <ListIdentity meta={<ListDateTime value={detail.delivery.created_at} inline />}>
-                                <span>{label(detail.event.event_type)}</span>
-                              </ListIdentity>
-                            </div>
-                            <StatusBadge value={detail.delivery.status} />
-                          </AccordionTrigger>
-                          <AccordionContent>
-                            <DeliveryCard detail={detail} embedded />
-                          </AccordionContent>
-                        </AccordionItem>
-                      ))}
-                  </Accordion>
-                )}
-              </>
-            ) : (
-              <Card size="sm">
-                <CardHeader>
-                  <CardTitle role="heading" aria-level={2}>
-                    通知
-                  </CardTitle>
-                  <CardDescription>
-                    {pagination.page > 1
-                      ? "此页暂无投递记录"
-                      : notifyUrl
-                        ? "此订单已设置通知地址，暂无发送记录"
-                        : "此订单未设置通知地址"}
-                  </CardDescription>
-                </CardHeader>
-              </Card>
-            )}
-            <CursorPagination
-              previousLabel={pagination.previousLabel}
-              page={pagination.page}
-              count={query.data.data.length}
-              hasNext={!!query.data.page.next_cursor}
-              pending={query.isFetching}
-              onPrevious={pagination.previous}
-              onNext={() => pagination.next(query.data!.page.next_cursor)}
-            />
-          </>
-        )
-      )}
-    </div>
   );
 }
