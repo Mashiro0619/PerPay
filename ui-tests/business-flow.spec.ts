@@ -432,10 +432,11 @@ async function reconcileUnmatchedIncome(page: Page, fixture: BusinessFixture, in
   await page.getByRole("searchbox", { name: "订单关键词搜索", exact: true }).fill(merchantOrderNo);
   await page.getByRole("button", { name: "搜索", exact: true }).click();
   await page.locator(`a[data-row-link][href*="${manualOrder.order_id}"]`).click();
-  const disputeActions = overlay.getByRole("region", { name: "争议处理", exact: true });
-  await expect(disputeActions).toBeVisible();
-  const reviewAction = disputeActions.getByRole("button", { name: "重新核对并确认收款", exact: true });
+  // A disputed order keeps its next step in the action bar, beside marking it refunded.
+  const orderActions = overlay.locator("[data-overlay-footer]");
+  const reviewAction = orderActions.locator("[data-record-primary-actions]").getByRole("button", { name: "重新核对并确认收款", exact: true });
   await expectReachable(reviewAction);
+  await expectReachable(orderActions.getByRole("button", { name: "标记已退款", exact: true }));
   await screenshot(page, info, "09e-disputed-order-next-actions");
   await reviewAction.click();
   await manual.getByRole("searchbox", { name: /^搜索(共享)?收入流水$/ }).fill(unmatched.ledgerEntryId);
@@ -463,7 +464,9 @@ async function reconcileUnmatchedIncome(page: Page, fixture: BusinessFixture, in
   await reviewSubmit.click();
   expect((await reconfirmedResponse).ok()).toBe(true);
   await expect(manual).toHaveCount(0);
-  await expect(overlay.getByRole("region", { name: "争议处理", exact: true })).toHaveCount(0);
+  // A confirmed order has nothing left to review or refund.
+  await expect(overlay.getByRole("button", { name: "重新核对并确认收款", exact: true })).toHaveCount(0);
+  await expect(orderActions.getByRole("button", { name: "标记已退款", exact: true })).toHaveCount(0);
   await expect(overlay.getByRole("group", { name: "PerPay 收款状态", exact: true }).getByText("收款已确认", { exact: true })).toBeVisible();
   // 此前已投递一次，原确认、撤销与重新确认三个事件还剩两条；夹具每次只推进一条真实投递。
   for (let remaining = 2; remaining > 0; remaining--) {
