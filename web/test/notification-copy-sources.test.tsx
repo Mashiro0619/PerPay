@@ -175,6 +175,16 @@ describe("order and notification copy follows its actual source", () => {
     expect(screen.getByRole("region", { name: "通知" })).toHaveAttribute("data-section-empty", "true");
   });
 
+  it.each([["PENDING", "计划投递", "下次重试"], ["RETRY_WAIT", "下次重试", "计划投递"]] as const)("names the next attempt of a %s delivery %s", async (status, name, other) => {
+    const attempted = status === "RETRY_WAIT";
+    vi.stubGlobal("fetch", vi.fn(async () => json({ data: [{ ...delivery, attempts: attempted ? delivery.attempts : [],
+      delivery: { ...delivery.delivery, status, attempt_count: attempted ? 1 : 0, last_error_code: attempted ? delivery.delivery.last_error_code : null } }], page: { next_cursor: null } })));
+    mount(<OrderNotifications orderId={paidOrder.order_id} notifyUrl="https://business.example.invalid/notify" />, "/orders/" + paidOrder.order_id);
+    // A delivery that was never attempted has nothing to retry yet.
+    expect((await screen.findByText(name, { selector: "dt" })).nextElementSibling).toHaveTextContent("2026/09/06 08:02:00");
+    expect(screen.queryByText(other, { selector: "dt" })).not.toBeInTheDocument();
+  });
+
   it("keeps unknown error codes in technical evidence while ordinary text remains readable", async () => {
     const code = "provider_future_attempt_42";
     const unknown = { ...delivery, delivery: { ...delivery.delivery, last_error_code: code }, attempts: [{ ...failedAttempt, error_code: code }] };

@@ -132,6 +132,11 @@ export function deliveryAdvice(detail: WebhookDeliveryDetail, attempts: readonly
   </>;
 }
 
+/** A delivery not attempted yet is scheduled; one that failed is waiting to be retried. */
+export function nextAttemptLabel(detail: WebhookDeliveryDetail) {
+  return detail.delivery.status === "RETRY_WAIT" ? "下次重试" : "计划投递";
+}
+
 /** The facts of one delivery besides its event, status and attempts. */
 export function deliveryFields(detail: WebhookDeliveryDetail, attempts: readonly WebhookAttempt[]): Array<Field | false> {
   const delivery = detail.delivery;
@@ -140,7 +145,7 @@ export function deliveryFields(detail: WebhookDeliveryDetail, attempts: readonly
     { label: "通知地址", kind: "id", value: detail.target.target_url, copy: detail.target.target_url },
     !detail.is_latest && !!detail.latest_delivery_id && { label: "后续结果", value: <Link className="underline underline-offset-4" to={"/notifications/" + detail.latest_delivery_id}>已重新发送，查看最新结果</Link> },
     !!delivery.predecessor_delivery_id && { label: "原投递", value: <Link className="underline underline-offset-4" to={"/notifications/" + delivery.predecessor_delivery_id}>查看原投递</Link> },
-    !!delivery.next_attempt_at && !terminal && !confirmationRevoked && { label: "下次重试", kind: "time", value: <RecordTime value={delivery.next_attempt_at} /> },
+    !!delivery.next_attempt_at && !terminal && !confirmationRevoked && { label: nextAttemptLabel(detail), kind: "time", value: <RecordTime value={delivery.next_attempt_at} /> },
     !!delivery.acknowledged_at && { label: "通知确认时间（PerPay 记录）", kind: "time", value: <RecordTime value={delivery.acknowledged_at} /> },
     !!delivery.last_error_code && delivery.last_error_code !== latestAttempt(attempts)?.error_code && { label: "最近错误", value: notificationErrorName(delivery.last_error_code) },
     delivery.requested_by_type === "ADMIN" && { label: "发起人", value: delivery.requested_by_actor_id ?? "管理员" },
