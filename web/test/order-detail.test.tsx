@@ -774,10 +774,10 @@ describe("order record layout", () => {
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "标记已退款" }));
     await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "确认标记已退款" }));
-    expect(await screen.findByText("外部退款已登记")).toBeVisible();
+    expect(await screen.findByText("本次退款标记已保存")).toBeVisible();
     // With the refund on record nothing is left to decide: no filled action, and the mark can be withdrawn from the menu.
     await waitFor(() => expect(footerActions()).toEqual(["查看收银台结果"]));
-    expect(document.querySelector('[data-record-notice="danger"]')).toHaveTextContent(/已登记退款/);
+    expect(document.querySelector('[data-record-notice="danger"]')).toHaveTextContent(/已标记退款/);
     expect(screen.queryByRole("button", { name: "将原流水关联到正确订单" })).not.toBeInTheDocument();
     expect(await recordAction("撤销退款标记")).toBeVisible();
   });

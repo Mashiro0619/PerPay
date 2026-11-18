@@ -75,9 +75,7 @@ export function useRefundMark(order: AdminOrderDetail) {
       finalFocus={() => finalFocus.current}
       onClose={() => setDraft(null)}
       onSuccess={() => {
-        setMessage(
-          draft.dispute ? "外部退款已登记" : draft.marked ? "本次退款标记已保存" : "本次撤销标记已保存",
-        );
+        setMessage(draft.marked ? "本次退款标记已保存" : "本次撤销标记已保存");
         setDraft(null);
         if (draft.dispute) void refreshFinancialRecords();
         else void refreshOrderRecords(order.order_id);

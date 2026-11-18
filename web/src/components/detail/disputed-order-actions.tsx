@@ -22,7 +22,7 @@ export function disputeState(order: AdminOrderDetail) {
     dismissible,
     released,
     guidance: refunded
-      ? "已登记退款。核对完成后可忽略本次争议提醒，处理记录保留在订单历史中。"
+      ? "已标记退款。核对完成后可忽略本次争议提醒，处理记录保留在订单历史中。"
       : "核对付款人、交易凭证和金额；确认属于本订单后重新关联收款。暂不能确认时保留争议，补齐凭证后继续。",
   };
 }
