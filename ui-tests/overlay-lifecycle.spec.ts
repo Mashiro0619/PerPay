@@ -227,8 +227,8 @@ test("site-scoped related details keep a global parent and restore foreground hi
   await expect(detailSection(page, "payments")).toBeInViewport();
   const popup = await overlay.elementHandle();
   await revealDetailSection(page, "payments");
-  await detailSection(page, "payments").getByRole("button", { name: "更多操作，收款关联记录操作", exact: true }).click();
-  const related = page.getByRole("menuitem", { name: "查看详情", exact: true });
+  // Each association links to its own detail from its header.
+  const related = detailSection(page, "payments").locator("#match-" + matchId).getByRole("link", { name: "查看详情", exact: true });
   await expect(related).toBeVisible();
   expect(new URL((await related.getAttribute("href"))!, fixture.origin).pathname).toBe("/admin/orders");
   await related.click();
