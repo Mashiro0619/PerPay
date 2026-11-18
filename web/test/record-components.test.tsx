@@ -220,6 +220,16 @@ describe("record summary", () => {
     expect(within(summary).queryByRole("navigation")).not.toBeInTheDocument();
   });
 
+  it("leads with the badges when a record has no value, and with the conclusion when it has neither", () => {
+    const badges = at("/record", <RecordSummary label="日志概况" status={<span>成功</span>} meta={["12:03:02 · 管理员"]} />);
+    const summary = screen.getByRole("group", { name: "日志概况" });
+    expect(summary.querySelector("[data-record-summary-value]")).not.toBeInTheDocument();
+    expect(summary.firstElementChild).toHaveTextContent("成功");
+    badges.unmount();
+    at("/record", <RecordSummary label="会话概况" status={false} meta={["这台设备上的登录仍然有效"]} />);
+    expect(screen.getByRole("group", { name: "会话概况" }).firstElementChild).toHaveAttribute("data-record-summary-meta");
+  });
+
   it("offers section navigation only from three sections and moves to the chosen one", async () => {
     const scroll = vi.spyOn(HTMLElement.prototype, "scrollIntoView");
     const page = (items: typeof nav) => <div data-overlay-primary>

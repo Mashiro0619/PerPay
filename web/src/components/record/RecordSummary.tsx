@@ -50,7 +50,8 @@ export function SectionNav({ items, label = "分区导航" }: { items: readonly 
 export function RecordSummary({ label, value, size = "amount", status, tone = "default", meta = [], compare = [], nav = [] }: {
   /** Accessible name of the summary group. */
   label: string;
-  value: ReactNode;
+  /** Left out by records that have neither; their badges or conclusion lead instead. */
+  value?: ReactNode;
   /** Amounts are large; records without an amount lead with a short phrase. */
   size?: "amount" | "phrase";
   status?: ReactNode;
@@ -60,14 +61,15 @@ export function RecordSummary({ label, value, size = "amount", status, tone = "d
   /** Shown when the record has at least three sections. */
   nav?: readonly SectionLink[];
 }) {
+  const hasValue = value !== undefined && value !== null && value !== false && value !== "";
   const lines = meta.filter(line => line !== false && line !== null && line !== undefined && line !== "").slice(0, 2);
   return <div role="group" aria-label={label} data-record-summary className="flex min-w-0 flex-col gap-3">
-    <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5">
-      <p data-record-summary-value className={cn("min-w-0 font-semibold wrap-anywhere",
+    {(hasValue || status) && <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5">
+      {hasValue && <p data-record-summary-value className={cn("min-w-0 font-semibold wrap-anywhere",
         size === "amount" ? "text-[1.75rem] leading-9 tracking-tight tabular-nums max-md:text-2xl max-md:leading-8" : "text-base leading-6",
-        tone === "danger" ? "text-destructive" : "text-foreground")}>{value}</p>
+        tone === "danger" ? "text-destructive" : "text-foreground")}>{value}</p>}
       {status}
-    </div>
+    </div>}
     {lines.length > 0 && <div data-record-summary-meta className="flex min-w-0 flex-col text-[0.8125rem] leading-5 text-muted-foreground tabular-nums [@media(max-height:31.999rem)]:hidden">
       {lines.map((line, index) => <p key={index} className="min-w-0 wrap-anywhere">{line}</p>)}
     </div>}
