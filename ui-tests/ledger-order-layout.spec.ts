@@ -103,7 +103,8 @@ for (const scenario of [
     // identity. The generic heading exists only before its order query loads.
     const overlay = await settleOverlay(page);
     await expect(overlay.getByRole("heading", { level: 1 })).toHaveText(targetOrder.product_name);
-    const identity = overlay.locator('[data-detail-section="overview"]').getByRole("region", { name: "订单信息", exact: true });
+    const identity = overlay.getByRole("region", { name: "订单信息", exact: true });
+    await expect(identity).toHaveAttribute("data-detail-section", "overview");
     await expect(identity.getByText(targetOrder.merchant_order_no, { exact: true })).toBeVisible();
     for (const [name, cents] of [["下单金额", targetOrder.requested_amount_cents], ["加价金额", targetOrder.payable_amount_cents - targetOrder.requested_amount_cents]] as const) {
       const term = identity.locator("dt").filter({ hasText: new RegExp("^" + name + "$") });
