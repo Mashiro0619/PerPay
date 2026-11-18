@@ -12,6 +12,7 @@ import AuditStatus from "../src/pages/AuditStatus";
 import { auditEvent, aggregateEvent, auditDetail, auditMetadata, auditPage } from "./audit-fixtures";
 import { json } from "./fixtures";
 import { mobileMedia } from "./mobile-media";
+import { mountOnboarding } from "./onboarding-fixture";
 import type { AuditEventDetail, AuditEventItem, AuditMetadata } from "../../src/shared/audit";
 
 function Location() {
@@ -256,8 +257,42 @@ describe("audit log browsing", () => {
     await userEvent.click(await screen.findByRole("link", { name: "采集正常，查看采集状态" }));
     expect(await screen.findByText("等待首次成功写入")).toBeVisible();
     expect(screen.getByText("等待写入").parentElement).toHaveTextContent("2 条");
-    expect(screen.getByText("最近成功写入").parentElement).toHaveTextContent("等待首次成功写入");
+    expect(screen.getByRole("group", { name: "采集状态" })).toHaveTextContent("采集正常等待首次成功写入");
+    expect(screen.queryByText(/最近成功写入/)).not.toBeInTheDocument();
     expect(screen.queryByText("2026/11/01 10:03:59")).not.toBeInTheDocument();
+  });
+
+  it("leads the capture status with its state and last write, above one field list and the rules", async () => {
+    backend({ metadata: { ...auditMetadata, capture: { ...auditMetadata.capture, buffered_events: 3, spool_last_import_at: "2026-11-01T01:00:00.000Z" } } });
+    mount("/audit/status?snapshot_at=2026-11-01T02%3A04%3A00.000Z");
+    const summary = await screen.findByRole("group", { name: "采集状态" });
+    expect(summary.querySelector("[data-record-summary-value]")).toHaveTextContent(/^采集正常$/);
+    expect(summary.querySelector("[data-record-summary-meta]")).toHaveTextContent(/^最近成功写入：2026\/11\/01 10:03:59$/);
+    expect(summary.querySelector("[data-record-nav]")).toBeNull();
+    const fields = screen.getByRole("group", { name: "采集概况" });
+    expect(fields.querySelectorAll("[data-detail-fields]")).toHaveLength(1);
+    expect(Array.from(fields.querySelectorAll("dl > div")).map(row => [row.querySelector("dt")!.textContent, row.querySelector("dd")!.textContent])).toEqual([
+      ["等待写入", "3 条"], ["最近维护日志导入", "2026/11/01 09:00:00"], ["列表读取时间", "2026/11/01 10:04:00"],
+    ]);
+    const rules = screen.getByRole("region", { name: "记录与导出规则" });
+    expect(rules).toHaveAttribute("data-detail-section", "rules");
+    expect(within(rules).getByText(/核心审计持续保留/)).toBeVisible();
+    expect(within(rules).getByText(/最多 10,000 行/)).toBeVisible();
+    expect(document.querySelectorAll("[data-detail-section]")).toHaveLength(1);
+    expect(document.querySelector("[data-overlay-actions]")).toBeNull();
+  });
+
+  it("keeps the capture alert and its error code when capture has gaps", async () => {
+    backend({ metadata: { ...auditMetadata, capture: { ...auditMetadata.capture, state: "degraded", dropped_events: 4, last_dropped_at: "2026-11-01T02:00:00.000Z", last_error_code: "activity_http_budget_exceeded" } } });
+    mount("/audit/status");
+    const summary = await screen.findByRole("group", { name: "采集状态" });
+    expect(summary.querySelector("[data-record-summary-value]")).toHaveTextContent(/^采集有缺口$/);
+    const alert = document.querySelector<HTMLElement>("[data-audit-capture]")!;
+    expect(within(alert).getByText("部分活动日志未完整记录")).toBeVisible();
+    expect(within(alert).getByText("未记录活动：4 条")).toBeVisible();
+    const fields = screen.getByRole("group", { name: "采集概况" });
+    expect(within(fields).getByText("最近丢弃活动").parentElement).toHaveTextContent("2026/11/01 10:00:00");
+    expect(within(fields).getByText("最近错误代码").parentElement).toHaveTextContent("activity_http_budget_exceeded");
   });
 });
 
@@ -396,5 +431,30 @@ describe("audit event details", () => {
     expect(within(field).getByText(label, { exact: true })).toBeVisible();
     const client = within(source).getByText("设备 / 客户端").parentElement!;
     expect(within(client).getByText(label, { exact: true })).toBeVisible();
+  });
+});
+
+describe("audit records in the overlay", () => {
+  const sited = { ...auditEvent, site_id: "site_a", site_name: "示例网站" };
+  function handle(request: Request) {
+    const path = new URL(request.url).pathname;
+    if (path.endsWith("/audit-events/meta")) return json({ data: auditMetadata });
+    if (/\/audit-events\/(?:core|activity)\//.test(path)) return json({ data: auditDetail(sited) });
+    if (path.endsWith("/audit-events")) return json(auditPage([sited]));
+    return undefined;
+  }
+
+  it("keeps the capture status title, leads with its state and has no footer", async () => {
+    mountOnboarding({ stage: 4, path: "/audit/status", handle });
+    const dialog = await screen.findByRole("dialog", { name: "审计采集状态" });
+    expect(dialog).toHaveAttribute("data-overlay-record", "true");
+    // The record type and the title are the same words, so the type is not shown twice.
+    expect(dialog.querySelector("[data-overlay-eyebrow-text]")).toHaveAttribute("aria-hidden", "true");
+    const fixed = dialog.querySelector<HTMLElement>("[data-overlay-summary]")!;
+    expect(await within(fixed).findByRole("group", { name: "采集状态" })).toHaveTextContent(/^采集正常最近成功写入：2026\/11\/01 10:03:59$/);
+    const body = dialog.querySelector<HTMLElement>("[data-overlay-detail]")!;
+    expect(body.querySelectorAll("[data-detail-fields]")).toHaveLength(1);
+    expect(within(body).getByRole("region", { name: "记录与导出规则" })).toBeVisible();
+    expect(dialog.querySelector("[data-overlay-footer]")).toBeEmptyDOMElement();
   });
 });
