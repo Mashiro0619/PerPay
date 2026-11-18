@@ -20,6 +20,12 @@ export type RecordAction = {
   disabled?: boolean;
   onSelect?: (trigger: HTMLButtonElement | null) => void;
   to?: string;
+  /** Resolves `to` outside the current site workspace. Record components only. */
+  global?: boolean;
+  /** An address outside the console, opened in a new tab. Record components only. */
+  href?: string;
+  /** Tooltip of an `href` action. */
+  title?: string;
 };
 export function RecordTools({
   data,

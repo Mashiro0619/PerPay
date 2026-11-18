@@ -1,5 +1,5 @@
 import { useRef, type ReactNode, type RefObject } from "react";
-import { MoreHorizontal } from "lucide-react";
+import { ExternalLink, MoreHorizontal } from "lucide-react";
 import { Link } from "@/navigation";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -7,10 +7,19 @@ import type { RecordAction } from "@/components/detail/RecordTools";
 
 export type { RecordAction };
 
+/** The element an action navigates with, or nothing when it only runs `onSelect`. */
+function destination(action: RecordAction) {
+  if (action.href) return <a href={action.href} target="_blank" rel="noopener noreferrer" title={action.title} />;
+  if (action.to) return <Link to={action.to} global={action.global ?? false} />;
+  return undefined;
+}
+
 /** A single action shown as a plain text button. */
 export function ActionButton({ action }: { action: RecordAction }) {
   const trigger = useRef<HTMLButtonElement>(null);
-  if (action.to && !action.disabled) return <Link to={action.to} className={buttonVariants({ variant: "ghost", size: "sm" })}>{action.label}</Link>;
+  if (action.href && !action.disabled) return <a href={action.href} target="_blank" rel="noopener noreferrer" title={action.title}
+    className={buttonVariants({ variant: "ghost", size: "sm" })}>{action.label}<ExternalLink data-icon="inline-end" aria-hidden="true" /></a>;
+  if (action.to && !action.disabled) return <Link to={action.to} global={action.global ?? false} className={buttonVariants({ variant: "ghost", size: "sm" })}>{action.label}</Link>;
   return <Button ref={trigger} type="button" variant="ghost" size="sm" disabled={action.disabled}
     className={action.danger ? "text-destructive hover:text-destructive" : undefined}
     onClick={() => action.onSelect?.(trigger.current)}>{action.label}</Button>;
@@ -44,7 +53,9 @@ export function ActionMenu({ actions, label, text, extra, triggerRef, align = "e
     <DropdownMenuContent align={align}>
       {actions.length > 0 && <DropdownMenuGroup>
         {actions.map(action => <DropdownMenuItem key={action.label} variant={action.danger ? "destructive" : "default"} disabled={action.disabled}
-          render={action.to ? <Link to={action.to} /> : undefined} onClick={() => action.onSelect?.(trigger.current)}>{action.label}</DropdownMenuItem>)}
+          render={destination(action)} onClick={() => action.onSelect?.(trigger.current)}>
+          {action.label}{action.href && <ExternalLink aria-hidden="true" />}
+        </DropdownMenuItem>)}
       </DropdownMenuGroup>}
       {actions.length > 0 && extras && <DropdownMenuSeparator />}
       {extras && <DropdownMenuGroup>{extras}</DropdownMenuGroup>}

@@ -303,4 +303,35 @@ describe("record action bar", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     await waitFor(() => expect(trigger).toHaveFocus());
   });
+
+  it("opens an outside address in a new tab from the menu, and from a sub-record's single action", async () => {
+    const checkout = { label: "查看收银台结果", href: "/api/admin/v1/orders/order-1/checkout", title: "在新标签页查看收银台" };
+    at("/record", <>
+      <ActionBar menuLabel="更多操作，订单操作" menu={[checkout]} />
+      <SubRecord id="match-1" title="收款关联记录" actions={[checkout]} />
+    </>);
+    const direct = within(document.getElementById("match-1")!).getByRole("link", { name: "查看收银台结果" });
+    await userEvent.setup().click(screen.getByRole("button", { name: "更多操作，订单操作" }));
+    for (const link of [direct, await screen.findByRole("menuitem", { name: "查看收银台结果" })]) {
+      expect(link.tagName).toBe("A");
+      expect(link).toHaveAttribute("href", checkout.href);
+      expect(link).toHaveAttribute("target", "_blank");
+      expect(link).toHaveAttribute("rel", "noopener noreferrer");
+      expect(link).toHaveAttribute("title", checkout.title);
+    }
+  });
+
+  it("leaves the site workspace for an action marked global, as a single action and in the menu", async () => {
+    const elsewhere = { label: "到全部网站处理这笔流水", to: "/reconciliation/transactions/ledger-1", global: true };
+    const here = { label: "查看本站订单", to: "/orders/order-2" };
+    at("/sites/site-a/orders/order-1", <>
+      <SubRecord id="exception-1" title="待核对收款" actions={[elsewhere]} />
+      <ActionBar menuLabel="更多操作，订单操作" menu={[elsewhere, here]} />
+    </>);
+    const pathname = (link: HTMLElement) => new URL(link.getAttribute("href")!, "http://perpay.test").pathname;
+    expect(pathname(within(document.getElementById("exception-1")!).getByRole("link", { name: elsewhere.label }))).toBe(elsewhere.to);
+    await userEvent.setup().click(screen.getByRole("button", { name: "更多操作，订单操作" }));
+    expect(pathname(await screen.findByRole("menuitem", { name: elsewhere.label }))).toBe(elsewhere.to);
+    expect(pathname(screen.getByRole("menuitem", { name: here.label }))).toBe("/sites/site-a" + here.to);
+  });
 });
