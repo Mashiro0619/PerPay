@@ -168,6 +168,8 @@ describe("record sub-record", () => {
     expect(within(record).getByRole("heading", { level: 3, name: "支付宝收款 ¥129.01" })).toBeVisible();
     expect(within(record).getByRole("link", { name: "查看流水" })).toHaveAttribute("href", "/ledger/entry-1");
     const action = within(record).getByRole("button", { name: "撤销关联" });
+    // Marked for styling: it turns red only when pointed at or focused.
+    expect(action).toHaveAttribute("data-danger", "true");
     await userEvent.setup().click(action);
     expect(onSelect).toHaveBeenCalledWith(action);
     expect(within(record).queryByRole("button", { name: "更多操作" })).not.toBeInTheDocument();

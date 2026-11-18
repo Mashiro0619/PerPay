@@ -14,14 +14,14 @@ function destination(action: RecordAction) {
   return undefined;
 }
 
-/** A single action shown as a plain text button. */
+/** A single action shown as a plain text button. A destructive one stays quiet until it is approached. */
 export function ActionButton({ action }: { action: RecordAction }) {
   const trigger = useRef<HTMLButtonElement>(null);
   if (action.href && !action.disabled) return <a href={action.href} target="_blank" rel="noopener noreferrer" title={action.title}
     className={buttonVariants({ variant: "ghost", size: "sm" })}>{action.label}<ExternalLink data-icon="inline-end" aria-hidden="true" /></a>;
   if (action.to && !action.disabled) return <Link to={action.to} global={action.global ?? false} className={buttonVariants({ variant: "ghost", size: "sm" })}>{action.label}</Link>;
   return <Button ref={trigger} type="button" variant="ghost" size="sm" disabled={action.disabled}
-    className={action.danger ? "text-destructive hover:text-destructive" : undefined}
+    data-danger={action.danger || undefined} className={action.danger ? "text-muted-foreground hover:text-destructive focus-visible:text-destructive" : undefined}
     onClick={() => action.onSelect?.(trigger.current)}>{action.label}</Button>;
 }
 
