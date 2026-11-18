@@ -72,6 +72,8 @@ export async function expectDetailFields(containers: Locator) {
     }
     return {
       width: bounds.width, height: bounds.height, left: bounds.left, right: bounds.right, layout: container.getAttribute("data-layout"),
+      // Migrated record details use one shared label column; other details keep a grid per field.
+      record: container.hasAttribute("data-record-fields"),
       rootFont: Number.parseFloat(getComputedStyle(document.documentElement).fontSize),
       display: style.display, wrap: style.flexWrap,
       rowGap: Number.parseFloat(style.rowGap), columnGap: Number.parseFloat(style.columnGap),
@@ -81,6 +83,7 @@ export async function expectDetailFields(containers: Locator) {
   }));
   for (const group of groups) {
     expect(group.display, "detail facts use stable columns rather than content-sized wrapping").toBe("grid");
+    if (group.record) { expectRecordFieldList(group); continue; }
     expect(group.rowGap).toBeCloseTo(0.75 * group.rootFont, 3);
     expect(group.columnGap).toBeCloseTo(1.5 * group.rootFont, 3);
     expect(group.fields.length).toBeGreaterThan(0);
@@ -132,6 +135,46 @@ export async function expectDetailFields(containers: Locator) {
     expect(rows.flat().map(field => field.index), "wrapped visual rows preserve the DOM reading order").toEqual(group.fields.map(field => field.index));
   }
   return groups;
+}
+
+type FieldGroup = Awaited<ReturnType<typeof expectDetailFields>>[number];
+
+/**
+ * A record's field list: every row spans the list, labels share one fixed
+ * column and values one left edge. The whole list stacks labels above values
+ * when its container is narrow, never row by row.
+ */
+function expectRecordFieldList(group: FieldGroup) {
+  const rem = group.rootFont;
+  expect(group.rowGap).toBeCloseTo(0.25 * rem, 3);
+  expect(group.columnGap).toBeCloseTo(rem, 3);
+  expect(group.fields.length).toBeGreaterThan(0);
+  const stacked = group.fields.every(field => !field.inline);
+  expect(stacked || group.fields.every(field => field.inline), "a field list never mixes stacked and side-by-side rows").toBe(true);
+  expect(stacked, "a field list stacks only when its container is at most 22rem wide").toBe(group.width <= 22 * rem + 0.5);
+  for (const [index, field] of group.fields.entries()) {
+    const name = field.name ?? "field";
+    expect(field.labelFont, name).toBeGreaterThanOrEqual(0.8125 * rem);
+    expect(field.valueFont, name).toBeGreaterThanOrEqual(0.875 * rem);
+    expect(Math.abs(field.left - group.left), "each row starts at the list edge: " + name).toBeLessThanOrEqual(1);
+    expect(Math.abs(field.right - group.right), "each row spans the list: " + name).toBeLessThanOrEqual(1);
+    expect(Math.abs(field.labelLeft - field.left), "labels start at the list edge: " + name).toBeLessThanOrEqual(1);
+    if (stacked) {
+      expect(Math.abs(field.valueLeft - field.left), "a stacked value returns to the list edge: " + name).toBeLessThanOrEqual(1);
+      expect(field.valueTop, "a stacked value sits below its label: " + name).toBeGreaterThanOrEqual(field.labelBottom - 1);
+    } else {
+      expect(Math.abs(field.labelWidth - 7.5 * rem), "labels share one fixed column: " + name).toBeLessThanOrEqual(1);
+      expect(Math.abs(field.valueLeft - field.labelRight - group.columnGap), "values share one left edge: " + name).toBeLessThanOrEqual(1);
+    }
+    expect(field.valueRight, name).toBeLessThanOrEqual(field.right + 1);
+    expect(field.valueBottom, name).toBeLessThanOrEqual(field.bottom + 1);
+    expect(field.firstValue, "visible content exists for " + name).not.toBeNull();
+    expect(Math.abs(field.firstValue!.left - field.valueLeft), "value content starts at its own value box: " + name).toBeLessThanOrEqual(1);
+    expect(field.scrollWidth, "complete value fits: " + name).toBeLessThanOrEqual(field.valueWidth + 1);
+    expect(field.scrollHeight, "complete value height is retained: " + name).toBeLessThanOrEqual(field.valueHeight + 1);
+    const previous = group.fields[index - 1];
+    if (previous) expect(Math.abs(field.top - previous.bottom - group.rowGap), "rows follow each other in reading order: " + name).toBeLessThanOrEqual(1);
+  }
 }
 
 export async function expectTechnicalPlacement(technical: Locator) {
@@ -406,7 +449,7 @@ export async function expectDetailRecordLayout(page: Page, alternativeTable?: st
       internalGaps: [...detail.querySelectorAll('.detail-section, [data-slot="card"], [data-slot="card-content"], [data-detail-credentials], [data-detail-order-summary] > [data-slot="item-content"]')]
         .filter(visible).map(section => Number.parseFloat(getComputedStyle(section).rowGap)),
       cards: cards.map(card => ({ title: card.getAttribute("aria-label"), radius: getComputedStyle(card).borderRadius, shadow: getComputedStyle(card).boxShadow })),
-      timeFonts: [...detail.querySelectorAll('[data-detail-fields] .list-time, [data-delivery-attempts][data-density="comfortable"] .list-time')]
+      timeFonts: [...detail.querySelectorAll('[data-detail-fields] .list-time, [data-record-fields] dd time, [data-delivery-attempts][data-density="comfortable"] .list-time')]
         .filter(visible).map(time => Number.parseFloat(getComputedStyle(time).fontSize)),
       overflowActions: cards.flatMap(card => {
         const box = card.getBoundingClientRect();
