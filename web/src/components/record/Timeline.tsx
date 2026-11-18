@@ -30,7 +30,7 @@ function Entries({ entries, label }: { entries: readonly TimelineEntry[]; label:
     {entries.map(entry => <li key={entry.id} data-timeline-tone={entry.tone ?? "default"} className="relative grid min-w-0 grid-cols-[0.5rem_minmax(0,1fr)_auto] items-baseline gap-x-3">
       <span aria-hidden="true" className={cn("size-2 self-start rounded-full mt-1.5", dots[entry.tone ?? "default"])} />
       <span className="min-w-0 text-sm leading-5 font-medium wrap-anywhere">{entry.title}</span>
-      <RecordTime value={entry.time} className="text-xs leading-5 whitespace-nowrap text-muted-foreground max-md:col-start-2 max-md:row-start-2" />
+      <RecordTime value={entry.time} className="text-xs leading-5 text-muted-foreground max-md:col-start-2 max-md:row-start-2 md:whitespace-nowrap" />
       {entry.body && <div className="col-start-2 col-end-4 min-w-0 text-[0.8125rem] leading-5 whitespace-pre-wrap text-muted-foreground wrap-anywhere">{entry.body}</div>}
     </li>)}
   </ol>;
