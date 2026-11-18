@@ -141,7 +141,7 @@ export function OverlayProvider({ children }: { children: ReactNode }) {
 
 const views = {
   order: lazy(() => import("@/pages/OrderDetail").then(module => ({ default: module.OrderDetail }))),
-  notification: lazy(() => import("@/pages/Notifications").then(module => ({ default: module.NotificationDetail }))),
+  notification: lazy(() => import("@/pages/NotificationDetail")),
   ledger: lazy(() => import("@/pages/LedgerDetail")),
   evidence: lazy(() => import("@/pages/ReconciliationDetail")),
   audit: lazy(() => import("@/pages/AuditDetail")),

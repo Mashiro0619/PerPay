@@ -16,7 +16,7 @@ import {
   type OrderWebhookDeliveryDetail,
 } from "../src/api/client";
 import { OrderDetail } from "../src/pages/OrderDetail";
-import { NotificationDetail } from "../src/pages/Notifications";
+import NotificationDetail from "../src/pages/NotificationDetail";
 import EvidenceDetail from "../src/pages/ReconciliationDetail";
 import { DeliveryCard } from "../src/components/detail/NotificationEvidence";
 import { recordAction } from "./menu-helper";
@@ -458,7 +458,9 @@ describe("order detail work surface", () => {
     expect(await screen.findByText(/已创建新投递，等待发送/)).toBeVisible();
     expect(bodies).toHaveLength(2);
     expect(bodies[1]).toEqual(bodies[0]);
-    expect(await screen.findByRole("heading", { name: "通知详情", level: 1 })).toBeVisible();
+    // The new delivery opens in its own detail, titled by the event it reports.
+    expect(await screen.findByRole("group", { name: "通知状态" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "收款已确认", level: 1 })).toBeVisible();
     expect(screen.getByLabelText("当前页面")).toHaveTextContent("/notifications/" + newDeliveryId);
     expect(await screen.findByText("等待投递", { exact: true })).toBeVisible();
     expect(screen.getByRole("link", { name: "查看原投递" })).toHaveAttribute("href", "/notifications/" + terminal.delivery.delivery_id);

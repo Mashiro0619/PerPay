@@ -1,9 +1,7 @@
 import { ListLayout, ListToolbarPart } from "@/components/list-layout";
 import { useWorkspace } from "@/workspace";
 import { useQuery } from '@/lib/workspace-query';
-import { useWorkspaceApi } from "@/workspace";
 import { SiteIdentity } from "@/components/site-identity";
-import { PageHeaderActions } from "@/components/page-header-actions";
 import { RefreshButton } from "@/components/refresh-button";
 import { CreatedDateFilter } from "@/components/created-date-filter";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -24,16 +22,12 @@ import {
 import type { ReactNode } from "react";
 
 import { RefreshCw, Settings2 } from "lucide-react";
-import { useParams, useSearchParams } from "react-router";
-import { PageHeading } from "@/components/page-heading";
-import { Link, useDetailBack } from "@/navigation";
-import { queryClient, result, type WebhookDeliveryStatus, type WebhookDeliverySummary } from "@/api/client";
+import { useSearchParams } from "react-router";
+import { Link } from "@/navigation";
+import type { WebhookDeliveryStatus, WebhookDeliverySummary } from "@/api/client";
 import { useCursor } from "@/lib/cursor";
 import { notificationErrorName } from "@/lib/detail-summary";
 import { label } from "@/lib/labels";
-import { DeliveryCard } from "@/components/detail/NotificationEvidence";
-import { DetailNavigation, DetailPage, RelatedOrder } from "@/components/detail/DetailPrimitives";
-import { DetailSections } from "@/components/detail/DetailSections";
 import { StatusBadge } from "@/components/business-status";
 import { QueryView } from "@/components/request-state";
 import { notificationStatus, notificationsQuery } from "@/api/workspace-queries";
@@ -48,7 +42,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Empty, EmptyHeader, EmptyTitle } from "@/components/admin-empty";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 const statuses = [
   { value: "", label: "全部状态" },
   { value: "PENDING", label: "等待投递" },
@@ -387,68 +380,5 @@ function DeliveryPage({
       </QueryView>
     </ListLayout>
     </ListColumnsProvider>
-  );
-}
-export function NotificationDetail() {
-  const { deliveryId = "" } = useParams();
-  return <DeliveryDetail key={deliveryId} deliveryId={deliveryId} />;
-}
-function DeliveryDetail({ deliveryId }: { deliveryId: string }) {
-  const api = useWorkspaceApi();
-  const back = useDetailBack("/notifications", "通知");
-  const delivery = useQuery({
-    queryKey: ["notification", deliveryId],
-    queryFn: ({ signal }) =>
-      result(api.getWebhookDelivery({ path: { deliveryId }, signal })),
-    refetchInterval: query => {
-      const status = query.state.data?.data.delivery.status;
-      return status && ["PENDING", "LEASED", "RETRY_WAIT"].includes(status) ? 5_000 : false;
-    },
-  });
-  const attempts = useQuery({
-    queryKey: ["notification-attempts", deliveryId, delivery.data?.data.delivery.attempt_count, delivery.data?.data.delivery.status],
-    enabled: delivery.isSuccess,
-    queryFn: ({ signal }) =>
-      result(api.listWebhookDeliveryAttempts({ path: { deliveryId }, signal })),
-  });
-  return (
-    <DetailPage>
-      <PageHeading title="通知详情" />
-      <DetailNavigation back={back}>
-        <PageHeaderActions><RefreshButton disabled={delivery.isFetching || attempts.isFetching} onClick={() => {
-            void delivery.refetch();
-            void queryClient.invalidateQueries({ predicate: query => query.queryKey.includes("notification-attempts") && query.queryKey.includes(deliveryId) });
-          }} busy={delivery.isFetching || attempts.isFetching} /></PageHeaderActions>
-      </DetailNavigation>
-      <QueryView query={delivery}>
-        {({ data }) => (
-          <DetailSections label="通知详情内容" sections={[
-            { id: "overview", label: "概况", content: <DeliveryCard
-              detail={{ ...data, attempts: attempts.data?.data ?? [] }}
-              attemptsAvailable={!!attempts.data}
-              attemptsError={attempts.error}
-              retryAttempts={() => { void attempts.refetch(); }}
-              density="comfortable"
-              section="overview"
-            /> },
-            { id: "attempts", label: "投递记录", content: <DeliveryCard
-              detail={{ ...data, attempts: attempts.data?.data ?? [] }}
-              attemptsAvailable={!!attempts.data}
-              attemptsError={attempts.error}
-              retryAttempts={() => { void attempts.refetch(); }}
-              density="comfortable" section="attempts"
-            /> },
-            { id: "order", label: "关联订单", content: <Card aria-label="关联订单" className="detail-section" data-notification-related-order>
-              <CardHeader>
-                <CardTitle role="heading" aria-level={2}>关联订单</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <RelatedOrder orderId={data.event.order_id} density="comfortable" layout="flow" />
-              </CardContent>
-            </Card> },
-          ]} />
-        )}
-      </QueryView>
-    </DetailPage>
   );
 }

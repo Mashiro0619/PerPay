@@ -4,14 +4,14 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
-import { queryClient, type AdminOrderDetail, type ReconciliationOrder, type WebhookDeliverySummary } from "../src/api/client";
-import Notifications, { NotificationDetail } from "../src/pages/Notifications";
+import { queryClient, type AdminOrderDetail, type OrderWebhookDeliveryDetail, type ReconciliationOrder, type WebhookDeliverySummary } from "../src/api/client";
+import Notifications from "../src/pages/Notifications";
+import NotificationDetail from "../src/pages/NotificationDetail";
 import { DataTable } from "../src/components/data-table";
 import { OrderFacts } from "../src/components/detail/DetailPrimitives";
-import { DeliveryCard } from "../src/components/detail/NotificationEvidence";
 import { OrderNotificationsSection, useOrderNotifications } from "../src/components/detail/OrderNotificationRecords";
 import { WorkspaceProvider } from "../src/workspace";
-import { delivery, failedAttempt, paidOrder, paymentMatch } from "./detail-fixtures";
+import { delivery, deliveryId, failedAttempt, paidOrder, paymentMatch } from "./detail-fixtures";
 import { json } from "./fixtures";
 import { mobileMedia } from "./mobile-media";
 import { recordAction } from "./menu-helper";
@@ -24,6 +24,17 @@ function mount(children: ReactNode, path = "/", scoped = false) {
   return render(<QueryClientProvider client={queryClient}><MemoryRouter initialEntries={[path]}>
     {scoped ? <WorkspaceProvider>{children}</WorkspaceProvider> : children}
   </MemoryRouter></QueryClientProvider>);
+}
+
+/** Opens the notification detail of one delivery, served together with its attempts and its order. */
+function mountDetail(detail: OrderWebhookDeliveryDetail) {
+  vi.stubGlobal("fetch", vi.fn(async (request: Request) => {
+    const path = new URL(request.url).pathname;
+    if (path.endsWith("/attempts")) return json({ data: detail.attempts });
+    if (path.includes("/orders/")) return json({ data: paidOrder });
+    return json({ data: detail });
+  }));
+  return mount(<Routes><Route path="/notifications/:deliveryId" element={<NotificationDetail />} /></Routes>, "/notifications/" + deliveryId);
 }
 
 describe("order and notification copy follows its actual source", () => {
@@ -149,17 +160,18 @@ describe("order and notification copy follows its actual source", () => {
     }
   });
 
-  it.each([true, false])("identifies the acknowledgement time as a local notification receipt (latest=%s)", latest => {
-    const acknowledged = {
+  it.each([true, false])("identifies the acknowledgement time as a local notification receipt (latest=%s)", async latest => {
+    mountDetail({
       ...delivery, is_latest: latest,
       delivery: { ...delivery.delivery, status: "ACKNOWLEDGED" as const,
         acknowledged_at: "2026-10-21T10:10:00.000Z", last_error_code: null, next_attempt_at: null },
-    };
-    mount(<><section aria-label="订单摘要"><OrderFacts order={paidOrder} density="comfortable" /></section><DeliveryCard detail={acknowledged} density="comfortable" /></>);
-    expect(within(screen.getByRole("region", { name: "订单摘要" })).getByText("收款已确认", { exact: true })).toBeVisible();
-    expect(screen.getByText("通知已确认", { exact: true })).toBeVisible();
-    expect(screen.getByText("通知确认时间（PerPay 记录）", { selector: "dt" }).nextElementSibling).toHaveTextContent("2026/10/21 18:10");
-    expect(screen.getByText(/对方已返回有效确认回执/)).toBeVisible();
+    });
+    // The order's payment status and the notification's own status are told apart by where they stand.
+    expect(await within(await screen.findByRole("region", { name: "关联订单" })).findByText("收款已确认", { exact: true })).toBeVisible();
+    const summary = screen.getByRole("group", { name: "通知状态" });
+    expect(within(summary).getByText("通知已确认", { exact: true })).toBeVisible();
+    expect(within(summary).getByText(latest ? "对方已返回有效确认回执" : "历史投递 · 对方已返回有效确认回执")).toBeVisible();
+    expect(screen.getByText("通知确认时间（PerPay 记录）", { selector: "dt" }).nextElementSibling).toHaveTextContent("2026/10/21 18:10:00");
     expect(screen.queryByText("业务确认时间")).not.toBeInTheDocument();
   });
 
@@ -198,17 +210,16 @@ describe("order and notification copy follows its actual source", () => {
 
   it("keeps unknown error codes in technical evidence while ordinary text remains readable", async () => {
     const code = "provider_future_attempt_42";
-    const unknown = { ...delivery, delivery: { ...delivery.delivery, last_error_code: code }, attempts: [{ ...failedAttempt, error_code: code }] };
-    mount(<DeliveryCard detail={unknown} density="comfortable" />);
-    expect(screen.getByText(/HTTP 200 · 通知发送结果需核查/)).toBeVisible();
+    mountDetail({ ...delivery, delivery: { ...delivery.delivery, last_error_code: code }, attempts: [{ ...failedAttempt, error_code: code }] });
+    expect(await screen.findByText(/HTTP 200 · 通知发送结果需核查/)).toBeVisible();
     expect(screen.getByText(/确认处理结果后再操作/)).toBeVisible();
     expect(screen.queryByText(new RegExp(code))).not.toBeInTheDocument();
-    await userEvent.setup().click(await recordAction("技术详情", "通知记录操作"));
-    const technical = await screen.findByRole("dialog", { name: "技术详情" });
-    expect(within(technical).getByRole("group", { name: "技术详情" })).toHaveTextContent(code);
+    await userEvent.setup().click(await recordAction("通知技术信息", "通知记录操作"));
+    const technical = await screen.findByRole("dialog", { name: "通知技术信息" });
+    expect(within(technical).getByRole("group", { name: "通知技术信息" })).toHaveTextContent(code);
   });
 
-  it("distinguishes an in-progress history read from a successful empty history", async () => {
+  it("distinguishes an in-progress attempts read from a delivery without attempts", async () => {
     let complete!: (response: Response) => void;
     const pending = new Promise<Response>(resolve => { complete = resolve; });
     vi.stubGlobal("fetch", vi.fn(async (request: Request) => {
@@ -217,13 +228,12 @@ describe("order and notification copy follows its actual source", () => {
       return json({ data: { ...delivery, delivery: { ...delivery.delivery, attempt_count: 0 } } });
     }));
     mount(<Routes><Route path="/notifications/:deliveryId" element={<NotificationDetail />} /></Routes>, "/notifications/" + delivery.delivery.delivery_id);
-    const history = await screen.findByRole("group", { name: "投递历史" });
-    expect(within(history).getByText("正在读取发送记录…")).toBeVisible();
-    expect(within(history).queryByText("暂无尝试明细")).not.toBeInTheDocument();
-    expect(within(history).queryByText(/读取失败/)).not.toBeInTheDocument();
+    const attempts = await screen.findByRole("region", { name: "投递尝试" });
+    expect(within(attempts).getByRole("status")).toHaveTextContent("正在读取发送记录…");
+    expect(within(attempts).queryByText("尚未开始投递")).not.toBeInTheDocument();
+    expect(within(attempts).queryByRole("alert")).not.toBeInTheDocument();
     await act(async () => { complete(json({ data: [] })); });
-    expect(await within(history).findByRole("table", { name: "投递尝试（0）" })).toBeVisible();
-    expect(within(history).getByText("暂无尝试明细")).toBeVisible();
-    expect(within(history).queryByText("正在读取发送记录…")).not.toBeInTheDocument();
+    expect(await within(attempts).findByText("尚未开始投递")).toBeVisible();
+    expect(within(attempts).queryByRole("status")).not.toBeInTheDocument();
   });
 });
