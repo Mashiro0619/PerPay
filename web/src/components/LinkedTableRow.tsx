@@ -40,8 +40,10 @@ type LinkedRowProps = {
   "aria-label"?: string;
 };
 
-// Only rows that lead somewhere look clickable.
-const linkedRowClassName = "has-[a[data-row-link]]:cursor-pointer";
+// Only rows that lead somewhere look clickable. The row whose record is open
+// stays marked, and keeps a fainter mark after the record is closed.
+const linkedRowClassName =
+  "has-[a[data-row-link]]:cursor-pointer has-[a[data-row-link][data-record-state=recent]]:bg-muted/50 has-[a[data-row-link][data-record-state=open]]:bg-muted";
 
 export function LinkedTableRow({
   children,
@@ -75,7 +77,7 @@ export function LinkedSummaryRow({
     <Item
       size={(density ?? preferredDensity) === "compact" ? "xs" : "default"}
       className={cn(
-        "business-summary-row min-w-0",
+        "business-summary-row min-w-0 has-[a[data-row-link]]:active:bg-muted",
         linkedRowClassName,
         className,
       )}

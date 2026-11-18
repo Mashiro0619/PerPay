@@ -403,6 +403,34 @@ describe("one routed detail surface", () => {
     await screen.findByRole("alertdialog", { name: "放弃未保存的修改？" });
   });
 
+  it("marks the link whose record is open and keeps a trace of it after closing", async () => {
+    const view = mount();
+    const user = userEvent.setup();
+    const first = () => screen.getByRole("link", { name: "打开记录", hidden: true });
+    const second = () => screen.getByRole("link", { name: "打开另一条记录", hidden: true });
+    expect(first()).not.toHaveAttribute("data-record-state");
+    await user.click(first());
+    await screen.findByRole("dialog", { name: "记录 order-1" });
+    expect(first()).toHaveAttribute("data-record-state", "open");
+    expect(second()).not.toHaveAttribute("data-record-state");
+    // A related record read in the same overlay leaves the mark on the row that was opened.
+    await user.click(screen.getByRole("link", { name: "关联通知" }));
+    await screen.findByRole("dialog", { name: "记录 delivery-1" });
+    expect(first()).toHaveAttribute("data-record-state", "open");
+    await user.click(screen.getByRole("button", { name: "完成查看" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(first()).toHaveAttribute("data-record-state", "recent");
+    await user.click(second());
+    await screen.findByRole("dialog", { name: "记录 order-2" });
+    expect(second()).toHaveAttribute("data-record-state", "open");
+    expect(first()).not.toHaveAttribute("data-record-state");
+    await user.click(screen.getByRole("button", { name: "完成查看" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    // Another page starts without a trace.
+    await act(async () => { await view.router.navigate("/notifications"); });
+    for (const link of screen.getAllByRole("link")) expect(link).not.toHaveAttribute("data-record-state");
+  });
+
   it("names the record type above the title and keeps the summary outside the scrolling content", async () => {
     mount();
     const user = userEvent.setup();

@@ -11,6 +11,8 @@ export interface OverlayNavigation {
   back(): void;
   readonly target: Location | null;
   readonly background: Path;
+  /** The record this page opened last: still open, or closed while the page stayed. */
+  readonly record?: { readonly pathname: string; readonly open: boolean } | null;
 }
 export interface OverlayPresentation {
   readonly target: Location;

@@ -66,7 +66,8 @@ export function Link({ viewTransition = true, global = false, preserveSelectedSi
   const detailTarget = detailDestination(to, location);
   const href = overlay && detailTarget ? withOverlayTarget(overlay.background, detailTarget) : to;
   const motion = viewTransition && enabled && destinationAllowsMotion(props.to) && !selectionOnlyNavigation(to, location);
-  return createElement(RouterLink, { ...props, ...navigationFeedback(to), to: href,
+  const record = detailTarget && overlay?.record?.pathname === detailTarget.pathname ? overlay.record.open ? "open" : "recent" : undefined;
+  return createElement(RouterLink, { ...props, ...navigationFeedback(to), ...(record ? { "data-record-state": record } : null), to: href,
     state: props.state !== undefined ? props.state : detailNavigationState(to, location), viewTransition: motion,
     onClick(event) {
       props.onClick?.(event);

@@ -47,6 +47,15 @@ export function OverlayProvider({ children }: { children: ReactNode }) {
   const history = readOverlayHistory(location.state);
   const lastOverlay = useRef<{ history: OverlayHistory | null; background: Path } | null>(null);
   if (hasOverlay) lastOverlay.current = { history, background };
+  // A list keeps showing which record it opened last, so the place is not lost between records.
+  const lastRecord = useRef<{ page: string; pathname: string } | null>(null);
+  // Related records visited inside the overlay do not take the mark from the row that was opened.
+  const recordWasOpen = useRef(false);
+  if (target && (!recordWasOpen.current || !lastRecord.current)) lastRecord.current = { page: location.pathname, pathname: target.pathname };
+  recordWasOpen.current = !!target;
+  if (!target && lastRecord.current?.page !== location.pathname) lastRecord.current = null;
+  const recordPath = lastRecord.current?.pathname ?? null;
+  const recordOpen = !!target;
   const closeGuards = useRef(new Map<string, () => boolean>());
   const pendingTrigger = useRef<HTMLElement | null>(null);
   const registerCloseGuard = useCallback((id: string, check: (() => boolean) | null) => {
@@ -124,8 +133,9 @@ export function OverlayProvider({ children }: { children: ReactNode }) {
     key: location.key, mask: undefined } : null;
   const first = history ? firstKnownDepth.current.get(history.rootKey) : undefined;
   const canGoBack = !!history && first !== undefined && history.depth > Math.max(1, first);
-  const value = useMemo<InternalNavigation>(() => ({ open, close, back, background, target: virtualLocation, hasOverlay, canGoBack, navigateTarget, blocked, registerCloseGuard, restoreFocus }),
-    [open, close, back, background, target?.pathname, target?.search, target?.hash, location.key, location.state, hasOverlay, canGoBack, navigateTarget, blocked, registerCloseGuard, restoreFocus]);
+  const value = useMemo<InternalNavigation>(() => ({ open, close, back, background, target: virtualLocation, hasOverlay, canGoBack, navigateTarget, blocked, registerCloseGuard, restoreFocus,
+    record: recordPath === null ? null : { pathname: recordPath, open: recordOpen } }),
+    [open, close, back, background, recordPath, recordOpen, target?.pathname, target?.search, target?.hash, location.key, location.state, hasOverlay, canGoBack, navigateTarget, blocked, registerCloseGuard, restoreFocus]);
   return <OverlayNavigationContext value={value}><InternalOverlayContext value={value}>{children}</InternalOverlayContext></OverlayNavigationContext>;
 }
 
