@@ -1430,7 +1430,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   [data-overlay-record="true"] [data-record-nav] { display: none; }
 }
 [data-overlay-record="true"] [data-overlay-detail] {
-  padding-block: 0.25rem;
+  padding-block: 1rem;
   padding-inline-end: 0.5rem;
   scrollbar-gutter: stable;
   scroll-padding-block: 1rem;
