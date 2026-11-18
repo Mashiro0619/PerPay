@@ -6,11 +6,11 @@ import { useId, type ReactNode } from "react";
 import { result, type AdminOrderDetail, type FinancialException, type MatchCandidate, type PaymentMatchDetail, type ReconciliationLedgerEntry, type ReconciliationOrder } from "@/api/client";
 import {
   candidateFacts,
+  candidateFactsBeyondLedger,
   detailTimestamp,
   exceptionExplanation,
   exceptionResolution,
   exceptionStateLabel,
-  numberField,
 } from "@/lib/detail-summary";
 import { dateTime, money } from "@/lib/format";
 import { ListDateTime, ListMoney } from "@/components/list-primitives";
@@ -192,17 +192,7 @@ export function CandidateEvidence({
   const titleId = useId();
   const overlay = useOverlayContext();
   const facts = candidateFacts(candidate);
-  const shownFacts = facts.filter(
-    ([name]) =>
-      !ledger ||
-      (name === "匹配金额"
-        ? numberField(candidate.evidence, "amount_cents") !==
-          ledger.amount_cents
-        : name === "支付宝交易时间"
-          ? numberField(candidate.evidence, "occurred_at") !==
-            Date.parse(ledger.occurred_at)
-          : true),
-  );
+  const shownFacts = candidateFactsBeyondLedger(candidate, ledger);
   return (
     <section className={cn("flex min-w-0 flex-col gap-4", overlay && "detail-section")} aria-labelledby={titleId}>
       <h3 id={titleId} className="text-sm font-medium">

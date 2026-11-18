@@ -77,6 +77,23 @@ export function candidateFacts(
       : []),
   ];
 }
+/** Candidate facts that the ledger entry shown beside them does not already state. */
+export function candidateFactsBeyondLedger(
+  candidate: MatchCandidate,
+  ledger?: { amount_cents: number; occurred_at: string } | undefined,
+): Array<[string, string]> {
+  return candidateFacts(candidate).filter(
+    ([name]) =>
+      !ledger ||
+      (name === "匹配金额"
+        ? numberField(candidate.evidence, "amount_cents") !==
+          ledger.amount_cents
+        : name === "支付宝交易时间"
+          ? numberField(candidate.evidence, "occurred_at") !==
+            Date.parse(ledger.occurred_at)
+          : true),
+  );
+}
 export function isHistoricalException(exception: FinancialException): boolean {
   return (
     exception.status !== "OPEN" ||
