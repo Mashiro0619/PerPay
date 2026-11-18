@@ -1,13 +1,13 @@
-import { Fragment } from "react";
+import type { ReactNode } from "react";
 import type { AuditChange, AuditEventItem, AuditMetadata } from "../../../src/shared/audit";
 import { AUDIT_CATEGORY_LABELS } from "../../../src/shared/audit";
 import { Link } from "@/navigation";
 import { AUDIT_ACTOR_LABELS, AUDIT_RECORD_LABELS, auditChangeValues, auditClientLabel, auditContextUnavailable, auditDateTime, auditDuration, auditFieldLabel } from "@/lib/audit";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Item, ItemContent, ItemGroup, ItemSeparator, ItemTitle } from "@/components/ui/item";
-import { DetailFields } from "@/components/detail/DetailPrimitives";
+import { FieldList } from "@/components/record/FieldList";
+import { Section } from "@/components/record/Sections";
+import { RecordTime } from "@/components/record/Timeline";
 
 export function AuditTime({ value }: { value: string }) {
   return <time dateTime={value} title={auditDateTime(value) + "（北京时间）"} className="list-time tabular-nums">{auditDateTime(value)}</time>;
@@ -29,11 +29,19 @@ export function AuditRecordType({ event }: { event: AuditEventItem }) {
   </div>;
 }
 
-export function AuditSite({ event, deleted = false }: { event: Pick<AuditEventItem, "site_id" | "site_name">; deleted?: boolean }) {
+/** A link from an audit record to another record: underlined text followed by "›". The label keeps its own element so it can still be found by its exact text. */
+export function AuditRecordLink({ to, title, children }: { to: string; title?: string | undefined; children: ReactNode }) {
+  return <Link global to={to} title={title} className="w-fit underline underline-offset-4 outline-none wrap-anywhere focus-visible:ring-2 focus-visible:ring-ring"><span>{children}</span><span aria-hidden="true"> ›</span></Link>;
+}
+
+/** `record` shows the website as record details link to other records; lists keep the compact secondary link. */
+export function AuditSite({ event, deleted = false, record = false }: { event: Pick<AuditEventItem, "site_id" | "site_name">; deleted?: boolean; record?: boolean }) {
   if (!event.site_id) return <span>未关联网站</span>;
   const title = event.site_name || event.site_id;
   if (deleted) return <span className="wrap-anywhere">{title}（已删除）</span>;
-  return <Link global to={"/sites/" + encodeURIComponent(event.site_id) + "/summary"} title={event.site_id} className="list-secondary-link wrap-anywhere">{title}</Link>;
+  const to = "/sites/" + encodeURIComponent(event.site_id) + "/summary";
+  if (record) return <AuditRecordLink to={to} title={event.site_id}>{title}</AuditRecordLink>;
+  return <Link global to={to} title={event.site_id} className="list-secondary-link wrap-anywhere">{title}</Link>;
 }
 
 export function AuditActor({ event }: { event: Pick<AuditEventItem, "actor_type" | "actor_id"> }) {
@@ -80,49 +88,36 @@ export function AuditCaptureNotice({ capture, compact = false }: Pick<AuditMetad
   </Alert>;
 }
 
+/** Counts and timings of one aggregated activity group; a top-level section of the audit record. */
 export function AuditAggregation({ event }: { event: AuditEventItem }) {
   if (!event.is_aggregate) return null;
-  return <Card aria-label="活动汇总" className="detail-section">
-    <CardHeader>
-      <CardTitle role="heading" aria-level={2}>活动汇总 · {event.event_count.toLocaleString("zh-CN")} 次</CardTitle>
-      <CardDescription>同类活动的次数、时间与耗时统计；不同结果和错误分别汇总。</CardDescription>
-    </CardHeader>
-    <CardContent>
-      <DetailFields density="comfortable" items={[
-        ["首次发生", <AuditTime value={event.first_occurred_at} />],
-        ["最后发生", <AuditTime value={event.last_occurred_at} />],
-        ["发生次数", event.event_count.toLocaleString("zh-CN")],
-        ["累计耗时", auditDuration(event.duration_ms)],
-        ["平均耗时", auditDuration(event.duration_ms === null || event.event_count <= 0 ? null : event.duration_ms / event.event_count)],
-      ]} />
-    </CardContent>
-  </Card>;
+  return <Section id="aggregate" title={`活动汇总 · ${event.event_count.toLocaleString("zh-CN")} 次`}>
+    <p className="text-[0.8125rem] leading-5 text-muted-foreground">同类活动的次数、时间与耗时统计；不同结果和错误分别汇总。</p>
+    <FieldList items={[
+      { label: "首次发生", value: <RecordTime value={event.first_occurred_at} />, kind: "time" },
+      { label: "最后发生", value: <RecordTime value={event.last_occurred_at} />, kind: "time" },
+      { label: "发生次数", value: event.event_count.toLocaleString("zh-CN") },
+      { label: "累计耗时", value: auditDuration(event.duration_ms) },
+      { label: "平均耗时", value: auditDuration(event.duration_ms === null || event.event_count <= 0 ? null : event.duration_ms / event.event_count) },
+    ]} />
+  </Section>;
 }
 
+/** Recorded configuration changes, one group of before and after per field. */
 export function AuditChanges({ changes }: { changes: readonly AuditChange[]; category: AuditEventItem["category"] }) {
   if (changes.length === 0) return null;
-  return <Card aria-label="配置变更" className="detail-section">
-    <CardHeader>
-      <CardTitle role="heading" aria-level={2}>配置变更</CardTitle>
-      <CardDescription>只列出已记录的变更字段。密码、密钥等敏感值仅保留变更状态。</CardDescription>
-    </CardHeader>
-    <CardContent>
-      <ItemGroup className="gap-0">
-        {changes.map((change, index) => {
-          const [before, after] = auditChangeValues(change);
-          return <Fragment key={change.field}>
-            {index > 0 && <ItemSeparator className="my-0" aria-hidden="true" />}
-            <Item role="listitem" className="min-w-0 px-0 py-2">
-              <ItemContent className="min-w-0">
-                <ItemTitle className="wrap-anywhere" title={change.field}>{auditFieldLabel(change.field)}</ItemTitle>
-                <DetailFields density="comfortable" items={[["变更前", before], ["变更后", after]]} />
-              </ItemContent>
-            </Item>
-          </Fragment>;
-        })}
-      </ItemGroup>
-    </CardContent>
-  </Card>;
+  return <Section id="changes" title="配置变更">
+    <p className="text-[0.8125rem] leading-5 text-muted-foreground">只列出已记录的变更字段。密码、密钥等敏感值仅保留变更状态。</p>
+    <ul className="flex min-w-0 flex-col gap-3">
+      {changes.map(change => {
+        const [before, after] = auditChangeValues(change);
+        return <li key={change.field} className="flex min-w-0 flex-col gap-1">
+          <h3 className="text-sm font-medium wrap-anywhere" title={change.field}>{auditFieldLabel(change.field)}</h3>
+          <FieldList items={[{ label: "变更前", value: before }, { label: "变更后", value: after }]} />
+        </li>;
+      })}
+    </ul>
+  </Section>;
 }
 
 export function AuditCategory({ category, sourceType }: Pick<AuditEventItem, "category"> & { sourceType?: AuditEventItem["source_type"] }) {

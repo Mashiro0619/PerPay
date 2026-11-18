@@ -142,7 +142,7 @@ describe("audit log browsing", () => {
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "下一页" }));
     await user.click(await screen.findByRole("link", { name: "更新显示设置" }));
-    expect(await screen.findByRole("heading", { name: "审计日志详情" })).toBeVisible();
+    expect(await screen.findByRole("heading", { level: 1, name: "更新显示设置" })).toBeVisible();
     await user.click(screen.getByRole("link", { name: "审计日志" }));
     await screen.findByRole("link", { name: "更新显示设置" });
     expect(screen.getByLabelText("审计地址")).toHaveTextContent("cursor=older");
@@ -185,7 +185,7 @@ describe("audit log browsing", () => {
     mount("/audit?site_id=site_a&selected_site=site_a&cursor=older&page=3&q=a%20b", { pagination });
     const user = userEvent.setup();
     await user.click(await screen.findByRole("link", { name: "更新显示设置" }));
-    await screen.findByRole("heading", { name: "审计日志详情" });
+    await screen.findByRole("heading", { level: 1, name: "更新显示设置" });
     await user.click(screen.getByRole("button", { name: "选择网站 B" }));
     await user.click(screen.getByRole("link", { name: "审计日志" }));
     await screen.findByRole("link", { name: "更新显示设置" });
@@ -302,7 +302,7 @@ describe("audit event details", () => {
     backend({ detail: { ...auditDetail(), action: "admin.login", category: "identity", subject_type: "admin_session", subject_id: subjectId, duration_ms: null, http_method: null, route: null, http_status: null } });
     mount(`/audit/core/${auditEvent.event_id}`);
     const summary = await screen.findByRole("group", { name: "日志概况" });
-    expect(within(summary).getByText("登录会话")).toBeVisible();
+    expect(within(screen.getByRole("region", { name: "操作信息" })).getByText("登录会话")).toBeVisible();
     expect(screen.queryByText(subjectId, { exact: true })).not.toBeInTheDocument();
     expect(screen.queryByText("HTTP 方法")).not.toBeInTheDocument();
     expect(screen.queryByText("耗时")).not.toBeInTheDocument();
@@ -350,7 +350,7 @@ describe("audit event details", () => {
     expect(await screen.findByText("旧名称")).toBeVisible();
     expect(screen.getByText("新名称")).toBeVisible();
     expect(screen.getByText("已更换（值不记录）")).toBeVisible();
-    const changes = screen.getByRole("group", { name: "配置变更" });
+    const changes = screen.getByRole("region", { name: "配置变更" });
     expect(within(changes).getAllByRole("listitem")).toHaveLength(2);
     expect(within(changes).queryByRole("separator")).not.toBeInTheDocument();
     expect(screen.getByText(/关联活动当前不可用/)).toBeVisible();
@@ -363,15 +363,17 @@ describe("audit event details", () => {
     await user.click(within(technical).getByRole("button", { name: "关闭" }));
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "审计日志技术信息" })).not.toBeInTheDocument());
     await waitFor(() => expect(trigger).toHaveFocus());
-    expect(screen.getByRole("group", { name: "配置变更" })).toBe(changes);
+    expect(screen.getByRole("region", { name: "配置变更" })).toBe(changes);
   });
 
   it("keeps historical request context absent and omits an empty change section", async () => {
     backend({ detail: { ...auditDetail(), source_address: null, user_agent: null, context_recorded: false } });
     mount(`/audit/core/${auditEvent.event_id}`);
-    await screen.findByRole("group", { name: "来源与请求" });
-    expect(screen.getAllByText("当时未记录").length).toBeGreaterThan(0);
-    expect(screen.queryByRole("group", { name: "配置变更" })).not.toBeInTheDocument();
+    const overview = await screen.findByRole("region", { name: "操作信息" });
+    expect(within(overview).getAllByText("当时未记录")).toHaveLength(2);
+    expect(within(overview).queryByRole("button", { name: "复制来源 IP" })).not.toBeInTheDocument();
+    expect(within(overview).queryByRole("button", { name: "设备信息" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "配置变更" })).not.toBeInTheDocument();
     expect(screen.queryByText("c".repeat(64))).not.toBeInTheDocument();
   });
 
@@ -382,14 +384,15 @@ describe("audit event details", () => {
     mount(`/audit/core/${auditEvent.event_id}`);
     expect(await screen.findByText(detail.details.reason)).toBeVisible();
     expect(screen.getByRole("link", { name: "查看收款账号" })).toHaveAttribute("href", "/settings/accounts/account-checked");
-    expect(screen.queryByRole("group", { name: "配置变更" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "配置变更" })).not.toBeInTheDocument();
   });
 
   it("identifies activity aggregates and calculates the average from the total duration", async () => {
     backend({ detail: auditDetail({ ...aggregateEvent, first_occurred_at: "2026-11-01T02:03:01.000Z" }) });
     mount(`/audit/activity/${aggregateEvent.event_id}`);
-    const group = await screen.findByRole("group", { name: "活动汇总" });
-    expect(within(group).getByRole("heading", { name: "活动汇总 · 5 次" })).toBeVisible();
+    const group = await screen.findByRole("region", { name: "活动汇总 · 5 次" });
+    expect(group).toHaveAttribute("data-detail-section", "aggregate");
+    expect(within(group).getByRole("heading", { level: 2, name: "活动汇总 · 5 次" })).toBeVisible();
     expect(within(group).getByText("100 ms")).toBeVisible();
     expect(within(group).getByText("20 ms")).toBeVisible();
     expect(screen.getByText("curl 客户端")).toBeVisible();
@@ -397,8 +400,11 @@ describe("audit event details", () => {
     expect(within(group).getByText("2026/11/01 10:03:01")).toBeVisible();
     expect(within(group).getByText("2026/11/01 10:03:54")).toBeVisible();
     const summary = screen.getByRole("group", { name: "日志概况" });
-    expect(within(summary).getByText("排序时间")).toBeVisible();
     expect(within(summary).getByText("2026/11/01 10:03:05")).toBeVisible();
+    const overview = screen.getByRole("region", { name: "操作信息" });
+    expect(within(overview).getByText("排序时间").parentElement).toHaveTextContent("2026/11/01 10:03:05");
+    expect(within(overview).queryByText("发生时间")).not.toBeInTheDocument();
+    expect(within(overview).queryByText("耗时")).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "审计日志技术信息" }));
     const technical = await screen.findByRole("dialog", { name: "审计日志技术信息" });
     expect(within(technical).getByText(/活动汇总，不对应单次请求/)).toBeVisible();
@@ -409,7 +415,7 @@ describe("audit event details", () => {
   it("keeps the actual request source when an HTTP read triggers a system operation", async () => {
     backend({ detail: { ...auditDetail(), actor_type: "SYSTEM", action: "orders.checkout_expired", category: "orders", http_method: "GET" } });
     mount(`/audit/core/${auditEvent.event_id}`);
-    const source = await screen.findByRole("group", { name: "来源与请求" });
+    const source = await screen.findByRole("region", { name: "操作信息" });
     expect(within(source).getByText("192.0.2.25")).toBeVisible();
     expect(within(source).getByText("Chrome · Windows")).toBeVisible();
     const user = userEvent.setup();
@@ -426,11 +432,93 @@ describe("audit event details", () => {
   ] satisfies (Pick<AuditEventItem, "source_type" | "context_recorded" | "http_method" | "route" | "request_id"> & { label: string })[])("shows missing SYSTEM context as '$label' for $source_type with method $http_method", async ({ label, ...context }) => {
     backend({ detail: { ...auditDetail(), ...context, actor_type: "SYSTEM", source_address: null, user_agent: null, http_status: null } });
     mount(`/audit/core/${auditEvent.event_id}`);
-    const source = await screen.findByRole("group", { name: "来源与请求" });
+    const source = await screen.findByRole("region", { name: "操作信息" });
     const field = within(source).getByText("来源 IP").parentElement!;
     expect(within(field).getByText(label, { exact: true })).toBeVisible();
     const client = within(source).getByText("设备 / 客户端").parentElement!;
     expect(within(client).getByText(label, { exact: true })).toBeVisible();
+  });
+
+  it("titles the record with its action and summarises the result, time and actor", async () => {
+    backend();
+    mount(`/audit/core/${auditEvent.event_id}`);
+    expect(await screen.findByRole("heading", { level: 1, name: "更新显示设置" })).toBeVisible();
+    expect(screen.queryByRole("heading", { name: "审计日志详情" })).not.toBeInTheDocument();
+    const summary = screen.getByRole("group", { name: "日志概况" });
+    expect(within(summary).getByText("成功", { exact: true })).toBeVisible();
+    expect(within(summary).getByText("核心审计")).toBeVisible();
+    expect(summary.querySelector("[data-record-summary-meta]")).toHaveTextContent(/^2026\/11\/01 10:03:04 · 管理员 · admin$/);
+    // Fewer than three sections: no section navigation.
+    expect(summary.querySelector("[data-record-nav]")).toBeNull();
+    expect(document.querySelector("[data-record-notice]")).toBeNull();
+    expect(document.querySelector("[data-overlay-actions]")).toBeNull();
+  });
+
+  it("merges operation and request facts into one field list with a visible, copyable log number", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn(() => Promise.resolve());
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+    backend({ detail: auditDetail({ ...auditEvent, source_type: "HTTP" }) });
+    mount(`/audit/core/${auditEvent.event_id}`);
+    const overview = await screen.findByRole("region", { name: "操作信息" });
+    expect(overview).toHaveAttribute("data-detail-section", "overview");
+    expect(overview.querySelectorAll("[data-detail-fields]")).toHaveLength(1);
+    const rows = Array.from(overview.querySelectorAll("[data-detail-fields] > dl > div"));
+    expect(rows.every(row => row.children.length === 2 && row.children[0]!.tagName === "DT" && row.children[1]!.tagName === "DD")).toBe(true);
+    expect(rows.map(row => row.querySelector("dt")!.textContent)).toEqual([
+      "发生时间", "执行者", "关联网站", "操作对象", "来源 IP", "设备 / 客户端", "HTTP 方法", "HTTP 状态", "接口路径", "耗时", "日志编号",
+    ]);
+    const identifier = within(overview).getByText("日志编号").parentElement!;
+    expect(identifier).toHaveAttribute("data-field-kind", "id");
+    expect(within(identifier).getByText(auditEvent.event_id)).toBeVisible();
+    await user.click(within(identifier).getByRole("button", { name: "复制日志编号" }));
+    expect(writeText).toHaveBeenLastCalledWith(auditEvent.event_id);
+    await user.click(within(overview).getByRole("button", { name: "复制来源 IP" }));
+    expect(writeText).toHaveBeenLastCalledWith("192.0.2.25");
+    expect(document.querySelectorAll("[data-detail-section]")).toHaveLength(1);
+    expect(screen.queryByRole("group", { name: "来源与请求" })).not.toBeInTheDocument();
+  });
+
+  it("keeps the raw User-Agent collapsed until it is asked for", async () => {
+    backend();
+    mount(`/audit/core/${auditEvent.event_id}`);
+    const overview = await screen.findByRole("region", { name: "操作信息" });
+    expect(within(overview).getByText("设备 / 客户端").parentElement).toHaveTextContent("Chrome · Windows");
+    const trigger = within(overview).getByRole("button", { name: "设备信息" });
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByText(auditEvent.user_agent!)).not.toBeVisible();
+    await userEvent.click(trigger);
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText(auditEvent.user_agent!)).toBeVisible();
+  });
+
+  it("states a failure above the sections and still explains one without a stored reason", async () => {
+    backend({ detail: { ...auditDetail(), outcome: "FAILURE", details: {} } });
+    mount(`/audit/core/${auditEvent.event_id}`);
+    const sections = await screen.findByRole("group", { name: "详情内容" });
+    const notice = document.querySelector<HTMLElement>('[data-record-notice="danger"]')!;
+    expect(notice).toHaveTextContent("失败原因这条历史记录未保存具体原因。");
+    expect(within(notice).queryByRole("button")).not.toBeInTheDocument();
+    expect(notice.compareDocumentPosition(sections) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(screen.getByRole("group", { name: "日志概况" })).getByText("失败", { exact: true })).toBeVisible();
+  });
+
+  it("lists related logs in their own section and offers section links once there are three sections", async () => {
+    const related: AuditEventDetail["related_events"][number] = { source: "activity", event_id: aggregateEvent.event_id, action: "http.request", occurred_at: "2026-11-01T02:03:03.000Z", outcome: "FAILURE" };
+    backend({ detail: { ...auditDetail(), changes: [{ field: "display.system_name", kind: "value", before: "旧名称", after: "新名称" }], related_events: [related] } });
+    mount(`/audit/core/${auditEvent.event_id}`);
+    const section = await screen.findByRole("region", { name: /^关联日志/ });
+    expect(section).toHaveAttribute("data-detail-section", "related");
+    const link = within(section).getByRole("link", { name: "接口请求" });
+    expect(link).toHaveAttribute("href", `/audit/activity/${aggregateEvent.event_id}`);
+    expect(link.closest("li")).toHaveTextContent("2026/11/01 10:03:03 · 活动记录 · 失败");
+    expect(Array.from(document.querySelectorAll("[data-detail-section]")).map(element => element.getAttribute("data-detail-section"))).toEqual(["overview", "changes", "related"]);
+    const navigation = within(screen.getByRole("group", { name: "日志概况" })).getByRole("navigation", { name: "分区导航" });
+    expect(within(navigation).getAllByRole("button").map(button => button.textContent)).toEqual(["操作信息", "配置变更", "关联日志1"]);
+    // The record has no footer, so its technical entry follows every section.
+    const technical = document.querySelector<HTMLElement>("[data-technical-information]")!;
+    expect(section.compareDocumentPosition(technical) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(technical.parentElement).toHaveAttribute("data-detail-page");
   });
 });
 
@@ -443,6 +531,25 @@ describe("audit records in the overlay", () => {
     if (path.endsWith("/audit-events")) return json(auditPage([sited]));
     return undefined;
   }
+
+  it("titles a log with its action under the record type, with the summary fixed above the content and no footer", async () => {
+    mountOnboarding({ stage: 4, path: `/audit/core/${auditEvent.event_id}`, handle });
+    const dialog = await screen.findByRole("dialog", { name: "更新显示设置" });
+    expect(dialog).toHaveAttribute("data-overlay-record", "true");
+    expect(within(dialog).getAllByRole("heading", { level: 1 }).map(heading => heading.textContent)).toEqual(["更新显示设置"]);
+    const eyebrow = dialog.querySelector("[data-overlay-eyebrow-text]")!;
+    expect(eyebrow).toHaveTextContent(/^审计日志详情 · 示例网站$/);
+    expect(eyebrow).not.toHaveAttribute("aria-hidden");
+    const fixed = dialog.querySelector<HTMLElement>("[data-overlay-summary]")!;
+    expect(within(fixed).getByRole("group", { name: "日志概况" })).toHaveTextContent("成功核心审计2026/11/01 10:03:04 · 管理员 · admin");
+    const body = dialog.querySelector<HTMLElement>("[data-overlay-detail]")!;
+    expect(body.querySelector("[data-record-summary]")).toBeNull();
+    const overview = within(body).getByRole("region", { name: "操作信息" });
+    expect(within(overview).getByRole("link", { name: "示例网站" })).toHaveTextContent(/^示例网站 ›$/);
+    expect(within(overview).getByText("示例网站", { exact: true })).toBeVisible();
+    expect(within(body).getByRole("button", { name: "审计日志技术信息" })).toBeVisible();
+    expect(dialog.querySelector("[data-overlay-footer]")).toBeEmptyDOMElement();
+  });
 
   it("keeps the capture status title, leads with its state and has no footer", async () => {
     mountOnboarding({ stage: 4, path: "/audit/status", handle });
