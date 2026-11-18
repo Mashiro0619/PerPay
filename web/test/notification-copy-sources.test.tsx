@@ -185,6 +185,17 @@ describe("order and notification copy follows its actual source", () => {
     expect(screen.queryByText(other, { selector: "dt" })).not.toBeInTheDocument();
   });
 
+  it("explains a delivery ended by a revoked payment confirmation instead of offering a resend the server would refuse", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => json({ data: [{ ...delivery, redelivery_blocked_reason: "payment_confirmation_revoked",
+      delivery: { ...delivery.delivery, status: "DEAD_LETTER", next_attempt_at: null } }], page: { next_cursor: null } })));
+    mount(<OrderNotifications orderId={paidOrder.order_id} notifyUrl="https://business.example.invalid/notify" />, "/orders/" + paidOrder.order_id);
+    expect(await screen.findByText("已终止", { exact: true })).toBeVisible();
+    expect(screen.getByText("原付款确认已撤销，成功通知已终止")).toBeVisible();
+    expect(screen.getByText(/重新确认收款后，系统会为新的确认事件生成通知/)).toBeVisible();
+    expect(screen.getByRole("link", { name: "查看详情" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: "重新发送" })).not.toBeInTheDocument();
+  });
+
   it("keeps unknown error codes in technical evidence while ordinary text remains readable", async () => {
     const code = "provider_future_attempt_42";
     const unknown = { ...delivery, delivery: { ...delivery.delivery, last_error_code: code }, attempts: [{ ...failedAttempt, error_code: code }] };

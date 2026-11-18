@@ -34,13 +34,13 @@ export function useOrderNotifications(orderId: string) {
 /** One delivery of an order event: its result once, in the badge, then the address and each attempt. */
 function OrderDeliveryRecord({ detail }: { detail: OrderWebhookDeliveryDetail }) {
   const redelivery = useRedelivery(detail);
-  const { confirmationRevoked, terminal } = deliveryState(detail);
+  const { confirmationRevoked, resendable } = deliveryState(detail);
   const advice = deliveryAdvice(detail, detail.attempts);
   return <SubRecord title={label(detail.event.event_type)}
     status={<DeliveryStatus detail={detail} />}
     description={confirmationRevoked ? deliveryPhrase(detail) : undefined}
     href={"/notifications/" + detail.delivery.delivery_id}
-    actions={detail.is_latest && terminal ? [{ label: "重新发送", disabled: redelivery.sent || confirmationRevoked, onSelect: redelivery.open }] : []}
+    actions={resendable ? [{ label: "重新发送", disabled: redelivery.sent, onSelect: redelivery.open }] : []}
     actionsLabel="更多操作，通知记录操作">
     {advice && <p className="text-[0.8125rem] leading-5 text-muted-foreground">{advice}</p>}
     <FieldList items={deliveryFields(detail, detail.attempts)} />

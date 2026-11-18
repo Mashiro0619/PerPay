@@ -97,12 +97,15 @@ export function deliveryState(detail: WebhookDeliveryDetail) {
   const status = detail.delivery.status;
   const confirmationRevoked = detail.redelivery_blocked_reason === "payment_confirmation_revoked" ||
     detail.delivery.last_error_code === "payment_confirmation_revoked";
+  const terminal = status === "ACKNOWLEDGED" || status === "DEAD_LETTER";
   return {
     confirmationRevoked,
     /** No further attempt will be made on its own. */
-    terminal: status === "ACKNOWLEDGED" || status === "DEAD_LETTER",
+    terminal,
     /** Ended by the revocation before the other side confirmed it. */
     terminated: confirmationRevoked && status !== "ACKNOWLEDGED",
+    /** Only the current delivery can be sent again, once it has ended. The server refuses one whose confirmation was revoked. */
+    resendable: detail.is_latest && terminal && !confirmationRevoked,
   };
 }
 
