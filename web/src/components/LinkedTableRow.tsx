@@ -40,7 +40,8 @@ type LinkedRowProps = {
   "aria-label"?: string;
 };
 
-const linkedRowClassName = "cursor-pointer";
+// Only rows that lead somewhere look clickable.
+const linkedRowClassName = "has-[a[data-row-link]]:cursor-pointer";
 
 export function LinkedTableRow({
   children,
