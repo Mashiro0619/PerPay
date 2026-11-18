@@ -8,7 +8,7 @@ import {
   type LedgerConflictDetail,
   type WebhookAttempt,
 } from "../src/api/client";
-import { DeliveryAttempts } from "../src/components/detail/DeliveryAttempts";
+import { attemptEntries } from "../src/components/detail/NotificationEvidence";
 import { ConflictCard } from "../src/components/detail/ConflictEvidence";
 import { ConflictComparison } from "../src/components/detail/ConflictComparison";
 import { CandidateEvidence } from "../src/components/detail/PaymentEvidence";
@@ -106,7 +106,7 @@ function mountConflict(existing: boolean) {
   );
 }
 describe("always-visible detail evidence", () => {
-  it("shows all attempts newest-first in pages of ten without toSorted or changing source evidence", async () => {
+  it("orders attempts newest-first without toSorted or changing source evidence", () => {
     const attempts: WebhookAttempt[] = Array.from({ length: 21 }, (_, i) => ({
       ...failedAttempt,
       attempt_id: String(i + 1),
@@ -119,65 +119,22 @@ describe("always-visible detail evidence", () => {
     const toSorted = Object.getOwnPropertyDescriptor(Array.prototype, "toSorted");
     Reflect.deleteProperty(Array.prototype, "toSorted");
     try {
-      const user = userEvent.setup();
-      render(<DeliveryAttempts attempts={attempts} available />);
-      const table = screen.getByRole("table", { name: "投递尝试（21）" });
-      expect(within(table).getAllByRole("row")).toHaveLength(11);
-      expect(within(table).getAllByRole("row")[1]).toHaveTextContent("第 21 次");
-      expect(
-        screen.queryByRole("button", { name: "投递尝试（21）" }),
-      ).not.toBeInTheDocument();
-      const seen: number[] = [];
-      for (let page = 1; page <= 3; page++) {
-        seen.push(
-          ...within(table)
-            .getAllByRole("row")
-            .slice(1)
-            .map((row) => Number(/第 (\d+) 次/.exec(row.textContent!)![1])),
-        );
-        if (page < 3)
-          await user.click(
-            screen.getByRole("button", { name: "投递尝试下一页" }),
-          );
-      }
-      expect(seen).toEqual(Array.from({ length: 21 }, (_, i) => 21 - i));
-      expect(
-        screen.getByRole("button", { name: "投递尝试下一页" }),
-      ).toBeDisabled();
+      const entries = attemptEntries(attempts);
+      expect(entries.map(entry => entry.id)).toEqual(Array.from({ length: 21 }, (_, i) => String(21 - i)));
+      expect(entries[0]).toMatchObject({ title: "第 21 次 · HTTP 200 · 对方的确认回执无效", time: attempts[20]!.started_at, tone: "danger" });
       expect(attempts).toEqual(original);
-      await user.click(screen.getByRole("button", { name: "投递尝试上一页" }));
-      expect(screen.getByRole("status")).toHaveTextContent("第 2 / 3 页");
     } finally {
       if (toSorted) Object.defineProperty(Array.prototype, "toSorted", toSorted);
     }
   });
-  it("orders equal attempt times deterministically and clamps a shortened read", async () => {
+  it("orders equal attempt times deterministically, by attempt number", () => {
     const attempts = Array.from({ length: 12 }, (_, i) => ({
       ...failedAttempt,
       attempt_id: String(i),
       attempt_number: i + 1,
       started_at: time,
     }));
-    const user = userEvent.setup();
-    const { rerender } = render(
-      <DeliveryAttempts attempts={attempts} available />,
-    );
-    expect(screen.getAllByRole("row")[1]).toHaveTextContent("第 12 次");
-    await user.click(screen.getByRole("button", { name: "投递尝试下一页" }));
-    rerender(<DeliveryAttempts attempts={attempts.slice(0, 1)} available />);
-    expect(screen.getAllByRole("row")).toHaveLength(2);
-    expect(screen.getAllByRole("row")[1]).toHaveTextContent("第 1 次");
-  });
-  it("does not turn an unavailable attempt read into an empty history", () => {
-    const { rerender } = render(
-      <DeliveryAttempts attempts={[]} available={false} />,
-    );
-    expect(screen.queryByRole("table")).not.toBeInTheDocument();
-    expect(screen.queryByText("暂无尝试明细")).not.toBeInTheDocument();
-    expect(screen.getByText("发送记录尚未读取。")).toBeVisible();
-    rerender(<DeliveryAttempts attempts={[]} available />);
-    expect(screen.getByRole("table", { name: "投递尝试（0）" })).toBeVisible();
-    expect(screen.getByText("暂无尝试明细")).toBeVisible();
+    expect(attemptEntries([...attempts.slice(6), ...attempts.slice(0, 6)]).map(entry => entry.id)).toEqual(Array.from({ length: 12 }, (_, i) => String(11 - i)));
   });
   it.each([false, true])(
     "uses only meaningful comparison columns (existing=%s), preserving invalid raw amounts",

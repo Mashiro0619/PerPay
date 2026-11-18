@@ -5,13 +5,10 @@ import { MemoryRouter, Route, Routes } from "react-router";
 import { describe, expect, it, vi } from "vitest";
 import { queryClient, type OrderWebhookDeliveryDetail, type WebhookAttempt } from "../src/api/client";
 import NotificationDetail from "../src/pages/NotificationDetail";
-import { DeliveryCard } from "../src/components/detail/NotificationEvidence";
-import { DeliveryAttempts } from "../src/components/detail/DeliveryAttempts";
 import { WorkspaceProvider } from "../src/workspace";
 import { delivery, deliveryId, failedAttempt, paidOrder } from "./detail-fixtures";
 import { apiError, json } from "./fixtures";
 import { recordAction } from "./menu-helper";
-import { mobileMedia } from "./mobile-media";
 
 function mockDetail(attemptsUnavailable = false, orderUnavailable = false, detail: OrderWebhookDeliveryDetail = delivery) {
   const requests: Request[] = [];
@@ -260,29 +257,6 @@ describe("readable standalone notification detail", () => {
     }
   });
 
-  it.each([
-    { embedded: false, density: undefined },
-    { embedded: true, density: undefined },
-    { embedded: true, density: "comfortable" },
-  ] as const)("keeps the existing evidence surface when flow is not opted in (embedded=$embedded, density=$density)", async ({ embedded, density }) => {
-    const { container } = render(
-      <QueryClientProvider client={queryClient}>
-        <MemoryRouter>
-          <DeliveryCard detail={delivery} embedded={embedded} {...(density ? { density } : {})} />
-        </MemoryRouter>
-      </QueryClientProvider>,
-    );
-    const card = screen.getByRole("group", { name: "通知记录" });
-    expect(container.querySelectorAll('[data-slot="card"]')).toHaveLength(1);
-    expect(container.querySelector('[data-detail-fields][data-layout="flow"]')).toBeNull();
-    expect(within(card).getByRole("table", { name: "投递尝试（1）" })).toBeVisible();
-    expect(within(card).getByText(delivery.target.target_url)).toBeVisible();
-    expect(within(card).getByRole("button", { name: "更多操作，通知记录操作" }).closest('[data-slot="card-content"]')).not.toBeNull();
-    await userEvent.setup().click(await recordAction("技术详情", "通知记录操作"));
-    const dialog = await screen.findByRole("dialog", { name: "技术详情" });
-    expect(within(dialog).getByText(delivery.delivery.delivery_id, { exact: true })).toBeVisible();
-    expect(within(dialog).queryByRole("button", { name: "复制内部订单编号" })).not.toBeInTheDocument();
-  });
 });
 
 describe("readable delivery attempts", () => {
@@ -338,49 +312,5 @@ describe("readable delivery attempts", () => {
       } else expect(earlier).not.toBeInTheDocument();
     }
     expect(attempts).toEqual(original);
-  });
-
-  it.each([0, 1, 21])("keeps %s attempts expanded, newest-first and paginated without mutating evidence", async (count) => {
-    const attempts: WebhookAttempt[] = Array.from({ length: count }, (_, index) => ({
-      ...failedAttempt, attempt_id: String(index + 1), attempt_number: index + 1,
-      started_at: new Date(Date.parse(failedAttempt.started_at) + index * 1000).toISOString(),
-    }));
-    const original = structuredClone(attempts);
-    render(<DeliveryAttempts attempts={attempts} available density="comfortable" />);
-    const table = screen.getByRole("table", { name: `投递尝试（${count}）` });
-    expect(table).not.toHaveClass("business-table");
-    expect(screen.queryByRole("button", { name: `投递尝试（${count}）` })).not.toBeInTheDocument();
-    if (count === 0) expect(within(table).getByText("暂无尝试明细")).toBeVisible();
-    else expect(within(table).getAllByRole("row")[1]).toHaveTextContent("第 " + count + " 次");
-    if (count === 21) {
-      const user = userEvent.setup();
-      const seen: number[] = [];
-      for (let page = 1; page <= 3; page++) {
-        seen.push(...within(table).getAllByRole("row").slice(1).map(row => Number(/第 (\d+) 次/.exec(row.textContent!)![1])));
-        if (page < 3) await user.click(screen.getByRole("button", { name: "投递尝试下一页" }));
-      }
-      expect(seen).toEqual(Array.from({ length: 21 }, (_, index) => 21 - index));
-      expect(screen.getByRole("button", { name: "投递尝试下一页" })).toBeDisabled();
-    }
-    expect(attempts).toEqual(original);
-  });
-
-  it("uses normal Item fields on mobile without hiding the HTTP result", () => {
-    mobileMedia(390);
-    const { rerender } = render(<DeliveryAttempts attempts={[failedAttempt]} available density="comfortable" />);
-    expect(screen.queryByRole("table")).not.toBeInTheDocument();
-    const item = screen.getByRole("listitem");
-    expect(item).toHaveAttribute("data-size", "default");
-    expect(within(item).getByText("开始时间", { exact: true })).toBeVisible();
-    expect(within(item).getByText("HTTP / ACK", { exact: true })).toBeVisible();
-    expect(item.querySelector("[data-detail-fields]")).toHaveAttribute("data-layout", "flow");
-    expect(within(item).getByText("HTTP / ACK", { exact: true }).closest("[data-field-wide]")).toHaveAttribute("data-field-wide", "true");
-    expect(within(item).getByText(/HTTP 200 · 对方的确认回执无效/)).toBeVisible();
-    expect(item.querySelector(".record-list-meta,.record-list-title,.business-summary-fields")).toBeNull();
-    rerender(<DeliveryAttempts attempts={[failedAttempt]} available />);
-    const existingSummary = screen.getByRole("listitem");
-    expect(existingSummary).toHaveAttribute("data-size", "xs");
-    expect(existingSummary.querySelector('[data-layout="flow"]')).toBeNull();
-    expect(within(existingSummary).getByText(/HTTP 200 · 对方的确认回执无效/)).toBeVisible();
   });
 });

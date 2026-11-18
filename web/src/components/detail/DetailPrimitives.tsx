@@ -10,7 +10,6 @@ import { cn } from "@/lib/utils";
 import { CopyValue } from "@/components/copy-value";
 import { useOverlayContext } from "@/lib/overlay-context";
 import { OrderStatusBadge, paymentBasisDescription } from "@/components/business-status";
-import { ErrorNotice, Loading } from "@/components/request-state";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -321,23 +320,4 @@ export function useRelatedOrder(
       ),
   });
   return { order: known ?? query.data?.data, query };
-}
-export function RelatedOrder({ orderId, density = "default", layout = "columns" }: { orderId: string; density?: DetailDensity; layout?: DetailFieldLayout }) {
-  const { query } = useRelatedOrder(orderId);
-  return (
-    <div className="flex min-w-0 flex-col gap-4">
-      {query.isPending ? (
-        <Loading label="正在读取关联订单…" />
-      ) : query.data ? (
-        <OrderFacts order={query.data.data} density={density} layout={layout} />
-      ) : null}
-      <ErrorNotice
-        scope="page"
-        error={query.error}
-        retry={() => {
-          void query.refetch();
-        }}
-      />
-    </div>
-  );
 }

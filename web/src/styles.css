@@ -31,7 +31,6 @@
 }
 .detail-fields-comfortable :is(.list-time, .list-money-secondary, .list-site-identity, .list-code) { font-size: 0.875rem; line-height: 1.5; }
 .detail-fields-comfortable .list-time { white-space: normal; }
-[data-delivery-attempts][data-density="comfortable"] .list-time { font-size: 0.875rem; line-height: 1.5; white-space: normal; }
 
 .detail-fields-flow { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 1rem 1.5rem; }
 .detail-fields-flow > .detail-field-flow { display: flex; flex-direction: column; flex: 0 1 100%; min-inline-size: 0; inline-size: 100%; gap: 0.5rem; }
@@ -1493,7 +1492,6 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   line-height: 1.5;
 }
 [data-overlay-record="true"] [data-overlay-detail] [data-detail-fields]:not([data-record-fields]) .list-time { white-space: normal; }
-[data-delivery-attempts] .business-summary-fields { grid-template-columns: minmax(0, 1fr); }
 [data-overlay-record="true"] [data-overlay-detail] [data-technical-information] { width: 100%; }
 [data-overlay-record="true"] [data-overlay-detail] [data-technical-information] > button { width: auto; max-width: 100%; justify-content: flex-start; gap: 0.5rem; }
 [data-overlay-record="true"] [data-overlay-footer]:not(:empty) { border-top: 1px solid var(--border); padding-top: 0.75rem; }

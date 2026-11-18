@@ -5,7 +5,6 @@ import { describe, expect, it, vi } from "vitest";
 import { queryClient } from "../src/api/client";
 import Notifications from "../src/pages/Notifications";
 import NotificationDetail from "../src/pages/NotificationDetail";
-import { DeliveryCard } from "../src/components/detail/NotificationEvidence";
 import { delivery } from "./detail-fixtures";
 import { json, order } from "./fixtures";
 import { mobileMedia } from "./mobile-media";
@@ -46,7 +45,7 @@ describe("notification website identity", () => {
       expect(within(row).getByText("通知已确认")).toBeVisible();
     }
   });
-  it.each([false, true])("shows website identity in standalone or embedded delivery evidence: embedded=%s", async embedded => {
+  it("names the website a notification belongs to in its detail", async () => {
     const detail = { ...delivery, target: { ...delivery.target, ...identities[1] } };
     vi.stubGlobal("fetch", vi.fn(async (request: Request) => {
       const path = new URL(request.url).pathname;
@@ -55,7 +54,7 @@ describe("notification website identity", () => {
       return json({ data: detail });
     }));
     render(<QueryClientProvider client={queryClient}><MemoryRouter initialEntries={["/notifications/" + detail.delivery.delivery_id]}>
-      <Routes><Route path="/notifications/:deliveryId" element={embedded ? <DeliveryCard detail={detail} embedded /> : <NotificationDetail />} /></Routes>
+      <Routes><Route path="/notifications/:deliveryId" element={<NotificationDetail />} /></Routes>
     </MemoryRouter></QueryClientProvider>);
     expect(await screen.findByRole("link", { name: "第二个网站 · site_second" })).toHaveAttribute("href", "/sites/site_second/summary");
   });
