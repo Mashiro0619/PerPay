@@ -173,7 +173,9 @@ describe("official block composition", () => {
     expect(screen.queryByRole("region", { name: "金额明细" })).not.toBeInTheDocument();
     expect(information.closest("[data-detail-section]")).toHaveAttribute("data-detail-section", "overview");
     expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
-    expect(information.compareDocumentPosition(screen.getByRole("region", { name: "收款关联记录" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const payments = screen.getByRole("region", { name: "收款关联" });
+    expect(payments).toHaveAttribute("data-detail-section", "payments");
+    expect(information.compareDocumentPosition(payments) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(
       screen.getByRole("heading", { name: order.product_name }),
     ).toBeVisible();

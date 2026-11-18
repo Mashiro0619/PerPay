@@ -1,23 +1,21 @@
 import { useWorkspaceApi } from "@/workspace";
 import { useSystemName } from "@/branding";
-import { useId, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { ChevronDown } from "lucide-react";
+import { useId, useRef, useState, type FormEvent } from "react";
 import { result, type AdminOrderDetail, type AdminRefundMarkRequest } from "@/api/client";
-import { refreshOrderRecords } from "@/lib/record-refresh";
+import { refreshFinancialRecords, refreshOrderRecords } from "@/lib/record-refresh";
 import { useOperationKey } from "@/lib/idempotency";
 import { useFixedOperation } from "@/lib/fixed-operation";
 import { isRefundMarkReceipt, refundMarkNoteError } from "@/lib/refund-mark";
 import { useOperationNavigation } from "@/drafts";
-import { useOverlayContext } from "@/lib/overlay-context";
-import { cn } from "@/lib/utils";
-import { OverlayActions } from "@/components/overlay-actions";
 import { OperationRecoveryNotice } from "@/components/operation-recovery-notice";
 import { OperationNavigationDialog } from "@/components/operation-navigation-dialog";
 import { StatusBadge } from "@/components/business-status";
-import { CopyValue } from "@/components/copy-value";
-import { ListDateTime, ListMoney } from "@/components/list-primitives";
+import { ListMoney } from "@/components/list-primitives";
 import { ErrorNotice } from "@/components/request-state";
-import { RecordTools } from "@/components/detail/RecordTools";
+import type { RecordAction } from "@/components/detail/RecordTools";
+import { Disclosure } from "@/components/record/Disclosure";
+import { FieldList } from "@/components/record/FieldList";
+import { RecordTime, Timeline } from "@/components/record/Timeline";
 import { useSuccessToast } from "@/components/Feedback";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -28,7 +26,6 @@ import {
   FieldLabel,
   FieldDescription,
   FieldError,
-  FieldTitle,
 } from "@/components/ui/field";
 import {
   Dialog,
@@ -39,141 +36,94 @@ import {
   DialogFooter,
 } from "@/components/admin-dialog";
 import {
-  Collapsible,
-  CollapsibleTrigger,
-  CollapsibleContent,
-} from "@/components/ui/collapsible";
-import {
   Item,
   ItemContent,
   ItemTitle,
   ItemDescription,
-  ItemGroup,
 } from "@/components/ui/item";
-export function RefundMarkPanel({
-  order,
-  includeOrderTools = false,
-  footerActions,
-}: {
-  order: AdminOrderDetail;
-  includeOrderTools?: boolean;
-  footerActions?: ReactNode;
-}) {
-  const overlay = useOverlayContext();
+/** The refund mark's dialog and the calls that open it, for the record that places the action. */
+export function useRefundMark(order: AdminOrderDetail) {
   const [draft, setDraft] = useState<{
     version: number;
     marked: boolean;
+    dispute: boolean;
   } | null>(null);
   const setMessage = useSuccessToast();
-  const finalFocus = useRef<HTMLButtonElement | null>(null);
+  const finalFocus = useRef<HTMLElement | null>(null);
   const mark = order.refund_mark;
   const eligible =
     ["CONFIRMED", "DISPUTED"].includes(order.payment.status) &&
     (order.received_amount_cents ?? 0) > 0;
-  const hasHistory = order.refund_mark_history.length > 0;
-  if (!eligible && !mark.marked && !hasHistory && !includeOrderTools && !draft)
-    return null;
+  /** `dispute` records the refund as the outcome of a disputed payment, which also changes its reminders. */
+  const open = (marked: boolean, trigger: HTMLElement | null, dispute = false) => {
+    finalFocus.current = trigger;
+    setDraft({ version: mark.version, marked, dispute });
+  };
+  /** Marks a received order, or withdraws its mark; absent when neither applies. */
+  const action: RecordAction | null = mark.marked || eligible
+    ? {
+        label: mark.marked ? "撤销退款标记" : "标记已退款",
+        onSelect: (trigger) => open(!mark.marked, trigger),
+      }
+    : null;
+  const dialog = draft && (
+    <RefundMarkDialog
+      order={order}
+      orderId={order.order_id}
+      version={draft.version}
+      marked={draft.marked}
+      finalFocus={() => finalFocus.current}
+      onClose={() => setDraft(null)}
+      onSuccess={() => {
+        setMessage(
+          draft.dispute ? "外部退款已登记" : draft.marked ? "本次退款标记已保存" : "本次撤销标记已保存",
+        );
+        setDraft(null);
+        if (draft.dispute) void refreshFinancialRecords();
+        else void refreshOrderRecords(order.order_id);
+      }}
+    />
+  );
+  return { action, open, dialog };
+}
+/** The current refund mark and its history; nothing until the order has been marked once. */
+export function RefundMarkStatus({ order }: { order: AdminOrderDetail }) {
+  const mark = order.refund_mark;
+  const history = order.refund_mark_history;
+  if (!mark.marked && !history.length) return null;
   return (
-    <div className={cn(overlay ? "contents" : "flex flex-col gap-4")}>
-      {(mark.marked || hasHistory) && (
-        <section aria-label="管理员退款标记" className="flex flex-col gap-2">
-          <Item className="record-list-row" size="sm">
-            <ItemContent>
-              <ItemTitle>
-                <StatusBadge
-                  value={mark.marked ? "ADMIN_REFUND_MARK" : "NONE"}
-                  label={mark.marked ? "已标记退款" : "标记已撤销"}
-                />
-              </ItemTitle>
-              <ItemDescription className="record-list-meta">
-                {mark.updated_by ?? "管理员"} · <ListDateTime value={mark.updated_at} inline />
-              </ItemDescription>
-              {mark.note && (
-                <p className="text-sm whitespace-pre-wrap break-words">
-                  {mark.note}
-                </p>
-              )}
-            </ItemContent>
-          </Item>
-          {hasHistory && (
-            <Collapsible>
-              <CollapsibleTrigger render={<Button variant="ghost" size="sm" />}>
-                <ChevronDown data-icon="inline-start" />
-                标记历史
-              </CollapsibleTrigger>
-              <CollapsibleContent>
-                <ItemGroup className="record-list list-timeline" data-density="compact">
-                  {order.refund_mark_history.map((event) => (
-                    <Item key={event.operation_id} className="record-list-row" role="listitem" size="sm">
-                      <ItemContent>
-                        <ItemTitle className="record-list-title">
-                          {event.marked ? "标记已退款" : "撤销退款标记"}
-                        </ItemTitle>
-                        <ItemDescription className="record-list-meta">
-                          {event.updated_by ?? "管理员"} ·{" "}
-                          <ListDateTime value={event.updated_at} inline />
-                        </ItemDescription>
-                        {event.note && (
-                          <p className="record-list-meta whitespace-pre-wrap break-words">
-                            {event.note}
-                          </p>
-                        )}
-                        <Field className="gap-1">
-                          <FieldTitle>操作编号</FieldTitle>
-                          <CopyValue
-                            value={event.operation_id}
-                            label="复制标记操作编号"
-                          />
-                        </Field>
-                      </ItemContent>
-                    </Item>
-                  ))}
-                </ItemGroup>
-              </CollapsibleContent>
-            </Collapsible>
-          )}
-        </section>
-      )}
-      <OverlayActions>
-      <RecordTools
-        label="订单操作"
-        technical={!overlay || !includeOrderTools}
-        data={order}
-        identifiers={[["内部订单编号", order.order_id], ["网站编号", order.api_client_id]]}
-        actions={
-          mark.marked || eligible
-            ? [
-                {
-                  label: mark.marked ? "撤销退款标记" : "标记已退款",
-                  onSelect: (trigger) => {
-                    finalFocus.current = trigger;
-                    setDraft({ version: mark.version, marked: !mark.marked });
-                  },
-                },
-              ]
-            : []
-        }
-      />
-      {footerActions}
-      </OverlayActions>
-      {draft && (
-        <RefundMarkDialog
-          order={order}
-          orderId={order.order_id}
-          version={draft.version}
-          marked={draft.marked}
-          finalFocus={() => finalFocus.current}
-          onClose={() => setDraft(null)}
-          onSuccess={() => {
-            setMessage(
-              draft.marked ? "本次退款标记已保存" : "本次撤销标记已保存",
-            );
-            setDraft(null);
-            void refreshOrderRecords(order.order_id);
-          }}
+    <section aria-label="管理员退款标记" className="flex min-w-0 flex-col gap-1">
+      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[0.8125rem] leading-5 text-muted-foreground">
+        <StatusBadge
+          value={mark.marked ? "ADMIN_REFUND_MARK" : "NONE"}
+          label={mark.marked ? "已标记退款" : "标记已撤销"}
         />
+        <span className="min-w-0 wrap-anywhere">{mark.updated_by ?? "管理员"} · <RecordTime value={mark.updated_at} /></span>
+      </div>
+      {mark.note && (
+        <p className="text-sm leading-5 whitespace-pre-wrap wrap-anywhere">
+          {mark.note}
+        </p>
       )}
-    </div>
+      {history.length > 0 && (
+        <Disclosure label="标记历史">
+          <Timeline
+            label="标记历史"
+            initial={history.length}
+            entries={history.map((event) => ({
+              id: event.operation_id,
+              title: event.marked ? "标记已退款" : "撤销退款标记",
+              time: event.updated_at ?? "",
+              body: <>
+                <p>{event.updated_by ?? "管理员"}</p>
+                {event.note && <p>{event.note}</p>}
+                <FieldList items={[{ label: "操作编号", value: event.operation_id, kind: "id", copy: event.operation_id, copyLabel: "复制标记操作编号" }]} />
+              </>,
+            }))}
+          />
+        </Disclosure>
+      )}
+    </section>
   );
 }
 export function RefundMarkDialog({

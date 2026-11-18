@@ -1,5 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -58,7 +58,15 @@ describe("administrator checkout entry", () => {
         }),
       );
       mount();
-      const link = await screen.findByRole("link", { name: actionLabel });
+      await screen.findByRole("heading", { name: "订单信息" });
+      // A disputed order keeps its footer for the two decisions; the checkout moves into the menu.
+      const inMenu = paymentStatus === "DISPUTED";
+      if (inMenu) {
+        expect(screen.queryByRole("link", { name: actionLabel })).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole("button", { name: "更多操作，订单操作" }));
+      }
+      const link = await screen.findByRole(inMenu ? "menuitem" : "link", { name: actionLabel });
+      expect(link.tagName).toBe("A");
       expect(link).toHaveAttribute(
         "href",
         "/api/admin/v1/orders/" + orderId + "/checkout",
@@ -66,10 +74,11 @@ describe("administrator checkout entry", () => {
       expect(link).toHaveAttribute("target", "_blank");
       expect(link).toHaveAttribute("rel", "noopener noreferrer");
       expect(link).toHaveAttribute("title", "在新标签页查看收银台");
-      const information = screen.getByRole("region", { name: "订单信息" });
+      if (inMenu) fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+      else expect(link.closest("[data-record-primary-actions]")).not.toBeNull();
+      const information = await screen.findByRole("region", { name: "订单信息" });
       const checkout = within(information).getByText("收银台状态").closest("div")!;
       expect(within(checkout).getByText({ OPEN: "开放中", CLOSED: "已关闭", EXPIRED: "已过期" }[checkoutStatus])).toBeVisible();
-      expect(link).toHaveClass("group/button");
       expect(requests.every((request) => request.method === "GET")).toBe(true);
       expect(
         requests.some((request) => request.url.endsWith("/checkout")),

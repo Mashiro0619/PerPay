@@ -18,7 +18,8 @@ import {
 } from "../src/api/client";
 import { DataTable } from "../src/components/data-table";
 import { mobileMedia } from "./mobile-media";
-import { RefundMarkDialog, RefundMarkPanel } from "../src/pages/RefundMark";
+import { RefundMarkDialog, RefundMarkStatus, useRefundMark } from "../src/pages/RefundMark";
+import { ActionBar } from "../src/components/record/ActionBar";
 import Reconciliation from "../src/pages/Reconciliation";
 import LedgerDetail from "../src/pages/LedgerDetail";
 import { groupedLedger } from "./ledger-fixtures";
@@ -31,6 +32,15 @@ function wrap(children: ReactNode) {
       <MemoryRouter>{children}</MemoryRouter>
     </QueryClientProvider>
   );
+}
+/** The order's refund mark as its record composes it: status in the body, action in the footer menu. */
+function RefundMarkPanel({ order }: { order: AdminOrderDetail }) {
+  const refund = useRefundMark(order);
+  return <>
+    <RefundMarkStatus order={order} />
+    <ActionBar menuLabel="更多操作，订单操作" menu={refund.action ? [refund.action] : []} />
+    {refund.dialog}
+  </>;
 }
 const paid: AdminOrderDetail = {
   ...order,
@@ -359,16 +369,16 @@ describe("administrator-only refund marks", () => {
       expect(
         screen.getByRole("region", { name: "管理员退款标记" }),
       ).toBeVisible();
-      fireEvent.click(screen.getByRole("button", { name: "更多操作，订单操作" }));
-      if (marked)
-        expect(
-          screen.getByRole("menuitem", { name: "撤销退款标记" }),
-        ).toBeEnabled();
-      else
-        expect(
-          screen.queryByRole("menuitem", { name: "标记已退款" }),
-        ).not.toBeInTheDocument();
+      if (marked) {
+        expect(await recordAction("撤销退款标记")).toBeEnabled();
+        fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+      } else {
+        // Nothing can be marked, so the record offers no menu at all.
+        expect(screen.queryByRole("button", { name: "更多操作，订单操作" })).not.toBeInTheDocument();
+      }
+      expect(screen.getByText("外部退款记录", { selector: "li *" })).not.toBeVisible();
       await userEvent.setup().click(screen.getByText("标记历史"));
+      expect(screen.getByText("外部退款记录", { selector: "li *" })).toBeVisible();
       expect(screen.getAllByText("外部退款记录").length).toBeGreaterThan(0);
       expect(screen.getAllByText(/admin ·/).length).toBeGreaterThan(0);
     },

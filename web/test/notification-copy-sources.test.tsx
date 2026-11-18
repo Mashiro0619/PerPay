@@ -8,12 +8,17 @@ import { queryClient, type AdminOrderDetail, type ReconciliationOrder, type Webh
 import Notifications, { NotificationDetail } from "../src/pages/Notifications";
 import { DataTable } from "../src/components/data-table";
 import { OrderFacts } from "../src/components/detail/DetailPrimitives";
-import { DeliveryCard, OrderNotifications } from "../src/components/detail/NotificationEvidence";
+import { DeliveryCard } from "../src/components/detail/NotificationEvidence";
+import { OrderNotificationsSection, useOrderNotifications } from "../src/components/detail/OrderNotificationRecords";
 import { WorkspaceProvider } from "../src/workspace";
 import { delivery, failedAttempt, paidOrder, paymentMatch } from "./detail-fixtures";
 import { json } from "./fixtures";
 import { mobileMedia } from "./mobile-media";
 import { recordAction } from "./menu-helper";
+
+function OrderNotifications({ orderId, notifyUrl }: { orderId: string; notifyUrl: string | null }) {
+  return <OrderNotificationsSection notifications={useOrderNotifications(orderId)} notifyUrl={notifyUrl} />;
+}
 
 function mount(children: ReactNode, path = "/", scoped = false) {
   return render(<QueryClientProvider client={queryClient}><MemoryRouter initialEntries={[path]}>
@@ -166,6 +171,8 @@ describe("order and notification copy follows its actual source", () => {
     }));
     mount(<OrderNotifications orderId={paidOrder.order_id} notifyUrl={notifyUrl} />, "/sites/site_copy/orders/" + paidOrder.order_id, true);
     expect(await screen.findByText(notifyUrl ? "此订单已设置通知地址，暂无发送记录" : "此订单未设置通知地址")).toBeVisible();
+    // An order without deliveries keeps the section to its title and this one line.
+    expect(screen.getByRole("region", { name: "通知" })).toHaveAttribute("data-section-empty", "true");
   });
 
   it("keeps unknown error codes in technical evidence while ordinary text remains readable", async () => {

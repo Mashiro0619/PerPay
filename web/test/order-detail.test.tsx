@@ -90,6 +90,8 @@ function mockData(
   );
   return { state, requests };
 }
+const section = (id: string) => document.querySelector<HTMLElement>('[data-detail-section="' + id + '"]')!;
+const shown = (element: Element) => element.closest("[hidden]") === null;
 async function confirmReason(
   user: ReturnType<typeof userEvent.setup>,
   reason: string,
@@ -102,7 +104,7 @@ async function confirmReason(
 }
 
 describe("order detail work surface", () => {
-  it("shows an explicit empty attempt table without adding a disclosure or repeating event descriptions", async () => {
+  it("says that delivery has not started instead of listing attempts, and does not repeat event descriptions", async () => {
     mockData(paidOrder, [
       {
         ...delivery,
@@ -118,14 +120,12 @@ describe("order detail work surface", () => {
     mount();
     await screen.findByRole("heading", { name: "订单信息" });
     expect(await screen.findByText(/尚未开始投递/)).toBeVisible();
-    expect(
-      screen.getByRole("heading", { name: "投递尝试（0）" }),
-    ).toBeVisible();
-    expect(screen.getByText("暂无尝试明细")).toBeVisible();
+    expect(within(section("notifications")).queryByRole("list")).not.toBeInTheDocument();
+    expect(within(section("notifications")).getAllByText("等待投递")).toHaveLength(1);
     expect(
       screen.queryByRole("button", { name: /投递尝试/ }),
     ).not.toBeInTheDocument();
-    const timeline = screen.getByRole("region", { name: "订单动态" });
+    const timeline = within(section("history")).getByRole("list", { name: "订单动态" });
     expect(within(timeline).getByText("订单已创建")).toBeVisible();
     expect(within(timeline).getByText("PerPay 按金额和付款时间推断")).toBeVisible();
     expect(
@@ -143,10 +143,13 @@ describe("order detail work surface", () => {
       }),
     ).toBeVisible();
     expect(await screen.findByText(/HTTP 200 · 对方的确认回执无效/)).toBeVisible();
-    for (const name of ["订单信息", "收款关联记录", "通知", "订单动态"]) {
-      expect(screen.getAllByRole("heading", { name })).toHaveLength(1);
-      expect(screen.getByRole("heading", { name })).toBeVisible();
-    }
+    const content = screen.getByRole("group", { name: "订单详情内容" });
+    expect(Array.from(content.children).map(child => child.getAttribute("data-detail-section"))).toEqual(["overview", "payments", "notifications", "history"]);
+    expect(within(content).getAllByRole("heading", { level: 2 }).map(heading => heading.textContent)).toEqual(["订单信息", "收款关联，共 1 项", "通知，共 1 项", "动态"]);
+    expect(within(screen.getByRole("navigation", { name: "分区导航" })).getAllByRole("button").map(link => link.textContent)).toEqual(["订单信息", "收款关联1", "通知1", "动态"]);
+    expect(section("payments")).toHaveAttribute("data-anchor-prefixes", "match- candidate- exception-");
+    expect(screen.getAllByRole("heading", { name: "收款关联记录" })).toHaveLength(1);
+    expect(document.getElementById("match-" + matchId)).toBe(screen.getByRole("heading", { name: "收款关联记录" }).closest("article"));
     expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "概况" })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "金额明细" })).not.toBeInTheDocument();
@@ -157,6 +160,11 @@ describe("order detail work surface", () => {
     expect(screen.getByText(detailLedger.provider_order_no!)).toBeVisible();
     expect(screen.getByText("测试买家")).toBeVisible();
     expect(screen.getByText("测试交易备注")).toBeVisible();
+    // The facts used to check the payment are in view; the remaining evidence is one step away.
+    const fields = (root: Element) => Array.from(root.querySelectorAll("[data-detail-fields] > dl > div")).filter(shown).map(row => row.querySelector("dt")!.textContent);
+    expect(fields(document.getElementById("match-" + matchId)!)).toEqual(["支付宝交易金额", "支付宝交易时间", "支付宝交易对方", "支付宝订单号", "支付宝交易备注"]);
+    expect(screen.getByText("金额占用时间")).not.toBeVisible();
+    await userEvent.setup().click(screen.getByRole("button", { name: /^核对凭据/ }));
     expect(screen.getByText("金额占用时间")).toBeVisible();
     expect(screen.getByRole("heading", { name: "匹配依据" })).toBeVisible();
     expect(
@@ -165,7 +173,6 @@ describe("order detail work surface", () => {
     expect(
       screen.queryByText(/按金额和付款时间推断，不是平台按订单号确认/),
     ).not.toBeInTheDocument();
-    expect(screen.getByText("金额占用时间")).toBeVisible();
     expect(await recordAction("标记已退款")).toBeVisible();
     fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
     expect(screen.queryByText("历史退款（只读）")).not.toBeInTheDocument();
@@ -184,13 +191,17 @@ describe("order detail work surface", () => {
     ).toBe(false);
     const user = userEvent.setup();
     expect(await screen.findByText(/HTTP 200 · 对方的确认回执无效/)).toBeVisible();
-    expect(
-      screen.getByRole("heading", { name: "投递尝试（1）" }),
-    ).toBeVisible();
-    expect(
-      screen.getByRole("columnheader", { name: "HTTP / ACK" }),
-    ).toBeVisible();
-    await user.click(await recordAction("技术详情", "通知记录操作"));
+    expect(within(screen.getByRole("list", { name: "投递尝试（1）" })).getAllByRole("listitem")).toHaveLength(1);
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    // The delivery states its result once, in its badge.
+    expect(within(section("notifications")).getAllByText("等待重试")).toHaveLength(1);
+    // One menu holds every record's technical data; the content has no tool rows of its own.
+    expect(content.querySelector("[data-record-tools], [data-technical-information]")).toBeNull();
+    expect(screen.queryByRole("button", { name: /技术信息|技术详情/ })).not.toBeInTheDocument();
+    await recordAction("订单技术信息");
+    expect(screen.getAllByRole("menuitem").map(item => item.textContent)).toEqual(["标记已退款", "订单技术信息", "收款关联技术信息", "通知技术信息"]);
+    await user.click(await recordAction("通知技术信息"));
+    expect(await screen.findByRole("dialog", { name: "通知技术信息" })).toHaveTextContent(delivery.delivery.delivery_id);
     expect(screen.getByLabelText("当前页面")).toHaveTextContent(
       "/orders/" + orderId,
     );
@@ -215,9 +226,12 @@ describe("order detail work surface", () => {
         screen.queryByRole("navigation", { name: "列表分页" }),
       ).not.toBeInTheDocument();
       fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
-      expect(
-        within(screen.getByRole("region", { name: "收款关联记录" })).getByRole("button", { name: "人工关联收款" }),
-      ).toBeVisible();
+      expect(await screen.findByRole("region", { name: "收款关联" })).toHaveAttribute("data-section-empty", "true");
+      expect(section("payments")).toHaveTextContent("尚未关联收款。");
+      // The one filled action sits in the footer, after the outlined checkout link.
+      expect(screen.getAllByRole("button", { name: "人工关联收款" })).toHaveLength(1);
+      expect(Array.from(document.querySelectorAll("[data-record-primary-actions] > *")).map(action => action.textContent))
+        .toEqual([status === "OPEN" ? "打开收银台" : "查看收银台结果", "人工关联收款"]);
     },
   );
 
@@ -246,15 +260,19 @@ describe("order detail work surface", () => {
     const user = userEvent.setup();
     await user.click(facts.getByRole("button", { name: "复制商户订单号" }));
     expect(await navigator.clipboard.readText()).toBe(merchant);
-    const timeline = within(screen.getByRole("region", { name: "订单动态" }));
+    const timeline = within(section("history"));
     const visibleTimes = () => timeline.getAllByRole("listitem").map(item => item.querySelector("time")?.getAttribute("datetime"));
     expect(visibleTimes()).toEqual(events.slice(2).reverse().map(event => event.occurred_at));
-    expect(timeline.getAllByText("管理员甲：" + reason, { normalizer: value => value })).toHaveLength(6);
-    await user.click(timeline.getByRole("button", { name: "更早动态（2）" }));
+    // Older events stay in the document, collapsed, so each of the seven confirmations keeps its reason.
+    const reasons = () => timeline.getAllByText("管理员甲：" + reason, { normalizer: value => value });
+    expect(reasons()).toHaveLength(7);
+    expect(reasons().filter(shown)).toHaveLength(6);
+    expect(timeline.getByText("订单已创建")).not.toBeVisible();
+    await user.click(timeline.getByRole("button", { name: "更早动态2" }));
     expect(visibleTimes()).toEqual([...events].reverse().map(event => event.occurred_at));
     expect(timeline.getByText("订单已创建")).toBeVisible();
-    await user.click(timeline.getByRole("button", { name: "更早动态（2）" }));
-    expect(visibleTimes()).toHaveLength(6);
+    await user.click(timeline.getByRole("button", { name: "更早动态2" }));
+    await waitFor(() => expect(visibleTimes()).toHaveLength(6));
     expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
   });
 
@@ -272,8 +290,8 @@ describe("order detail work surface", () => {
       screen.queryByRole("heading", { name: "实收金额不符" }),
     ).not.toBeInTheDocument();
     const user = userEvent.setup();
-    const historyTrigger = screen.getByRole("button", { name: "异常历史（1）" });
-    expect(historyTrigger).toHaveClass("focus-visible:ring-3");
+    const historyTrigger = screen.getByRole("button", { name: "异常历史1" });
+    expect(section("history")).toContainElement(historyTrigger);
     expect(historyTrigger).toHaveAttribute("aria-expanded", "false");
     await user.click(historyTrigger);
     expect(historyTrigger).toHaveAttribute("aria-expanded", "true");
@@ -314,6 +332,15 @@ describe("order detail work surface", () => {
     expect(
       screen.getByText(/支付宝交易金额 ¥1.02 与可能关联订单的应付 ¥1.01 不一致/),
     ).toBeVisible();
+    expect(heading.closest("article")).toHaveAttribute("id", "exception-" + financialException.exception_id);
+    // The notice names what needs checking and leads to it; it holds no action of its own.
+    const notice = document.querySelector<HTMLElement>('[data-record-notice="warning"]')!;
+    expect(notice).toHaveTextContent("实收金额不符");
+    expect(notice.compareDocumentPosition(section("overview")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(notice).getAllByRole("button").map(button => button.textContent)).toEqual(["1 项待核对 ›"]);
+    expect(within(screen.getByRole("navigation", { name: "分区导航" })).getAllByRole("button")[1]).toHaveTextContent("收款关联2");
+    await userEvent.setup().click(within(notice).getByRole("button"));
+    expect(section("payments")).toHaveFocus();
   });
 
   it("shows manual actors and reversal reasons and never calls a settled timestamp a reversal", async () => {
@@ -346,14 +373,12 @@ describe("order detail work surface", () => {
     });
     mount();
     await screen.findByRole("heading", { name: "订单信息" });
-    await userEvent.setup().click(screen.getByRole("button", { name: "已撤销的收款关联（1）" }));
+    await userEvent.setup().click(screen.getByRole("button", { name: "已撤销的收款关联1" }));
     expect(await screen.findByText("撤销时间")).toBeVisible();
     expect(screen.getByText("平台记录归属不符")).toBeVisible();
     expect(screen.getByText("对照交易号确认")).toBeVisible();
-    fireEvent.click(screen.getByRole("button", { name: "更多操作，收款关联记录操作" }));
-    expect(
-      screen.queryByRole("menuitem", { name: "撤销错误关联" }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "撤销错误关联" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "更多操作，收款关联记录操作" })).not.toBeInTheDocument();
   });
 
   it("reverses an association without navigation and refreshes the current order", async () => {
@@ -384,10 +409,10 @@ describe("order detail work surface", () => {
     mount();
     await screen.findByRole("heading", { name: "订单信息" });
     const user = userEvent.setup();
-    await screen.findByRole("button", { name: "更多操作，收款关联记录操作" });
-    await user.click(await recordAction("撤销错误关联", "收款关联记录操作"));
+    // The association's only action is shown directly on its record.
+    await user.click(within(document.getElementById("match-" + matchId)!).getByRole("button", { name: "撤销错误关联" }));
     await confirmReason(user, "测试撤销原因", "确认撤销关联");
-    await user.click(await screen.findByRole("button", { name: "已撤销的收款关联（1）" }));
+    await user.click(await screen.findByRole("button", { name: "已撤销的收款关联1" }));
     expect(await screen.findByText("测试撤销原因")).toBeVisible();
     expect(screen.getByLabelText("当前页面")).toHaveTextContent(
       "/orders/" + orderId,
@@ -424,8 +449,7 @@ describe("order detail work surface", () => {
     mount();
     await screen.findByRole("heading", { name: "订单信息" });
     const user = userEvent.setup();
-    await screen.findByRole("button", { name: "更多操作，通知记录操作" });
-    await user.click(await screen.findByRole("button", { name: "重新发送" }));
+    await user.click(await within(section("notifications")).findByRole("button", { name: "重新发送" }));
     await confirmReason(user, "业务已修复", "确认重新发送");
     await screen.findByText("操作结果待确认");
     await user.click(screen.getByRole("button", { name: "响应详情" }));
@@ -569,11 +593,13 @@ describe("order detail work surface", () => {
     await screen.findByText(/HTTP 200/);
     expect(requests).toHaveLength(2);
     await user.click(screen.getByRole("button", { name: "下一页" }));
-    expect(await screen.findByText(/历史投递/)).toBeVisible();
-    fireEvent.click(screen.getByRole("button", { name: "更多操作，通知记录操作" }));
-    expect(
-      screen.queryByRole("menuitem", { name: "重新发送" }),
-    ).not.toBeInTheDocument();
+    // A delivery replaced by a resend is history: collapsed, and never offered for another resend.
+    const superseded = await screen.findByRole("button", { name: /^历史投递/ });
+    expect(superseded).toHaveAttribute("aria-expanded", "false");
+    await user.click(superseded);
+    expect(await within(section("notifications")).findByRole("link", { name: "查看详情" })).toHaveAttribute("href", "/notifications/old-delivery");
+    expect(screen.queryByRole("button", { name: "重新发送" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "更多操作，通知记录操作" })).not.toBeInTheDocument();
     expect(requests).toHaveLength(3);
     expect(new URL(requests[2]!.url).searchParams.get("cursor")).toBe(
       "next-delivery-page",
@@ -689,6 +715,109 @@ describe("order detail work surface", () => {
   });
 });
 
+
+describe("order record layout", () => {
+  const footerActions = () => Array.from(document.querySelectorAll("[data-record-primary-actions] > *")).map(action => action.textContent);
+  const reversedMatch = { ...paymentMatch, status: "REVERSED" as const,
+    resolution_operation: { ...operation, operation_type: "REVERSE_SETTLEMENT" as const, reason: "平台记录归属不符" } };
+
+  it.each([
+    { name: "a confirmed order", data: paidOrder, value: "¥1.01", difference: null, actions: ["查看收银台结果"] },
+    { name: "an overpaid order", data: { ...paidOrder, received_amount_cents: 103 }, value: "¥1.03", difference: "+¥0.02", actions: ["查看收银台结果"] },
+    { name: "an underpaid order", data: { ...paidOrder, received_amount_cents: 99 }, value: "¥0.99", difference: "−¥0.02", actions: ["查看收银台结果"] },
+    { name: "an unpaid order", data: order, value: "¥1.01", difference: null, actions: ["打开收银台", "人工关联收款"] },
+  ])("leads the summary of $name with $value and keeps at most one filled action", async ({ data, value, difference, actions }) => {
+    mockData(data, []);
+    mount();
+    await screen.findByRole("heading", { name: "订单信息" });
+    const summary = screen.getByRole("group", { name: "PerPay 收款状态" });
+    expect(summary.querySelector("[data-record-summary-value]")).toHaveTextContent(value);
+    expect(within(summary).getByText("应付").parentElement).toHaveTextContent("应付¥1.01");
+    expect(within(summary).getByText("实收").parentElement).toHaveTextContent(data.received_amount_cents ? "实收" + value : "实收—");
+    expect(summary.querySelector("[data-amount-difference]")?.textContent ?? null).toBe(difference && "（" + difference + "）");
+    expect(summary.querySelector("time")).toHaveAttribute("datetime", data.created_at);
+    // The summary is not repeated in the scrolling content.
+    expect(screen.getByRole("group", { name: "订单详情内容" })).not.toContainElement(summary);
+    expect(footerActions()).toEqual(actions);
+    expect(document.querySelector("[data-record-notice]")).toBeNull();
+  });
+
+  it("gives a disputed order its two decisions in the footer and explains them without buttons", async () => {
+    const released = { ...reversedMatch, ledger_entry: { ...detailLedger, state: "UNALLOCATED" as const } };
+    const disputed: AdminOrderDetail = { ...paidOrder, payment: { ...paidOrder.payment, status: "DISPUTED" },
+      reconciliation: { matches: [released], exceptions: [] } };
+    const { state } = mockData(disputed, [], async request => {
+      const body = await request.json();
+      const mark = { marked: true, version: 1, note: null, updated_at: operation.created_at, updated_by: "admin" };
+      state.order = { ...disputed, refund_mark: mark, refund_mark_history: [{ ...mark, operation_id: body.operation_id }] };
+      return json({ data: { operation_id: body.operation_id, refund_mark: mark } });
+    });
+    mount();
+    await screen.findByRole("heading", { name: "订单信息" });
+    const notice = document.querySelector<HTMLElement>('[data-record-notice="danger"]')!;
+    expect(notice).toHaveTextContent("原收款关联已撤销，请继续核对付款凭证。");
+    expect(notice).toHaveTextContent(/确认属于本订单后重新关联收款/);
+    expect(within(notice).queryByRole("button")).not.toBeInTheDocument();
+    expect(footerActions()).toEqual(["标记已退款", "重新核对并确认收款"]);
+    expect(screen.getAllByRole("button", { name: "重新核对并确认收款" })).toHaveLength(1);
+    // The checkout link gives way to the refund decision and moves into the menu.
+    expect(screen.queryByRole("link", { name: "查看收银台结果" })).not.toBeInTheDocument();
+    expect(await recordAction("查看收银台结果")).toHaveAttribute("target", "_blank");
+    expect(screen.getAllByRole("menuitem").map(item => item.textContent)).toEqual(["查看收银台结果", "订单技术信息", "收款关联技术信息"]);
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+    // A reversed association whose entry is free again is in view, with the way to move it.
+    const association = document.getElementById("match-" + matchId)!;
+    expect(association).toBeVisible();
+    expect(within(association).getByRole("button", { name: "将原流水关联到正确订单" })).toBeVisible();
+    expect(screen.getByText("原流水属于其他订单时，选择正确订单继续处理：")).toBeVisible();
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "标记已退款" }));
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "确认标记已退款" }));
+    expect(await screen.findByText("外部退款已登记")).toBeVisible();
+    // With the refund on record nothing is left to decide: no filled action, and the mark can be withdrawn from the menu.
+    await waitFor(() => expect(footerActions()).toEqual(["查看收银台结果"]));
+    expect(document.querySelector('[data-record-notice="danger"]')).toHaveTextContent(/已登记退款/);
+    expect(screen.queryByRole("button", { name: "将原流水关联到正确订单" })).not.toBeInTheDocument();
+    expect(await recordAction("撤销退款标记")).toBeVisible();
+  });
+
+  it.each([
+    { name: "a reversed association inside collapsed history", hash: "#match-" + matchId, target: () => document.getElementById("match-" + matchId), exact: true },
+    { name: "an ignored exception inside collapsed history", hash: "#exception-" + financialException.exception_id, target: () => document.getElementById("exception-" + financialException.exception_id), exact: true },
+    { name: "the match candidate inside collapsed evidence", hash: "#candidate-" + candidateId, target: () => document.getElementById("candidate-" + candidateId), exact: true },
+    { name: "an unknown candidate, by its section", hash: "#candidate-unknown", target: () => section("payments"), exact: false },
+    { name: "a requested section", hash: "?section=history", target: () => section("history"), exact: false },
+  ])("opens a deep link to $name", async ({ hash, target, exact }) => {
+    mockData({ ...paidOrder, payment: { ...paidOrder.payment, status: "DISPUTED" },
+      reconciliation: { matches: [reversedMatch], exceptions: [{ ...financialException, reminder_ignored: true }] } });
+    mount("/orders/" + orderId + hash);
+    await screen.findByRole("heading", { name: "订单信息" });
+    await waitFor(() => expect(target()).toHaveFocus());
+    expect(target()).toBeVisible();
+    expect(document.querySelectorAll("[data-anchor-hit]")).toHaveLength(exact ? 1 : 0);
+    if (exact) expect(target()).toHaveAttribute("data-anchor-hit");
+    // Only the history that holds the destination is opened.
+    const collapsed = screen.getAllByRole("button", { expanded: false }).map(button => button.textContent);
+    expect(collapsed.some(name => name!.startsWith("已撤销的收款关联"))).toBe(!hash.startsWith("#match-") && hash !== "#candidate-" + candidateId);
+    expect(collapsed.some(name => name!.startsWith("异常历史"))).toBe(!hash.startsWith("#exception-"));
+  });
+
+  it("tells records of the same kind apart in the single technical menu", async () => {
+    const second = { ...reversedMatch, payment_match_id: "33333333-3333-4333-8333-333333333334", created_at: "2026-09-06T00:05:00.000Z" };
+    mockData({ ...paidOrder, reconciliation: { matches: [paymentMatch, second], exceptions: [] } }, []);
+    mount();
+    await screen.findByRole("heading", { name: "订单信息" });
+    await recordAction("订单技术信息");
+    expect(screen.getAllByRole("menuitem").map(item => item.textContent)).toEqual([
+      "标记已退款", "订单技术信息", "收款关联技术信息 · 2026/09/06 08:01:02", "收款关联技术信息 · 2026/09/06 08:05:00",
+    ]);
+    await userEvent.setup().click(screen.getByRole("menuitem", { name: /^收款关联技术信息 · 2026\/09\/06 08:05:00$/ }));
+    const technical = await screen.findByRole("dialog", { name: "收款关联技术信息" });
+    expect(technical).toHaveTextContent(second.payment_match_id);
+    expect(technical).not.toHaveTextContent(matchId);
+  });
+});
 
 describe("payment provenance", () => {
   it.each(["INFERRED", "MANUAL", "NONE"] as const)("explains %s without attributing administrator decisions to Alipay", async (basis) => {
