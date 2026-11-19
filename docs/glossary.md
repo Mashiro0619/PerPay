@@ -46,12 +46,12 @@
 | 收银台有效期至 | `expires_at` | PerPay |
 | 支付宝交易时间 | `occurred_at` | 支付宝 |
 | PerPay 确认时间 | `PAYMENT_CONFIRMED.occurred_at` | PerPay 记录确认事件的时间 |
-| 通知确认时间（PerPay 记录） | `acknowledged_at` | PerPay 收到有效协议回执的时间 |
+| 通知确认时间 | `acknowledged_at` | PerPay 收到有效协议回执的时间 |
 | 撤销时间 | `payment_match.resolved_at` | PerPay |
 | 发现时间 | `exception/conflict.created_at` | PerPay |
 | 下次重试 | `next_attempt_at` | PerPay 计划再次发送通知的时间 |
 
-通知确认时间表示 PerPay 收到成功回执的时间。发货、充值或服务开通是否完成，以及完成时间，由业务网站记录。
+通知确认时间表示 PerPay 收到成功回执的时间，界面在这个时间下方写明这一点。发货、充值或服务开通是否完成，以及完成时间，由业务网站记录。
 
 **编号**
 

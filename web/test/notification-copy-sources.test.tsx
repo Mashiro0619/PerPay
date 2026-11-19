@@ -171,7 +171,10 @@ describe("order and notification copy follows its actual source", () => {
     const summary = screen.getByRole("group", { name: "通知状态" });
     expect(within(summary).getByText("通知已确认", { exact: true })).toBeVisible();
     expect(within(summary).getByText(latest ? "对方已返回有效确认回执" : "历史投递 · 对方已返回有效确认回执")).toBeVisible();
-    expect(screen.getByText("通知确认时间（PerPay 记录）", { selector: "dt" }).nextElementSibling).toHaveTextContent("2026/10/21 18:10:00");
+    // The label stays short; whose clock the time comes from is said under the value.
+    const acknowledged = screen.getByText("通知确认时间", { selector: "dt" }).nextElementSibling!;
+    expect(acknowledged).toHaveTextContent("2026/10/21 18:10:00");
+    expect(within(acknowledged as HTMLElement).getByText("PerPay 收到成功回执的时间")).toBeVisible();
     expect(screen.queryByText("业务确认时间")).not.toBeInTheDocument();
   });
 
