@@ -68,7 +68,8 @@ test("notification loading and historical deliveries stay within their order sec
     const deliveries = notifications.locator("article[data-sub-record]:visible");
     await expect(deliveries).toHaveCount(current);
     const history = notifications.getByRole("button", { name: /^历史投递/ });
-    await expect(history).toHaveAccessibleName("历史投递" + (original.data.length - current));
+    // The number of replaced deliveries is read apart from the name.
+    await expect(history).toHaveAccessibleName(new RegExp(`^历史投递\\s*，共\\s*${original.data.length - current}\\s*项$`));
     await history.focus(); await page.keyboard.press("Enter");
     await expect(history).toHaveAttribute("aria-expanded", "true");
     await expect(deliveries).toHaveCount(original.data.length);
