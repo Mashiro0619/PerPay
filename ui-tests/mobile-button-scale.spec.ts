@@ -266,13 +266,13 @@ test.describe("compact mobile button visuals and separate touch targets", () => 
     const dialog = page.locator("[data-overlay-content]");
     await expect(dialog.locator('[data-detail-section="transaction"]')).toBeVisible();
     await expect(dialog.getByRole("tablist")).toHaveCount(0);
-    const technical = dialog.locator('[data-detail-section="transaction"] [data-ledger-summary] [data-technical-information]');
-    const view = technical.locator('button[aria-haspopup="dialog"]');
-    await view.scrollIntoViewIfNeeded();
+    // The record keeps its technical information in the menu of its fixed footer.
+    const view = dialog.locator("[data-overlay-footer]").getByRole("button", { name: "更多操作，流水操作", exact: true });
     await view.focus();
     const parentBefore = await dialog.evaluate(element => ({ height: element.getBoundingClientRect().height, top: element.getBoundingClientRect().top, scrollTop: element.querySelector('[data-overlay-detail]')!.scrollTop }));
     await page.keyboard.press("Enter");
     await expect(view).toHaveAttribute("aria-expanded", "true");
+    await page.getByRole("menuitem", { name: "流水技术信息", exact: true }).tap();
     const reader = page.getByRole("dialog", { name: "流水技术信息", exact: true });
     await expect(reader.locator('pre[aria-label="流水技术信息"]')).toBeVisible();
     const body = reader.locator(":scope > [data-admin-dialog-body]");
@@ -309,7 +309,7 @@ test.describe("compact mobile button visuals and separate touch targets", () => 
     await page.keyboard.press("Escape");
     await expect(reader).toHaveCount(0);
     await expect(view).toHaveAttribute("aria-expanded", "false");
-    await expect(technical.locator("pre")).toHaveCount(0);
+    await expect(dialog.locator("pre")).toHaveCount(0);
     await expect(view).toBeFocused();
     await expect(page.getByRole("dialog")).toHaveCount(1);
     expect(await dialog.evaluate(element => ({ height: element.getBoundingClientRect().height, top: element.getBoundingClientRect().top, scrollTop: element.querySelector('[data-overlay-detail]')!.scrollTop }))).toEqual(parentBefore);
