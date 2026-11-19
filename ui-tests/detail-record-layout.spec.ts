@@ -18,7 +18,7 @@ const layouts = [
   { width: 320, height: 560, text: 200, theme: "light", mode: "compact" },
 ] as const;
 
-test("settled transaction credentials expand by keyboard without hiding source navigation", async ({ page, manifest }) => {
+test("a settled transaction states Alipay's numbers without unfolding and leads to its stored copy by keyboard", async ({ page, manifest }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await login(page, manifest);
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"], { origin: manifest.origin });
@@ -29,24 +29,30 @@ test("settled transaction credentials expand by keyboard without hiding source n
   expect(entry.content_consistent).toBe(true);
   expect(entry.active_match_count).toBe(1);
   expect(entry.has_conflicts).toBe(false);
+  expect(entry.sources).toHaveLength(1);
   await page.goto(manifest.origin + "/admin" + path);
   const overlay = await settleOverlay(page);
-  const credentials = overlay.getByRole("region", { name: "支付宝交易编号", exact: true });
-  const trigger = credentials.getByRole("button", { name: "支付宝交易编号", exact: true });
-  await expect(trigger).toHaveAttribute("aria-expanded", "false");
-  await expect(credentials.getByRole("button", { name: "复制支付宝流水号", exact: true })).toHaveCount(0);
-  await trigger.focus();
+  // Alipay's numbers stand with the transaction: nothing has to be unfolded to read or to copy them.
+  const transaction = detailSection(page, "transaction");
+  await expect(overlay.getByRole("button", { name: "支付宝交易编号", exact: true })).toHaveCount(0);
+  await expect(transaction.getByText(entry.external_event_id, { exact: true })).toBeVisible();
+  const copy = transaction.getByRole("button", { name: "复制支付宝流水号", exact: true });
+  await copy.focus();
+  await expect(copy.locator("xpath=ancestor::*[@data-field-copy]")).toHaveCSS("opacity", "1");
   await page.keyboard.press("Enter");
-  await expect(trigger).toHaveAttribute("aria-expanded", "true");
-  await credentials.getByRole("button", { name: "复制支付宝流水号", exact: true }).click();
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(entry.external_event_id);
-  await trigger.click();
-  await expect(trigger).toHaveAttribute("aria-expanded", "false");
-  const sourceLink = overlay.getByRole("link", { name: "核对这份记录", exact: true });
-  await sourceLink.click();
-  const source = overlay.locator(`[data-ledger-source="${entry.active_match!.ledger_entry_id}"]`);
-  await expect(source).toBeFocused();
-  await expect(source.getByRole("button", { name: "复制内部流水编号（PerPay）", exact: true })).toBeVisible();
+  // The stored copy is one section away, reached from the navigation that stays above the content.
+  const sourcesLink = overlay.getByRole("navigation", { name: "分区导航", exact: true }).getByRole("button", { name: /^采集记录\s*，共\s*1\s*项$/ });
+  await sourcesLink.focus();
+  await page.keyboard.press("Enter");
+  const sources = detailSection(page, "sources");
+  await expect(sources).toBeFocused();
+  await expect(sources).toBeInViewport();
+  await expect(sourcesLink).toHaveAttribute("aria-current", "true");
+  // A single stored copy is the record itself, so there is no separate record of it to look for.
+  await expect(sources.locator('article[id^="source-"]')).toHaveCount(0);
+  await expect(sources.getByText(entry.active_match!.ledger_entry_id, { exact: true })).toBeVisible();
+  await expect(sources.getByRole("button", { name: "复制内部流水编号（PerPay）", exact: true })).toBeVisible();
 });
 
 for (const layout of layouts) {
