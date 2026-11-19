@@ -39,6 +39,7 @@ function mount(detail = detailFixture(), options: { failedMatch?: () => boolean;
     if (path === "/api/admin/v1/ledger/entries/" + ledgerId) return json({ data: detail });
     if (path.endsWith("/candidates")) return json({ data: (options.candidates ?? []).filter(item => path.endsWith("/ledger-entries/" + item.ledger_entry_id + "/candidates")) });
     if (path.endsWith("/orders/" + orderId)) return json({ data: order });
+    if (path.endsWith("/settlements/manual/orders")) return json({ data: [], page: { next_cursor: null } });
     const match = detail.matches.find(item => path.endsWith("/matches/" + item.payment_match_id));
     if (match) return options.failedMatch?.() ? json({ error: { code: "unavailable", message: "关联依据读取失败" } }, 503) : json({ data: fullMatch(match, detail) });
     throw new Error("Unexpected request: " + path);
@@ -58,7 +59,7 @@ const settle = async () => {
 };
 
 describe("unified transaction detail", () => {
-  it("shows identical facts once, every source with complete copyable identifiers, and one association for copies that agree", async () => {
+  it("shows identical facts once, every source with complete copyable identifiers, and a shared association for copies that agree", async () => {
     const fetchMock = mount();
     const user = userEvent.setup();
     const writeText = vi.spyOn(navigator.clipboard, "writeText");
@@ -84,11 +85,12 @@ describe("unified transaction detail", () => {
       expect(within(card).getByText("未分配", { exact: true })).toBeVisible();
       // Identical sources repeat none of the transaction's facts.
       expect(terms(card)).toEqual(["内部流水编号（PerPay）", "保存时间"]);
-      // Copies that agree stand for one another: none of them asks to be chosen.
-      expect(within(card).queryByRole("button", { name: "人工关联收款" })).not.toBeInTheDocument();
+      // A copy can still be used by name: one kept from an account that no longer exists may be open to other orders.
+      expect(within(card).getByRole("button", { name: "用这份记录关联" })).toBeVisible();
       await user.click(within(card).getByRole("button", { name: "复制内部流水编号（PerPay）" }));
       expect(writeText).toHaveBeenLastCalledWith(id);
     }
+    // Copies that agree stand for one another, so the record offers the association without asking which.
     expect(screen.getByRole("button", { name: "人工关联收款" }).closest("[data-overlay-actions]")).not.toBeNull();
     const orders = screen.getByRole("region", { name: "对应订单" });
     await waitFor(() => expect(orders).toHaveAttribute("data-section-empty", "true"));
@@ -208,7 +210,7 @@ describe("unified transaction detail", () => {
     await settle();
     expect(screen.getAllByText("存在多条关联")).toHaveLength(2);
     // A payment is settled once: with an association in effect, no copy offers another.
-    expect(screen.queryByRole("button", { name: "人工关联收款" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /人工关联收款|用这份记录关联/ })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /^已撤销的关联，共 ?1 ?项$/ }));
     for (const match of [history, first, second]) {
       const card = record("match-" + match.payment_match_id);
@@ -247,8 +249,9 @@ describe("unified transaction detail", () => {
     const first = mount(view(false));
     await screen.findByRole("heading", { name: "支付宝收款", level: 1 });
     await waitFor(() => expect(section("payments")).toHaveTextContent("尚未关联收款订单，可在要采用的采集记录上人工关联。"));
-    for (const id of [ledgerId, secondSourceId]) expect(within(record("source-" + id)).getByRole("button", { name: "人工关联收款" })).toBeVisible();
-    expect(screen.getAllByRole("button", { name: "人工关联收款" })).toHaveLength(2);
+    for (const id of [ledgerId, secondSourceId]) expect(within(record("source-" + id)).getByRole("button", { name: "用这份记录关联" })).toBeVisible();
+    // Nothing says which of the differing copies is right, so the record as a whole offers none.
+    expect(screen.queryByRole("button", { name: "人工关联收款" })).not.toBeInTheDocument();
     expect(first).toHaveBeenCalledTimes(3);
     cleanup();
     queryClient.clear();
@@ -260,7 +263,28 @@ describe("unified transaction detail", () => {
     const suggestion = record("candidate-" + eligible.candidate_id);
     expect(within(suggestion).getByText("订单或流水当前不可人工关联。")).toBeVisible();
     expect(within(suggestion).getByRole("link", { name: "采集记录 2" })).toBeVisible();
-    expect(screen.queryByRole("button", { name: /人工关联收款|关联到此订单/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /人工关联收款|用这份记录关联|关联到此订单/ })).not.toBeInTheDocument();
+  });
+
+  it("looks for orders with the copy the administrator names", async () => {
+    const fetchMock = mount();
+    const user = userEvent.setup();
+    await screen.findByRole("heading", { name: "支付宝收款", level: 1 });
+    await settle();
+    const copies = () => fetchMock.mock.calls.map(([request]) => new URL(request.url))
+      .filter(url => url.pathname.endsWith("/settlements/manual/orders")).map(url => url.searchParams.get("ledger_entry_id"));
+    // The record's own action uses the first copy; a copy's action uses that copy.
+    for (const [open, id] of [[screen.getByRole("button", { name: "人工关联收款" }), ledgerId],
+      [within(record("source-" + secondSourceId)).getByRole("button", { name: "用这份记录关联" }), secondSourceId]] as const) {
+      const before = copies().length;
+      await user.click(open);
+      const dialog = await screen.findByRole("dialog", { name: "人工关联收款" });
+      await waitFor(() => expect(copies().length).toBeGreaterThan(before));
+      expect(new Set(copies().slice(before))).toEqual(new Set([id]));
+      await user.click(within(dialog).getByRole("button", { name: "取消" }));
+      await waitFor(() => expect(screen.queryByRole("dialog", { name: "人工关联收款" })).not.toBeInTheDocument());
+      await waitFor(() => expect(open).toHaveFocus());
+    }
   });
 
   it.each(["AMOUNT_INFERRED", "MANUAL"] as const)("shows %s evidence without repeating the transaction", async evidence => {

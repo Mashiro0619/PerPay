@@ -159,9 +159,11 @@ function LedgerRecord({ entry }: { entry: AdminLedgerDetail }) {
   // A payment is settled once, whichever of its copies holds the association: while one is in effect no copy takes another.
   const settled = entry.active_match_count > 0;
   const associable = settled ? [] : entry.sources.filter(isAssociable);
-  // Copies that agree stand for one another, so the record as a whole offers the association.
-  // Copies that differ each offer their own: the administrator has to choose the one to rely on.
+  // Copies that agree stand for one another, so the record as a whole offers the association, through the first of them.
+  // Copies that differ have no such default: the administrator has to choose the one to rely on.
   const chosen = !several || entry.content_consistent ? associable[0] : undefined;
+  // Each copy can still be used by name. Copies kept from accounts that no longer exist may be open to different orders.
+  const perCopy = associable.length > 1 || !chosen;
   const associate = useAssociateIncome({ ledgerId: chosen?.ledger_entry_id ?? "", ledgerLabel: chosen ? ledgerLabel(chosen) : undefined });
 
   const matchQueries = useQueries({ queries: entry.matches.map(match => ({
@@ -240,7 +242,7 @@ function LedgerRecord({ entry }: { entry: AdminLedgerDetail }) {
           ? <p className={note}>{entry.content_consistent ? "多份采集记录对应同一笔交易。" : "各份采集记录存在差异，请逐份核对。"}</p>
           : !entry.content_consistent && <p className={note}>这是 PerPay 保存的版本，与它不一致的版本见账本冲突。</p>}
         {entry.sources.map((source, index) => several
-          ? <SourceRecord key={source.ledger_entry_id} source={source} entry={entry} number={index + 1} associable={!chosen && associable.includes(source)} />
+          ? <SourceRecord key={source.ledger_entry_id} source={source} entry={entry} number={index + 1} associable={perCopy && associable.includes(source)} />
           : <FieldList key={source.ledger_entry_id} items={sourceFields(source, entry, true)} />)}
         <AccountLedgerFreshness accountId={entry.alipay_account_id ?? null} />
       </Section>
@@ -294,9 +296,9 @@ function LedgerRecord({ entry }: { entry: AdminLedgerDetail }) {
   </>;
 }
 
-/** One of several sources. Where they differ, each offers its own association: that is the copy the order would be tied to. */
+/** One of several sources. Its own association ties the order to this copy and no other. */
 function SourceRecord({ source, entry, number, associable }: { source: AdminLedgerSource; entry: AdminLedgerDetail; number: number; associable: boolean }) {
-  const associate = useAssociateIncome({ ledgerId: source.ledger_entry_id, ledgerLabel: ledgerLabel(source) });
+  const associate = useAssociateIncome({ ledgerId: source.ledger_entry_id, ledgerLabel: ledgerLabel(source), actionLabel: "用这份记录关联" });
   return <SubRecord id={"source-" + source.ledger_entry_id} title={"采集记录 " + number} status={<LedgerState value={source.state} />}
     actions={associable ? [associate.action] : []} actionsLabel={`更多操作，采集记录 ${number} 操作`}>
     <FieldList items={sourceFields(source, entry, false)} />
