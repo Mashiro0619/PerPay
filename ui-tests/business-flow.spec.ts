@@ -313,7 +313,9 @@ async function traceAudit(page: Page, fixture: BusinessFixture, info: TestInfo, 
   await screenshot(page, info, "10-business-audit-trail");
   await row.click();
   const overlay = page.locator("[data-overlay-content]");
-  await expect(overlay.getByRole("heading", { name: "审计日志详情", exact: true })).toBeVisible();
+  // The record is titled by its action; its type stands on the line above the title.
+  await expect(overlay.locator("[data-overlay-eyebrow-text]")).toContainText("审计日志详情");
+  await expect(overlay.getByRole("group", { name: "日志概况", exact: true })).toBeVisible();
   await expect(overlay.getByText(site.configuration.name, { exact: true }).first()).toBeVisible();
   await overlay.getByRole("button", { name: "审计日志技术信息", exact: true }).click();
   const technical = page.locator("[data-technical-dialog]");
