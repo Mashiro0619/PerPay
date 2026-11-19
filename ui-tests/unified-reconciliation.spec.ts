@@ -195,25 +195,18 @@ test("legacy global details resolve the unified transaction while site evidence 
     await page.goto(manifest.origin + "/admin" + path);
     await expectOverlayTarget(page, target);
     expect(new URL(page.url()).pathname).toBe("/admin/reconciliation");
-    const overlay = await settleOverlay(page);
-    await revealDetailSection(page, "transaction");
-    const transaction = overlay.locator("[data-ledger-summary]");
-    const credentials = transaction.getByRole("button", { name: "支付宝交易编号", exact: true });
-    await expect(credentials).toHaveAttribute("aria-expanded", "false");
-    await credentials.click();
-    await expect(credentials).toHaveAttribute("aria-expanded", "true");
-    await expect(transaction).toContainText(group.external_event_id);
-    await revealDetailSection(page, "payments");
-    await expect(overlay.locator('[data-ledger-match="' + match.payment_match_id + '"]')).toBeVisible();
+    await settleOverlay(page);
+    // Alipay's own number stands with the transaction, with nothing to unfold first.
+    await expect(await revealDetailSection(page, "transaction")).toContainText(group.external_event_id);
+    await expect((await revealDetailSection(page, "payments")).locator('article[id="match-' + match.payment_match_id + '"]')).toBeVisible();
   }
   const overlay = await settleOverlay(page);
   // All sections share the open record; refresh updates both matching and
   // source evidence without requiring navigation to a hidden panel.
-  await revealDetailSection(page, "sources");
-  await expect(overlay.locator("[data-ledger-source]")).toHaveCount(group.sources.length);
+  const sources = await revealDetailSection(page, "sources");
+  for (const source of group.sources) await expect(sources.getByText(source.ledger_entry_id, { exact: true })).toBeVisible();
   await expect(overlay.getByRole("button", { name: "刷新", exact: true })).toBeEnabled();
-  await revealDetailSection(page, "payments");
-  await expect(overlay.locator('[data-ledger-match="' + match.payment_match_id + '"]')).toBeVisible();
+  await expect((await revealDetailSection(page, "payments")).locator('article[id="match-' + match.payment_match_id + '"]')).toBeVisible();
   const refreshed: string[] = [];
   const refreshedRequest = (request: { url(): string }) => refreshed.push(new URL(request.url()).pathname);
   page.on("request", refreshedRequest);
@@ -264,6 +257,15 @@ test("source anchors preserve the originating page and scroll across overlay clo
   const entry = await ledgerDetail(page, manifest.origin, sourceId);
   const current = entry.matches.find(match => match.status === "SETTLED")!;
   expect(current).toBeDefined();
+  if (entry.sources.length === 1) {
+    // A record tells its stored copies apart, and links to them, only when it holds several. The fixture stored each
+    // matched transaction once, so the reads of this record gain a clearly synthetic second copy; nothing is written.
+    const copy = { ...structuredClone(entry.sources[0]!), ledger_entry_id: "b0000000-0000-4000-8000-000000000005", provider_account_key: "synthetic-second-copy" };
+    await page.route(url => url.pathname === groupedApi + "/" + sourceId, route => route.fulfill({ status: 200,
+      json: { data: { ...entry, source_record_count: 2, sources: [...entry.sources, copy] } } }));
+    await page.route(url => url.pathname === "/api/admin/v1/reconciliation/ledger-entries/" + copy.ledger_entry_id + "/candidates",
+      route => route.fulfill({ status: 200, json: { data: [] } }));
+  }
   await rows(page).first().evaluate(element => element.setAttribute("data-originating-ledger-row", "retained"));
   await selected.focus();
   await page.clock.runFor(100);
@@ -274,15 +276,16 @@ test("source anchors preserve the originating page and scroll across overlay clo
   const overlay = await settleOverlay(page);
   const popup = await overlay.elementHandle();
   await revealDetailSection(page, "payments");
-  const matchCard = overlay.locator('[data-ledger-match="' + current.payment_match_id + '"]');
-  const sourceLink = matchCard.getByRole("link", { name: "核对这份记录", exact: true });
+  const matchCard = overlay.locator('article[id="match-' + current.payment_match_id + '"]');
+  // The association names the stored copy it uses; the link leads to that copy inside the same record.
+  const sourceLink = matchCard.getByRole("link", { name: /^采集记录 \d+$/ });
   const sourceHref = await sourceLink.getAttribute("href");
   const sourceTarget = new URL(new URL(sourceHref!, manifest.origin).searchParams.get("overlay")!, manifest.origin);
   expect(sourceTarget.pathname).toBe(detailPath(sourceId));
   expect(sourceTarget.hash).toBe("#source-" + current.ledger_entry_id);
   await sourceLink.click();
   await expect(page).toHaveURL(manifest.origin + sourceHref);
-  const sourceCard = overlay.locator('[data-ledger-source="' + current.ledger_entry_id + '"]');
+  const sourceCard = overlay.locator('article[id="source-' + current.ledger_entry_id + '"]');
   await expect(detailSection(page, "sources")).toBeInViewport();
   await expect(overlay.getByRole("tab")).toHaveCount(0);
   await expect(sourceCard).toBeFocused();
@@ -344,7 +347,7 @@ test("source anchors preserve the originating page and scroll across overlay clo
   await selected.press("Enter");
   await settleOverlay(page);
   await revealDetailSection(page, "payments");
-  await matchCard.getByRole("link", { name: "核对这份记录", exact: true }).click();
+  await sourceLink.click();
   await expect(sourceCard).toBeFocused();
   const reopened = new URL(page.url());
   expect(new URL(reopened.searchParams.get("overlay")!, manifest.origin).hash).toBe("#source-" + current.ledger_entry_id);
@@ -383,8 +386,9 @@ test("merged financial actions keep the chosen source and match identity without
   await page.goto(manifest.origin + "/admin" + detailPath(before.ledger_entry_id));
   const overlay = await settleOverlay(page);
   await revealDetailSection(page, "sources");
-  const sourceCard = overlay.locator('[data-detail-section="sources"] [data-ledger-source="' + source!.ledger_entry_id + '"]');
-  const associate = sourceCard.getByRole("button", { name: "人工关联收款", exact: true });
+  // The record's own action would use its first copy; this copy is used by naming it.
+  const sourceCard = overlay.locator('[data-detail-section="sources"] article[id="source-' + source!.ledger_entry_id + '"]');
+  const associate = sourceCard.getByRole("button", { name: "用这份记录关联", exact: true });
   await associate.click();
   const financial = page.getByRole("dialog", { name: "人工关联收款", exact: true });
   await financial.getByRole("button", { name: "取消", exact: true }).click();
@@ -425,19 +429,17 @@ test("merged financial actions keep the chosen source and match identity without
 
   const match = await matchDetail(page, manifest.origin, manifest.details.matchManual!);
   await page.goto(manifest.origin + "/admin" + detailPath(match.ledger_entry_id));
-  await revealDetailSection(page, "payments");
-  const matchCard = page.locator('[data-ledger-match="' + match.payment_match_id + '"]');
-  const tools = matchCard.getByRole("button", { name: "更多操作，收款关联记录操作", exact: true });
-  await tools.click();
-  await page.getByRole("menuitem", { name: "撤销错误关联", exact: true }).click();
+  const matchCard = (await revealDetailSection(page, "payments")).locator('article[id="match-' + match.payment_match_id + '"]');
+  // An association's only action stands on its record as a button.
+  const reverse = matchCard.getByRole("button", { name: "撤销错误关联", exact: true });
+  await reverse.click();
   const reversal = page.getByRole("dialog", { name: "撤销收款关联？", exact: true });
   await expect(reversal).toContainText(match.order.product_name);
   await expect(reversal).toContainText(match.order.merchant_order_no);
   await reversal.getByRole("button", { name: "取消", exact: true }).click();
   await expect(reversal).not.toBeVisible();
-  await expect(tools).toBeFocused();
-  await tools.click();
-  await page.getByRole("menuitem", { name: "撤销错误关联", exact: true }).click();
+  await expect(reverse).toBeFocused();
+  await reverse.click();
   await reversal.getByLabel("操作理由", { exact: true }).fill("只校验关联身份，不实际撤销。");
   await page.evaluate(() => delete document.documentElement.dataset.perpayDemo);
   await reversal.getByRole("button", { name: "确认撤销关联", exact: true }).click();
@@ -449,7 +451,7 @@ test("merged financial actions keep the chosen source and match identity without
   expect(blocked[1]!.body.financial_operation_id).toEqual(expect.any(String));
   await reversal.getByRole("button", { name: "关闭并刷新", exact: true }).click();
   await expect(reversal).not.toBeVisible();
-  await expectRecoveryFocus(tools);
+  await expectRecoveryFocus(reverse);
   const stillSettled = await matchDetail(page, manifest.origin, manifest.details.matchManual!);
   expect(stillSettled.status).toBe("SETTLED");
   expect(stillSettled.resolution_operation).toEqual(match.resolution_operation);
