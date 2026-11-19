@@ -139,3 +139,47 @@ for (const layout of layouts) {
     expect(errors).toEqual([]);
   });
 }
+
+// Only the record's content scrolls. The drawer around it is not a scrolling box, so bringing a section into view cannot carry the title or the actions away.
+for (const viewport of [{ width: 1440, height: 900 }, { width: 1440, height: 640 }, { width: 390, height: 844 }]) {
+  test(`${viewport.width}x${viewport.height}: section links move the record's content and leave the drawer's title, summary and actions in place`, async ({ page, manifest }, info) => {
+    await page.setViewportSize(viewport);
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await login(page, manifest);
+    await page.goto(manifest.origin + "/admin" + manifest.details.orderPaid!);
+    const overlay = await settleOverlay(page);
+    const links = overlay.getByRole("navigation", { name: "分区导航", exact: true }).getByRole("button");
+    await expect(links).toHaveText([/^订单信息/, /^收款关联/, /^通知/, /^动态/]);
+    const ids = ["overview", "payments", "notifications", "history"];
+    const frame = () => overlay.evaluate(element => {
+      const box = (selector: string) => element.querySelector(selector)!.getBoundingClientRect().toJSON();
+      const detail = element.querySelector<HTMLElement>("[data-overlay-detail]")!;
+      return {
+        drawer: { scrollTop: element.scrollTop, hiddenHeight: element.scrollHeight - element.clientHeight },
+        column: element.querySelector("[data-overlay-primary]")!.scrollTop,
+        header: box('[data-overlay-primary] > [data-slot="dialog-header"]'), summary: box("[data-overlay-summary]"), footer: box("[data-overlay-footer]"),
+        content: { scrollTop: detail.scrollTop, scrollable: detail.scrollHeight - detail.clientHeight },
+      };
+    });
+    const initial = await frame();
+    expect(initial.content.scrollable, "the record is longer than its drawer").toBeGreaterThan(0);
+    // Text for screen readers sits out of flow in the counted headings; it stays inside the content's own scrolling box.
+    await expect(detailSection(page, "notifications").locator("h2 .sr-only")).toHaveCount(2);
+    expect(initial.drawer.hiddenHeight, "nothing in the content reaches outside the drawer").toBe(0);
+    const visited = [];
+    for (const index of [2, 3, 1, 0]) {
+      await links.nth(index).click();
+      await expect(detailSection(page, ids[index]!)).toBeFocused();
+      const after = await frame();
+      expect(after.drawer.scrollTop).toBe(0);
+      expect(after.column).toBe(0);
+      expect(after.header).toEqual(initial.header);
+      expect(after.summary).toEqual(initial.summary);
+      expect(after.footer).toEqual(initial.footer);
+      await expect(detailSection(page, ids[index]!)).toBeInViewport();
+      visited.push({ id: ids[index], scrollTop: after.content.scrollTop });
+    }
+    expect(visited.at(-1)!.scrollTop, "the first section returns the content to its start").toBe(0);
+    await record(page, info, { feature: "record-section-links", viewport, visited, evidence: "named local order with a confirmed payment and a notification" });
+  });
+}
