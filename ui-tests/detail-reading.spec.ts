@@ -60,6 +60,7 @@ async function openDetail(page: Page, manifest: Manifest, key: string) {
   await settleOverlay(page);
   await expect(detailBody(page).locator("[data-detail-page]")).toBeVisible();
   if (key.startsWith("notification")) await expect(detailSection(page, "order").locator("article[data-sub-record]")).toBeVisible();
+  else if (key.startsWith("order")) await expect(detailSection(page, "overview").locator("[data-record-fields]").first()).toBeVisible();
   else if (key.startsWith("match")) {
     const target = targetUrl(page);
     const matchId = detailPath(manifest, key).split("/").at(-1)!;
@@ -486,8 +487,9 @@ test("coarse-pointer detail actions retain compact touch targets in both content
     for (const width of [320, 390]) for (const mode of ["compact", "full"] as const) {
       await page.setViewportSize({ width, height: 900 });
       await layout(page, "dark", mode);
-      for (const scenario of scenarios) {
-        await openDetail(page, manifest, scenario.key);
+      // An order has the fullest summary and action bar: four section links, and two actions beside the menu.
+      for (const key of [...scenarios.map(scenario => scenario.key), "orderLong"]) {
+        await openDetail(page, manifest, key);
         const headerGeometry = await headerControlsGeometry(page);
         const header = foreground(page).locator('[data-overlay-primary] > [data-slot="dialog-header"]');
         const refreshTouch = await expectTouchTarget(header.getByRole("button", { name: "刷新", exact: true }));
@@ -496,16 +498,23 @@ test("coarse-pointer detail actions retain compact touch targets in both content
         expect(Math.abs(refreshTouch.height - closeTouch.height)).toBeLessThanOrEqual(1);
         expect(Math.abs(refreshTouch.y + refreshTouch.height / 2 - closeTouch.y - closeTouch.height / 2)).toBeLessThanOrEqual(1);
         const targets = [];
-        for (const button of await page.locator('[data-overlay-detail] [class~="group/button"], [data-overlay-detail] [data-slot="button"]').all()) {
+        // Every button of the record: in its content, among the summary's section links and in the action bar.
+        const regions = { summary: 0, detail: 0, footer: 0 };
+        for (const button of await foreground(page).locator(':is([data-overlay-summary], [data-overlay-detail], [data-overlay-footer]) :is([class~="group/button"], [data-slot="button"])').all()) {
           if (!await button.isVisible() || !await button.isEnabled()) continue;
           // Reveal the complete generated touch slot, including its margins.
           await button.evaluate(element => element.scrollIntoView({ block: "center", inline: "nearest" }));
           await page.clock.runFor(100);
           targets.push(await expectTouchTarget(button));
+          regions[await button.evaluate(element => element.closest("[data-overlay-summary]") ? "summary" : element.closest("[data-overlay-footer]") ? "footer" : "detail")]++;
         }
         expect(targets.length).toBeGreaterThan(0);
-        await record(page, info, { feature: "detail-touch-targets", width, mode, scenario: scenario.key, targets, headerGeometry, headerTargets: [refreshTouch, closeTouch] });
-        await screenshot(page, info, `reading-touch-${scenario.key}-${width}-${mode}`);
+        if (key === "orderLong") {
+          expect(regions.summary, "four section links").toBe(4);
+          expect(regions.footer, "the menu and two actions").toBe(3);
+        }
+        await record(page, info, { feature: "detail-touch-targets", width, mode, scenario: key, regions, targets, headerGeometry, headerTargets: [refreshTouch, closeTouch] });
+        await screenshot(page, info, `reading-touch-${key}-${width}-${mode}`);
       }
     }
   } finally { await context.close(); }
