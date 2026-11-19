@@ -7,7 +7,8 @@ import { closeTechnicalDialog, detailSection, expectDetailFields, expectDetailRe
 import type { AdminLedgerDetail, AdminOrderDetail, PaymentMatchDetail, WebhookAttempt, WebhookDeliveryDetail } from "../web/src/api/generated/types.gen";
 
 const scenarios = [
-  { key: "notificationDns", kind: "notification", heading: "通知详情", tools: "更多操作，通知记录操作" },
+  // A notification is titled by the event it reports.
+  { key: "notificationDns", kind: "notification", heading: "收款已确认", tools: "更多操作，通知记录操作" },
   { key: "matchSite", kind: "match", heading: "收款关联详情", tools: "更多操作，收款关联记录操作" },
   { key: "ledgerAssociated", kind: "ledger", heading: "流水与对账详情", tools: "更多操作，支付宝流水记录操作" },
 ] as const;
@@ -58,7 +59,7 @@ async function openDetail(page: Page, manifest: Manifest, key: string) {
   await page.goto(manifest.origin + "/admin" + detailPath(manifest, key));
   await settleOverlay(page);
   await expect(detailBody(page).locator("[data-detail-page]")).toBeVisible();
-  if (key.startsWith("notification")) await expect(detailSection(page, "order").locator("[data-detail-order-summary]")).toBeVisible();
+  if (key.startsWith("notification")) await expect(detailSection(page, "order").locator("article[data-sub-record]")).toBeVisible();
   else if (key.startsWith("match")) {
     const target = targetUrl(page);
     const matchId = detailPath(manifest, key).split("/").at(-1)!;
@@ -85,33 +86,47 @@ async function fields(owner: Locator, names: readonly string[]) {
   for (const name of names) await expect(owner.locator("dt").filter({ hasText: new RegExp("^" + name + "$") })).toBeVisible();
 }
 
-async function expectAttemptHistory(owner: Locator, count: number) {
-  const name = `投递尝试（${count}）`;
-  const contents = owner.getByRole("table", { name, exact: true }).or(owner.getByRole("list", { name, exact: true }));
-  await expect(contents, "the visible history retains its accessible count without a repeated heading").toBeVisible();
-  await expect(owner.getByRole("heading", { name, exact: true })).toHaveCount(0);
-  return contents;
+/** A notification's attempts section: the latest ten in view, or one line when nothing was attempted. */
+async function expectAttempts(page: Page, count: number) {
+  const section = detailSection(page, "attempts");
+  await expect(section.getByRole("heading", { level: 2 })).toHaveText(/^投递尝试/);
+  if (!count) {
+    await expect(section).toHaveAttribute("data-section-empty", "true");
+    await expect(section.getByText("尚未开始投递", { exact: true })).toBeVisible();
+    await expect(section.getByRole("list")).toHaveCount(0);
+    return section;
+  }
+  // The section's name carries the count, so the list does not repeat it.
+  await expect(section).toHaveAccessibleName(new RegExp(`^投递尝试\\s*，共\\s*${count}\\s*项$`));
+  const list = section.getByRole("list", { name: "投递尝试", exact: true });
+  await expect(list.getByRole("listitem")).toHaveCount(Math.min(count, 10));
+  return list;
 }
-async function technicalSection(page: Page, label: string, sourceId?: string) {
+/**
+ * Where a detail keeps its technical entry. A record with a footer has it in
+ * the footer's menu, under `menuItem`; the others end the owning content with it.
+ */
+async function technicalEntry(page: Page, label: string, sourceId?: string): Promise<{ technical: Locator; menuItem?: string }> {
+  // Found by attribute: the page behind an open dialog is hidden from role queries.
+  if (label.includes("通知")) return { technical: foreground(page).locator("[data-overlay-footer]").locator(`button[aria-label="${label}"]`), menuItem: "通知技术信息" };
   if (label.includes("支付宝流水记录")) {
     await readDetailSection(page, "交易");
-    return detailSection(page, "transaction").locator('[data-ledger-summary] [data-technical-information]');
+    return { technical: detailSection(page, "transaction").locator('[data-ledger-summary] [data-technical-information]') };
   }
   if (label.includes("查账记录")) {
     await readDetailSection(page, /^采集记录/);
     expect(sourceId, "technical source tools retain the owning source identity").toBeTruthy();
-    return detailSection(page, "sources").locator(`[data-ledger-source="${sourceId}"]`)
-      .locator(':scope > [data-slot="item-content"] > [data-technical-information], :scope > [data-slot="card-content"] > [data-technical-information]');
+    return { technical: detailSection(page, "sources").locator(`[data-ledger-source="${sourceId}"]`)
+      .locator(':scope > [data-slot="item-content"] > [data-technical-information], :scope > [data-slot="card-content"] > [data-technical-information]') };
   }
-  if (label.includes("通知")) return detailSection(page, "overview").locator('[data-notification-information] [data-technical-information]');
   const matchId = /^#match-(.+)$/.exec(targetUrl(page).hash)?.[1];
-  return matchId
+  return { technical: matchId
     ? detailSection(page, "payments").locator(`[data-ledger-match="${matchId}"] [data-match-summary] > [data-slot="card-content"] > [data-technical-information]`)
-    : detailBody(page).locator('[data-match-evidence] > [data-slot="card-content"] > [data-technical-information]');
+    : detailBody(page).locator('[data-match-evidence] > [data-slot="card-content"] > [data-technical-information]') };
 }
 async function keyboardTools(page: Page, label: string) {
-  const technical = await technicalSection(page, label);
-  const session = await openTechnicalDialog(page, technical);
+  const { technical, menuItem } = await technicalEntry(page, label);
+  const session = await openTechnicalDialog(page, technical, menuItem);
   await page.keyboard.press("Tab");
   await expect(session.close).toBeFocused();
   await page.keyboard.press("Tab");
@@ -156,7 +171,8 @@ function completeFieldGeometry(field: Element) {
 }
 
 async function readingFlowGeometry(page: Page, _longContent = false) {
-  const groups = await expectDetailFields(detailBody(page).locator('[data-detail-fields][data-density="comfortable"][data-layout="flow"]:visible'));
+  // A record lists its facts in one column per group; the other details still flow theirs into columns.
+  const groups = await expectDetailFields(detailBody(page).locator('[data-record-fields]:visible, [data-detail-fields][data-density="comfortable"][data-layout="flow"]:visible'));
   expect(groups.length).toBeGreaterThan(0);
   return groups;
 }
@@ -196,29 +212,28 @@ async function headerControlsGeometry(page: Page) {
   }
   return { refresh: refreshGeometry!, close: closeGeometry! };
 }
-async function notificationSectionAlignment(page: Page) {
-  const information = detailBody(page).locator('[data-notification-information]:visible');
-  if (!await information.count()) return null;
-  const summary = detailBody(page).locator('[data-detail-order-summary]');
-  await expect(summary).toBeVisible();
-  const boxes = await detailBody(page).evaluate(body => {
-    const summary = body.querySelector('[data-detail-order-summary]')!;
-    const notification = body.querySelector('[data-notification-information]')!;
-    return { summaryLeft: summary.getBoundingClientRect().left, summaryFieldsLeft: summary.querySelector('[data-detail-fields]')!.getBoundingClientRect().left,
-      notificationLeft: notification.getBoundingClientRect().left, notificationFieldsLeft: notification.querySelector('[data-detail-fields]')!.getBoundingClientRect().left };
-  });
-  for (const left of [boxes.summaryLeft, boxes.summaryFieldsLeft, boxes.notificationFieldsLeft]) {
-    expect(Math.abs(left - boxes.notificationLeft), "related order and notification facts share the same left edge").toBeLessThanOrEqual(1);
+/** A record's sections share one left edge with their titles and with the facts, sub-records and timelines directly under them. */
+async function recordSectionAlignment(page: Page) {
+  const sections = await detailBody(page).locator("[data-record-sections] > [data-detail-section]").evaluateAll(sections => sections.map(section => {
+    const left = (element: Element) => element.getBoundingClientRect().left;
+    return { id: section.getAttribute("data-detail-section"), left: left(section), title: left(section.querySelector("h2")!),
+      blocks: [...section.querySelectorAll(":scope > [data-record-fields], :scope > [data-sub-record], :scope > [data-record-timeline]")].map(left) };
+  }));
+  if (!sections.length) return null;
+  for (const section of sections) {
+    expect(Math.abs(section.left - sections[0]!.left), "sections share one left edge: " + section.id).toBeLessThanOrEqual(1);
+    for (const edge of [section.title, ...section.blocks]) expect(Math.abs(edge - section.left), "a section's title and content start at its left edge: " + section.id).toBeLessThanOrEqual(1);
   }
-  return boxes;
+  return sections;
 }
-async function readingLayout(page: Page, mode: "compact" | "full", alternativeTable?: string) {
+async function readingLayout(page: Page, mode: "compact" | "full") {
   await expect(page.locator("[data-content-width]")).toHaveAttribute("data-content-width", mode);
-  const geometry = await expectDetailRecordLayout(page, alternativeTable);
+  const geometry = await expectDetailRecordLayout(page);
   const header = await headerControlsGeometry(page);
-  const notificationAlignment = await notificationSectionAlignment(page);
-  expect(geometry.cards.length).toBeGreaterThan(0);
-  return { ...geometry, header, notificationAlignment };
+  const sections = await recordSectionAlignment(page);
+  // A record laid out in sections has no cards; the other details still group their facts in flat cards.
+  if (!sections) expect(geometry.cards.length).toBeGreaterThan(0);
+  return { ...geometry, header, sections };
 }
 
 test("headers without refresh keep close at the trailing edge and fully clickable", async ({ page, manifest }, info) => {
@@ -277,14 +292,13 @@ test("detail overlays separate facts into readable business sections", async ({ 
     expect(width, "notifications, payment evidence and transaction details share the same reading width").toBe(readingWidth);
     await expect(foreground(page).getByRole("tab")).toHaveCount(0);
     if (scenario.kind === "notification") {
-      await expect(detailSection(page, "overview").getByRole("heading", { level: 2 })).toHaveText(["通知信息"]);
-      await expect(detailSection(page, "order").getByRole("heading", { level: 2 })).toHaveText(["关联订单"]);
-      await expect(detailBody(page).getByRole("group", { name: "关联订单", exact: true }).locator("[data-detail-order-summary]")).toBeVisible();
-      await expect(detailBody(page).getByRole("group", { name: "通知信息", exact: true }).getByRole("button", { name: "通知技术信息", exact: true })).toBeVisible();
-      await readDetailSection(page, "投递记录");
-      await expect(detailSection(page, "attempts").getByRole("heading", { level: 2 })).toHaveText(["投递历史"]);
-      await expectAttemptHistory(detailBody(page).getByRole("group", { name: "投递历史", exact: true }), 1);
-      await readDetailSection(page, "概况");
+      // One heading per section, in reading order; the related order is a record of its own inside the last one.
+      await expect(detailBody(page).getByRole("heading", { level: 2 })).toHaveText(["投递信息", /^投递尝试/, "关联订单"]);
+      await expect(detailSection(page, "order").locator("article[data-sub-record]").getByRole("link", { name: "查看订单", exact: true })).toBeVisible();
+      await expect(foreground(page).locator("[data-overlay-footer]").getByRole("button", { name: scenario.tools, exact: true })).toBeVisible();
+      await readDetailSection(page, /^投递尝试/);
+      await expectAttempts(page, 1);
+      await readDetailSection(page, "投递信息");
     } else if (scenario.kind === "match") {
       await expect(detailBody(page).getByRole("heading", { level: 2 })).toHaveText(["关联摘要与订单", "支付宝交易", "匹配依据与处理记录"]);
       await expect(detailBody(page).getByRole("group", { name: "收款关联记录", exact: true }).locator("[data-detail-order-summary]")).toBeVisible();
@@ -360,12 +374,12 @@ test("summaries and credentials retain reading order in stable responsive column
     }
     return wrapping;
   };
-  await openDetail(page, manifest, "notificationDns");
+  // A record lists its facts in one column; payment evidence still flows the related order's facts into columns.
+  await openDetail(page, manifest, "matchSite");
   const wrapping = await checkWrapping(page.locator('[data-detail-order-summary] [data-detail-fields]'));
   await record(page, info, { feature: "detail-flow-content-wrapping", wrapping });
   await screenshot(page, info, "reading-flow-wrapping-restored");
 
-  await openDetail(page, manifest, "matchSite");
   const flows = await readingFlowGeometry(page);
   const twoFacts = flows.find(group => group.fields.length === 2 && group.fields.map(field => field.name).join("/") === "关联方式/关联时间");
   expect(twoFacts, "the genuine inferred match has two short processing facts").toBeTruthy();
@@ -400,13 +414,15 @@ test.describe("detail reading width matrix", () => {
           await expect(page.locator("[data-content-width]")).toHaveAttribute("data-content-width", mode);
           await expect(page.locator("html")).toHaveClass(theme === "dark" ? /dark/ : /^(?!.*\bdark\b)/);
           if (scenario.kind === "notification") {
-            await fields(detailSection(page, "overview").locator("[data-notification-information]"), scenario.key === "notificationSite" ? ["下次重试", "通知地址"] : ["所属网站", "下次重试", "通知地址"]);
-            await expect(detailSection(page, "order").locator("[data-detail-order-summary]")).toBeVisible();
-            await readDetailSection(page, "投递记录");
-            await expectAttemptHistory(detailSection(page, "attempts"), 1);
-            await expect(detailSection(page, "attempts").getByText(/通知域名解析失败/)).toBeVisible();
-            await readingLayout(page, mode, "投递尝试（1）");
-            await readDetailSection(page, "概况");
+            // A site workspace has one website, so its records do not name it again.
+            await expect(detailSection(page, "overview").locator("dt").filter({ hasText: /^业务网站$/ })).toHaveCount(scenario.key === "notificationSite" ? 0 : 1);
+            await fields(detailSection(page, "overview"), ["通知地址", "创建时间"]);
+            // The summary states when the next attempt is due, so the facts do not repeat it.
+            await expect(foreground(page).getByRole("group", { name: "通知状态", exact: true }).locator("[data-record-summary-meta]")).toContainText(/已尝试 1 次 · 下次重试 /);
+            await expect(detailSection(page, "order").locator("article[data-sub-record]")).toBeVisible();
+            await readDetailSection(page, /^投递尝试/);
+            await expect((await expectAttempts(page, 1)).getByText(/通知域名解析失败/)).toBeVisible();
+            await readDetailSection(page, "投递信息");
           } else if (scenario.kind === "match") {
             await fields(detailBody(page), ["支付宝交易金额", "支付宝交易时间", "支付宝交易对方", "支付宝订单号", "支付宝交易备注", "金额占用时间"]);
             await expect(page.getByRole("heading", { name: "匹配依据", exact: true })).toBeVisible();
@@ -501,34 +517,38 @@ test("named notification scenarios retain delivery facts and safe resend recover
   for (const key of ["notificationPending", "notificationDns", "notificationHttp", "notificationDead", "notificationHistory", "notificationSite"]) {
     await openDetail(page, manifest, key);
     const detail = await data<WebhookDeliveryDetail>(page, manifest, apiPath(detailPath(manifest, key)));
-    const card = page.getByRole("group", { name: "通知信息", exact: true });
-    const history = page.getByRole("group", { name: "投递历史", exact: true });
-    await expect(card.getByText(detail.target.target_url, { exact: true })).toBeVisible();
-    await expect(card.locator('[data-slot="card-header"]').getByText(`已尝试 ${detail.delivery.attempt_count} 次`, { exact: true })).toBeVisible();
-    await expect(card.locator("dt").filter({ hasText: /^尝试次数$/ })).toHaveCount(0);
+    const summary = foreground(page).getByRole("group", { name: "通知状态", exact: true });
+    const overview = detailSection(page, "overview");
+    const footer = foreground(page).locator("[data-overlay-footer]");
+    await expect(overview.getByText(detail.target.target_url, { exact: true })).toBeVisible();
+    // The summary states how often delivery was attempted and when the next attempt is due, so the facts repeat neither.
+    await expect(summary.locator("[data-record-summary-meta]")).toContainText(`已尝试 ${detail.delivery.attempt_count} 次`);
+    await expect(overview.locator("dt").filter({ hasText: /^(尝试次数|下次重试|计划投递)$/ })).toHaveCount(0);
     if (key === "notificationSite") {
-      const order = detailBody(page).locator('[data-detail-order-summary] [data-slot="item-title"] a');
+      const order = detailSection(page, "order").getByRole("link", { name: "查看订单", exact: true });
       expect(targetUrl(page, (await order.getAttribute("href"))!).pathname).toBe("/sites/" + detail.target.api_client_id + "/orders/" + detail.event.order_id);
     }
-    await readDetailSection(page, "投递记录");
-    await expectAttemptHistory(history, detail.delivery.attempt_count);
-    await expect(history.getByRole("button", { name: /^投递尝试（/ })).toHaveCount(0);
-    if (key === "notificationPending") {
-      expect(detail.delivery.attempt_count).toBe(0);
-      await expect(history.getByText("暂无尝试明细", { exact: true })).toBeVisible();
-    }
-    if (key === "notificationDns" || key === "notificationSite") await expect(history.getByText(/通知域名解析失败/)).toBeVisible();
-    if (key === "notificationHttp") await expect(history.getByText(/HTTP 503/)).toBeVisible();
-    await readDetailSection(page, "概况");
+    await readDetailSection(page, /^投递尝试/);
+    const attempts = await expectAttempts(page, detail.delivery.attempt_count);
+    if (key === "notificationPending") expect(detail.delivery.attempt_count).toBe(0);
+    if (key === "notificationDns" || key === "notificationSite") await expect(attempts.getByText(/通知域名解析失败/)).toBeVisible();
+    if (key === "notificationHttp") await expect(attempts.getByText(/HTTP 503/)).toBeVisible();
+    await readDetailSection(page, "投递信息");
     if (key === "notificationHistory") {
       expect(detail.is_latest).toBe(false);
-      await expect(card.getByText(/历史投递/)).toBeVisible();
-      await expect(card.getByRole("button", { name: "重新发送", exact: true })).toHaveCount(0);
-      await expect(card.getByRole("button", { name: "更多操作，通知记录操作", exact: true })).toHaveCount(0);
-      await expect(card.getByRole("button", { name: "通知技术信息", exact: true })).toBeVisible();
+      await expect(summary.getByText("历史投递", { exact: true })).toBeVisible();
+      await expect(overview.getByRole("link", { name: "已重新发送，查看最新结果", exact: true })).toBeVisible();
+      // A delivery replaced by a resend offers none of its own; its technical information stays available.
+      await expect(foreground(page).getByRole("button", { name: "重新发送", exact: true })).toHaveCount(0);
+      await footer.getByRole("button", { name: "更多操作，通知记录操作", exact: true }).click();
+      await expect(page.getByRole("menuitem", { name: "通知技术信息", exact: true })).toBeVisible();
+      await expect(page.getByRole("menuitem", { name: "重新发送", exact: true })).toHaveCount(0);
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("menu")).toHaveCount(0);
     }
     if (key === "notificationDead") {
-      const trigger = card.getByRole("button", { name: "重新发送", exact: true });
+      // A stopped delivery offers the resend as the record's primary action.
+      const trigger = footer.locator("[data-record-primary-actions]").getByRole("button", { name: "重新发送", exact: true });
       await trigger.focus();
       await page.keyboard.press("Enter");
       const dialog = page.getByRole("dialog", { name: "重新发送通知", exact: true });
@@ -564,13 +584,15 @@ test("notification history loads after its delivery succeeds and does not reload
   try {
     await page.goto(manifest.origin + "/admin" + route);
     await expect.poll(() => deliveryReads).toBe(1);
+    // Until the delivery is read, the drawer keeps its general title.
     await expect(foreground(page).getByRole("heading", { level: 1 })).toHaveText("通知详情");
     await page.clock.runFor(100);
     expect(attemptReads, "history cannot start before the delivery read succeeds").toBe(0);
     release();
     await expect.poll(() => attemptReads).toBe(1);
-    await expectAttemptHistory(detailSection(page, "attempts"), detail.delivery.attempt_count);
-    await expect(detailSection(page, "overview").locator("[data-notification-information]")).toBeVisible();
+    await expectAttempts(page, detail.delivery.attempt_count);
+    await expect(foreground(page).getByRole("heading", { level: 1 })).toHaveText("收款已确认");
+    await expect(detailSection(page, "overview").getByText(detail.target.target_url, { exact: true })).toBeVisible();
     for (const width of [390, 768, 1440]) {
       await page.setViewportSize({ width, height: 900 });
       await revealHistory();
@@ -586,13 +608,13 @@ test("notification history loads after its delivery succeeds and does not reload
   } finally { release(); }
 
   async function revealHistory() {
-    await readDetailSection(page, "投递记录");
+    await readDetailSection(page, /^投递尝试/);
     await expect(foreground(page).getByRole("tab")).toHaveCount(0);
     await page.clock.runFor(100);
   }
 });
 
-test("a clearly synthetic 21-attempt response stays expanded and pages newest-first without loss", async ({ page, manifest }, info) => {
+test("a clearly synthetic 21-attempt response keeps the latest ten in view and folds the rest, newest-first without loss", async ({ page, manifest }, info) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await login(page, manifest);
   const deliveryPath = apiPath(detailPath(manifest, "notificationHttp"));
@@ -611,25 +633,29 @@ test("a clearly synthetic 21-attempt response stays expanded and pages newest-fi
   await page.route(manifest.origin + deliveryPath, route => route.fulfill({ status: 200, json: { data: detail } }));
   await page.route(manifest.origin + path, route => route.fulfill({ status: 200, json: { data: attempts } }));
   await openDetail(page, manifest, "notificationHttp");
-  await expect(detailBody(page).getByText("已尝试 21 次", { exact: true })).toBeVisible();
-  await readDetailSection(page, "投递记录");
-  const table = page.getByRole("table", { name: "投递尝试（21）", exact: true });
-  await expect(table).toBeVisible();
-  await expect(page.getByRole("button", { name: "投递尝试（21）", exact: true })).toHaveCount(0);
-  const seen: number[] = [];
-  for (let number = 1; number <= 3; number++) {
-    const rows = table.locator("tbody tr");
-    await expect(rows.first()).toContainText(`第 ${21 - (number - 1) * 10} 次`);
-    await expect(page.getByRole("navigation", { name: "投递尝试分页", exact: true })).toContainText(`第 ${number} / 3 页`);
-    await expect(rows).toHaveCount(number === 3 ? 1 : 10);
-    seen.push(...(await rows.locator("td:first-child").allTextContents()).map(value => Number(/第 (\d+) 次/.exec(value)![1])));
-    if (number < 3) await page.getByRole("button", { name: "投递尝试下一页", exact: true }).click();
-  }
+  await expect(foreground(page).getByRole("group", { name: "通知状态", exact: true }).locator("[data-record-summary-meta]")).toContainText("已尝试 21 次");
+  await readDetailSection(page, /^投递尝试/);
+  const section = detailSection(page, "attempts");
+  const numbers = async (list: Locator) => (await list.getByRole("listitem").allTextContents()).map(value => Number(/第 (\d+) 次/.exec(value)![1]));
+  const latest = await expectAttempts(page, 21);
+  const seen = await numbers(latest);
+  expect(seen).toEqual(Array.from({ length: 10 }, (_, index) => 21 - index));
+  const earlier = section.getByRole("button", { name: /^更早的尝试/ });
+  await expect(earlier).toHaveAttribute("aria-expanded", "false");
+  await expect(earlier).toContainText("11");
+  await expect(section.getByRole("list")).toHaveCount(1);
+  await earlier.click();
+  await expect(earlier).toHaveAttribute("aria-expanded", "true");
+  const folded = section.getByRole("list", { name: "更早的尝试", exact: true });
+  await expect(folded.getByRole("listitem")).toHaveCount(11);
+  seen.push(...await numbers(folded));
   expect(seen).toEqual(Array.from({ length: 21 }, (_, index) => 21 - index));
-  await expect(page.getByRole("button", { name: "投递尝试下一页", exact: true })).toBeDisabled();
-  await page.getByRole("button", { name: "投递尝试上一页", exact: true }).click();
-  await expect(table.locator("tbody tr").first()).toContainText("第 11 次");
-  await record(page, info, { feature: "notification-attempt-pagination", evidence: "synthetic-detail-and-attempts-responses-no-sends", count: attempts.length, observed: seen });
+  // Folding the earlier attempts again leaves the latest ten as they were.
+  await earlier.click();
+  await expect(earlier).toHaveAttribute("aria-expanded", "false");
+  await expect(section.getByRole("list")).toHaveCount(1);
+  expect(await numbers(latest)).toEqual(seen.slice(0, 10));
+  await record(page, info, { feature: "notification-attempt-folding", evidence: "synthetic-detail-and-attempts-responses-no-sends", count: attempts.length, observed: seen });
   await screenshot(page, info, "reading-notification-21-attempts");
 });
 
@@ -648,22 +674,26 @@ test("failed attempt reads retain an accurate unknown history and recover on exp
       : route.fulfill({ status: 200, json: { data: original } });
   });
   await openDetail(page, manifest, "notificationHttp");
-  await readDetailSection(page, "投递记录");
-  const main = detailBody(page);
-  const history = page.getByRole("group", { name: "投递历史", exact: true });
-  await expect(history.getByText("发送记录读取失败，请重试。", { exact: true })).toBeVisible();
-  await expect(history.locator('[data-slot="card-description"]')).toHaveText("发送记录读取失败");
-  await expect(main.getByText("暂无尝试明细", { exact: true })).toHaveCount(0);
-  await expect(main.getByRole("table", { name: /^投递尝试/ })).toHaveCount(0);
+  await readDetailSection(page, /^投递尝试/);
+  const main = detailBody(page), section = detailSection(page, "attempts");
+  const unread = section.getByText("投递尝试读取失败，请刷新重试。", { exact: true });
+  // The drawer's notice reports the failure; the section says which part is missing, without calling it empty.
+  await expect(unread).toBeVisible();
+  await expect(section).not.toHaveAttribute("data-section-empty", "true");
+  await expect(section.getByText("尚未开始投递", { exact: true })).toHaveCount(0);
+  await expect(section.getByRole("list")).toHaveCount(0);
   const alert = main.getByRole("alert", { name: "服务连接提示", exact: true });
   await expect(alert).toContainText("合成的投递尝试读取失败");
+  // The header's refresh is the retry the section points to.
+  const beforeRefresh = reads;
+  await foreground(page).getByRole("button", { name: "刷新", exact: true }).click();
+  await expect.poll(() => reads).toBeGreaterThan(beforeRefresh);
+  await expect(unread).toBeVisible();
   const beforeRetry = reads;
   unavailable = false;
   await alert.getByRole("button", { name: "重试", exact: true }).click();
-  await expect(main.getByRole("table", { name: "投递尝试（1）", exact: true })).toBeVisible();
-  await expect(history.getByText(/HTTP 503/)).toBeVisible();
-  await expect(history.getByText("发送记录读取失败，请重试。", { exact: true })).toHaveCount(0);
-  await expect(history.locator('[data-slot="card-description"]')).toHaveText("投递尝试按时间倒序显示 · 每页 10 条");
+  await expect((await expectAttempts(page, 1)).getByText(/HTTP 503/)).toBeVisible();
+  await expect(unread).toHaveCount(0);
   await expect(alert).toHaveCount(0);
   expect(reads).toBeGreaterThan(beforeRetry);
   await record(page, info, { feature: "notification-attempt-read-recovery", evidence: "synthetic-unavailable-response-then-original-attempts", beforeRetry, afterRetry: reads });
@@ -821,8 +851,8 @@ test("technical record identifiers remain copyable without crowding the business
   for (const scenario of cases) {
     await openDetail(page, manifest, scenario.key);
     await expect(detailBody(page).locator('dt').filter({ hasText: /^支付宝 App ID$/ })).toHaveCount(0);
-    const technical = await technicalSection(page, scenario.tools, "sourceId" in scenario ? scenario.sourceId : undefined);
-    const session = await openTechnicalDialog(page, technical);
+    const { technical, menuItem } = await technicalEntry(page, scenario.tools, "sourceId" in scenario ? scenario.sourceId : undefined);
+    const session = await openTechnicalDialog(page, technical, menuItem);
     await page.keyboard.press("Tab");
     await expect(session.close).toBeFocused();
     await page.keyboard.press("Tab");
@@ -901,12 +931,13 @@ test("long products, complete identifiers and multiline details wrap without cli
       else if (scenario.kind === "notification") await readDetailSection(page, "关联订单");
       const orderOwner = scenario.kind === "ledger"
         ? detailSection(page, "payments").locator(`[data-ledger-match="${ledger.matches[0]!.payment_match_id}"]`)
-        : scenario.kind === "notification" ? detailSection(page, "order").getByRole("group", { name: "关联订单", exact: true })
+        : scenario.kind === "notification" ? detailSection(page, "order").locator("article[data-sub-record]")
           : detailBody(page).getByRole("group", { name: "收款关联记录", exact: true });
       const factsOwner = scenario.kind === "ledger" ? detailSection(page, "transaction").locator("[data-ledger-summary]")
-        : scenario.kind === "notification" ? detailSection(page, "overview").locator("[data-notification-information]")
+        : scenario.kind === "notification" ? detailSection(page, "overview")
           : detailBody(page).getByRole("group", { name: "支付宝交易", exact: true });
-      const title = orderOwner.locator('[data-detail-order-summary] [data-slot="item-title"]');
+      // A record names its related order in the sub-record's heading; the other details still use the order summary's title.
+      const title = scenario.kind === "notification" ? orderOwner.getByRole("heading", { level: 3 }) : orderOwner.locator('[data-detail-order-summary] [data-slot="item-title"]');
       await expect(title).toHaveText(product);
       const bounds = await title.evaluate(element => {
         const range = document.createRange(); range.selectNodeContents(element);
@@ -932,7 +963,7 @@ test("long products, complete identifiers and multiline details wrap without cli
           }
         }
       }
-      const longFacts = scenario.kind === "notification" ? [["所属网站", siteName]] : scenario.kind === "match" ? [["所属网站", siteName], ["支付宝交易对方", counterparty]] : [["对方", counterparty]];
+      const longFacts = scenario.kind === "notification" ? [["业务网站", siteName]] : scenario.kind === "match" ? [["所属网站", siteName], ["支付宝交易对方", counterparty]] : [["对方", counterparty]];
       const wrappedFacts = [];
       for (const [name, value] of longFacts) {
         const fieldOwner = name === "所属网站" && scenario.kind === "match" ? orderOwner : factsOwner;

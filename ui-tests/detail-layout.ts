@@ -432,16 +432,13 @@ export async function closeTechnicalDialog(session: TechnicalDialogSession, meth
   } finally { await session.parentState.dispose(); }
 }
 
-export async function expectDetailRecordLayout(page: Page, alternativeTable?: string) {
+export async function expectDetailRecordLayout(page: Page) {
   const overlay = page.locator('[data-overlay-content][data-overlay-record="true"]');
   await expect(overlay).toBeVisible();
   const body = overlay.locator("[data-overlay-detail]");
   await expect(body.getByRole("tablist"), "record sections share one reading surface").toHaveCount(0);
   await expect(body.getByRole("tabpanel")).toHaveCount(0);
-  const firstFields = body.locator("[data-detail-fields]:visible").first();
-  await expect(alternativeTable
-    ? firstFields.or(body.getByRole("table", { name: alternativeTable, exact: true })).first()
-    : firstFields).toBeVisible();
+  await expect(body.locator("[data-detail-fields]:visible").first()).toBeVisible();
   const frame = await expectOverlayFits(page);
   const fields = await expectDetailFields(body.locator("[data-detail-fields]:visible"));
   const technical = await expectTechnicalPlacement(body.locator("[data-technical-information]:visible"));
@@ -463,7 +460,7 @@ export async function expectDetailRecordLayout(page: Page, alternativeTable?: st
       internalGaps: [...detail.querySelectorAll('.detail-section, [data-slot="card"], [data-slot="card-content"], [data-detail-credentials], [data-detail-order-summary] > [data-slot="item-content"]')]
         .filter(visible).map(section => Number.parseFloat(getComputedStyle(section).rowGap)),
       cards: cards.map(card => ({ title: card.getAttribute("aria-label"), radius: getComputedStyle(card).borderRadius, shadow: getComputedStyle(card).boxShadow })),
-      timeFonts: [...detail.querySelectorAll('[data-detail-fields] .list-time, [data-record-fields] dd time, [data-delivery-attempts][data-density="comfortable"] .list-time')]
+      timeFonts: [...detail.querySelectorAll('[data-detail-fields] .list-time, [data-record-fields] dd time')]
         .filter(visible).map(time => Number.parseFloat(getComputedStyle(time).fontSize)),
       overflowActions: cards.flatMap(card => {
         const box = card.getBoundingClientRect();
