@@ -80,14 +80,17 @@ export function AssociateIncomeAction(props: AssociateIncomeOptions) {
     </>
   );
 }
-/** The reversal dialog and the action that opens it; there is no action once a match is reversed. */
-export function useReverseMatch(match: PaymentMatchDetail, movesOnSuccess = false) {
+/**
+ * The reversal dialog and the action that opens it. There is no action once a
+ * match is reversed, nor while its detail is still being read.
+ */
+export function useReverseMatch(match: PaymentMatchDetail | undefined, movesOnSuccess = false) {
   const api = useWorkspaceApi();
   const [snapshot, setSnapshot] = useState<PaymentMatchDetail | null>(null);
   const finalFocus = useRef<HTMLElement | null>(null);
   const [saved, setSaved] = useState(false);
   const setMessage = useSuccessToast();
-  const action: RecordAction | null = match.status === "SETTLED"
+  const action: RecordAction | null = match?.status === "SETTLED"
     ? {
         label: "撤销错误关联",
         danger: true,
