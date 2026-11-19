@@ -1,4 +1,4 @@
-import { revealDetailSection } from "./detail-layout";
+import { detailSection, revealDetailSection } from "./detail-layout";
 import { test, expect, login, record } from "./fixtures";
 import { audit, screenshot } from "./audit";
 import { settleOverlay } from "./overlay-fixtures";
@@ -32,7 +32,9 @@ test("ledger pagination and keyboard links restore filters, page and scroll posi
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(manifest.origin + detailHref);
   const overlay = await settleOverlay(page);
-  await expect(overlay.getByRole("heading", { level: 1 })).toHaveText("流水与对账详情");
+  // The record names itself; the kind of record stays above its title.
+  await expect(overlay.getByRole("heading", { level: 1 })).toHaveText(/^支付宝收款/);
+  await expect(overlay.locator("[data-overlay-eyebrow-text]")).toHaveText("流水与对账详情");
   await overlay.locator('[data-slot="dialog-close"]').click();
   await expect(page).toHaveURL(listUrl);
   await page.clock.runFor(250);
@@ -139,9 +141,8 @@ test("unified transactions render both themes and width modes at 320, 390, 1440 
       await page.goto(manifest.origin + "/admin" + path);
       if (path === transactions) await expect(page.locator("[data-business-row]")).toHaveCount(20);
       else {
-        const overlay = await settleOverlay(page);
-        await revealDetailSection(page, "sources");
-        await expect(overlay.locator("#ledger-sources-heading")).toContainText("查账记录");
+        await settleOverlay(page);
+        await expect((await revealDetailSection(page, "sources")).getByRole("heading", { level: 2 })).toContainText("采集记录");
       }
       await record(page, info, { width, theme, mode, source: "local-synthetic-unified-transactions" });
       await screenshot(page, info, `transactions-${width}-${theme}-${mode}-${path.split("/").at(-1)}`);
@@ -163,20 +164,28 @@ test("ledger tells the current order apart from reversed history without repeati
   const current = entry.matches.find(match => match.status === "SETTLED");
   expect(current).toBeDefined();
   await page.goto(manifest.origin + "/admin" + transactionDetail(entry.ledger_entry_id));
-  const summary = page.locator("[data-ledger-summary]");
-  const currentCard = page.locator('[data-ledger-match="' + current!.payment_match_id + '"]');
   const overlay = await settleOverlay(page);
-  await expect(overlay.getByRole("heading", { name: "支付宝交易", exact: true })).toBeVisible();
+  const summary = overlay.getByRole("group", { name: "流水概况", exact: true });
+  await expect(overlay.getByRole("heading", { level: 1 })).toHaveText(/^支付宝收款/);
+  // The summary says whether the payment is associated; PerPay's bookkeeping state belongs to the stored record.
+  await expect(summary.getByText("已关联", { exact: true })).toBeVisible();
   await expect(summary.getByText("已分配", { exact: true })).toHaveCount(0);
-  await expect(summary.locator("dt").filter({ hasText: /商户订单号（业务网站）|内部流水编号/ })).toHaveCount(0);
-  await revealDetailSection(page, "payments");
-  await expect(page.locator("#ledger-matches-heading")).toBeVisible();
+  // The transaction is described by Alipay's own facts, not by the order's or PerPay's identifiers.
+  const transaction = await revealDetailSection(page, "transaction");
+  await expect(transaction.getByText(entry.external_event_id, { exact: true })).toBeVisible();
+  await expect(transaction.locator("dt").filter({ hasText: /^商户订单号|内部流水编号/ })).toHaveCount(0);
+  const payments = await revealDetailSection(page, "payments");
+  await expect(payments.getByRole("heading", { level: 2 })).toContainText("对应订单");
+  const currentCard = payments.locator('article[id="match-' + current!.payment_match_id + '"]');
   await expect(currentCard.getByText("已关联", { exact: true })).toBeVisible();
   await expect(currentCard.locator("dt").filter({ hasText: /^撤销时间$/ })).toHaveCount(0);
-  await revealDetailSection(page, "sources");
-  await expect(page.locator('[data-ledger-source="' + entry.sources[0]!.ledger_entry_id + '"] > [data-slot="item-content"] > [data-detail-fields] dt')
-    .filter({ hasText: /^(内部流水编号（PerPay）|保存时间)$/ })).toHaveCount(2);
-  await expect(page.locator("#ledger-conflicts-heading")).toHaveCount(0);
+  // A single stored copy adds only what PerPay knows about it: the transaction is not stated a second time.
+  expect(entry.sources).toHaveLength(1);
+  const sources = await revealDetailSection(page, "sources");
+  await expect(sources.locator('article[id^="source-"]')).toHaveCount(0);
+  await expect(sources.locator("dt")).toHaveText(["PerPay 记录状态", "内部流水编号（PerPay）", "保存时间"]);
+  await expect(sources.getByText("已分配", { exact: true })).toBeVisible();
+  await expect(detailSection(page, "conflicts")).toHaveCount(0);
   await screenshot(page, info, "ledger-current-order-reading");
 
   const oldMatchResponse = await page.request.get(manifest.origin + "/api/admin/v1" + manifest.details.matchReversed);
@@ -187,19 +196,27 @@ test("ledger tells the current order apart from reversed history without repeati
   const reversed = (await reversedResponse.json() as { data: AdminLedgerDetail }).data;
   expect(reversed.matches.some(match => match.payment_match_id === oldMatch.payment_match_id && match.status === "REVERSED")).toBe(true);
   await page.goto(manifest.origin + "/admin" + transactionDetail(reversed.ledger_entry_id));
-  await revealDetailSection(page, "payments");
-  if (reversed.active_match_count === 0) {
-    await expect(page.locator("[data-ledger-unmatched]")).toContainText("当前没有对应的收款订单");
-    await expect(page.locator("[data-ledger-unmatched]")).toContainText("可在对应查账记录中人工关联。");
-  }
+  const reversedOverlay = await settleOverlay(page);
+  const reversedPayments = await revealDetailSection(page, "payments");
   const reversedHistory = reversed.matches.filter(match => match.status === "REVERSED");
-  await expect(page.getByRole("heading", { name: `已撤销的历史关联（${reversedHistory.length}）`, exact: true })).toBeVisible();
-  await expect(page.locator("[data-ledger-match]")).toHaveCount(reversed.matches.length);
+  const history = reversedPayments.getByRole("button", { name: new RegExp(`^已撤销的关联\\s*，共\\s*${reversedHistory.length}\\s*项$`) });
+  if (reversed.active_match_count === 0) {
+    await expect(reversedPayments).toContainText("原关联已撤销，当前没有对应的收款订单。");
+    await expect(reversedOverlay.getByRole("group", { name: "流水概况", exact: true }).getByText("未关联", { exact: true })).toBeVisible();
+    // The record offers the next association itself, and the history is what there is to read, so it starts open.
+    await expect(reversedOverlay.locator("[data-overlay-footer]").getByRole("button", { name: "人工关联收款", exact: true })).toBeVisible();
+    await expect(history).toHaveAttribute("aria-expanded", "true");
+  } else {
+    await expect(history).toHaveAttribute("aria-expanded", "false");
+    await history.click();
+  }
+  await expect(reversedPayments.locator('article[id^="match-"]')).toHaveCount(reversed.matches.length);
   for (const match of reversedHistory) {
-    const card = page.locator('[data-ledger-match="' + match.payment_match_id + '"]');
+    const card = reversedPayments.locator('article[id="match-' + match.payment_match_id + '"]');
+    await expect(card.getByRole("heading", { level: 3 })).toHaveText(match.product_name);
     await expect(card.locator("dt").filter({ hasText: /^撤销时间$/ })).toBeVisible();
     await expect(card.getByText("已撤销", { exact: true })).toBeVisible();
-    const href = await card.getByRole("link", { name: match.product_name, exact: true }).getAttribute("href");
+    const href = await card.getByRole("link", { name: "查看订单", exact: true }).getAttribute("href");
     expect(new URL(href!, manifest.origin).searchParams.get("overlay")).toBe("/orders/" + match.order_id);
   }
   await record(page, info, { feature: "ledger-current-versus-history", evidence: "real-isolated-synthetic-current-and-reversed-records", activeMatchCount: reversed.active_match_count, historicalCount: reversedHistory.length });
@@ -233,19 +250,22 @@ test("closed ledger conflicts remain history while only open conflicts require a
     entry.conflicts[0]!.resolved_at = status === "OPEN" ? null : new Date(manifest.epoch + 60_000).toISOString();
     await page.goto(manifest.origin + "/admin" + path);
     const overlay = await settleOverlay(page);
-    await revealDetailSection(page, "conflicts");
-    const conflict = overlay.locator('[data-detail-section="conflicts"] [data-ledger-conflict]');
-    await expect(page.locator("#ledger-conflicts-heading")).toHaveText("账本冲突记录（1）");
+    const conflicts = await revealDetailSection(page, "conflicts");
+    const conflict = conflicts.locator('article[id="conflict-' + entry.conflicts[0]!.conflict_id + '"]');
+    await expect(conflicts.getByRole("heading", { level: 2 })).toHaveText(/^账本冲突\s*，共\s*1\s*项$/);
     await expect(conflict.getByText(visibleStatus, { exact: true })).toBeVisible();
     const href = await conflict.getByRole("link", { name: "查看冲突记录", exact: true }).getAttribute("href");
     expect(new URL(href!, manifest.origin).searchParams.get("overlay")).toBe("/reconciliation/conflicts/" + entry.conflicts[0]!.conflict_id);
-    if (status === "OPEN") await expect(page.locator("[data-ledger-warning]")).toContainText("有 1 条账本冲突待处理");
-    else {
-      await expect(page.locator("[data-ledger-warning]")).toHaveCount(0);
+    const notice = overlay.locator("[data-record-notice]");
+    if (status === "OPEN") {
+      await expect(notice).toContainText("有 1 条账本冲突待处理");
+      await expect(overlay.getByRole("group", { name: "流水概况", exact: true }).getByText("需要核查", { exact: true })).toBeVisible();
+    } else {
+      await expect(notice).toHaveCount(0);
+      await expect(overlay.getByText("需要核查", { exact: true })).toHaveCount(0);
       await expect(conflict.getByText("待处理", { exact: true })).toHaveCount(0);
     }
-    await revealDetailSection(page, "payments");
-    await expect(page.locator("[data-ledger-match]").getByText("已关联", { exact: true })).toBeVisible();
+    await expect((await revealDetailSection(page, "payments")).locator('article[id^="match-"]').getByText("已关联", { exact: true })).toBeVisible();
     await record(page, info, { feature: "ledger-conflict-reading-status", evidence: "synthetic-read-response-only", status, activeMatchCount: entry.active_match_count });
     await screenshot(page, info, "ledger-conflict-status-" + status.toLowerCase());
   }
