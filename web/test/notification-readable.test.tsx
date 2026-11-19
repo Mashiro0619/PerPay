@@ -323,7 +323,7 @@ describe("readable delivery attempts", () => {
       expect(section).toHaveAccessibleName(new RegExp("^投递尝试，共 ?" + count + " ?项$"));
       const earlier = within(section).queryByRole("button", { name: /^更早的尝试/ });
       if (count === 21) {
-        expect(earlier).toHaveTextContent("更早的尝试11");
+        expect(earlier).toHaveTextContent("更早的尝试，共 11 项");
         await userEvent.setup().click(earlier!);
         expect(numbers(await within(section).findByRole("list", { name: "更早的尝试" }))).toEqual(Array.from({ length: 11 }, (_, index) => 11 - index));
       } else expect(earlier).not.toBeInTheDocument();

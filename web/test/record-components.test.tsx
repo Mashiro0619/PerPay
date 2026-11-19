@@ -121,7 +121,7 @@ describe("record sections", () => {
     const target = document.getElementById("match-old")!;
     await waitFor(() => expect(target).toHaveFocus());
     expect(target).toBeVisible();
-    expect(screen.getByRole("button", { name: "已撤销的关联1" })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: /^已撤销的关联，共 ?1 ?项$/ })).toHaveAttribute("aria-expanded", "true");
   });
 
   it("waits for content above the destination to finish loading", async () => {
@@ -147,7 +147,8 @@ describe("record sections", () => {
 describe("record disclosure", () => {
   it("keeps collapsed content mounted but hidden until its trigger is used", async () => {
     render(<Disclosure label="匹配依据与其他凭据" count={3}><p>凭据内容</p></Disclosure>);
-    const trigger = screen.getByRole("button", { name: "匹配依据与其他凭据3" });
+    // The number is read apart from the name.
+    const trigger = screen.getByRole("button", { name: /^匹配依据与其他凭据，共 ?3 ?项$/ });
     expect(trigger).toHaveAttribute("aria-expanded", "false");
     expect(screen.getByText("凭据内容")).not.toBeVisible();
     const user = userEvent.setup();
@@ -202,7 +203,7 @@ describe("record timeline", () => {
     expect(items[0]!.querySelector("time")).toHaveAttribute("datetime", "2026-11-16T04:03:00.000Z");
     expect(items[0]).toHaveAttribute("data-timeline-tone", "success");
     expect(items[0]).toHaveTextContent("PerPay 按金额和付款时间推断");
-    const more = screen.getByRole("button", { name: "更早动态2" });
+    const more = screen.getByRole("button", { name: /^更早动态，共 ?2 ?项$/ });
     expect(screen.getByText("事件 4")).not.toBeVisible();
     await userEvent.setup().click(more);
     expect(within(screen.getByRole("list", { name: "更早动态" })).getAllByRole("listitem")).toHaveLength(2);
@@ -255,7 +256,7 @@ describe("record summary", () => {
     two.unmount();
     at("/record", page(nav));
     const links = within(screen.getByRole("navigation", { name: "分区导航" })).getAllByRole("button");
-    expect(links.map(link => link.textContent)).toEqual(["订单信息", "收款关联1", "动态"]);
+    expect(links.map(link => link.textContent)).toEqual(["订单信息", "收款关联，共 1 项", "动态"]);
     expect(links.map(link => link.getAttribute("aria-current"))).toEqual(["true", null, null]);
     await userEvent.setup().click(links[2]!);
     const history = document.querySelector('[data-detail-section="history"]')!;

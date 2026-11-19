@@ -151,7 +151,7 @@ describe("order detail work surface", () => {
     const content = screen.getByRole("group", { name: "订单详情内容" });
     expect(Array.from(content.children).map(child => child.getAttribute("data-detail-section"))).toEqual(["overview", "payments", "notifications", "history"]);
     expect(within(content).getAllByRole("heading", { level: 2 }).map(heading => heading.textContent)).toEqual(["订单信息", "收款关联，共 1 项", "通知，共 1 项", "动态"]);
-    expect(within(screen.getByRole("navigation", { name: "分区导航" })).getAllByRole("button").map(link => link.textContent)).toEqual(["订单信息", "收款关联1", "通知1", "动态"]);
+    expect(within(screen.getByRole("navigation", { name: "分区导航" })).getAllByRole("button").map(link => link.textContent)).toEqual(["订单信息", "收款关联，共 1 项", "通知，共 1 项", "动态"]);
     expect(section("payments")).toHaveAttribute("data-anchor-prefixes", "match- candidate- exception-");
     expect(screen.getAllByRole("heading", { name: "收款关联记录" })).toHaveLength(1);
     expect(document.getElementById("match-" + matchId)).toBe(screen.getByRole("heading", { name: "收款关联记录" }).closest("article"));
@@ -273,10 +273,10 @@ describe("order detail work surface", () => {
     expect(reasons()).toHaveLength(7);
     expect(reasons().filter(shown)).toHaveLength(6);
     expect(timeline.getByText("订单已创建")).not.toBeVisible();
-    await user.click(timeline.getByRole("button", { name: "更早动态2" }));
+    await user.click(timeline.getByRole("button", { name: /^更早动态，共 ?2 ?项$/ }));
     expect(visibleTimes()).toEqual([...events].reverse().map(event => event.occurred_at));
     expect(timeline.getByText("订单已创建")).toBeVisible();
-    await user.click(timeline.getByRole("button", { name: "更早动态2" }));
+    await user.click(timeline.getByRole("button", { name: /^更早动态，共 ?2 ?项$/ }));
     await waitFor(() => expect(visibleTimes()).toHaveLength(6));
     expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
   });
@@ -295,7 +295,7 @@ describe("order detail work surface", () => {
       screen.queryByRole("heading", { name: "实收金额不符" }),
     ).not.toBeInTheDocument();
     const user = userEvent.setup();
-    const historyTrigger = screen.getByRole("button", { name: "异常历史1" });
+    const historyTrigger = screen.getByRole("button", { name: /^异常历史，共 ?1 ?项$/ });
     expect(section("history")).toContainElement(historyTrigger);
     expect(historyTrigger).toHaveAttribute("aria-expanded", "false");
     await user.click(historyTrigger);
@@ -343,7 +343,7 @@ describe("order detail work surface", () => {
     expect(notice).toHaveTextContent("实收金额不符");
     expect(notice.compareDocumentPosition(section("overview")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(within(notice).getAllByRole("button").map(button => button.textContent)).toEqual(["1 项待核对 ›"]);
-    expect(within(screen.getByRole("navigation", { name: "分区导航" })).getAllByRole("button")[1]).toHaveTextContent("收款关联2");
+    expect(within(screen.getByRole("navigation", { name: "分区导航" })).getAllByRole("button")[1]).toHaveTextContent("收款关联，共 2 项");
     await userEvent.setup().click(within(notice).getByRole("button"));
     expect(section("payments")).toHaveFocus();
   });
@@ -378,7 +378,7 @@ describe("order detail work surface", () => {
     });
     mount();
     await screen.findByRole("heading", { name: "订单信息" });
-    await userEvent.setup().click(screen.getByRole("button", { name: "已撤销的收款关联1" }));
+    await userEvent.setup().click(screen.getByRole("button", { name: /^已撤销的收款关联，共 ?1 ?项$/ }));
     expect(await screen.findByText("撤销时间")).toBeVisible();
     expect(screen.getByText("平台记录归属不符")).toBeVisible();
     expect(screen.getByText("对照交易号确认")).toBeVisible();
@@ -417,7 +417,7 @@ describe("order detail work surface", () => {
     // The association's only action is shown directly on its record.
     await user.click(within(document.getElementById("match-" + matchId)!).getByRole("button", { name: "撤销错误关联" }));
     await confirmReason(user, "测试撤销原因", "确认撤销关联");
-    await user.click(await screen.findByRole("button", { name: "已撤销的收款关联1" }));
+    await user.click(await screen.findByRole("button", { name: /^已撤销的收款关联，共 ?1 ?项$/ }));
     expect(await screen.findByText("测试撤销原因")).toBeVisible();
     expect(screen.getByLabelText("当前页面")).toHaveTextContent(
       "/orders/" + orderId,

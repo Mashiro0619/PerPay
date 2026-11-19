@@ -76,6 +76,11 @@ export function Sections({ label = "详情内容", className, children }: {
   return <div ref={container} role="group" aria-label={label} data-record-sections className={cn("flex min-w-0 flex-col gap-5", className)}>{children}</div>;
 }
 
+/** A count beside a name: shown as the bare number, read as "，共 N 项" so the name never runs into it. */
+export function Count({ value, className, ...props }: { value: number; className?: string; "data-section-count"?: true }) {
+  return <span {...props} className={cn("tabular-nums", className)}><span className="sr-only">，共 </span>{value}<span className="sr-only"> 项</span></span>;
+}
+
 /** Scrolls a section of the record that contains `origin` into view and moves focus to it. */
 export function showSection(origin: Element | null, id: string) {
   const scope = origin?.closest("[data-overlay-primary]") ?? document.body;
@@ -107,7 +112,7 @@ export function Section({ id, title, count, empty, anchorPrefixes, actions, chil
     <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
       <h2 id={heading} className="text-sm font-semibold text-foreground">
         {title}
-        {count !== undefined && <span data-section-count className="ml-1.5 text-xs font-normal text-muted-foreground tabular-nums"><span className="sr-only">，共 </span>{count}<span className="sr-only"> 项</span></span>}
+        {count !== undefined && <Count data-section-count value={count} className="ml-1.5 text-xs font-normal text-muted-foreground" />}
       </h2>
       {isEmpty && <p className="min-w-0 text-[0.8125rem] leading-5 text-muted-foreground">{empty}</p>}
       {actions && <div className="ml-auto flex min-w-0 items-center gap-2">{actions}</div>}

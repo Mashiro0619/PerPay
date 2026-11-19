@@ -514,7 +514,7 @@ describe("audit event details", () => {
     expect(link.closest("li")).toHaveTextContent("2026/11/01 10:03:03 · 活动记录 · 失败");
     expect(Array.from(document.querySelectorAll("[data-detail-section]")).map(element => element.getAttribute("data-detail-section"))).toEqual(["overview", "changes", "related"]);
     const navigation = within(screen.getByRole("group", { name: "日志概况" })).getByRole("navigation", { name: "分区导航" });
-    expect(within(navigation).getAllByRole("button").map(button => button.textContent)).toEqual(["操作信息", "配置变更", "关联日志1"]);
+    expect(within(navigation).getAllByRole("button").map(button => button.textContent)).toEqual(["操作信息", "配置变更", "关联日志，共 1 项"]);
     // The record has no footer, so its technical entry follows every section.
     const technical = document.querySelector<HTMLElement>("[data-technical-information]")!;
     expect(section.compareDocumentPosition(technical) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
