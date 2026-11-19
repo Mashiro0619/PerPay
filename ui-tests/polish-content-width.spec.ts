@@ -66,7 +66,7 @@ function details(manifest: Manifest): Scenario[] {
   return [
     { name: "order-detail", route: detailRoute(manifest, "orderLong"), kind: "detail", ready: '[data-detail-section="overview"] [data-detail-fields] dt:text-is("下单金额")', overlayRem: 44 },
     { name: "ledger-detail", route: detailRoute(manifest, "ledgerAssociated"), kind: "detail", ready: "[data-ledger-summary]", overlayRem: 44 },
-    { name: "notification-detail", route: detailRoute(manifest, "notificationDns"), kind: "detail", ready: "[data-detail-order-summary]", overlayRem: 44 },
+    { name: "notification-detail", route: detailRoute(manifest, "notificationDns"), kind: "detail", ready: '[data-detail-section="order"] article[data-sub-record]', overlayRem: 44 },
   ];
 }
 
