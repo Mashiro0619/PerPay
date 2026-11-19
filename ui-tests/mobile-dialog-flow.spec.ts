@@ -159,11 +159,12 @@ test.describe("enlarged admin dialogs keep fields and decisions reachable", () =
       });
       const ledgerDialog = await openRecord(page, manifest, ledgerPath);
       await page.evaluate(font => document.documentElement.style.fontSize = font + "%", font);
-      const technical = ledgerDialog.locator('[data-detail-section="transaction"] [data-ledger-summary] [data-technical-information]');
-      const trigger = technical.getByRole("button", { name: "流水技术信息", exact: true });
+      // The record keeps its technical information in the menu of its footer.
+      const trigger = ledgerDialog.locator("[data-overlay-footer]").getByRole("button", { name: "更多操作，流水操作", exact: true });
       await reveal(trigger, page);
       const parentBefore = await ledgerDialog.evaluate(element => ({ height: element.getBoundingClientRect().height, top: element.getBoundingClientRect().top, scrollTop: element.querySelector('[data-overlay-detail]')!.scrollTop }));
       await trigger.tap();
+      await page.getByRole("menuitem", { name: "流水技术信息", exact: true }).tap();
       const reader = page.getByRole("dialog", { name: "流水技术信息", exact: true });
       await expect(reader.locator('pre[aria-label="流水技术信息"]')).toContainText("synthetic_layout_evidence");
       const technicalScroll = await scrollRegion(reader, "technical");
@@ -177,7 +178,7 @@ test.describe("enlarged admin dialogs keep fields and decisions reachable", () =
       expect(await page.evaluate(() => (window as Window & { __copiedText?: string }).__copiedText)).toBe(ledgerPath.split("/").at(-1));
       await reader.getByRole("button", { name: "关闭流水技术信息", exact: true }).tap();
       await expect(reader).toHaveCount(0);
-      await expect(technical.locator("pre")).toHaveCount(0);
+      await expect(ledgerDialog.locator("pre")).toHaveCount(0);
       await expect(trigger).toBeFocused();
       expect(await ledgerDialog.evaluate(element => ({ height: element.getBoundingClientRect().height, top: element.getBoundingClientRect().top, scrollTop: element.querySelector('[data-overlay-detail]')!.scrollTop }))).toEqual(parentBefore);
 
@@ -210,10 +211,10 @@ test.describe("enlarged admin dialogs keep fields and decisions reachable", () =
 
       const matchDialog = await openRecord(page, manifest, manifest.details.matchManual!);
       await page.evaluate(font => document.documentElement.style.fontSize = font + "%", font);
-      const operations = matchDialog.locator('[data-detail-section="payments"] [data-ledger-match="' + manifest.details.matchManual!.split("/").at(-1) + '"]')
-        .getByRole("button", { name: "更多操作，收款关联记录操作", exact: true });
+      // An association's only action stands on its record as a button.
+      const operations = matchDialog.locator('[data-detail-section="payments"] article[id="match-' + manifest.details.matchManual!.split("/").at(-1) + '"]')
+        .getByRole("button", { name: "撤销错误关联", exact: true });
       await operations.click();
-      await page.getByRole("menuitem", { name: "撤销错误关联", exact: true }).click();
       const reasonDialog = page.locator("[data-overlay-step]:visible");
       await expect(reasonDialog).toHaveAccessibleName("撤销收款关联？");
       await expect(page.getByRole("dialog")).toHaveCount(1);
