@@ -45,13 +45,13 @@ async function copyField(page: Page, scope: Locator, label: string, value: strin
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(value);
 }
 
-async function optionalCopyField(page: Page, scope: Locator, label: string, value: string | null, button: string) {
-  if (value !== null) await copyField(page, scope, label, value, button);
-  else {
-    const field = scope.getByText(label, { exact: true }).locator("..");
-    await expect(field.locator("dd")).toHaveText("—");
-    await expect(field.getByRole("button")).toHaveCount(0);
-  }
+/** A nullable identifier: copyable when present. Otherwise its row says `absent`, or is left out where `absent` is null. */
+async function optionalCopyField(page: Page, scope: Locator, label: string, value: string | null, absent: string | null) {
+  if (value !== null) { await copyField(page, scope, label, value); return; }
+  const field = scope.getByText(label, { exact: true }).locator("..");
+  if (absent === null) { await expect(field).toHaveCount(0); return; }
+  await expect(field.locator("dd")).toHaveText(absent);
+  await expect(field.getByRole("button")).toHaveCount(0);
 }
 
 function observeWrites(page: Page, manifest: Manifest) {
@@ -91,67 +91,75 @@ test("ledger credentials keep genuine Alipay, website and PerPay identities dist
       await page.goto(manifest.origin + "/admin" + scenario.path);
       const overlay = await settleOverlay(page);
       expect(new URL(page.url()).searchParams.get("overlay")).toMatch(/\/(?:ledger|reconciliation\/transactions)\//);
-      const summary = overlay.locator('[data-detail-section="transaction"] [data-ledger-summary]');
-      await expect(summary).toBeVisible();
-      await expect(summary.getByText("PerPay 处理状态", { exact: true })).toHaveCount(0);
-      const credentials = summary.locator("[data-detail-credentials]");
-      const credentialToggle = credentials.getByRole("button", { name: "支付宝交易编号", exact: true });
-      if (await credentialToggle.count()) {
-        await expect(credentialToggle).toHaveAttribute("aria-expanded", "false");
-        await credentialToggle.click();
-        await expect(credentialToggle).toHaveAttribute("aria-expanded", "true");
-      }
-      await copyField(page, credentials, "支付宝流水号", entry.external_event_id);
-      await optionalCopyField(page, credentials, "支付宝订单号", entry.provider_order_no, "复制支付宝订单号");
-      await optionalCopyField(page, credentials, "支付宝商户单号", entry.merchant_order_no, "复制支付宝商户单号");
-      await revealDetailSection(page, "sources");
-      await expect(page.locator("[data-ledger-source]")).toHaveCount(entry.sources.length);
+      const several = entry.sources.length > 1;
+      // Alipay's own numbers describe the transaction, each named after Alipay.
+      const transaction = overlay.locator('[data-detail-section="transaction"]');
+      await expect(transaction.locator("[data-record-fields]")).toBeVisible();
+      await expect(overlay.getByText("PerPay 处理状态", { exact: true })).toHaveCount(0);
+      await copyField(page, transaction, "支付宝流水号", entry.external_event_id);
+      // A number the stored copies disagree about is disputed; one that none of them carries is not provided.
+      const disputed = (fact: "provider_order_no" | "merchant_order_no") => entry[fact] === null && entry.sources.some(source => source[fact] !== null);
+      await optionalCopyField(page, transaction, "支付宝订单号", entry.provider_order_no, disputed("provider_order_no") ? "有争议" : entry.content_consistent ? "未提供" : "—");
+      await optionalCopyField(page, transaction, "支付宝商户单号", entry.merchant_order_no, disputed("merchant_order_no") ? "有争议" : null);
+      const sources = await revealDetailSection(page, "sources");
+      // A single stored copy is the record itself; several are told apart as records of their own.
+      await expect(sources.locator('article[id^="source-"]')).toHaveCount(several ? entry.sources.length : 0);
+      const eligible = entry.active_match_count ? [] : entry.sources.filter(source => source.direction === "CREDIT" && ["UNALLOCATED", "CANDIDATE", "CONFLICT"].includes(source.state));
+      const shared = eligible.length > 0 && (!several || entry.content_consistent);
       for (const source of entry.sources) {
-        const card = page.locator('[data-ledger-source="' + source.ledger_entry_id + '"]');
-        const facts = card.locator(':scope > [data-slot="item-content"] > [data-detail-fields], :scope > [data-slot="card-content"] > [data-detail-credentials]');
-        await expect(card.getByText("PerPay 记录状态", { exact: true })).toBeVisible();
-        await copyField(page, facts, "内部流水编号（PerPay）", source.ledger_entry_id);
-        if (!entry.content_consistent) {
-          await optionalCopyField(page, facts, "支付宝订单号", source.provider_order_no, "复制来源支付宝订单号");
-          await optionalCopyField(page, facts, "支付宝商户单号", source.merchant_order_no, "复制来源支付宝商户单号");
-        } else {
-          await expect(facts.locator("dt")).toHaveText([...(entry.sources.length === 1 ? ["PerPay 记录状态"] : []), "内部流水编号（PerPay）", "保存时间"]);
+        const card = several ? sources.locator('article[id="source-' + source.ledger_entry_id + '"]') : sources;
+        await copyField(page, card, "内部流水编号（PerPay）", source.ledger_entry_id);
+        // A copy states an Alipay number of its own only where the copies disagree about it.
+        for (const [label, fact] of [["支付宝订单号", "provider_order_no"], ["支付宝商户单号", "merchant_order_no"]] as const) {
+          if (entry[fact] === null && source[fact]) await copyField(page, card, label, source[fact]);
+          else await expect(card.getByText(label, { exact: true })).toHaveCount(0);
         }
+        if (entry.content_consistent) await expect(card.locator("dt")).toHaveText([...(several ? [] : ["PerPay 记录状态"]), "内部流水编号（PerPay）", "保存时间"]);
         await expect(card.getByRole("link", { name: "查看记录与处理", exact: true })).toHaveCount(0);
-        const eligible = source.direction === "CREDIT" && ["UNALLOCATED", "CANDIDATE", "CONFLICT"].includes(source.state);
-        await expect(card.getByRole("button", { name: "人工关联收款", exact: true })).toHaveCount(eligible ? 1 : 0);
+        // A copy is named only where there is a choice to make among several.
+        await expect(card.getByRole("button", { name: "用这份记录关联", exact: true })).toHaveCount(several && (eligible.length > 1 || !shared) && eligible.includes(source) ? 1 : 0);
       }
-      await revealDetailSection(page, "payments");
-      await expect(page.locator("[data-ledger-match]")).toHaveCount(entry.matches.length);
-      for (const match of entry.matches) {
-        const card = page.locator('[data-ledger-match="' + match.payment_match_id + '"]');
-        await expect(card.locator("[data-match-evidence]").getByText(match.evidence_type === "MANUAL" ? "管理员人工关联" : "PerPay 按金额和付款时间推断", { exact: true })).toBeVisible();
-        await copyField(page, card, "商户订单号（业务网站）", match.merchant_order_no, "复制商户订单号");
-        const orderHref = await card.locator('[data-detail-order-summary]').getByRole("link", { name: match.product_name, exact: true }).getAttribute("href");
+      await expect(overlay.locator("[data-overlay-footer]").getByRole("button", { name: "人工关联收款", exact: true })).toHaveCount(shared ? 1 : 0);
+      const payments = await revealDetailSection(page, "payments");
+      const history = payments.getByRole("button", { name: /^已撤销的关联/ });
+      if (await history.count() && await history.getAttribute("aria-expanded") === "false") await history.click();
+      await expect(payments.locator('article[id^="match-"]')).toHaveCount(entry.matches.length);
+      const tools = overlay.locator("[data-overlay-footer]").getByRole("button", { name: "更多操作，流水操作", exact: true });
+      for (const [index, match] of entry.matches.entries()) {
+        const card = payments.locator('article[id="match-' + match.payment_match_id + '"]');
+        // How the association came about is said under the order's name.
+        await expect(card.locator("header")).toContainText(match.evidence_type === "MANUAL" ? "管理员人工关联" : "PerPay 按金额和付款时间推断");
+        // Inside the order's own record the website's number needs no qualifier: Alipay's numbers stay with the transaction.
+        await copyField(page, card, "商户订单号", match.merchant_order_no);
+        await expect(transaction.getByText("商户订单号", { exact: true })).toHaveCount(0);
+        const orderHref = await card.getByRole("link", { name: "查看订单", exact: true }).getAttribute("href");
         expect(new URL(orderHref!, manifest.origin).searchParams.get("overlay")).toBe("/orders/" + match.order_id);
-        await copyField(page, card, "使用的查账记录", match.ledger_entry_id, "复制使用的查账记录编号");
-        const sourceLink = card.getByRole("link", { name: "核对这份记录", exact: true });
-        const sourceTarget = new URL((await sourceLink.getAttribute("href"))!, manifest.origin).searchParams.get("overlay")!;
-        expect(new URL(sourceTarget, manifest.origin).hash).toBe("#source-" + match.ledger_entry_id);
-        await sourceLink.click();
-        await expect(page.locator('[data-ledger-source="' + match.ledger_entry_id + '"]')).toBeFocused();
-        await revealDetailSection(page, "payments");
+        // Only a transaction with several stored copies has to say which of them an association uses.
+        const sourceLink = card.getByRole("link", { name: /^采集记录 \d+$/ });
+        await expect(sourceLink).toHaveCount(several ? 1 : 0);
+        if (several) {
+          const sourceTarget = new URL((await sourceLink.getAttribute("href"))!, manifest.origin).searchParams.get("overlay")!;
+          expect(new URL(sourceTarget, manifest.origin).hash).toBe("#source-" + match.ledger_entry_id);
+          await sourceLink.click();
+          await expect(sources.locator('article[id="source-' + match.ledger_entry_id + '"]')).toBeFocused();
+          await revealDetailSection(page, "payments");
+        }
         await expect(card.getByText("支付宝交易金额", { exact: true })).toHaveCount(0);
-        const technical = card.locator("[data-technical-information]");
-        const trigger = technical.getByRole("button", { name: "收款关联技术信息", exact: true });
-        await trigger.click();
+        // The identifier of the stored copy an association uses is technical information, opened from the record's menu.
+        await tools.click();
+        await page.getByRole("menuitem", { name: /^收款关联技术信息/ }).nth(index).click();
         const reader = page.getByRole("dialog", { name: "收款关联技术信息", exact: true });
         await reader.getByRole("button", { name: "复制流水编号", exact: true }).click();
         await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(match.ledger_entry_id);
         await reader.getByRole("button", { name: "关闭", exact: true }).click();
-        await expect(trigger).toHaveAttribute("aria-expanded", "false");
-        await expect(trigger).toBeFocused();
+        await expect(tools).toHaveAttribute("aria-expanded", "false");
+        await expect(tools).toBeFocused();
       }
       await record(page, info, { feature: "copy-source-ledger", evidence: "isolated-local-domain-api", width, theme, scenario: scenario.name, sources: entry.sources.length, matches: entry.matches.length });
       if (scenario.name === "inferred") await screenshot(page, info, "copy-source-ledger-" + width + "-" + theme);
       if (entry.active_match) {
         const active = entry.active_match;
-        await page.locator('[data-ledger-match="' + active.payment_match_id + '"] [data-detail-order-summary]').getByRole("link", { name: active.product_name, exact: true }).click();
+        await payments.locator('article[id="match-' + active.payment_match_id + '"]').getByRole("link", { name: "查看订单", exact: true }).click();
         await expectOverlayTarget(page, "/orders/" + active.order_id);
         const websiteOrder = page.getByRole("region", { name: "订单信息", exact: true });
         await copyField(page, websiteOrder, "商户订单号", active.merchant_order_no);
