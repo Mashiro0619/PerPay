@@ -274,7 +274,10 @@ async function notifyBusinessOrder(page: Page, fixture: BusinessFixture, info: T
   await resend.getByRole("button", { name: "确认重新发送", exact: true }).click();
   expect((await redelivered).ok()).toBe(true);
   await expect(resend).toHaveCount(0);
-  await expect(overlay.getByRole("heading", { name: "通知详情", exact: true })).toBeVisible();
+  // The resend opens the new delivery, which is titled by the event it reports.
+  await expect(overlay.locator("[data-overlay-eyebrow-text]")).toHaveText("通知详情");
+  await expect(overlay.getByRole("heading", { level: 1 })).toHaveText("收款已确认");
+  await expect(overlay.getByRole("group", { name: "通知状态", exact: true })).toBeVisible();
   await fixture.dispatchNotification();
   await overlay.getByRole("button", { name: "刷新", exact: true }).click();
   await expect(overlay.getByText("通知已确认", { exact: true }).first()).toBeVisible();
