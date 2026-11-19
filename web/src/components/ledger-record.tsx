@@ -9,10 +9,15 @@ export function ledgerHasAnomaly(entry: Pick<AdminLedgerSummary, "content_consis
   return !entry.content_consistent || entry.has_conflicts || entry.active_match_count > 1;
 }
 
+/** PerPay's own state of one ledger record. */
+export function LedgerState({ value }: { value: string }) {
+  return <Badge variant={value === "CONFLICT" ? "destructive" : value === "ALLOCATED" ? "success" : "secondary"}>{label(value)}</Badge>;
+}
+
 export function LedgerStates({ entry, showAnomaly = true }: { entry: Pick<AdminLedgerSummary, "states" | "content_consistent" | "has_conflicts" | "active_match_count">; showAnomaly?: boolean }) {
   return <div className="business-cell-badges flex flex-wrap items-center gap-1.5">
     {showAnomaly && ledgerHasAnomaly(entry) && <Badge variant="destructive">需要核查</Badge>}
-    {entry.states.map(state => <Badge key={state} variant={state === "CONFLICT" ? "destructive" : state === "ALLOCATED" ? "success" : "secondary"}>{label(state)}</Badge>)}
+    {entry.states.map(state => <LedgerState key={state} value={state} />)}
   </div>;
 }
 
