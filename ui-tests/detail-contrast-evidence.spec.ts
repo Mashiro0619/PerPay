@@ -170,6 +170,41 @@ test("record header evidence verifies wrapped title glyphs and rejects obscured 
   expect(await target.evaluate(measureDetailTextContrast)).toBeNull();
 });
 
+test("record summary evidence verifies interpolated text runs and rejects obscured, low-contrast or unowned summaries", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.setContent(`<style>
+    body { margin: 0; background: white; color: #222; font: 14px/1.5 Arial, sans-serif; }
+    [data-overlay-content] { position: fixed; inset: 0; padding: 16px; background: white; }
+    p { margin: 0; color: #555; font-size: 13px; }
+  </style><div data-overlay-content data-overlay-record="true"><div data-overlay-primary>
+    <div data-overlay-summary><div role="group" aria-label="通知状态"><p id="target">已尝试 <!-- -->1<!-- --> 次 · 下次重试 <time>2026/10/15 14:09:55</time></p></div></div>
+    <div data-overlay-detail></div>
+  </div></div>`);
+  const target = page.locator("#target");
+  const readable = (await resolveDetailTextContrast(page, incomplete))[0];
+  expect(readable?.resolved).toBe(true);
+  // Interpolated text is split into separate nodes; each run is measured on its own.
+  expect(readable?.measurement.initial.runs.map(run => run.text)).toEqual(["已尝试 ", "1", " 次 · 下次重试 ", "2026/10/15 14:09:55"]);
+  expect(readable?.measurement.initial.runs.every(run => run.contrast !== null && run.contrast >= 4.5)).toBe(true);
+
+  await target.evaluate(node => {
+    const blocker = document.createElement("div");
+    blocker.id = "summary-cover";
+    const box = node.getBoundingClientRect();
+    blocker.style.cssText = `position:fixed;left:${box.left}px;top:${box.top}px;width:30px;height:${box.height}px;background:white;pointer-events:none`;
+    node.parentElement!.append(blocker);
+  });
+  expect((await resolveDetailTextContrast(page, incomplete))[0]?.resolved).toBe(false);
+  await page.locator("#summary-cover").evaluate(node => node.remove());
+  expect((await resolveDetailTextContrast(page, incomplete))[0]?.resolved).toBe(true);
+  await target.evaluate(node => { (node as HTMLElement).style.color = "#bbb"; });
+  expect((await resolveDetailTextContrast(page, incomplete))[0]?.resolved).toBe(false);
+  // Only a record drawer has a fixed summary; the same markup elsewhere is not vouched for.
+  await target.evaluate(node => { (node as HTMLElement).style.removeProperty("color"); });
+  await page.locator("[data-overlay-record]").evaluate(node => node.removeAttribute("data-overlay-record"));
+  expect(await target.evaluate(measureDetailTextContrast)).toBeNull();
+});
+
 test("technical reader contrast evidence verifies its own scrollable text and rejects hidden or low-contrast values", async ({ page }) => {
   await page.setContent(`<style>
     body { margin: 0; font: 14px/1.5 Arial, sans-serif; }

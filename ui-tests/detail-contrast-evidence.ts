@@ -3,7 +3,8 @@ import type { Page } from "@playwright/test";
 
 /** Measure actual text runs on an opaque surface; uncertain paint stays unresolved. */
 export function measureDetailTextContrast(element: Element, scope: "detail" | "tabs" | "toast" = "detail") {
-  const detail = element.closest("[data-overlay-detail], [data-technical-dialog]") ?? (element.matches("h1")
+  // A record drawer's fixed summary belongs to the same opaque reading surface as its content.
+  const detail = element.closest('[data-overlay-detail], [data-technical-dialog], [data-overlay-record="true"] [data-overlay-summary]') ?? (element.matches("h1")
     ? element.closest('[data-overlay-record="true"] [data-overlay-primary] > [data-slot="dialog-header"]') : null);
   const tabScroller = element.closest("[data-settings-tabs-scroll], .audit-view-scroll");
   const toast = element.closest('[data-slot="toast"][role="dialog"][aria-modal="false"]');
