@@ -10,7 +10,8 @@ const scenarios = [
   // A notification is titled by the event it reports.
   { key: "notificationDns", kind: "notification", heading: "收款已确认", tools: "更多操作，通知记录操作" },
   { key: "matchSite", kind: "match", heading: "收款关联详情", tools: "更多操作，收款关联记录操作" },
-  { key: "ledgerAssociated", kind: "ledger", heading: "流水与对账详情", tools: "更多操作，支付宝流水记录操作" },
+  // A transaction is titled by its kind and its counterparty; all of its technical entries sit in the footer's menu.
+  { key: "ledgerAssociated", kind: "ledger", heading: /^支付宝收款 · /, tools: "更多操作，流水操作" },
 ] as const;
 const layoutScenarios = [
   ...scenarios,
@@ -64,10 +65,11 @@ async function openDetail(page: Page, manifest: Manifest, key: string) {
   else if (key.startsWith("match")) {
     const target = targetUrl(page);
     const matchId = detailPath(manifest, key).split("/").at(-1)!;
-    const owner = target.pathname.startsWith("/sites/") ? detailBody(page).locator("[data-match-summary]") : detailBody(page).locator(`[data-ledger-match="${matchId}"]`);
-    await expect(owner.locator("[data-detail-order-summary]")).toBeVisible();
+    // A site's evidence detail keeps its cards; the global one is a record among its transaction's orders.
+    if (target.pathname.startsWith("/sites/")) await expect(detailBody(page).locator("[data-match-summary] [data-detail-order-summary]")).toBeVisible();
+    else await expect(detailSection(page, "payments").locator(`article[id="match-${matchId}"]`)).toBeVisible();
   }
-  else await expect(detailBody(page).locator("[data-ledger-summary]")).toBeVisible();
+  else await expect(detailSection(page, "transaction").locator("[data-record-fields]")).toBeVisible();
   await expect(detailBody(page).locator('[data-slot="skeleton"]')).toHaveCount(0);
   await expect(detailBody(page).locator("[data-detail-identifier]")).toHaveCount(0);
   await page.evaluate(() => document.fonts.ready);
@@ -85,6 +87,17 @@ async function expandCredentials(owner: Locator) {
 }
 async function fields(owner: Locator, names: readonly string[]) {
   for (const name of names) await expect(owner.locator("dt").filter({ hasText: new RegExp("^" + name + "$") })).toBeVisible();
+}
+/** What a source states for itself: its state when it is the only one, then only what the transaction as a whole cannot state. */
+function sourceTerms(entry: AdminLedgerDetail, source: AdminLedgerDetail["sources"][number]) {
+  return [
+    ...(entry.sources.length === 1 ? ["PerPay 记录状态"] : []),
+    ...(entry.amount_cents === null ? ["交易金额"] : []), ...(entry.direction === null ? ["收支方向"] : []), ...(entry.occurred_at === null ? ["交易时间"] : []),
+    ...(entry.other_account === null && source.other_account ? ["对方"] : []), ...(entry.memo === null && source.memo ? ["支付宝备注"] : []),
+    ...(entry.provider_order_no === null && source.provider_order_no ? ["支付宝订单号"] : []),
+    ...(entry.merchant_order_no === null && source.merchant_order_no ? ["支付宝商户单号"] : []),
+    "内部流水编号（PerPay）", "保存时间",
+  ];
 }
 
 /** A notification's attempts section: the latest ten in view, or one line when nothing was attempted. */
@@ -104,26 +117,17 @@ async function expectAttempts(page: Page, count: number) {
   return list;
 }
 /**
- * Where a detail keeps its technical entry. A record with a footer has it in
- * the footer's menu, under `menuItem`; the others end the owning content with it.
+ * Where a detail keeps its technical entry. A record with a footer has its
+ * entries in the footer's menu, under `menuItem`; the others end the owning
+ * content with one.
  */
-async function technicalEntry(page: Page, label: string, sourceId?: string): Promise<{ technical: Locator; menuItem?: string }> {
+async function technicalEntry(page: Page, label: string, menuItem?: string): Promise<{ technical: Locator; menuItem?: string }> {
   // Found by attribute: the page behind an open dialog is hidden from role queries.
-  if (label.includes("通知")) return { technical: foreground(page).locator("[data-overlay-footer]").locator(`button[aria-label="${label}"]`), menuItem: "通知技术信息" };
-  if (label.includes("支付宝流水记录")) {
-    await readDetailSection(page, "交易");
-    return { technical: detailSection(page, "transaction").locator('[data-ledger-summary] [data-technical-information]') };
-  }
-  if (label.includes("查账记录")) {
-    await readDetailSection(page, /^采集记录/);
-    expect(sourceId, "technical source tools retain the owning source identity").toBeTruthy();
-    return { technical: detailSection(page, "sources").locator(`[data-ledger-source="${sourceId}"]`)
-      .locator(':scope > [data-slot="item-content"] > [data-technical-information], :scope > [data-slot="card-content"] > [data-technical-information]') };
-  }
-  const matchId = /^#match-(.+)$/.exec(targetUrl(page).hash)?.[1];
-  return { technical: matchId
-    ? detailSection(page, "payments").locator(`[data-ledger-match="${matchId}"] [data-match-summary] > [data-slot="card-content"] > [data-technical-information]`)
-    : detailBody(page).locator('[data-match-evidence] > [data-slot="card-content"] > [data-technical-information]') };
+  const footerMenu = foreground(page).locator("[data-overlay-footer]").locator(`button[aria-label="${label}"]`);
+  if (label.includes("通知")) return { technical: footerMenu, menuItem: "通知技术信息" };
+  // A transaction lists its own entry, and one for each of its sources, associations, suggestions and conflicts.
+  if (label.includes("流水操作")) return { technical: footerMenu, menuItem: menuItem ?? "流水技术信息" };
+  return { technical: detailBody(page).locator('[data-match-evidence] > [data-slot="card-content"] > [data-technical-information]') };
 }
 async function keyboardTools(page: Page, label: string) {
   const { technical, menuItem } = await technicalEntry(page, label);
@@ -305,19 +309,17 @@ test("detail overlays separate facts into readable business sections", async ({ 
       await expect(detailBody(page).getByRole("group", { name: "收款关联记录", exact: true }).locator("[data-detail-order-summary]")).toBeVisible();
       await expect(detailBody(page).getByRole("group", { name: "匹配依据与处理记录", exact: true }).getByRole("heading", { name: "匹配依据", exact: true })).toBeVisible();
     } else {
-      await expect(detailSection(page, "transaction").getByRole("heading", { level: 2 })).toHaveText(["支付宝交易"]);
-      await expect(detailBody(page).locator('dt').filter({ hasText: /^支付宝 App ID$/ })).toHaveCount(0);
-      await expect(detailBody(page).locator('[data-ledger-summary] > [data-slot="card-content"] > [data-detail-fields] dt')).toHaveText(["交易金额", "收款账号", "收支方向", "交易时间", "对方", "支付宝备注"]);
-      await expect(detailBody(page).locator('[data-ledger-summary] [data-detail-credentials] dt')).toHaveText(["支付宝流水号", "支付宝订单号", "支付宝商户单号"]);
-      await expect(detailBody(page).locator('[data-ledger-summary] dt').filter({ hasText: /业务网站|PerPay/ })).toHaveCount(0);
-      await readDetailSection(page, "收款关联");
-      await expect(detailSection(page, "payments").getByRole("heading", { level: 2 })).toHaveText(["对应订单"]);
-      await expect(detailBody(page).locator("[data-ledger-match]").first()).toBeVisible();
+      // What the summary states (the amount, the direction, the time and the account) is not repeated among the facts.
+      await expect(detailBody(page).getByRole("heading", { level: 2 })).toHaveText(["交易信息", /^对应订单/, /^采集记录/]);
+      await expect(foreground(page).getByRole("group", { name: "流水概况", exact: true }).locator("[data-record-summary-value]")).toHaveText(/^\+¥/);
+      await expect(detailSection(page, "transaction").locator("dt")).toHaveText(["对方", "支付宝备注", "支付宝流水号", "支付宝订单号"]);
+      await expect(detailBody(page).locator("dt").filter({ hasText: /^(支付宝 App ID|交易金额|收款账号|收支方向|交易时间)$/ })).toHaveCount(0);
+      await readDetailSection(page, /^对应订单/);
+      await expect(detailSection(page, "payments").locator("article[data-sub-record]").first()).toBeVisible();
       await readDetailSection(page, /^采集记录/);
-      await expect(detailSection(page, "sources").getByRole("heading", { level: 2 })).toHaveText([/^查账记录（\d+）$/]);
-      await expect(detailBody(page).locator("[data-ledger-source]").first()).toBeVisible();
+      await expect(detailSection(page, "sources").locator("[data-record-fields]").first()).toBeVisible();
       await expect(detailSection(page, "conflicts")).toHaveCount(0);
-      await readDetailSection(page, "交易");
+      await readDetailSection(page, "交易信息");
     }
     const geometry = await readingLayout(page, "compact");
     const flows = await readingFlowGeometry(page);
@@ -391,8 +393,9 @@ test("summaries and credentials retain reading order in stable responsive column
   await record(page, info, { feature: "detail-flow-two-facts", evidence: "local-synthetic-domain", geometry: twoFacts });
   await screenshot(page, info, "reading-flow-two-facts");
 
+  // A transaction's identifiers are rows of its field list, which stacks as a whole once it is narrow.
   await openDetail(page, manifest, "ledgerAssociated");
-  const credentialWrapping = await checkWrapping(page.locator('[data-ledger-summary] [data-detail-credentials] [data-detail-fields]'));
+  const credentialWrapping = await checkWrapping(detailSection(page, "transaction").locator("[data-record-fields]"));
   await record(page, info, { feature: "detail-credential-content-wrapping", credentialWrapping });
 });
 
@@ -429,24 +432,19 @@ test.describe("detail reading width matrix", () => {
             await expect(page.getByRole("heading", { name: "匹配依据", exact: true })).toBeVisible();
             await expect(page.getByRole("button", { name: "匹配依据", exact: true })).toHaveCount(0);
           } else {
-            await readDetailSection(page, "交易");
-            await fields(detailSection(page, "transaction"), ["支付宝流水号", "交易金额", "收支方向", "交易时间"]);
-            await expect(detailBody(page).locator('dt').filter({ hasText: /^支付宝 App ID$/ })).toHaveCount(0);
-            await expect(detailBody(page).locator('[data-ledger-summary] [data-detail-credentials]')).toBeVisible();
-            await readingCredentialsGeometry(page);
+            await readDetailSection(page, "交易信息");
+            await fields(detailSection(page, "transaction"), ["对方", "支付宝流水号", "支付宝订单号"]);
+            // The amount, the direction and the time stand in the summary, above the facts.
+            await expect(foreground(page).getByRole("group", { name: "流水概况", exact: true }).locator("[data-record-summary-value]")).toHaveText(/^\+¥/);
+            await expect(detailBody(page).locator('dt').filter({ hasText: /^(支付宝 App ID|交易金额|收支方向|交易时间)$/ })).toHaveCount(0);
             await readDetailSection(page, /^采集记录/);
-            await expect(detailBody(page).locator("#ledger-sources-heading")).toBeVisible();
-            await expect(detailBody(page).locator("[data-ledger-source]").first()).toBeVisible();
-            const sourceFacts = detailSection(page, "sources").locator("[data-ledger-source]").first()
-              .locator(':scope > [data-slot="item-content"] > [data-detail-fields], :scope > [data-slot="card-content"] > [data-detail-credentials]');
-            await fields(sourceFacts, ["内部流水编号（PerPay）"]);
+            await fields(detailSection(page, "sources"), ["内部流水编号（PerPay）"]);
             await readingFlowGeometry(page);
-            await readDetailSection(page, "收款关联");
-            await expect(detailBody(page).locator("#ledger-matches-heading")).toBeVisible();
-            await expect(detailBody(page).locator("[data-ledger-match]").first()).toBeVisible();
+            await readDetailSection(page, /^对应订单/);
+            await expect(detailSection(page, "payments").locator("article[data-sub-record]").first()).toBeVisible();
             await readingFlowGeometry(page);
             await expect(detailSection(page, "conflicts")).toHaveCount(0);
-            await readDetailSection(page, "交易");
+            await readDetailSection(page, "交易信息");
           }
           const flows = await readingFlowGeometry(page);
           const geometry = await readingLayout(page, mode);
@@ -716,26 +714,41 @@ test("automatic, manual and reversed matches keep full evidence in unified and s
     await openDetail(page, manifest, key);
     const match = await data<PaymentMatchDetail>(page, manifest, apiPath(detailPath(manifest, key)));
     const scoped = key === "matchSite";
+    // A site's evidence detail keeps its cards. The global one is a record among its transaction's orders:
+    // the transaction's facts stand beside it, so it adds only the order and how the two were associated.
     const card = scoped ? detailBody(page).getByRole("group", { name: "收款关联记录", exact: true })
-      : detailSection(page, "payments").locator(`[data-ledger-match="${match.payment_match_id}"]`).getByRole("group", { name: "收款关联记录", exact: true });
-    const transaction = scoped ? page.getByRole("group", { name: "支付宝交易", exact: true }) : page.locator("[data-ledger-summary]");
-    const evidence = scoped ? page.getByRole("group", { name: "匹配依据与处理记录", exact: true }) : card.locator("[data-match-evidence]");
+      : detailSection(page, "payments").locator(`article[id="match-${match.payment_match_id}"]`);
+    const transaction = scoped ? page.getByRole("group", { name: "支付宝交易", exact: true }) : detailSection(page, "transaction");
+    const evidence = scoped ? page.getByRole("group", { name: "匹配依据与处理记录", exact: true }) : card;
     if (!scoped) {
       await expectOverlayTarget(page, "/reconciliation/transactions/" + match.ledger_entry_id + "#match-" + match.payment_match_id);
+      // The link leads to the association itself, wherever it stands among the orders.
+      await expect(card).toBeInViewport();
       await expect(card.getByText("支付宝交易金额", { exact: true })).toHaveCount(0);
-      const sourceLink = card.getByRole("link", { name: "核对这份记录", exact: true });
-      expect(targetUrl(page, (await sourceLink.getAttribute("href"))!).hash).toBe("#source-" + match.ledger_entry_id);
+      const entry = await data<AdminLedgerDetail>(page, manifest, "/api/admin/v1/ledger/entries/" + match.ledger_entry_id);
+      // Only a transaction with several sources has to say which of them an association uses.
+      const sourceLink = card.getByRole("link", { name: /^采集记录 \d+$/ });
+      await expect(sourceLink).toHaveCount(entry.sources.length > 1 ? 1 : 0);
+      if (entry.sources.length > 1) expect(targetUrl(page, (await sourceLink.getAttribute("href"))!).hash).toBe("#source-" + match.ledger_entry_id);
+      await readDetailSection(page, "交易信息");
     }
-    if (!scoped) await readDetailSection(page, "交易");
     await expect(transaction.getByText(match.ledger_entry.provider_order_no!, { exact: true })).toBeVisible();
-    if (!scoped) await readDetailSection(page, "收款关联");
-    await expect(card.locator("[data-detail-order-summary]")).toContainText(match.order.merchant_order_no);
+    if (!scoped) await readDetailSection(page, /^对应订单/);
+    await expect(scoped ? card.locator("[data-detail-order-summary]") : card).toContainText(match.order.merchant_order_no);
     if (match.candidate) {
-      await expect(evidence.getByRole("heading", { name: "匹配依据", exact: true })).toBeVisible();
+      if (scoped) await expect(evidence.getByRole("heading", { name: "匹配依据", exact: true })).toBeVisible();
+      else {
+        // Folded until asked for: it holds only what the transaction does not state itself.
+        const basis = card.getByRole("button", { name: /^匹配依据/ });
+        await expect(basis).toHaveAttribute("aria-expanded", "false");
+        await basis.click();
+        await expect(basis).toHaveAttribute("aria-expanded", "true");
+      }
       await expect(evidence.getByText("金额占用时间", { exact: true })).toBeVisible();
     }
     if (match.evidence_type === "MANUAL") {
-      await expect(evidence.getByText("管理员人工关联", { exact: true })).toBeVisible();
+      if (scoped) await expect(evidence.getByText("管理员人工关联", { exact: true })).toBeVisible();
+      else await expect(card.locator("header")).toContainText("管理员人工关联 · ");
       expect(match.creation_operation.reason).toBeTruthy();
       await expect(evidence.locator("dd").filter({ hasText: match.creation_operation.reason! })).toBeVisible();
     }
@@ -743,13 +756,23 @@ test("automatic, manual and reversed matches keep full evidence in unified and s
       await fields(evidence, ["撤销时间", "撤销操作人", "撤销理由"]);
       expect(match.resolution_operation?.reason).toBeTruthy();
       await expect(evidence.locator("dd").filter({ hasText: match.resolution_operation!.reason! })).toBeVisible();
-      await expect(card.getByRole("button", { name: "更多操作，收款关联记录操作", exact: true })).toHaveCount(0);
       await expect(page.getByRole("menuitem", { name: "撤销错误关联", exact: true })).toHaveCount(0);
-      await expect(card.getByRole("button", { name: "收款关联技术信息", exact: true })).toBeVisible();
+      if (scoped) {
+        await expect(card.getByRole("button", { name: "更多操作，收款关联记录操作", exact: true })).toHaveCount(0);
+        await expect(card.getByRole("button", { name: "收款关联技术信息", exact: true })).toBeVisible();
+      } else {
+        // A reversed association offers nothing; its technical information stays in the transaction's menu.
+        await expect(card.getByRole("button", { name: "撤销错误关联", exact: true })).toHaveCount(0);
+        await foreground(page).locator("[data-overlay-footer]").getByRole("button", { name: "更多操作，流水操作", exact: true }).click();
+        await expect(page.getByRole("menuitem", { name: /^收款关联技术信息/ }).first()).toBeVisible();
+        await page.keyboard.press("Escape");
+        await expect(page.getByRole("menu")).toHaveCount(0);
+      }
     } else {
-      const trigger = card.getByRole("button", { name: "更多操作，收款关联记录操作", exact: true });
+      // A site's card collects its actions in a menu; a record with a single action shows it as a button.
+      const trigger = card.getByRole("button", { name: scoped ? "更多操作，收款关联记录操作" : "撤销错误关联", exact: true });
       await trigger.click();
-      await page.getByRole("menuitem", { name: "撤销错误关联", exact: true }).click();
+      if (scoped) await page.getByRole("menuitem", { name: "撤销错误关联", exact: true }).click();
       const dialog = page.getByRole("dialog", { name: "撤销收款关联？", exact: true });
       await expect(dialog).toBeVisible();
       await expect(dialog).toContainText("不会转出资金");
@@ -759,7 +782,7 @@ test("automatic, manual and reversed matches keep full evidence in unified and s
       await expect(trigger).toBeFocused();
     }
     const orderPrefix = scoped ? "/sites/" + match.order.api_client_id : "";
-    const orderLink = card.locator('[data-detail-order-summary] [data-slot="item-title"] a');
+    const orderLink = scoped ? card.locator('[data-detail-order-summary] [data-slot="item-title"] a') : card.getByRole("link", { name: "查看订单", exact: true });
     expect(targetUrl(page, (await orderLink.getAttribute("href"))!).pathname).toBe(orderPrefix + "/orders/" + match.order_id);
     await record(page, info, { feature: "match-domain-scenarios", key, evidenceType: match.evidence_type, status: match.status });
     await screenshot(page, info, "reading-" + key);
@@ -772,44 +795,45 @@ test("all genuine ledger versions and synthetic simultaneous associations remain
   for (const key of ["ledgerAssociated", "ledgerIdentical", "ledgerDisputed"]) {
     const entry = await data<AdminLedgerDetail>(page, manifest, apiPath(detailPath(manifest, key)));
     await openDetail(page, manifest, key);
-    await expect(detailSection(page, "transaction").locator("[data-detail-credentials]")).toHaveCount(1);
-    if (key === "ledgerDisputed") await expect(detailBody(page).locator("[data-ledger-summary]")).toContainText("有争议");
-    await readDetailSection(page, "收款关联");
-    await expect(detailBody(page).locator("[data-ledger-match]")).toHaveCount(entry.matches.length);
+    const several = entry.sources.length > 1;
+    // The transaction's identifiers are in view at once, each stated a single time.
+    await expect(detailBody(page).getByText(entry.external_event_id, { exact: true })).toHaveCount(1);
+    await expect(detailSection(page, "transaction").getByText(entry.external_event_id, { exact: true })).toBeVisible();
+    if (key === "ledgerDisputed") await expect(foreground(page).getByRole("group", { name: "流水概况", exact: true })).toContainText("有争议");
+    await readDetailSection(page, /^对应订单/);
+    await expect(detailSection(page, "payments").locator('article[id^="match-"]')).toHaveCount(entry.matches.length);
     if (entry.conflicts.length) {
-      await readDetailSection(page, /^冲突/);
-      await expect(detailBody(page).locator("[data-ledger-conflict]")).toHaveCount(entry.conflicts.length);
-      await expect(detailSection(page, "conflicts").locator("[data-detail-credentials]")).toHaveCount(entry.conflicts.length);
+      await readDetailSection(page, /^账本冲突/);
+      await expect(detailSection(page, "conflicts").locator('article[id^="conflict-"]')).toHaveCount(entry.conflicts.length);
     } else await expect(detailSection(page, "conflicts")).toHaveCount(0);
-    await readDetailSection(page, /^采集记录/);
-    await expect(detailBody(page).locator("[data-ledger-source]")).toHaveCount(entry.sources.length);
-    await expect(detailSection(page, "sources").locator('[data-ledger-source] > [data-slot="card-content"] > [data-detail-credentials]')).toHaveCount(entry.content_consistent ? 0 : entry.sources.length);
-    for (const source of entry.sources) {
-      const facts = page.locator(`[data-ledger-source="${source.ledger_entry_id}"]`)
-        .locator(':scope > [data-slot="item-content"] > [data-detail-fields], :scope > [data-slot="card-content"] > [data-detail-credentials]');
-      await expect(facts.getByText(source.ledger_entry_id, { exact: true })).toBeVisible();
+    const sources = await readDetailSection(page, /^采集记录/);
+    // A single source is the record itself; several are told apart as records of their own.
+    await expect(sources.locator('article[id^="source-"]')).toHaveCount(several ? entry.sources.length : 0);
+    for (const [index, source] of entry.sources.entries()) {
+      const owner = several ? sources.locator(`article[id="source-${source.ledger_entry_id}"]`) : sources;
+      if (several) await expect(owner.getByRole("heading", { level: 3 })).toHaveText("采集记录 " + (index + 1));
+      await expect(owner.getByText(source.ledger_entry_id, { exact: true })).toBeVisible();
+      await expect(owner.locator("dt")).toHaveText(sourceTerms(entry, source));
+      await expect(owner.getByRole("link", { name: "查看记录与处理", exact: true })).toHaveCount(0);
     }
-    if (key === "ledgerIdentical") { expect(entry.content_consistent).toBe(true); expect(entry.sources.length).toBeGreaterThan(1); }
+    if (key === "ledgerIdentical") { expect(entry.content_consistent).toBe(true); expect(several).toBe(true); }
     if (key === "ledgerDisputed") {
       expect(entry.content_consistent).toBe(false);
-      await expect(page.locator("[data-ledger-warning]")).toContainText("账单记录有差异");
+      await expect(foreground(page).locator("[data-record-notice]")).toContainText("账单信息存在不同版本");
+      expect(entry.amount_cents, "the genuine versions differ in their amounts").toBeNull();
+      // Each version states its own amount; the versions are never added up.
       for (const source of entry.sources) {
-        const card = page.locator(`[data-ledger-source="${source.ledger_entry_id}"]`);
-        const facts = card.locator(':scope > [data-slot="card-content"] > [data-detail-fields]');
-        await expect(facts.locator("dt")).toHaveText([...(entry.sources.length === 1 ? ["PerPay 记录状态"] : []), "交易金额", "收支方向", "交易时间", "对方", "保存时间", "支付宝备注"]);
-        if (source.memo) await expect(facts.getByText(source.memo, { exact: true })).toBeVisible();
-        if (source.provider_order_no) await expect(card.locator(':scope > [data-slot="card-content"] > [data-detail-credentials]').getByText(source.provider_order_no, { exact: true })).toBeVisible();
+        const amount = sources.locator(`article[id="source-${source.ledger_entry_id}"]`).locator("dt").filter({ hasText: /^交易金额$/ }).locator("..").locator("dd");
+        await expect(amount).toHaveText(/^¥/);
       }
-    } else {
-      for (const source of entry.sources) {
-        const card = page.locator(`[data-ledger-source="${source.ledger_entry_id}"]`);
-        await expect(card.locator(':scope > [data-slot="item-content"] > [data-detail-fields] dt')).toHaveText([...(entry.sources.length === 1 ? ["PerPay 记录状态"] : []), "内部流水编号（PerPay）", "保存时间"]);
-        await expect(card.getByRole("link", { name: "查看记录与处理", exact: true })).toHaveCount(0);
-        const eligible = source.direction === "CREDIT" && ["UNALLOCATED", "CANDIDATE", "CONFLICT"].includes(source.state);
-        const actions = entry.sources.length === 1 ? card.locator(':scope > [data-slot="item-content"] > div.flex.max-w-full') : card.locator(':scope > [data-slot="item-content"] > [data-slot="item-header"] > [data-slot="item-actions"], :scope > [data-slot="card-header"] > [data-slot="card-action"]');
-        await expect(actions.getByRole("button", { name: "人工关联收款", exact: true })).toHaveCount(eligible ? 1 : 0);
-      }
-    }
+    } else await expect(foreground(page).locator("[data-record-notice]")).toHaveCount(0);
+    // The record offers the association for copies that agree, and nobody offers one while an association is in effect.
+    const eligible = entry.active_match_count ? [] : entry.sources.filter(source => source.direction === "CREDIT" && ["UNALLOCATED", "CANDIDATE", "CONFLICT"].includes(source.state));
+    const shared = eligible.length > 0 && (!several || entry.content_consistent);
+    await expect(foreground(page).locator("[data-overlay-footer]").getByRole("button", { name: "人工关联收款", exact: true })).toHaveCount(shared ? 1 : 0);
+    // A copy is named wherever there is a choice to make: among several copies, or where differing copies leave no default.
+    await expect(sources.getByRole("button", { name: "用这份记录关联", exact: true })).toHaveCount(several && (eligible.length > 1 || !shared) ? eligible.length : 0);
+    await expect(sources.getByRole("button", { name: "人工关联收款", exact: true })).toHaveCount(0);
     await record(page, info, { feature: "ledger-domain-scenarios", key, sources: entry.sources.length, matches: entry.matches.length, conflicts: entry.conflicts.length });
     await screenshot(page, info, "reading-" + key);
   }
@@ -827,16 +851,22 @@ test("all genuine ledger versions and synthetic simultaneous associations remain
   await page.route(manifest.origin + path, route => route.fulfill({ status: 200, json: { data: entry } }));
   await page.route(manifest.origin + "/api/admin/v1/reconciliation/matches/" + second.payment_match_id, route => route.fulfill({ status: 200, json: { data: secondDetail } }));
   await openDetail(page, manifest, "ledgerAssociated");
-  await expect(page.locator("[data-ledger-warning]")).toContainText(`有 ${entry.active_match_count} 条有效关联`);
-  await expect(page.locator("[data-ledger-warning]")).toContainText("无法确定唯一订单");
-  await readDetailSection(page, "收款关联");
-  await expect(detailBody(page).locator("[data-ledger-match]")).toHaveCount(entry.matches.length);
+  const notice = foreground(page).locator("[data-record-notice]");
+  await expect(notice).toHaveAttribute("data-record-notice", "danger");
+  await expect(notice).toContainText(`有 ${entry.active_match_count} 条有效关联`);
+  await expect(notice).toContainText("无法确定唯一订单");
+  await expect(foreground(page).getByRole("group", { name: "流水概况", exact: true }).getByText("多笔关联", { exact: true })).toBeVisible();
+  // The notice leads to the associations it is about.
+  await notice.getByRole("button", { name: "核对各条关联", exact: true }).click();
+  const associations = detailSection(page, "payments");
+  await expect(associations).toBeFocused();
+  await expect(associations).toBeInViewport();
+  await expect(associations.locator('article[id^="match-"]')).toHaveCount(entry.matches.length);
   await expect(detailBody(page).getByText("当前实际关联", { exact: true })).toHaveCount(0);
   for (const match of [settled!, second]) {
-    const card = page.locator(`[data-ledger-match="${match.payment_match_id}"]`);
-    const orderLink = card.locator('[data-detail-order-summary] [data-slot="item-title"] a');
-    expect(targetUrl(page, (await orderLink.getAttribute("href"))!).pathname).toBe("/orders/" + match.order_id);
-    await expect(card.getByText("仍生效 · 存在多条关联", { exact: true })).toBeVisible();
+    const card = associations.locator(`article[id="match-${match.payment_match_id}"]`);
+    expect(targetUrl(page, (await card.getByRole("link", { name: "查看订单", exact: true }).getAttribute("href"))!).pathname).toBe("/orders/" + match.order_id);
+    await expect(card.getByText("存在多条关联", { exact: true })).toBeVisible();
   }
   await record(page, info, { feature: "ledger-multiple-associations", evidence: "synthetic-detail-response-only", activeMatchCount: entry.active_match_count });
   await screenshot(page, info, "reading-ledger-multiple-active-associations");
@@ -849,18 +879,23 @@ test("technical record identifiers remain copyable without crowding the business
   const notification = await data<WebhookDeliveryDetail>(page, manifest, apiPath(detailPath(manifest, "notificationDns")));
   const match = await data<PaymentMatchDetail>(page, manifest, apiPath(detailPath(manifest, "matchInferred")));
   const ledger = await data<AdminLedgerDetail>(page, manifest, apiPath(detailPath(manifest, "ledgerAssociated")));
-  expect(ledger.sources.length).toBeGreaterThan(0);
+  expect(ledger.sources).toHaveLength(1);
   const source = ledger.sources[0]!;
-  const cases = [
+  const copies = await data<AdminLedgerDetail>(page, manifest, apiPath(detailPath(manifest, "ledgerIdentical")));
+  expect(copies.sources.length).toBeGreaterThan(1);
+  const copy = copies.sources[1]!;
+  // A transaction keeps every technical entry in its footer's menu. Its only source's identifiers stand with
+  // its own; several sources each have an entry.
+  const cases: Array<{ key: string; tools: string; item?: string; values: Array<[string, string | null]> }> = [
     { key: "notificationDns", tools: "更多操作，通知记录操作", values: [["投递编号", notification.delivery.delivery_id], ["事件编号", notification.event.event_id]] },
-    { key: "matchInferred", tools: "更多操作，收款关联记录操作", values: [["关联编号", match.payment_match_id], ["流水编号", match.ledger_entry_id]] },
-    { key: "ledgerAssociated", tools: "更多操作，支付宝流水记录操作", values: [["内部流水编号（PerPay）", ledger.ledger_entry_id]] },
-    { key: "ledgerAssociated", tools: "更多操作，查账记录 1 操作", sourceId: source.ledger_entry_id, values: [["支付宝 App ID", source.app_id], ["采集来源标识", source.provider_account_key]] },
+    { key: "matchInferred", tools: "更多操作，流水操作", item: "收款关联技术信息", values: [["关联编号", match.payment_match_id], ["流水编号", match.ledger_entry_id]] },
+    { key: "ledgerAssociated", tools: "更多操作，流水操作", values: [["内部流水编号（PerPay）", ledger.ledger_entry_id], ["支付宝 App ID", source.app_id], ["采集来源标识", source.provider_account_key]] },
+    { key: "ledgerIdentical", tools: "更多操作，流水操作", item: "采集记录 2 技术信息", values: [["内部流水编号（PerPay）", copy.ledger_entry_id], ["支付宝 App ID", copy.app_id], ["采集来源标识", copy.provider_account_key]] },
   ];
   for (const scenario of cases) {
     await openDetail(page, manifest, scenario.key);
     await expect(detailBody(page).locator('dt').filter({ hasText: /^支付宝 App ID$/ })).toHaveCount(0);
-    const { technical, menuItem } = await technicalEntry(page, scenario.tools, "sourceId" in scenario ? scenario.sourceId : undefined);
+    const { technical, menuItem } = await technicalEntry(page, scenario.tools, scenario.item);
     const session = await openTechnicalDialog(page, technical, menuItem);
     await page.keyboard.press("Tab");
     await expect(session.close).toBeFocused();
@@ -873,7 +908,7 @@ test("technical record identifiers remain copyable without crowding the business
       await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(value);
     }
     const secondary = await expectTechnicalDialogLayout(session);
-    await screenshot(page, info, "reading-technical-" + scenario.tools);
+    await screenshot(page, info, "reading-technical-" + scenario.key + "-" + (menuItem ?? "entry"));
     const restored = await closeTechnicalDialog(session);
     await expect(detailBody(page).locator('dt').filter({ hasText: /^支付宝 App ID$/ })).toHaveCount(0);
     await record(page, info, { feature: "detail-technical-identifiers", scenario: scenario.key, tools: scenario.tools,
@@ -936,17 +971,17 @@ test("long products, complete identifiers and multiline details wrap without cli
     await layout(page, theme, "compact");
     for (const scenario of scenarios) {
       await openDetail(page, manifest, scenario.key);
-      if (scenario.kind === "ledger") await readDetailSection(page, "收款关联");
+      if (scenario.kind === "ledger") await readDetailSection(page, /^对应订单/);
       else if (scenario.kind === "notification") await readDetailSection(page, "关联订单");
       const orderOwner = scenario.kind === "ledger"
-        ? detailSection(page, "payments").locator(`[data-ledger-match="${ledger.matches[0]!.payment_match_id}"]`)
+        ? detailSection(page, "payments").locator(`article[id="match-${ledger.matches[0]!.payment_match_id}"]`)
         : scenario.kind === "notification" ? detailSection(page, "order").locator("article[data-sub-record]")
           : detailBody(page).getByRole("group", { name: "收款关联记录", exact: true });
-      const factsOwner = scenario.kind === "ledger" ? detailSection(page, "transaction").locator("[data-ledger-summary]")
+      const factsOwner = scenario.kind === "ledger" ? detailSection(page, "transaction")
         : scenario.kind === "notification" ? detailSection(page, "overview")
           : detailBody(page).getByRole("group", { name: "支付宝交易", exact: true });
-      // A record names its related order in the sub-record's heading; the other details still use the order summary's title.
-      const title = scenario.kind === "notification" ? orderOwner.getByRole("heading", { level: 3 }) : orderOwner.locator('[data-detail-order-summary] [data-slot="item-title"]');
+      // A record names its related order in the sub-record's heading; a site's evidence detail still uses the order summary's title.
+      const title = scenario.kind === "match" ? orderOwner.locator('[data-detail-order-summary] [data-slot="item-title"]') : orderOwner.getByRole("heading", { level: 3 });
       await expect(title).toHaveText(product);
       const bounds = await title.evaluate(element => {
         const range = document.createRange(); range.selectNodeContents(element);
@@ -955,7 +990,7 @@ test("long products, complete identifiers and multiline details wrap without cli
       });
       expect(bounds.textHeight).toBeLessThanOrEqual(bounds.boxHeight + 1);
       expect(bounds.textRight).toBeLessThanOrEqual(bounds.boxRight + 1);
-      if (scenario.kind === "ledger") await readDetailSection(page, "交易");
+      if (scenario.kind === "ledger") await readDetailSection(page, "交易信息");
       await expect(factsOwner.locator("dd").filter({ hasText: "第三行：可见末尾标记" })).toHaveText(memo);
       if (scenario.kind === "notification") {
         await expect(factsOwner.getByText(targetUrl, { exact: true })).toBeVisible();
@@ -965,7 +1000,7 @@ test("long products, complete identifiers and multiline details wrap without cli
         await expect(factsOwner.getByText(identifier, { exact: true })).toBeVisible();
         if (scenario.kind === "ledger") {
           for (const [name, value] of [["支付宝流水号", externalIdentifier], ["支付宝订单号", identifier], ["支付宝商户单号", merchantIdentifier]]) {
-            const credential = page.locator('[data-ledger-summary] [data-detail-credentials]');
+            const credential = detailSection(page, "transaction");
             await expect(credential.getByText(value!, { exact: true })).toBeVisible();
             await credential.getByRole("button", { name: "复制" + name, exact: true }).click();
             await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(value);
