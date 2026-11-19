@@ -4,6 +4,8 @@ import { cn } from "@/lib/utils";
 
 /** Bubbles from a located anchor so every enclosing disclosure opens. */
 export const REVEAL_EVENT = "record:reveal";
+/** Bubbles from a section that was brought into view on request, so the navigation marks that one. */
+export const SECTION_EVENT = "record:section";
 const ANCHOR_HIT_MS = 1200;
 
 /**
@@ -51,6 +53,7 @@ export function Sections({ label = "详情内容", className, children }: {
       observer.disconnect();
       target.scrollIntoView?.({ block: "start", behavior: "instant" });
       target.focus({ preventScroll: true });
+      (sections.find(element => element.contains(target)) ?? section)?.dispatchEvent(new CustomEvent(SECTION_EVENT, { bubbles: true }));
       if (exact) {
         highlighted = exact;
         exact.setAttribute("data-anchor-hit", "");
@@ -81,6 +84,7 @@ export function showSection(origin: Element | null, id: string) {
   const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
   target.scrollIntoView?.({ block: "start", behavior: reduced ? "instant" : "smooth" });
   target.focus({ preventScroll: true });
+  target.dispatchEvent(new CustomEvent(SECTION_EVENT, { bubbles: true }));
   return true;
 }
 
@@ -99,7 +103,7 @@ export function Section({ id, title, count, empty, anchorPrefixes, actions, chil
   const isEmpty = empty !== undefined && empty !== null && empty !== false;
   return <section aria-labelledby={heading} data-detail-section={id} data-section-empty={isEmpty || undefined}
     data-anchor-prefixes={anchorPrefixes?.join(" ")} tabIndex={-1}
-    className="flex min-w-0 scroll-mt-4 flex-col gap-3 outline-none [&+&]:border-t [&+&]:pt-5">
+    className="flex min-w-0 scroll-mt-4 flex-col gap-3 outline-none [&+&]:scroll-mt-[calc(-1rem-1px)] [&+&]:border-t [&+&]:pt-5">
     <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
       <h2 id={heading} className="text-sm font-semibold text-foreground">
         {title}

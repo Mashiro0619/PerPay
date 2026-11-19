@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState, type ReactNode } from "react";
 import { MemoryRouter } from "react-router";
@@ -264,6 +264,47 @@ describe("record summary", () => {
     expect(scroll).toHaveBeenCalledWith({ block: "start", behavior: "smooth" });
     expect(history).toHaveFocus();
     expect(links.map(link => link.getAttribute("aria-current"))).toEqual([null, null, "true"]);
+  });
+
+  it("keeps a requested section marked until the reader scrolls on their own", async () => {
+    vi.spyOn(HTMLElement.prototype, "scrollIntoView").mockImplementation(() => {});
+    const page = <div data-overlay-primary>
+      <RecordSummary label="PerPay 收款状态" value="¥129.01" nav={nav} />
+      <RecordNotice tone="warning" jump={{ section: "overview", label: "查看订单信息" }}>订单金额与流水不一致。</RecordNotice>
+      <div data-overlay-detail><Sections>
+        <Section id="overview" title="订单信息"><p>订单字段</p></Section>
+        <Section id="payments" title="收款关联" count={1}><p>关联内容</p></Section>
+        <Section id="history" title="动态"><p>动态内容</p></Section>
+      </Sections></div>
+    </div>;
+    const linked = at("/record?section=payments", page);
+    const frame = () => act(() => new Promise<void>(resolve => requestAnimationFrame(() => resolve())));
+    const marked = () => within(screen.getByRole("navigation", { name: "分区导航" })).getAllByRole("button").map(link => link.getAttribute("aria-current"));
+    // A section opened by its link is marked, although every position is zero here and reads as the last section.
+    await frame();
+    expect(document.querySelector('[data-detail-section="payments"]')).toHaveFocus();
+    expect(marked()).toEqual([null, "true", null]);
+    linked.unmount();
+
+    at("/record", page);
+    const user = userEvent.setup();
+    const scroller = document.querySelector<HTMLElement>("[data-overlay-detail]")!;
+    const scrolled = async () => { fireEvent.scroll(scroller); await frame(); };
+    await scrolled();
+    expect(marked()).toEqual([null, null, "true"]);
+    await user.click(within(screen.getByRole("navigation", { name: "分区导航" })).getAllByRole("button")[1]!);
+    expect(marked()).toEqual([null, "true", null]);
+    // The content moving towards the section does not take the mark away.
+    await scrolled();
+    expect(marked()).toEqual([null, "true", null]);
+    // A jump from the notice moves it as well.
+    await user.click(screen.getByRole("button", { name: "查看订单信息" }));
+    await scrolled();
+    expect(marked()).toEqual(["true", null, null]);
+    // The reader's own scrolling hands the mark back to the position.
+    fireEvent.wheel(scroller);
+    await scrolled();
+    expect(marked()).toEqual([null, null, "true"]);
   });
 
   it("states a reason without buttons other than a jump to the section concerned", async () => {

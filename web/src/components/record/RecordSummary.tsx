@@ -1,25 +1,33 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Link } from "@/navigation";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { showSection } from "./Sections";
+import { SECTION_EVENT, showSection } from "./Sections";
 
 export type SectionLink = { id: string; label: string; count?: number };
 
-/** In-page links to the record's sections; the one being read is marked. */
+/**
+ * In-page links to the record's sections; the one being read is marked. A
+ * section the reader asked for stays marked until they scroll on their own:
+ * near the end of a record it cannot reach the top, and while the content is
+ * still moving towards it other sections pass by.
+ */
 export function SectionNav({ items, label = "分区导航" }: { items: readonly SectionLink[]; label?: string }) {
   const root = useRef<HTMLElement>(null);
   const [active, setActive] = useState(items[0]?.id);
   const ids = items.map(item => item.id).join(" ");
 
-  useEffect(() => {
-    const scope = root.current?.closest("[data-overlay-primary]") ?? document.body;
+  // Before the first frame, in which a linked section is located.
+  useLayoutEffect(() => {
+    const scope = root.current?.closest<HTMLElement>("[data-overlay-primary]") ?? document.body;
     const scroller = scope.querySelector<HTMLElement>("[data-overlay-detail]");
     if (!scroller) return;
+    const wanted = ids.split(" ");
     let frame = 0;
+    let chosen: string | undefined;
     const update = () => {
+      if (chosen) return;
       const edge = scroller.getBoundingClientRect().top + 24;
-      const wanted = ids.split(" ");
       const sections = Array.from(scroller.querySelectorAll<HTMLElement>("[data-detail-section]")).filter(element => wanted.includes(element.dataset.detailSection!));
       // The last section whose title has reached the top edge; a short final section counts once the end is reached.
       let current = sections[0];
@@ -28,9 +36,25 @@ export function SectionNav({ items, label = "分区导航" }: { items: readonly 
       if (current) setActive(current.dataset.detailSection);
     };
     const schedule = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(update); };
+    const choose = (event: Event) => {
+      const id = (event.target as HTMLElement).dataset.detailSection;
+      if (!id || !wanted.includes(id)) return;
+      chosen = id;
+      setActive(id);
+    };
+    // Only the reader's own scrolling hands the mark back to the position.
+    const release = () => { chosen = undefined; };
+    const inputs = ["wheel", "touchmove", "keydown", "pointerdown"] as const;
+    scope.addEventListener(SECTION_EVENT, choose);
     scroller.addEventListener("scroll", schedule, { passive: true });
+    for (const input of inputs) scroller.addEventListener(input, release, { passive: true });
     schedule();
-    return () => { cancelAnimationFrame(frame); scroller.removeEventListener("scroll", schedule); };
+    return () => {
+      cancelAnimationFrame(frame);
+      scope.removeEventListener(SECTION_EVENT, choose);
+      scroller.removeEventListener("scroll", schedule);
+      for (const input of inputs) scroller.removeEventListener(input, release);
+    };
   }, [ids]);
 
   return <nav ref={root} aria-label={label} data-record-nav className="-mb-px flex min-w-0 gap-4 overflow-x-auto">
