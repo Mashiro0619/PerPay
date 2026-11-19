@@ -20,6 +20,7 @@ export function ErrorNotice({
   retainedData = false,
   scope = "local",
   renderRetry,
+  placeholder,
 }: {
   error: unknown;
   retry?: (() => void) | undefined;
@@ -27,9 +28,16 @@ export function ErrorNotice({
   retainedData?: boolean;
   scope?: "local" | "page";
   renderRetry?: RequestRetryRenderer;
+  /**
+   * What a page-scoped failure leaves in place once the page's shared notice
+   * has taken its message, so the part that could not be read never ends blank.
+   */
+  placeholder?: string;
 }) {
   const shared = usePageRequestNotice(scope === "page" ? { error, retry, retainedData, showDiagnostics } : null);
-  if (!error || shared) return null;
+  if (!error) return null;
+  if (shared) return placeholder && !retainedData
+    ? <p data-request-failed className="text-[0.8125rem] leading-5 text-muted-foreground">{placeholder}</p> : null;
   return (
     <Alert variant="destructive">
       <AlertCircle />

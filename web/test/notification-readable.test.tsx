@@ -4,6 +4,8 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { describe, expect, it, vi } from "vitest";
 import { queryClient, type OrderWebhookDeliveryDetail, type WebhookAttempt } from "../src/api/client";
+import { RequestNoticeBanner } from "../src/components/request-notice-banner";
+import { RequestNoticeProvider } from "../src/lib/request-notices";
 import NotificationDetail from "../src/pages/NotificationDetail";
 import { WorkspaceProvider } from "../src/workspace";
 import { delivery, deliveryId, failedAttempt, paidOrder } from "./detail-fixtures";
@@ -19,11 +21,11 @@ function mockDetail(attemptsUnavailable = false, orderUnavailable = false, detai
       return json({ data: { client_id: "site_dense", name: "紧凑布局网站" } });
     if (path.endsWith("/attempts"))
       return attemptsUnavailable
-        ? apiError("webhook_unavailable", "尝试记录读取失败", 503)
+        ? apiError("webhook_unavailable", "合成的尝试读取故障", 503)
         : json({ data: detail.attempts });
     if (path.includes("/orders/"))
       return orderUnavailable
-        ? apiError("order_unavailable", "关联订单读取失败", 503)
+        ? apiError("order_unavailable", "合成的订单读取故障", 503)
         : json({ data: paidOrder });
     return json({ data: detail });
   }));
@@ -36,9 +38,13 @@ function mountDetail(site = false) {
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[base + "/notifications/" + deliveryId]}>
         <WorkspaceProvider>
-          <Routes>
-            <Route path={base + "/notifications/:deliveryId"} element={<NotificationDetail />} />
-          </Routes>
+          {/* As in a record drawer: one notice reports the reads the service could not answer. */}
+          <RequestNoticeProvider>
+            <RequestNoticeBanner showRuntimeLink={false} />
+            <Routes>
+              <Route path={base + "/notifications/:deliveryId"} element={<NotificationDetail />} />
+            </Routes>
+          </RequestNoticeProvider>
         </WorkspaceProvider>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -141,23 +147,32 @@ describe("readable standalone notification detail", () => {
     expect(await within(orderSection).findByRole("link", { name: "查看订单" })).toBeVisible();
     expect(within(screen.getByRole("region", { name: "投递信息" })).getByText(delivery.target.target_url)).toBeVisible();
     const attempts = screen.getByRole("region", { name: /^投递尝试/ });
-    expect(await within(attempts).findByRole("alert")).toHaveTextContent("尝试记录读取失败");
+    // The page's notice reports the failure; the section says which part is missing, so it never ends blank.
+    const notice = await screen.findByRole("alert", { name: "服务连接提示" });
+    expect(notice).toHaveTextContent("合成的尝试读取故障");
+    expect(within(attempts).getByText("投递尝试读取失败，请刷新重试。")).toBeVisible();
+    expect(within(attempts).queryByRole("alert")).not.toBeInTheDocument();
     expect(within(attempts).queryByText("尚未开始投递")).not.toBeInTheDocument();
     expect(within(attempts).queryByRole("list")).not.toBeInTheDocument();
     expect(attempts).not.toHaveAttribute("data-section-empty");
-    await userEvent.setup().click(within(attempts).getByRole("button", { name: "重试" }));
+    await userEvent.setup().click(within(notice).getByRole("button", { name: "重试" }));
     await waitFor(() => expect(attemptReads(requests)).toHaveLength(2));
   });
 
-  it("retains the linked order error in its own section while delivery facts and attempts stay usable", async () => {
+  it("states a failed order read in its own section while delivery facts and attempts stay usable", async () => {
     const requests = mockDetail(false, true);
     mountDetail();
     const orderSection = await screen.findByRole("region", { name: "关联订单" });
-    const error = await within(orderSection).findByRole("alert");
+    expect(await within(orderSection).findByText("关联订单读取失败，请刷新重试。")).toBeVisible();
+    expect(within(orderSection).queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByRole("alert", { name: "服务连接提示" })).toHaveTextContent("合成的订单读取故障");
     expect(within(screen.getByRole("region", { name: "投递信息" })).getByText(delivery.target.target_url)).toBeVisible();
-    await userEvent.setup().click(within(error).getByRole("button", { name: "重试" }));
-    await waitFor(() => expect(orderReads(requests)).toHaveLength(2));
     expect(await within(screen.getByRole("region", { name: /^投递尝试/ })).findByRole("list", { name: "投递尝试" })).toBeVisible();
+    // Refreshing the notification reads its order again as well.
+    const reads = { attempts: attemptReads(requests).length, order: orderReads(requests).length };
+    await userEvent.setup().click(screen.getByRole("button", { name: "刷新" }));
+    await waitFor(() => expect(orderReads(requests)).toHaveLength(reads.order + 1));
+    await waitFor(() => expect(attemptReads(requests)).toHaveLength(reads.attempts + 1));
   });
 
   it("copies the complete long notification address and keeps the resend reason visible", async () => {
@@ -266,7 +281,7 @@ describe("readable delivery attempts", () => {
     vi.stubGlobal("fetch", vi.fn(async (request: Request) => {
       requests.push(request);
       const path = new URL(request.url).pathname;
-      if (path.endsWith("/attempts")) return unavailable ? apiError("webhook_unavailable", "尝试记录读取失败", 503) : json({ data: delivery.attempts });
+      if (path.endsWith("/attempts")) return unavailable ? apiError("webhook_unavailable", "合成的尝试读取故障", 503) : json({ data: delivery.attempts });
       if (path.includes("/orders/")) return json({ data: paidOrder });
       return json({ data: delivery });
     }));
@@ -276,11 +291,13 @@ describe("readable delivery attempts", () => {
     expect(within(information).getByText(delivery.target.target_url)).toBeVisible();
     expect(await within(orderSection).findByRole("link", { name: "查看订单" })).toBeVisible();
     const attempts = screen.getByRole("region", { name: /^投递尝试/ });
-    await within(attempts).findByRole("alert");
+    const notice = await screen.findByRole("alert", { name: "服务连接提示" });
+    expect(within(attempts).getByText("投递尝试读取失败，请刷新重试。")).toBeVisible();
     unavailable = false;
-    await userEvent.setup().click(within(attempts).getByRole("button", { name: "重试" }));
+    await userEvent.setup().click(within(notice).getByRole("button", { name: "重试" }));
     expect(await within(attempts).findByRole("list", { name: "投递尝试" })).toBeVisible();
-    expect(within(attempts).queryByRole("alert")).not.toBeInTheDocument();
+    expect(within(attempts).queryByText("投递尝试读取失败，请刷新重试。")).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(orderReads(requests)).toHaveLength(1);
     expect(attemptReads(requests)).toHaveLength(2);
   });

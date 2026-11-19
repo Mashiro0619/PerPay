@@ -229,7 +229,7 @@ describe("order and notification copy follows its actual source", () => {
     }));
     mount(<Routes><Route path="/notifications/:deliveryId" element={<NotificationDetail />} /></Routes>, "/notifications/" + delivery.delivery.delivery_id);
     const attempts = await screen.findByRole("region", { name: "投递尝试" });
-    expect(within(attempts).getByRole("status")).toHaveTextContent("正在读取发送记录…");
+    expect(within(attempts).getByRole("status")).toHaveTextContent("正在读取投递尝试…");
     expect(within(attempts).queryByText("尚未开始投递")).not.toBeInTheDocument();
     expect(within(attempts).queryByRole("alert")).not.toBeInTheDocument();
     await act(async () => { complete(json({ data: [] })); });

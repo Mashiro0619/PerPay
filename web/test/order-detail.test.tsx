@@ -15,6 +15,8 @@ import {
   type AdminOrderDetail,
   type OrderWebhookDeliveryDetail,
 } from "../src/api/client";
+import { RequestNoticeBanner } from "../src/components/request-notice-banner";
+import { RequestNoticeProvider } from "../src/lib/request-notices";
 import { OrderDetail } from "../src/pages/OrderDetail";
 import NotificationDetail from "../src/pages/NotificationDetail";
 import EvidenceDetail from "../src/pages/ReconciliationDetail";
@@ -39,14 +41,18 @@ function mount(path = "/orders/" + orderId) {
   return render(
     <QueryClientProvider client={queryClient}><Toaster>
       <MemoryRouter initialEntries={[path]}>
-        <Routes>
-          <Route path="/orders/:orderId" element={<OrderDetail />} />
-          <Route path="/notifications/:deliveryId" element={<NotificationDetail />} />
-          <Route
-            path="/reconciliation/:kind/:resourceId"
-            element={<EvidenceDetail />}
-          />
-        </Routes>
+        {/* As in a record drawer: one notice reports the reads the service could not answer. */}
+        <RequestNoticeProvider>
+          <RequestNoticeBanner showRuntimeLink={false} />
+          <Routes>
+            <Route path="/orders/:orderId" element={<OrderDetail />} />
+            <Route path="/notifications/:deliveryId" element={<NotificationDetail />} />
+            <Route
+              path="/reconciliation/:kind/:resourceId"
+              element={<EvidenceDetail />}
+            />
+          </Routes>
+        </RequestNoticeProvider>
         <Location />
       </MemoryRouter>
     </Toaster></QueryClientProvider>,
@@ -501,11 +507,19 @@ describe("order detail work surface", () => {
     expect(
       await screen.findByText(detailLedger.provider_order_no!),
     ).toBeVisible();
-    await screen.findByRole("button", { name: "重试" });
-    const before = attempts;
-    await userEvent.setup().click(screen.getByRole("button", { name: "重试" }));
-    await waitFor(() => expect(attempts).toBeGreaterThan(before));
+    // The page's notice reports the failure; the section says which part is missing, so it never ends blank.
+    const notice = await screen.findByRole("alert", { name: "服务连接提示" });
+    expect(within(section("notifications")).getByText("通知结果读取失败，请刷新重试。")).toBeVisible();
+    expect(within(section("notifications")).queryByRole("alert")).not.toBeInTheDocument();
     expect(screen.queryByText("此订单未设置通知地址")).not.toBeInTheDocument();
+    const user = userEvent.setup();
+    let before = attempts;
+    await user.click(within(notice).getByRole("button", { name: "重试" }));
+    await waitFor(() => expect(attempts).toBeGreaterThan(before));
+    before = attempts;
+    await user.click(screen.getByRole("button", { name: "刷新" }));
+    await waitFor(() => expect(attempts).toBeGreaterThan(before));
+    expect(within(section("notifications")).getByText("通知结果读取失败，请刷新重试。")).toBeVisible();
   });
 
   it("opens a candidate in place with readable order and ledger facts and locks known association IDs", async () => {

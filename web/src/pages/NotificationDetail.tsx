@@ -1,6 +1,6 @@
 import type { UseQueryResult } from "@tanstack/react-query";
 import { useParams } from "react-router";
-import { queryClient, result, type WebhookAttemptListEnvelope, type WebhookDeliveryDetail } from "@/api/client";
+import { queryClient, result, type AdminOrderDetailEnvelope, type WebhookAttemptListEnvelope, type WebhookDeliveryDetail } from "@/api/client";
 import { attemptResult } from "@/lib/detail-summary";
 import { money } from "@/lib/format";
 import { label } from "@/lib/labels";
@@ -45,20 +45,32 @@ function DeliveryDetail({ deliveryId }: { deliveryId: string }) {
     enabled: delivery.isSuccess,
     queryFn: ({ signal }) => result(api.listWebhookDeliveryAttempts({ path: { deliveryId }, signal })),
   });
-  const refreshing = delivery.isFetching || attempts.isFetching;
+  const orderId = delivery.data?.data.event.order_id;
+  // The order the notification reports on is read separately: when that fails, the delivery and its attempts stay readable.
+  const order = useQuery({
+    queryKey: ["order", orderId],
+    enabled: !!orderId,
+    queryFn: ({ signal }) => result(api.getAdministratorOrder({ path: { orderId: orderId! }, signal })),
+  });
+  const refreshing = delivery.isFetching || attempts.isFetching || order.isFetching;
   return <DetailPage>
     <PageHeading title={delivery.data ? label(delivery.data.data.event.event_type) : "通知详情"} />
     <DetailNavigation back={back}>
       <PageHeaderActions><RefreshButton disabled={refreshing} busy={refreshing} onClick={() => {
         void delivery.refetch();
         void queryClient.invalidateQueries({ predicate: query => query.queryKey.includes("notification-attempts") && query.queryKey.includes(deliveryId) });
+        if (orderId) void order.refetch();
       }} /></PageHeaderActions>
     </DetailNavigation>
-    <QueryView query={delivery}>{({ data }) => <DeliveryRecord detail={data} attempts={attempts} />}</QueryView>
+    <QueryView query={delivery}>{({ data }) => <DeliveryRecord detail={data} attempts={attempts} order={order} />}</QueryView>
   </DetailPage>;
 }
 
-function DeliveryRecord({ detail, attempts }: { detail: WebhookDeliveryDetail; attempts: UseQueryResult<WebhookAttemptListEnvelope, Error> }) {
+function DeliveryRecord({ detail, attempts, order }: {
+  detail: WebhookDeliveryDetail;
+  attempts: UseQueryResult<WebhookAttemptListEnvelope, Error>;
+  order: UseQueryResult<AdminOrderDetailEnvelope, Error>;
+}) {
   const { clientId } = useWorkspace();
   const delivery = detail.delivery;
   const made = attempts.data?.data ?? [];
@@ -97,12 +109,13 @@ function DeliveryRecord({ detail, attempts }: { detail: WebhookDeliveryDetail; a
         ]} />
       </Section>
       <Section id="attempts" title="投递尝试" {...count} empty={attempts.data && !made.length ? attemptResult(undefined) : undefined}>
-        <ErrorNotice scope="page" error={attempts.error} retry={() => { void attempts.refetch(); }} />
+        <ErrorNotice scope="page" error={attempts.error} retainedData={!!attempts.data} retry={() => { void attempts.refetch(); }}
+          placeholder="投递尝试读取失败，请刷新重试。" />
         {attempts.data
           ? <Timeline label="投递尝试" entries={attemptEntries(made)} initial={10} moreLabel="更早的尝试" />
-          : !attempts.error && <Loading label="正在读取发送记录…" />}
+          : !attempts.error && <Loading label="正在读取投递尝试…" />}
       </Section>
-      <RelatedOrder orderId={detail.event.order_id} />
+      <RelatedOrder query={order} />
     </Sections>
     <ActionBar menuLabel="更多操作，通知记录操作"
       primary={resendable && delivery.status === "DEAD_LETTER" &&
@@ -117,17 +130,13 @@ function DeliveryRecord({ detail, attempts }: { detail: WebhookDeliveryDetail; a
   </>;
 }
 
-/** The order the notification reports on. It is read separately, so a failure stays inside this section. */
-function RelatedOrder({ orderId }: { orderId: string }) {
-  const api = useWorkspaceApi();
-  const query = useQuery({
-    queryKey: ["order", orderId],
-    queryFn: ({ signal }) => result(api.getAdministratorOrder({ path: { orderId }, signal })),
-  });
+/** The order the notification reports on. */
+function RelatedOrder({ query }: { query: UseQueryResult<AdminOrderDetailEnvelope, Error> }) {
   const order = query.data?.data;
   return <Section id="order" title="关联订单">
     {query.isPending && <Loading label="正在读取关联订单…" />}
-    <ErrorNotice scope="page" error={query.error} retry={() => { void query.refetch(); }} />
+    <ErrorNotice scope="page" error={query.error} retainedData={!!order} retry={() => { void query.refetch(); }}
+      placeholder="关联订单读取失败，请刷新重试。" />
     {order && <SubRecord title={order.product_name} href={"/orders/" + order.order_id} hrefLabel="查看订单"
       status={<OrderStatusBadge payment={order.payment.status} checkout={order.checkout.status} refundMarked={order.refund_mark.marked} />}>
       <FieldList items={[

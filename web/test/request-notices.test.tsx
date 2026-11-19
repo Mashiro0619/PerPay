@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError, queryClient, type ListSiteOverviewResponse } from "../src/api/client";
 import { Dialog, DialogBody, DialogContent, DialogHeader, DialogTitle } from "../src/components/admin-dialog";
 import { RequestNoticeBanner } from "../src/components/request-notice-banner";
-import { QueryView } from "../src/components/request-state";
+import { ErrorNotice, QueryView } from "../src/components/request-state";
 import { RequestNoticeProvider } from "../src/lib/request-notices";
 import { apiError, json, order } from "./fixtures";
 import { configuredThrough, mountOnboarding, systemStatus } from "./onboarding-fixture";
@@ -333,6 +333,26 @@ describe("shared page request notices", () => {
     expect(screen.getByText("读取已恢复")).toBeVisible();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(queryClient.getMutationCache().getAll()).toHaveLength(0);
+  });
+
+  it("states in place what a shared failure left unread, unless earlier content is still shown", async () => {
+    const error = new ApiError(new Response(null, { status: 503 }), { error: { code: "synthetic_backend_failure", message: "合成的读取故障" } });
+    const part = (notice: ReactNode) => noticeShell(<section aria-label="分区">{notice}</section>);
+    const view = render(part(<ErrorNotice scope="page" error={error} placeholder="分区读取失败，请刷新重试。" />));
+    const section = screen.getByRole("region", { name: "分区" });
+    // The page's notice carries the message; the part itself only says what is missing.
+    expect(await screen.findByRole("alert", { name: "服务连接提示" })).toHaveTextContent("合成的读取故障");
+    expect(within(section).getByText("分区读取失败，请刷新重试。")).toBeVisible();
+    expect(within(section).queryByRole("alert")).not.toBeInTheDocument();
+    view.rerender(part(<ErrorNotice scope="page" error={error} retainedData placeholder="分区读取失败，请刷新重试。" />));
+    expect(within(section).queryByText("分区读取失败，请刷新重试。")).not.toBeInTheDocument();
+    expect(screen.getByRole("alert", { name: "服务连接提示" })).toHaveTextContent("更新未完成，以下保留上次成功读取的内容。");
+    // A failure the page does not share shows its own message in place and needs no second line.
+    const rejected = new ApiError(new Response(null, { status: 422 }), { error: { code: "synthetic_rejection", message: "合成的拒绝原因" } });
+    view.rerender(part(<ErrorNotice scope="page" error={rejected} placeholder="分区读取失败，请刷新重试。" />));
+    expect(within(section).getByRole("alert")).toHaveTextContent("合成的拒绝原因");
+    expect(within(section).queryByText("分区读取失败，请刷新重试。")).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert", { name: "服务连接提示" })).not.toBeInTheDocument();
   });
 
   it("keeps a dialog's page-scoped query failure and its recovery inside the active modal", async () => {
