@@ -356,7 +356,9 @@ async function reconcileUnmatchedIncome(page: Page, fixture: BusinessFixture, in
   await expect.poll(() => new URL(page.url()).pathname).toBe("/admin/reconciliation");
   await page.locator(`a[data-row-link][href*="${unmatched.ledgerEntryId}"]`).click();
   const overlay = page.locator("[data-overlay-content]");
-  await expect(overlay.getByRole("heading", { name: "流水与对账详情", exact: true })).toBeVisible();
+  // The record names itself after the payment; the kind of record stays above its title.
+  await expect(overlay.locator("[data-overlay-eyebrow-text]")).toHaveText("流水与对账详情");
+  await expect(overlay.getByRole("heading", { level: 1 })).toHaveText(/^支付宝收款/);
   await expect(overlay.getByText(account.name, { exact: true })).toBeVisible();
   await overlay.getByRole("button", { name: "人工关联收款", exact: true }).click();
   const manual = page.getByRole("dialog", { name: "人工关联收款", exact: true });
@@ -405,8 +407,8 @@ async function reconcileUnmatchedIncome(page: Page, fixture: BusinessFixture, in
   expect(persisted.exceptions.find(item => item.exception_id === unmatched.exceptionId)?.status).toBe("RESOLVED");
   await screenshot(page, info, "09b-manual-settlement-persisted");
 
-  await overlay.getByRole("button", { name: "更多操作，收款关联记录操作", exact: true }).click();
-  await page.getByRole("menuitem", { name: "撤销错误关联", exact: true }).click();
+  // An association's only action stands on its record as a button.
+  await overlay.getByRole("button", { name: "撤销错误关联", exact: true }).click();
   const reverse = page.getByRole("dialog", { name: "撤销收款关联？", exact: true });
   const reverseSubmit = reverse.getByRole("button", { name: "确认撤销关联", exact: true });
   await expect(reverseSubmit).toBeDisabled();
@@ -418,7 +420,9 @@ async function reconcileUnmatchedIncome(page: Page, fixture: BusinessFixture, in
   await reverseSubmit.click();
   expect((await reversedResponse).ok()).toBe(true);
   await expect(reverse).toHaveCount(0);
-  await expect(overlay.getByRole("heading", { name: "已撤销的历史关联（1）", exact: true })).toBeVisible();
+  // With nothing in effect any more, the reversed association is what there is to read: its history starts open.
+  await expect(overlay.getByRole("button", { name: /^已撤销的关联\s*，共\s*1\s*项$/ })).toHaveAttribute("aria-expanded", "true");
+  await expect(overlay.locator('[data-detail-section="payments"]')).toContainText("原关联已撤销，当前没有对应的收款订单。");
   await fixture.dispatchNotification();
   const afterReversal = await fixture.apiSnapshot({ orderId: manualOrder.order_id });
   const reversedOrder = afterReversal.orders[0]!;
