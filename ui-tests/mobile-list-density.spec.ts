@@ -136,10 +136,12 @@ test.describe("mobile consecutive record rows", () => {
       await record(page, info, { feature: "mobile-consecutive-ledger", width, textPercent, rows: ledgerGeometry, linkedOrder: entry.active_match!.order_id });
       if (textPercent === 100) await capture(page, info, `mobile-ledger-${width}`);
       await ledgerPrimary.tap();
-      await expect(overlay.getByRole("heading", { name: "支付宝交易", exact: true })).toBeVisible();
+      await expect(overlay.getByRole("heading", { level: 1 })).toHaveText(/^支付宝收款/);
       await revealDetailSection(page, "payments");
-      const related = overlay.locator('[data-detail-section="payments"] [data-ledger-match="' + entry.active_match!.payment_match_id + '"] [data-detail-order-summary]')
-        .getByRole("link", { name: entry.active_match!.product_name, exact: true });
+      // The association is named after its order and leads to it.
+      const association = overlay.locator('[data-detail-section="payments"] article[id="match-' + entry.active_match!.payment_match_id + '"]');
+      await expect(association.getByRole("heading", { level: 3 })).toHaveText(entry.active_match!.product_name);
+      const related = association.getByRole("link", { name: "查看订单", exact: true });
       await expect(related).toBeVisible();
       const relatedTarget = await related.getAttribute("href");
       await related.tap();
