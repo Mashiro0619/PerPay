@@ -88,13 +88,15 @@ describe("ordinary administrator views", () => {
         return undefined;
       },
     });
-    const sources = await screen.findByRole("region", { name: /^采集记录/ });
+    // A suggested order stands among the entry's orders, named by its product.
+    const orders = await screen.findByRole("region", { name: /^对应订单/ });
     expect(
-      await within(sources).findByRole("heading", { name: "可能匹配的订单" }),
+      await within(orders).findByRole("heading", { name: order.product_name, level: 3 }),
     ).toBeVisible();
     expect(new URLSearchParams(view.router.state.location.search).get("overlay")).toContain("/reconciliation/transactions/" + ledgerId);
+    const sources = screen.getByRole("region", { name: /^采集记录/ });
     expect(within(sources).getByText("PerPay 记录状态")).toBeVisible();
-    expect(screen.getByText("未分配", { exact: true })).toBeVisible();
+    expect(within(sources).getByText("未分配", { exact: true })).toBeVisible();
     expect(screen.queryByText(/规则版本/)).not.toBeInTheDocument();
   });
 

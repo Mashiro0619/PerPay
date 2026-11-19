@@ -90,7 +90,7 @@ it("takes the detail record account even when its URL carries another account fi
 
 it("never falls back to global health for a detail with unknown account provenance", async () => {
   const view = mount("/ledger/" + ledgerId, { detailAccount: null });
-  await screen.findByRole("heading", { name: "支付宝交易" });
+  await screen.findByRole("heading", { name: "支付宝收款" });
   expect(view.freshness()).toHaveTextContent("本账号最近查账成功：暂不可用");
   expect(view.freshness().querySelector("time")).toBeNull();
 });

@@ -10,13 +10,16 @@ import LedgerDetail from "../src/pages/LedgerDetail";
 import { alipayAccount, json, ledger, ledgerId, orderId } from "./fixtures";
 import { mobileMedia } from "./mobile-media";
 import { paymentMatch } from "./detail-fixtures";
-import { dateTime } from "../src/lib/format";
+import { preciseDateTime } from "../src/lib/format";
 
 const secondSourceId = "33333333-3333-4333-8333-333333333333";
 const match: AdminLedgerMatch & { status: "SETTLED" } = { payment_match_id: "44444444-4444-4444-8444-444444444444", ledger_entry_id: secondSourceId, order_id: orderId, merchant_order_no: "real-order", product_name: "实际关联商品", api_client_id: "site-a", site_name: "网站甲", evidence_type: "MANUAL", status: "SETTLED", created_at: ledger.created_at, resolved_at: ledger.created_at };
 const entry: AdminLedgerSummary = { ...ledger, environment: "PRODUCTION", states: ["ALLOCATED"], source_record_count: 2, content_consistent: true, has_conflicts: false, active_match_count: 1, reversed_match_count: 1, last_associated_at: match.created_at, last_handled_at: match.resolved_at, active_match: match, memo: "本地流水备注", other_account: "付款用户" };
 const source = (id: string) => ({ ...ledger, state: "ALLOCATED" as const, ledger_entry_id: id, app_id: "app-a", environment: "PRODUCTION" as const, provider_account_key: "account-a", raw_event_id: id });
-const detail: AdminLedgerDetail = { ...entry, sources: [source(ledgerId), source(secondSourceId)], matches: [match, { ...match, payment_match_id: "55555555-5555-4555-8555-555555555555", status: "REVERSED", resolved_at: ledger.updated_at }], conflicts: [] };
+const reversedMatchId = "55555555-5555-4555-8555-555555555555";
+const detail: AdminLedgerDetail = { ...entry, sources: [source(ledgerId), source(secondSourceId)], matches: [match, { ...match, payment_match_id: reversedMatchId, status: "REVERSED", resolved_at: ledger.updated_at }], conflicts: [] };
+const section = (id: string) => document.querySelector<HTMLElement>('[data-detail-section="' + id + '"]');
+const record = (id: string) => document.getElementById(id)!;
 
 function detailResponse(request: Request, value: AdminLedgerDetail) {
   const url = new URL(request.url);
@@ -171,7 +174,7 @@ describe("administrator ledger pages", () => {
     const link = await screen.findByRole("link", { name: entry.external_event_id });
     vi.stubGlobal("scrollY", 725);
     await user.click(link);
-    await screen.findByRole("heading", { name: "支付宝交易" });
+    await screen.findByRole("heading", { name: "支付宝收款 · 付款用户" });
     refreshFails = true;
     vi.stubGlobal("scrollY", 0);
     await user.click(screen.getByRole("link", { name: "对账" }));
@@ -182,68 +185,72 @@ describe("administrator ledger pages", () => {
 
   it("displays every detail section together and reads each source and match only once", async () => {
     const router = mount("/reconciliation/transactions/" + ledgerId);
-    await screen.findByRole("heading", { name: "支付宝交易" });
-    expect(document.querySelector("[data-ledger-summary]")).not.toHaveTextContent("real-order");
-    expect(await screen.findByRole("heading", { name: "查账记录（2）" })).toBeVisible();
-    expect(document.getElementById("source-" + ledgerId)).toBeVisible();
-    expect(document.getElementById("source-" + secondSourceId)).toBeVisible();
-    await screen.findByRole("heading", { name: "当前关联订单" });
-    await screen.findByRole("heading", { name: "已撤销的关联" });
-    expect(screen.getByText("已撤销", { exact: true })).toBeVisible();
-    expect(screen.getAllByRole("link", { name: "核对这份记录" }).every(link => link.getAttribute("href")?.endsWith("#source-" + secondSourceId))).toBe(true);
-    expect(screen.queryByRole("button", { name: /人工关联收款|确认收款/ })).not.toBeInTheDocument();
-    expect(screen.getByText("当前关联订单", { exact: true })).toBeVisible();
-    expect(screen.queryByText("当前实际关联")).not.toBeInTheDocument();
-    const settledCard = document.querySelector<HTMLElement>('[data-ledger-match="' + match.payment_match_id + '"]')!;
-    expect(within(settledCard).queryByText("撤销时间")).not.toBeInTheDocument();
-    const reversedCard = document.querySelector<HTMLElement>('[data-ledger-match="55555555-5555-4555-8555-555555555555"]')!;
-    expect(within(reversedCard).getByText("撤销时间").parentElement).toHaveTextContent(dateTime(ledger.updated_at));
-    for (const card of [settledCard, reversedCard]) {
-      expect(within(card).getByRole("link", { name: "实际关联商品" })).toHaveAttribute("href", "/orders/" + orderId);
-      expect(within(card).getByText("real-order", { exact: true })).toBeVisible();
-    }
-    expect(document.querySelector("[data-ledger-summary]")).toBeVisible();
+    const user = userEvent.setup();
+    await screen.findByRole("heading", { name: "支付宝收款 · 付款用户", level: 1 });
+    const summary = screen.getByRole("group", { name: "流水概况" });
+    expect(summary).toHaveTextContent("+¥1.01");
+    expect(within(summary).getByText("已关联", { exact: true })).toBeVisible();
+    expect(summary).not.toHaveTextContent("real-order");
+    expect(screen.getAllByRole("heading", { level: 2 }).map(heading => heading.textContent)).toEqual(["交易信息", "对应订单，共 1 项", "采集记录，共 2 项"]);
     expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
-    for (const name of ["支付宝交易", "对应订单", "查账记录（2）"]) {
-      expect(screen.getAllByRole("heading", { name })).toHaveLength(1);
-      expect(screen.getByRole("heading", { name })).toBeVisible();
-    }
-    expect(screen.queryByText(/账本冲突记录（/)).not.toBeInTheDocument();
+    for (const id of [ledgerId, secondSourceId]) expect(record("source-" + id)).toBeVisible();
+    expect(screen.queryByRole("button", { name: /人工关联收款|确认收款/ })).not.toBeInTheDocument();
     await waitFor(() => expect(queryClient.isFetching()).toBe(0));
+    const settled = record("match-" + match.payment_match_id);
+    const reversed = record("match-" + reversedMatchId);
+    expect(section("payments")).toContainElement(settled);
+    expect(within(settled).queryByText("撤销时间")).not.toBeInTheDocument();
+    // What was reversed is history: read with the rest, shown on request.
+    expect(reversed).not.toBeVisible();
+    await user.click(screen.getByRole("button", { name: /^已撤销的关联，共 ?1 ?项$/ }));
+    await waitFor(() => expect(reversed).toBeVisible());
+    expect(within(reversed).getByText("已撤销", { exact: true })).toBeVisible();
+    expect(within(reversed).getByText("撤销时间").nextElementSibling).toHaveTextContent(preciseDateTime(ledger.updated_at));
+    for (const card of [settled, reversed]) {
+      expect(within(card).getByRole("heading", { name: "实际关联商品", level: 3 })).toBeVisible();
+      expect(within(card).getByRole("link", { name: "查看订单" })).toHaveAttribute("href", "/orders/" + orderId);
+      expect(within(card).getByText("real-order", { exact: true })).toBeVisible();
+      expect(within(card).getByRole("link", { name: "采集记录 2" }).getAttribute("href")).toMatch(new RegExp("#source-" + secondSourceId + "$"));
+    }
     const reads = fetchMock.mock.calls.map(([request]) => new URL(request.url).pathname);
     expect(reads).toHaveLength(5);
     expect(new Set(reads).size).toBe(reads.length);
-    await userEvent.setup().click(screen.getByRole("button", { name: "切换网站记忆" }));
+    await user.click(screen.getByRole("button", { name: "切换网站记忆" }));
     expect(router.state.location.search).toContain("selected_site=site-b");
-    expect(document.querySelector('[data-ledger-match="' + match.payment_match_id + '"]')).toBe(settledCard);
+    expect(record("match-" + match.payment_match_id)).toBe(settled);
     expect(fetchMock).toHaveBeenCalledTimes(5);
   });
 
-  it("keeps legacy evidence hashes usable while all sections stay mounted", async () => {
+  it("locates a linked association ahead of a requested section and follows its link to the source it uses", async () => {
     const scroll = vi.spyOn(HTMLElement.prototype, "scrollIntoView");
     const anchor = "match-" + match.payment_match_id;
     const router = mount("/reconciliation/transactions/" + ledgerId + "?section=sources#" + anchor);
-    await screen.findByRole("heading", { name: "当前关联订单" });
+    const user = userEvent.setup();
+    await screen.findByRole("heading", { name: "支付宝收款 · 付款用户" });
     await waitFor(() => expect(queryClient.isFetching()).toBe(0));
-    const associated = document.getElementById(anchor)!;
+    const associated = record(anchor);
     await waitFor(() => expect(associated).toHaveFocus());
-    expect(scroll.mock.contexts).toContain(associated);
+    expect(scroll.mock.contexts).toEqual([associated]);
     expect(router.state.location.hash).toBe("#" + anchor);
-    for (const name of ["支付宝交易", "对应订单", "查账记录（2）"]) {
-      expect(screen.getByRole("heading", { name })).toBeVisible();
-    }
-    await userEvent.setup().click(within(associated).getByRole("link", { name: "核对这份记录" }));
+    const link = within(associated).getByRole("link", { name: "采集记录 2" });
+    await user.click(link);
     await waitFor(() => expect(router.state.location.hash).toBe("#source-" + secondSourceId));
-    await waitFor(() => expect(document.getElementById("source-" + secondSourceId)).toHaveFocus());
+    const used = record("source-" + secondSourceId);
+    await waitFor(() => expect(used).toHaveFocus());
+    expect(scroll.mock.contexts).toEqual([associated, used]);
+    // The address no longer changes on a second use, yet the link still brings the source back.
+    await user.click(link);
+    await waitFor(() => expect(used).toHaveFocus());
+    expect(scroll.mock.contexts).toEqual([associated, used, used]);
     expect(fetchMock).toHaveBeenCalledTimes(5);
     expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
   });
 
-  it.each(["match", "source"] as const)("locates an asynchronous %s once and leaves focus alone when later evidence arrives", async kind => {
+  it("locates an association once its own read ends and leaves focus alone when later evidence arrives", async () => {
     const scroll = vi.spyOn(HTMLElement.prototype, "scrollIntoView");
     const originalFetch = fetchMock.getMockImplementation()!;
-    const anchor = kind === "match" ? "match-" + match.payment_match_id : "source-" + ledgerId;
-    const targetSuffix = kind === "match" ? "/matches/" + match.payment_match_id : "/ledger-entries/" + ledgerId + "/candidates";
+    const anchor = "match-" + match.payment_match_id;
+    const targetSuffix = "/matches/" + match.payment_match_id;
     const lateSuffix = "/ledger-entries/" + secondSourceId + "/candidates";
     let finishTarget!: (response: Response) => void;
     let finishLate!: (response: Response) => void;
@@ -257,7 +264,9 @@ describe("administrator ledger pages", () => {
     });
     mount("/reconciliation/transactions/" + ledgerId + "#" + anchor);
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(5));
-    const target = document.getElementById(anchor)!;
+    // The association is named by the entry itself, so it stands before its own read ends.
+    const target = record(anchor);
+    expect(within(target).getByText("real-order", { exact: true })).toBeVisible();
     expect(target).not.toHaveFocus();
     expect(scroll).not.toHaveBeenCalled();
     const request = fetchMock.mock.calls.find(([request]) => new URL(request.url).pathname.endsWith(targetSuffix))![0];
@@ -276,36 +285,80 @@ describe("administrator ledger pages", () => {
     expect(fetchMock).toHaveBeenCalledTimes(5);
   });
 
+  it("locates a source only after the orders above it have been read", async () => {
+    const scroll = vi.spyOn(HTMLElement.prototype, "scrollIntoView");
+    const originalFetch = fetchMock.getMockImplementation()!;
+    const anchor = "source-" + ledgerId;
+    const pending = [ledgerId, secondSourceId].map(id => {
+      let finish!: () => void;
+      const response = new Promise<Response>(resolve => { finish = () => resolve(json({ data: [] })); });
+      return { suffix: "/ledger-entries/" + id + "/candidates", response, finish };
+    });
+    fetchMock.mockImplementation(async request => {
+      const path = new URL(request.url).pathname;
+      return pending.find(item => path.endsWith(item.suffix))?.response ?? originalFetch(request);
+    });
+    mount("/reconciliation/transactions/" + ledgerId + "#" + anchor);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(5));
+    await waitFor(() => expect(queryClient.isFetching()).toBe(2));
+    const target = record(anchor);
+    await act(async () => { pending[0]!.finish(); });
+    await waitFor(() => expect(queryClient.isFetching()).toBe(1));
+    await act(() => new Promise<void>(resolve => requestAnimationFrame(() => resolve())));
+    // What is still being read above the source could move it once it arrives.
+    expect(target).not.toHaveFocus();
+    expect(scroll).not.toHaveBeenCalled();
+    await act(async () => { pending[1]!.finish(); });
+    await waitFor(() => expect(target).toHaveFocus());
+    expect(scroll.mock.contexts).toEqual([target]);
+    expect(fetchMock).toHaveBeenCalledTimes(5);
+  });
+
   it("renders disputed facts without inventing zero or selecting a settled match", async () => {
     const secondMatch: AdminLedgerMatch & { status: "SETTLED" } = { ...match, payment_match_id: "44444444-4444-4444-8444-444444444445", order_id: "11111111-1111-4111-8111-111111111112", merchant_order_no: "another-real-order" };
     const variant: AdminLedgerDetail = { ...detail, amount_cents: null, direction: null, occurred_at: null, content_consistent: false, has_conflicts: true, active_match_count: 2, active_match: null, matches: [...detail.matches, secondMatch], conflicts: [{ conflict_id: "66666666-6666-4666-8666-666666666666", conflict_type: "DUPLICATE_EXTERNAL_ID", status: "OPEN", existing_ledger_entry_id: secondSourceId, created_at: ledger.created_at, resolved_at: null }] };
     fetchMock.mockImplementation(async request => detailResponse(request, variant));
     mount("/reconciliation/transactions/" + ledgerId);
     expect(await screen.findByText("同一笔流水关联了多个订单")).toBeVisible();
-    expect(screen.getAllByText("有争议").length).toBeGreaterThanOrEqual(3);
-    expect(screen.getByText("有 2 条有效关联，无法确定唯一订单，请核对下方记录。")).toBeVisible();
-    expect(await screen.findAllByText("仍生效 · 存在多条关联", { exact: true })).toHaveLength(2);
-    expect(screen.queryByText("已关联订单", { exact: true })).not.toBeInTheDocument();
-    expect(screen.queryByText("当前实际关联")).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "查看冲突记录" })).toHaveAttribute("href", "/reconciliation/conflicts/66666666-6666-4666-8666-666666666666");
-    expect(screen.queryByText("¥0.00")).not.toBeInTheDocument();
+    // Neither a receipt nor an expense while the versions disagree on the direction.
+    expect(screen.getByRole("heading", { name: "支付宝交易 · 付款用户", level: 1 })).toBeVisible();
+    const summary = screen.getByRole("group", { name: "流水概况" });
+    for (const text of ["金额有争议", "收支方向有争议", "交易时间有争议", "多笔关联", "需要核查"]) expect(summary).toHaveTextContent(text);
+    expect(screen.getByText("有 2 条有效关联，无法确定唯一订单。")).toBeVisible();
+    expect(await screen.findAllByText("存在多条关联", { exact: true })).toHaveLength(2);
+    expect(within(record("match-" + reversedMatchId)).queryByText("存在多条关联")).not.toBeInTheDocument();
+    // Each source states for itself what the transaction as a whole cannot.
+    for (const id of [ledgerId, secondSourceId]) {
+      expect(within(record("source-" + id)).getAllByRole("term").map(term => term.textContent)).toEqual(["交易金额", "收支方向", "交易时间", "内部流水编号（PerPay）", "保存时间"]);
+    }
+    const conflict = record("conflict-66666666-6666-4666-8666-666666666666");
+    expect(within(conflict).getByRole("heading", { name: "支付宝流水号重复", level: 3 })).toBeVisible();
+    expect(within(conflict).getByText("待处理", { exact: true })).toBeVisible();
+    expect(within(conflict).getByRole("link", { name: "采集记录 2" })).toBeVisible();
+    expect(within(conflict).getByRole("link", { name: "查看冲突记录" })).toHaveAttribute("href", "/reconciliation/conflicts/66666666-6666-4666-8666-666666666666");
+    expect(document.body).not.toHaveTextContent("¥0.00");
   });
 
   it("keeps absent nullable text neutral when only the amount differs between sources", async () => {
-    const variant: AdminLedgerDetail = { ...detail, amount_cents: null, other_account: null, memo: null, provider_order_no: null, merchant_order_no: null, content_consistent: false, has_conflicts: true, sources: [{ ...source(ledgerId), amount_cents: 101 }, { ...source(secondSourceId), amount_cents: 102 }] };
+    const bare = (id: string, amount: number) => ({ ...source(id), amount_cents: amount, provider_order_no: null, semantic_fingerprint: String(amount % 10).repeat(64) });
+    const variant: AdminLedgerDetail = { ...detail, amount_cents: null, other_account: null, memo: null, provider_order_no: null, merchant_order_no: null, content_consistent: false, has_conflicts: true, sources: [bare(ledgerId, 101), bare(secondSourceId, 102)] };
     fetchMock.mockImplementation(async request => detailResponse(request, variant));
     mount("/reconciliation/transactions/" + ledgerId);
-    const card = (await screen.findByRole("heading", { name: "支付宝交易" })).closest<HTMLElement>('[data-slot="card"]')!;
-    for (const title of ["对方", "支付宝备注", "支付宝订单号", "支付宝商户单号"]) {
-      expect(within(within(card).getByText(title).parentElement!).getByText("—")).toBeVisible();
-    }
-    expect(within(card).getAllByText("有争议")).toHaveLength(1);
+    await screen.findByRole("heading", { name: "支付宝收款", level: 1 });
+    const facts = section("transaction")!;
+    // No source states them, and a version that is not listed here still may: neither "disputed" nor "not provided".
+    expect(within(facts).getAllByRole("term").map(term => term.textContent)).toEqual(["对方", "支付宝流水号", "支付宝订单号"]);
+    for (const title of ["对方", "支付宝订单号"]) expect(within(facts).getByText(title).nextElementSibling).toHaveTextContent(/^—$/);
+    expect(facts).not.toHaveTextContent(/有争议|未提供/);
+    expect(screen.getByRole("group", { name: "流水概况" })).toHaveTextContent("金额有争议");
     expect(screen.getByText("账单信息存在不同版本", { exact: true })).toBeVisible();
     expect(screen.getByText("各份采集记录存在差异，请逐份核对。")).toBeVisible();
-    expect(screen.queryByText(/冲突详情/)).not.toBeInTheDocument();
+    for (const [id, amount] of [[ledgerId, "¥1.01"], [secondSourceId, "¥1.02"]] as const) {
+      expect(within(record("source-" + id)).getByText("交易金额").nextElementSibling).toHaveTextContent(amount);
+    }
+    expect(section("sources")!.querySelectorAll("[data-sub-record]")).toHaveLength(2);
+    expect(section("conflicts")).toBeNull();
     expect(screen.queryByRole("link", { name: "查看冲突记录" })).not.toBeInTheDocument();
-    expect(document.querySelectorAll("[data-ledger-source]")).toHaveLength(2);
-    expect(document.querySelectorAll("[data-ledger-conflict]")).toHaveLength(0);
     expect(screen.queryByText(/账本冲突待处理/)).not.toBeInTheDocument();
   });
 });

@@ -6,7 +6,6 @@ import { queryClient, type ListSiteOverviewResponse, type Site } from "../src/ap
 import { json, ledger, ledgerId, order, orderId } from "./fixtures";
 import { groupedLedger } from "./ledger-fixtures";
 import { matchId, paymentMatch } from "./detail-fixtures";
-import { recordAction } from "./menu-helper";
 import { mountOnboarding } from "./onboarding-fixture";
 
 function site(clientId: string, name: string): Site {
@@ -877,13 +876,15 @@ describe("website selection on shared pages", () => {
       },
     });
     const user = userEvent.setup();
-    await screen.findByRole("group", { name: "收款关联记录" });
+    // The association is a record among the entry's orders; its only action stands on it once its detail is read.
+    const reverse = await screen.findByRole("button", { name: "撤销错误关联" });
+    expect(reverse.closest("article")).toHaveAttribute("id", "match-" + matchId);
     expect(view.router.state.location.pathname).toBe("/reconciliation");
     const target = new URLSearchParams(view.router.state.location.search).get("overlay")!;
     const targetAddress = new URL(target, "https://perpay.test");
     expect(targetAddress.pathname).toBe(detailPath);
     expect(targetAddress.hash).toBe("#match-" + matchId);
-    await user.click(await recordAction("撤销错误关联", "收款关联记录操作"));
+    await user.click(reverse);
     const dialog = await screen.findByRole("dialog", { name: "撤销收款关联？" });
     const reason = within(dialog).getByLabelText("操作理由");
     await user.type(reason, "保留原始核查依据");
