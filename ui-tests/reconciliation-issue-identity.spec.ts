@@ -108,7 +108,9 @@ test("one order's different incoming payments keep distinct list identities and 
     await ledgerLink.focus();
     await page.keyboard.press("Enter");
     await expect(page).toHaveURL(manifest.origin + ledgerTarget);
-    await expect(page.locator("[data-overlay-content]").locator("#source-" + ledger.ledger_entry_id)).toBeVisible();
+    // The link opens the transaction that holds this stored copy. A single copy is the record itself, so it is found
+    // by its identifier among the transaction's copies, not as a record of its own.
+    await expect(page.locator('[data-overlay-content] [data-detail-section="sources"]').getByText(ledger.ledger_entry_id, { exact: true })).toBeVisible();
     await page.goto(listUrl);
     const exceptionTarget = await rows.first().locator("a[data-row-link]").getAttribute("href");
     await rows.first().locator("a[data-row-link]").click();
