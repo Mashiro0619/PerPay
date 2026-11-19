@@ -8,7 +8,7 @@ import { useParams } from "react-router";
 import { queryClient, result, type AdminOrderDetail, type AdminOrderEvent, type PaymentMatchDetail } from "@/api/client";
 import { Link, useDetailBack } from "@/navigation";
 import { eventExplanation, isHistoricalException } from "@/lib/detail-summary";
-import { money, preciseDateTime } from "@/lib/format";
+import { money } from "@/lib/format";
 import { label } from "@/lib/labels";
 import { StatusBadge, OrderStatusBadge, paymentBasisDescription } from "@/components/business-status";
 import { AlipayAccountIdentity } from "@/components/alipay-account-identity";
@@ -19,8 +19,8 @@ import { DetailNavigation, DetailPage } from "@/components/detail/DetailPrimitiv
 import { disputeState } from "@/components/detail/disputed-order-actions";
 import { useAssociateIncome } from "@/components/detail/FinancialActions";
 import { notificationTechnical, OrderNotificationsSection, useOrderNotifications } from "@/components/detail/OrderNotificationRecords";
-import { OrderExceptionRecord, OrderMatchRecord, paymentTechnical, type DatedTechnicalEntry } from "@/components/detail/OrderPaymentRecords";
-import { ActionBar, type TechnicalEntry } from "@/components/record/ActionBar";
+import { OrderExceptionRecord, OrderMatchRecord, paymentTechnical } from "@/components/detail/OrderPaymentRecords";
+import { ActionBar, technicalEntries } from "@/components/record/ActionBar";
 import type { RecordAction } from "@/components/record/ActionMenu";
 import { Disclosure } from "@/components/record/Disclosure";
 import { FieldList } from "@/components/record/FieldList";
@@ -48,13 +48,6 @@ export function OrderDetail() {
     </DetailNavigation>
     <QueryView query={order}>{({ data }) => <OrderDesk key={data.order_id} order={data} />}</QueryView>
   </DetailPage>;
-}
-
-/** Entries that share a title are told apart by when their record was created. */
-function technicalEntries(entries: readonly DatedTechnicalEntry[]): TechnicalEntry[] {
-  const titles = new Map<string, number>();
-  for (const entry of entries) titles.set(entry.title, (titles.get(entry.title) ?? 0) + 1);
-  return entries.map(({ created, ...entry }) => titles.get(entry.title)! > 1 ? { ...entry, note: preciseDateTime(created) } : entry);
 }
 
 const eventTones: Partial<Record<AdminOrderEvent["event_type"], NonNullable<TimelineEntry["tone"]>>> = {

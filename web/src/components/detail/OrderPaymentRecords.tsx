@@ -10,7 +10,7 @@ import { Disclosure } from "@/components/record/Disclosure";
 import { FieldList, type Field } from "@/components/record/FieldList";
 import { SubRecord } from "@/components/record/SubRecord";
 import { RecordTime } from "@/components/record/Timeline";
-import type { TechnicalEntry } from "@/components/record/ActionBar";
+import type { DatedTechnicalEntry } from "@/components/record/ActionBar";
 import { useIgnoreDisputeReminder } from "./disputed-order-actions";
 import { useAssociateIncome, useReverseMatch } from "./FinancialActions";
 import { useRelatedLedger } from "./PaymentEvidence";
@@ -144,9 +144,6 @@ export function OrderExceptionRecord({ exception, order, ledger, candidate: know
     {associate.dialog}
   </SubRecord>;
 }
-
-/** A technical entry with the time that tells it apart from others of its kind. */
-export type DatedTechnicalEntry = TechnicalEntry & { created: string };
 
 /** Raw data of the order's associations and exceptions for the record's single technical entry point. */
 export function paymentTechnical(order: AdminOrderDetail): DatedTechnicalEntry[] {

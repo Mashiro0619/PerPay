@@ -1,5 +1,6 @@
 import { useRef, useState, type ReactNode } from "react";
 import { Code } from "lucide-react";
+import { preciseDateTime } from "@/lib/format";
 import { OverlayActions } from "@/components/overlay-actions";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { TechnicalDetailsDialog } from "@/components/detail/DetailPrimitives";
@@ -14,6 +15,16 @@ export type TechnicalEntry = {
   /** Shown after the title in the menu, to tell entries with the same title apart. */
   note?: string;
 };
+
+/** A technical entry with the time that tells it apart from others of its kind. */
+export type DatedTechnicalEntry = TechnicalEntry & { created: string };
+
+/** Entries that share a title are told apart by when their record was created. */
+export function technicalEntries(entries: readonly DatedTechnicalEntry[]): TechnicalEntry[] {
+  const titles = new Map<string, number>();
+  for (const entry of entries) titles.set(entry.title, (titles.get(entry.title) ?? 0) + 1);
+  return entries.map(({ created, ...entry }) => titles.get(entry.title)! > 1 ? { ...entry, note: preciseDateTime(created) } : entry);
+}
 
 /**
  * The record's fixed footer. At most one filled primary and one outlined

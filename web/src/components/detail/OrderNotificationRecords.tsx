@@ -12,7 +12,7 @@ import { Section } from "@/components/record/Sections";
 import { SubRecord } from "@/components/record/SubRecord";
 import { Timeline } from "@/components/record/Timeline";
 import { attemptEntries, deliveryAdvice, deliveryFields, deliveryPhrase, deliveryState, DeliveryStatus, useRedelivery } from "./NotificationEvidence";
-import type { DatedTechnicalEntry } from "./OrderPaymentRecords";
+import type { DatedTechnicalEntry } from "@/components/record/ActionBar";
 
 /** One page of the order's deliveries. The record reads it once for its section, navigation and technical data. */
 export function useOrderNotifications(orderId: string) {
