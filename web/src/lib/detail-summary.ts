@@ -94,6 +94,41 @@ export function candidateFactsBeyondLedger(
           : true),
   );
 }
+/**
+ * What a candidate currently means for its order and entry, and whether an
+ * administrator may still associate the two. `payment` is null until the
+ * order has been read.
+ */
+export function candidateGuidance(
+  candidate: Pick<MatchCandidate, "status">,
+  entry: { direction: string; state: string } | undefined,
+  payment: string | null,
+): { canAssociate: boolean; guidance: string } {
+  const canAssociate =
+    candidate.status === "ELIGIBLE" &&
+    entry?.direction === "CREDIT" &&
+    ["UNALLOCATED", "CANDIDATE", "CONFLICT"].includes(entry.state) &&
+    payment === "UNPAID";
+  let guidance = "订单或流水当前不可人工关联。";
+  if (candidate.status === "SELECTED") {
+    guidance = payment === "CONFIRMED"
+      ? "已选用，订单收款已确认。"
+      : payment === "DISPUTED"
+        ? "曾被选用，收款有争议，请核对收款关联记录。"
+        : "已选用，请以订单当前收款状态为准。";
+  } else if (candidate.status === "SUPERSEDED") {
+    guidance = "已被替代，仅供查阅。";
+  } else if (canAssociate) {
+    guidance = "仅为匹配建议，核对订单与流水后可人工关联，尚未确认收款。";
+  } else if (!entry || payment === null) {
+    guidance = "订单或流水状态未知，暂不能人工关联。";
+  } else if (payment === "CONFIRMED") {
+    guidance = "订单收款已确认，不能再次关联。";
+  } else if (payment === "DISPUTED") {
+    guidance = "收款有争议，请核对收款关联记录。";
+  }
+  return { canAssociate, guidance };
+}
 export function isHistoricalException(exception: FinancialException): boolean {
   return (
     exception.status !== "OPEN" ||

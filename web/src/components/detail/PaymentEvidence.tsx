@@ -7,6 +7,7 @@ import { result, type AdminOrderDetail, type FinancialException, type MatchCandi
 import {
   candidateFacts,
   candidateFactsBeyondLedger,
+  candidateGuidance,
   detailTimestamp,
   exceptionExplanation,
   exceptionResolution,
@@ -404,29 +405,7 @@ export function CandidateCard({
       ? order.payment.status
       : order.payment_status
     : null;
-  const canAssociate =
-    candidate.status === "ELIGIBLE" &&
-    entry?.direction === "CREDIT" &&
-    ["UNALLOCATED", "CANDIDATE", "CONFLICT"].includes(entry.state) &&
-    paymentStatus === "UNPAID";
-  let guidance = "订单或流水当前不可人工关联。";
-  if (candidate.status === "SELECTED") {
-    guidance = paymentStatus === "CONFIRMED"
-      ? "已选用，订单收款已确认。"
-      : paymentStatus === "DISPUTED"
-        ? "曾被选用，收款有争议，请核对收款关联记录。"
-        : "已选用，请以订单当前收款状态为准。";
-  } else if (candidate.status === "SUPERSEDED") {
-    guidance = "已被替代，仅供查阅。";
-  } else if (canAssociate) {
-    guidance = "仅为匹配建议，核对订单与流水后可人工关联，尚未确认收款。";
-  } else if (!entry || !order) {
-    guidance = "订单或流水状态未知，暂不能人工关联。";
-  } else if (paymentStatus === "CONFIRMED") {
-    guidance = "订单收款已确认，不能再次关联。";
-  } else if (paymentStatus === "DISPUTED") {
-    guidance = "收款有争议，请核对收款关联记录。";
-  }
+  const { canAssociate, guidance } = candidateGuidance(candidate, entry, paymentStatus);
   return (
     <Card size={embedded ? "sm" : "default"} data-density="compact" aria-label={candidateTitle}>
       <CardHeader>
@@ -496,7 +475,7 @@ export function CandidateCard({
         />
         {overlay && <TechnicalDetails title="匹配记录技术信息" data={candidate} identifiers={[["可能匹配记录编号", candidate.candidate_id]]} />}
       </CardContent>
-      {canAssociate && (
+      {canAssociate && entry && (
           <CardFooter>
             <AssociateIncomeAction
               orderId={candidate.order_id}
