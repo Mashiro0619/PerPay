@@ -31,8 +31,10 @@ for (const { width, hiddenOrder } of [{ width: 1440, hiddenOrder: false }, { wid
       await expect(page).toHaveURL(manifest.origin + recordHref);
       const overlay = page.locator("[data-overlay-content]");
       await revealDetailSection(page, "payments");
-      const relatedOrder = overlay.locator('[data-detail-section="payments"] [data-ledger-match="' + entry!.active_match!.payment_match_id + '"] [data-detail-order-summary]')
-        .getByRole("link", { name: entry!.active_match!.product_name, exact: true });
+      // The association is named after its order and leads to it.
+      const association = overlay.locator('[data-detail-section="payments"] article[id="match-' + entry!.active_match!.payment_match_id + '"]');
+      await expect(association.getByRole("heading", { level: 3 })).toHaveText(entry!.active_match!.product_name);
+      const relatedOrder = association.getByRole("link", { name: "查看订单", exact: true });
       await expect(relatedOrder).toBeVisible();
       const orderHref = await relatedOrder.getAttribute("href");
       expect(new URL(orderHref!, manifest.origin).searchParams.get("overlay")).toContain("/orders/" + entry!.active_match!.order_id);
@@ -42,7 +44,8 @@ for (const { width, hiddenOrder } of [{ width: 1440, hiddenOrder: false }, { wid
       await expect(overlay.getByRole("heading", { level: 1 })).toHaveText(entry!.active_match!.product_name);
       await expect(page.getByRole("dialog")).toHaveCount(1);
       await overlay.getByRole("button", { name: "返回上一步", exact: true }).click();
-      await expect(overlay.getByRole("heading", { name: "流水与对账详情", exact: true })).toBeVisible();
+      await expect(overlay.locator("[data-overlay-eyebrow-text]")).toHaveText("流水与对账详情");
+      await expect(overlay.getByRole("heading", { level: 1 })).toHaveText(/^支付宝收款/);
       await overlay.locator('[data-slot="dialog-close"]').click();
       await expect(page).toHaveURL(listUrl);
       await expect(primary).toBeFocused();
