@@ -1084,9 +1084,11 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 [data-overlay-content][data-overlay-viewport="dialog"] {
   --overlay-chrome-space: clamp(8px, calc(var(--overlay-viewport-height, 100dvh) * 0.04), 1rem);
   --overlay-chrome-inset: clamp(8px, calc(var(--overlay-viewport-height, 100dvh) * 0.06), 1.5rem);
-  /* Clipped rather than hidden: a hidden box can still be scrolled by script,
-     and revealing a section would then carry the title and the actions away. */
-  overflow: clip;
+  /* Hidden rather than clipped: the accessibility audit takes only a hidden box
+     for one that cuts its content off, and reads whatever is scrolled out of
+     view as covered text otherwise. A script can still scroll a hidden box,
+     so nothing may overflow this one: see [data-overlay-detail]. */
+  overflow: hidden;
   padding-block: var(--overlay-chrome-space);
 }
 [data-overlay-primary] { gap: var(--overlay-chrome-space, 1rem); }
@@ -1337,7 +1339,9 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   overflow: hidden; overflow-wrap: anywhere; line-height: 1.3;
 }
 /* Positioned, so that what the content places out of flow (text for screen
-   readers above all) scrolls with it instead of staying behind in the dialog. */
+   readers above all) scrolls with it. Left to the dialog, it would give that
+   box a hidden height, and revealing a section would then scroll the title
+   and the actions away. */
 [data-overlay-detail] { position: relative; min-width: 0; }
 @media (forced-colors: none) {
   :is([data-overlay-detail], [data-admin-dialog-scroll], [data-overlay-step-scroll], [data-technical-dialog] > [data-admin-dialog-body], [data-account-public-key] textarea) {

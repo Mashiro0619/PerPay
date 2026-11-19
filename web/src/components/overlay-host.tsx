@@ -292,7 +292,7 @@ export function OverlayHost({ routes }: { routes?: ReactNode }) {
       <OverlayContext value={presentation}><OverlayCloseGuardContext value={overlay.registerCloseGuard}>
         <OverlayActionsContext value={actionsTarget}><OverlaySummaryContext value={summaryTarget}><OverlayStepsContext value={stepContext}><OverlayNestedModalContext value={registerNestedModal}>
           <PageHeadingProvider routeKey={target?.pathname ?? "invalid"}><InlinePageHeaderActions><PageHeaderActionsProvider presentation="inline">
-            <div data-overlay-primary hidden={!!activeStep} inert={!!activeStep} className="flex min-h-0 flex-1 flex-col gap-4 overflow-clip">
+            <div data-overlay-primary hidden={!!activeStep} inert={!!activeStep} className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden">
               <DialogHeader>
                 <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-1 sm:gap-2">
                   {drawer && <div data-overlay-eyebrow className="flex min-w-0 items-center gap-1">
