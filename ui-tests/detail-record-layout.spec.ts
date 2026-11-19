@@ -151,35 +151,53 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 1440, height: 640
     const links = overlay.getByRole("navigation", { name: "分区导航", exact: true }).getByRole("button");
     await expect(links).toHaveText([/^订单信息/, /^收款关联/, /^通知/, /^动态/]);
     const ids = ["overview", "payments", "notifications", "history"];
-    const frame = () => overlay.evaluate(element => {
+    const frame = (id = "overview") => overlay.evaluate((element, id) => {
       const box = (selector: string) => element.querySelector(selector)!.getBoundingClientRect().toJSON();
       const detail = element.querySelector<HTMLElement>("[data-overlay-detail]")!;
       return {
         drawer: { scrollTop: element.scrollTop, hiddenHeight: element.scrollHeight - element.clientHeight },
         column: element.querySelector("[data-overlay-primary]")!.scrollTop,
         header: box('[data-overlay-primary] > [data-slot="dialog-header"]'), summary: box("[data-overlay-summary]"), footer: box("[data-overlay-footer]"),
-        content: { scrollTop: detail.scrollTop, scrollable: detail.scrollHeight - detail.clientHeight },
+        content: { top: detail.getBoundingClientRect().top, scrollTop: detail.scrollTop, scrollable: detail.scrollHeight - detail.clientHeight,
+          atEnd: detail.scrollTop + detail.clientHeight >= detail.scrollHeight - 1 },
+        section: element.querySelector(`[data-detail-section="${id}"]`)!.getBoundingClientRect().top,
       };
-    });
+    }, id);
+    const marked = () => links.evaluateAll(buttons => buttons.map(button => button.getAttribute("aria-current") === "true"));
     const initial = await frame();
     expect(initial.content.scrollable, "the record is longer than its drawer").toBeGreaterThan(0);
     // Text for screen readers sits out of flow in the counted headings; it stays inside the content's own scrolling box.
     await expect(detailSection(page, "notifications").locator("h2 .sr-only")).toHaveCount(2);
     expect(initial.drawer.hiddenHeight, "nothing in the content reaches outside the drawer").toBe(0);
+    expect(await marked()).toEqual([true, false, false, false]);
     const visited = [];
     for (const index of [2, 3, 1, 0]) {
       await links.nth(index).click();
       await expect(detailSection(page, ids[index]!)).toBeFocused();
-      const after = await frame();
+      // The chosen section is the marked one, also where the record ends before the section can reach the top.
+      await page.clock.runFor(100);
+      expect(await marked()).toEqual(ids.map((_, position) => position === index));
+      const after = await frame(ids[index]!);
       expect(after.drawer.scrollTop).toBe(0);
       expect(after.column).toBe(0);
       expect(after.header).toEqual(initial.header);
       expect(after.summary).toEqual(initial.summary);
       expect(after.footer).toEqual(initial.footer);
       await expect(detailSection(page, ids[index]!)).toBeInViewport();
-      visited.push({ id: ids[index], scrollTop: after.content.scrollTop });
+      // A later section hides its rule under the top edge, so its title rests where the first section's does. Nothing of the section before it shows.
+      const offset = after.section - after.content.top;
+      if (index > 0 && !after.content.atEnd) expect(Math.abs(offset)).toBeLessThanOrEqual(1);
+      else expect(offset).toBeGreaterThanOrEqual(-1);
+      visited.push({ id: ids[index], offset, scrollTop: after.content.scrollTop, atEnd: after.content.atEnd });
     }
     expect(visited.at(-1)!.scrollTop, "the first section returns the content to its start").toBe(0);
+    expect(visited.some(visit => !visit.atEnd && visit.id !== "overview"), "at least one later section reaches the top").toBe(true);
+    // Once the reader scrolls on their own, the mark follows the position again.
+    await overlay.locator("[data-overlay-detail]").hover();
+    await page.mouse.wheel(0, 10_000);
+    await expect.poll(async () => { await page.clock.runFor(100); return marked(); }).toEqual([false, false, false, true]);
+    await page.mouse.wheel(0, -10_000);
+    await expect.poll(async () => { await page.clock.runFor(100); return marked(); }).toEqual([true, false, false, false]);
     await record(page, info, { feature: "record-section-links", viewport, visited, evidence: "named local order with a confirmed payment and a notification" });
   });
 }
