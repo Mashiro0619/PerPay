@@ -168,7 +168,7 @@ test.describe("enlarged admin dialogs keep fields and decisions reachable", () =
       const reader = page.getByRole("dialog", { name: "流水技术信息", exact: true });
       await expect(reader.locator('pre[aria-label="流水技术信息"]')).toContainText("synthetic_layout_evidence");
       const technicalScroll = await scrollRegion(reader, "technical");
-      const copy = reader.getByRole("button", { name: "复制内部流水编号（PerPay）", exact: true });
+      const copy = reader.getByRole("button", { name: "复制PerPay 流水编号", exact: true });
       const copyTarget = await reveal(copy, page);
       await expectTouchTarget(reader.getByRole("button", { name: "关闭流水技术信息", exact: true }));
       await copy.focus();
