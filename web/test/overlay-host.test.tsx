@@ -38,8 +38,11 @@ function ListPage() {
     <input aria-label="父页面草稿" value={draft} onChange={event => setDraft(event.target.value)} />
     <output data-testid="parent-location">{location.pathname + location.search}</output>
     <output data-testid="parent-page">{pagination.page}</output>
-    <Link id="open-record" to="/orders/order-1">打开记录</Link>
-    <Link id="open-second-record" to="/orders/order-2">打开另一条记录</Link>
+    <div role="list">
+      <Link id="open-record" data-row-link to="/orders/order-1">打开记录</Link>
+      <Link id="open-second-record" data-row-link to="/orders/order-2">打开另一条记录</Link>
+      <Link id="open-third-record" data-row-link to="/orders/order-3">打开第三条记录</Link>
+    </div>
     <Link replace to="/orders/order-1">替换打开记录</Link>
     <Link to="/orders/order-1" target="_blank">新标签查看记录</Link>
     <Link to="/sites/shop/orders/order-1">查看本站记录</Link>
@@ -567,5 +570,87 @@ describe("one routed detail surface", () => {
     await user.click(screen.getByRole("link", { name: "全局记录" }));
     await waitFor(() => expect(screen.getByTestId("detail-identity")).toHaveTextContent("order-1:global:global"));
     expect(mounts).toBe(1);
+  });
+
+  it("steps through sibling list rows in the drawer header, hides on nested records, and restores focus to the last viewed row", async () => {
+    const view = mount();
+    const user = userEvent.setup();
+    const first = () => screen.getByRole("link", { name: "打开记录", hidden: true });
+    const second = () => screen.getByRole("link", { name: "打开另一条记录", hidden: true });
+    const third = () => screen.getByRole("link", { name: "打开第三条记录", hidden: true });
+    await user.click(first());
+    const dialog = await screen.findByRole("dialog", { name: "记录 order-1" });
+    const prev = () => within(dialog).getByRole("button", { name: "上一条" });
+    const next = () => within(dialog).getByRole("button", { name: "下一条" });
+    await waitFor(() => expect(prev()).toBeDisabled());
+    expect(next()).toBeEnabled();
+
+    await user.click(next());
+    await screen.findByRole("dialog", { name: "记录 order-2" });
+    expect(second()).toHaveAttribute("data-record-state", "open");
+    expect(first()).not.toHaveAttribute("data-record-state");
+    expect(prev()).toBeEnabled();
+    expect(next()).toBeEnabled();
+    expect(next()).toHaveFocus();
+
+    // Stepping to the last row disables "下一条" and moves focus safely to the title.
+    await user.click(next());
+    await screen.findByRole("dialog", { name: "记录 order-3" });
+    expect(third()).toHaveAttribute("data-record-state", "open");
+    await waitFor(() => expect(next()).toBeDisabled());
+    expect(prev()).toBeEnabled();
+    expect(dialog.querySelector("[data-overlay-heading]")).toHaveFocus();
+
+    // Opening a related record hides sibling stepping until returning to the row.
+    await user.click(within(dialog).getByRole("link", { name: "关联通知" }));
+    await screen.findByRole("dialog", { name: "记录 delivery-1" });
+    expect(within(dialog).queryByRole("button", { name: "上一条" })).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: "下一条" })).not.toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: "返回上一步" }));
+    await screen.findByRole("dialog", { name: "记录 order-3" });
+    await waitFor(() => expect(prev()).toBeEnabled());
+
+    await user.click(prev());
+    await screen.findByRole("dialog", { name: "记录 order-2" });
+    expect(second()).toHaveAttribute("data-record-state", "open");
+
+    // Closing after multiple steps exits in one hop and restores focus to the last viewed row.
+    await user.click(within(dialog).getByRole("button", { name: "完成查看" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(view.router.state.location.pathname).toBe("/orders");
+    expect(second()).toHaveAttribute("data-record-state", "recent");
+    await waitFor(() => expect(second()).toHaveFocus());
+  });
+
+  it("keeps the current record when stepping is blocked by a close guard or a dirty draft", async () => {
+    mount();
+    const user = userEvent.setup();
+    const first = () => screen.getByRole("link", { name: "打开记录", hidden: true });
+    const second = () => screen.getByRole("link", { name: "打开另一条记录", hidden: true });
+    await user.click(first());
+    const dialog = await screen.findByRole("dialog", { name: "记录 order-1" });
+    await waitFor(() => expect(within(dialog).getByRole("button", { name: "下一条" })).toBeEnabled());
+
+    await user.click(within(dialog).getByRole("button", { name: "开始提交" }));
+    await user.click(within(dialog).getByRole("button", { name: "下一条" }));
+    expect(screen.getByRole("dialog", { name: "记录 order-1" })).toBeVisible();
+    expect(first()).toHaveAttribute("data-record-state", "open");
+    await user.click(within(dialog).getByRole("button", { name: "提交完成" }));
+
+    await user.type(within(dialog).getByLabelText("详情草稿"), "未保存内容");
+    await user.click(within(dialog).getByRole("button", { name: "下一条" }));
+    const confirm = await screen.findByRole("alertdialog", { name: "放弃未保存的修改？" });
+    await user.click(within(confirm).getByRole("button", { name: "继续编辑" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+    expect(screen.getByRole("dialog", { name: "记录 order-1" })).toBeVisible();
+    expect(first()).toHaveAttribute("data-record-state", "open");
+    expect(second()).not.toHaveAttribute("data-record-state");
+
+    await user.click(within(dialog).getByRole("button", { name: "下一条" }));
+    const discard = await screen.findByRole("alertdialog", { name: "放弃未保存的修改？" });
+    await user.click(within(discard).getByRole("button", { name: "放弃修改并继续" }));
+    await screen.findByRole("dialog", { name: "记录 order-2" });
+    expect(second()).toHaveAttribute("data-record-state", "open");
+    expect(first()).not.toHaveAttribute("data-record-state");
   });
 });

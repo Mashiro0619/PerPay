@@ -1,6 +1,6 @@
 import { Component, Suspense, createContext, lazy, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Navigate, Route, Routes, UNSAFE_NavigationContext, UNSAFE_RouteContext, createPath, useLocation, useNavigate, useParams, type Location, type NavigateOptions, type Navigator, type Path, type To } from "react-router";
-import { ArrowLeft, XIcon } from "lucide-react";
+import { ArrowLeft, ChevronDown, ChevronUp, XIcon } from "lucide-react";
 import { OverlayActionsContext, OverlayCloseGuardContext, OverlayContext, OverlayNavigationContext, OverlayNestedModalContext, OverlayStepsContext, OverlaySummaryContext, type OverlayNavigation, type OverlaySize } from "@/lib/overlay-context";
 import { OVERLAY_HISTORY_KEY, OVERLAY_PARAMETER, isRecordDetailRoute, legacyOverlayLocation, overlayBackground, overlayRoute, overlayRouteDefinitions, parseOverlayTarget, readOverlayHistory, readOverlayTarget, stateRecord, withOverlayTarget, type OverlayHistory, type OverlayRouteKind } from "@/lib/overlay-navigation";
 import { workspaceScope } from "@/lib/workspace-scope";
@@ -19,15 +19,60 @@ import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "
 import { useToastFooterDock } from "@/lib/toast-layout";
 
 type RootPosition = { trigger: HTMLElement | null; triggerId: string | null; y: number; canReturn: boolean };
+type RecordNeighbor = { to: Path; element: HTMLAnchorElement };
+type RecordNeighbors = { previous: RecordNeighbor | null; next: RecordNeighbor | null };
 type InternalNavigation = OverlayNavigation & {
   readonly hasOverlay: boolean;
   readonly canGoBack: boolean;
   navigateTarget(to: To, options?: NavigateOptions): void;
+  step(to: Path, trigger: HTMLAnchorElement | null): void;
   blocked(): boolean;
   registerCloseGuard(id: string, check: (() => boolean) | null): void;
   restoreFocus(): HTMLElement | null;
 };
 const InternalOverlayContext = createContext<InternalNavigation | null>(null);
+
+function recordTargetFromLink(anchor: HTMLAnchorElement): Path | null {
+  const href = anchor.getAttribute("href");
+  if (!href) return null;
+  let url: URL;
+  try { url = new URL(href, window.location.origin); }
+  catch { return null; }
+  const target = readOverlayTarget(url.search) ?? parseOverlayTarget(url.pathname + url.search + url.hash);
+  if (!target || !isRecordDetailRoute(overlayRoute(target.pathname))) return null;
+  return target;
+}
+
+/** Finds the previous and next records in the background list that owns the open drawer. */
+function findRecordNeighbors(targetPathname: string): RecordNeighbors | null {
+  const root = document.querySelector("[data-admin-console]") ?? document;
+  const active = [...root.querySelectorAll<HTMLAnchorElement>('a[data-row-link][data-record-state="open"]')]
+    .find(anchor => !anchor.closest("[data-overlay-content]"));
+  if (!active) return null;
+  const container = active.closest('[data-business-table], [role="list"], table, section, main') ?? root;
+  const items: RecordNeighbor[] = [];
+  const seen = new Set<string>();
+  for (const anchor of container.querySelectorAll<HTMLAnchorElement>("a[data-row-link]")) {
+    if (anchor.closest("[data-overlay-content]") || anchor.closest("[hidden]")) continue;
+    const target = recordTargetFromLink(anchor);
+    if (!target || seen.has(target.pathname)) continue;
+    seen.add(target.pathname);
+    items.push({ to: target, element: anchor });
+  }
+  const index = items.findIndex(item => item.to.pathname === targetPathname);
+  if (index < 0 || items.length < 2) return null;
+  return {
+    previous: index > 0 ? items[index - 1]! : null,
+    next: index < items.length - 1 ? items[index + 1]! : null,
+  };
+}
+
+function sameNeighbors(left: RecordNeighbors | null, right: RecordNeighbors | null) {
+  return left?.previous?.to.pathname === right?.previous?.to.pathname &&
+    left?.next?.to.pathname === right?.next?.to.pathname &&
+    left?.previous?.element === right?.previous?.element &&
+    left?.next?.element === right?.next?.element;
+}
 
 function sameBackground(left: Path, right: Path) {
   const a = new URLSearchParams(left.search), b = new URLSearchParams(right.search);
@@ -49,10 +94,24 @@ export function OverlayProvider({ children }: { children: ReactNode }) {
   if (hasOverlay) lastOverlay.current = { history, background };
   // A list keeps showing which record it opened last, so the place is not lost between records.
   const lastRecord = useRef<{ page: string; pathname: string } | null>(null);
+  // Stepping between sibling rows moves the list mark only after navigation commits (e.g. after draft guards).
+  const pendingStep = useRef<{ pathname: string; trigger: HTMLAnchorElement | null } | null>(null);
   // Related records visited inside the overlay do not take the mark from the row that was opened.
   const recordWasOpen = useRef(false);
-  if (target && (!recordWasOpen.current || !lastRecord.current)) lastRecord.current = { page: location.pathname, pathname: target.pathname };
+  if (target && pendingStep.current?.pathname === target.pathname) {
+    lastRecord.current = { page: location.pathname, pathname: target.pathname };
+    const trigger = pendingStep.current.trigger;
+    pendingStep.current = null;
+    if (history && trigger?.isConnected) {
+      trigger.scrollIntoView?.({ block: "nearest" });
+      const saved = positions.current.get(history.rootKey);
+      if (saved) positions.current.set(history.rootKey, { ...saved, trigger, triggerId: trigger.id || null, y: Math.max(0, window.scrollY) });
+    }
+  } else if (target && (!recordWasOpen.current || !lastRecord.current)) {
+    lastRecord.current = { page: location.pathname, pathname: target.pathname };
+  }
   recordWasOpen.current = !!target;
+  if (!target) pendingStep.current = null;
   if (!target && lastRecord.current?.page !== location.pathname) lastRecord.current = null;
   const recordPath = lastRecord.current?.pathname ?? null;
   const recordOpen = !!target;
@@ -94,10 +153,17 @@ export function OverlayProvider({ children }: { children: ReactNode }) {
   }, [background, location, navigate]);
 
   const open = useCallback<OverlayNavigation["open"]>((to, options = {}) => {
+    pendingStep.current = null;
     pendingTrigger.current = options.trigger ?? null;
     navigateTarget(to, { ...(options.replace !== undefined ? { replace: options.replace } : {}),
       ...(options.state !== undefined ? { state: options.state } : {}) });
   }, [navigateTarget]);
+
+  const step = useCallback((to: Path, trigger: HTMLAnchorElement | null) => {
+    if (blocked()) return;
+    pendingStep.current = { pathname: to.pathname, trigger };
+    navigateTarget(to, { replace: true });
+  }, [blocked, navigateTarget]);
 
   const close = useCallback(() => {
     if (blocked()) return;
@@ -133,9 +199,9 @@ export function OverlayProvider({ children }: { children: ReactNode }) {
     key: location.key, mask: undefined } : null;
   const first = history ? firstKnownDepth.current.get(history.rootKey) : undefined;
   const canGoBack = !!history && first !== undefined && history.depth > Math.max(1, first);
-  const value = useMemo<InternalNavigation>(() => ({ open, close, back, background, target: virtualLocation, hasOverlay, canGoBack, navigateTarget, blocked, registerCloseGuard, restoreFocus,
+  const value = useMemo<InternalNavigation>(() => ({ open, close, back, background, target: virtualLocation, hasOverlay, canGoBack, navigateTarget, step, blocked, registerCloseGuard, restoreFocus,
     record: recordPath === null ? null : { pathname: recordPath, open: recordOpen } }),
-    [open, close, back, background, recordPath, recordOpen, target?.pathname, target?.search, target?.hash, location.key, location.state, hasOverlay, canGoBack, navigateTarget, blocked, registerCloseGuard, restoreFocus]);
+    [open, close, back, background, recordPath, recordOpen, target?.pathname, target?.search, target?.hash, location.key, location.state, hasOverlay, canGoBack, navigateTarget, step, blocked, registerCloseGuard, restoreFocus]);
   return <OverlayNavigationContext value={value}><InternalOverlayContext value={value}>{children}</InternalOverlayContext></OverlayNavigationContext>;
 }
 
@@ -227,6 +293,10 @@ export function OverlayHost({ routes }: { routes?: ReactNode }) {
   const [steps, setSteps] = useState<Array<{ id: string; size: OverlaySize }>>([]);
   const pendingStepFocus = useRef<(() => HTMLElement | null) | null>(null);
   const title = useRef<HTMLDivElement>(null);
+  const prevButton = useRef<HTMLButtonElement>(null);
+  const nextButton = useRef<HTMLButtonElement>(null);
+  const pendingPagerFocus = useRef<"previous" | "next" | null>(null);
+  const [neighbors, setNeighbors] = useState<RecordNeighbors | null>(null);
   const nestedModals = useRef(new Set<string>());
   const registerNestedModal = useCallback((id: string, open: boolean) => {
     if (open) nestedModals.current.add(id);
@@ -276,13 +346,45 @@ export function OverlayHost({ routes }: { routes?: ReactNode }) {
     if (overlay?.hasOverlay) { priorTitle.current ??= document.title; return; }
     if (priorTitle.current !== null) { document.title = priorTitle.current; priorTitle.current = null; }
   }, [overlay?.hasOverlay]);
-  useLayoutEffect(() => { if (overlay?.hasOverlay && !activeStep && !nestedModals.current.size) title.current?.focus({ preventScroll: true }); }, [target?.pathname, overlay?.hasOverlay]);
-  if (!overlay) return null;
-  const presentation = target && definition ? { target, resourceScope, size: definition.size, requestClose: overlay.close } : null;
   // Records open as a drawer beside the list they came from and keep one width
   // through their steps. Editors stay centred and follow the step's size.
   const drawer = isRecordDetailRoute(definition);
+  const pagerActive = !!(drawer && overlay?.hasOverlay && target && !overlay.canGoBack);
+  useLayoutEffect(() => {
+    const next = pagerActive ? findRecordNeighbors(target.pathname) : null;
+    setNeighbors(previous => sameNeighbors(previous, next) ? previous : next);
+    if (!overlay?.hasOverlay || activeStep || nestedModals.current.size) return;
+    const direction = pendingPagerFocus.current;
+    pendingPagerFocus.current = null;
+    if (direction) {
+      const targetButton = direction === "previous"
+        ? (next?.previous ? prevButton.current : null)
+        : (next?.next ? nextButton.current : null);
+      if (targetButton) { targetButton.focus({ preventScroll: true }); return; }
+    }
+    title.current?.focus({ preventScroll: true });
+  }, [target?.pathname, overlay?.hasOverlay, pagerActive]);
+  useEffect(() => {
+    if (!pagerActive || !target) return;
+    const sync = () => {
+      const next = findRecordNeighbors(target.pathname);
+      setNeighbors(previous => sameNeighbors(previous, next) ? previous : next);
+    };
+    sync();
+    const observed = document.querySelector("[data-admin-console]") ?? document.body;
+    const observer = new MutationObserver(sync);
+    observer.observe(observed, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-record-state"] });
+    return () => observer.disconnect();
+  }, [pagerActive, target?.pathname]);
+  if (!overlay) return null;
+  const presentation = target && definition ? { target, resourceScope, size: definition.size, requestClose: overlay.close } : null;
   const size = drawer ? definition!.size : activeStep?.size ?? definition?.size ?? "md";
+  const stepNeighbor = (direction: "previous" | "next") => {
+    const neighbor = direction === "previous" ? neighbors?.previous : neighbors?.next;
+    if (!neighbor) return;
+    pendingPagerFocus.current = direction;
+    overlay.step(neighbor.to, neighbor.element);
+  };
   return <Dialog open={overlay.hasOverlay} onOpenChange={(open, event) => { if (!open) { event.cancel(); overlay.close(); } }}>
     <DialogContent kind="detail" size={size} data-overlay-content data-overlay-size={size}
       data-overlay-presentation={drawer ? "drawer" : undefined} backdropProps={drawer ? { className: "overlay-drawer-backdrop" } : undefined}
@@ -303,7 +405,19 @@ export function OverlayHost({ routes }: { routes?: ReactNode }) {
                     <OverlayEyebrow type={definition!.title} />
                   </div>}
                   <DialogTitle className="min-w-0" render={<div ref={title} tabIndex={-1} data-overlay-heading />}><PageHeadingSlot title={definition?.title ?? "无法打开详情"} /></DialogTitle>
-                  <PageHeaderActionsSlot className="max-w-full flex-wrap justify-end" />
+                  <div className="col-start-2 flex items-center justify-end gap-1">
+                    {pagerActive && neighbors && <div data-overlay-record-pager className="flex items-center gap-0.5" role="group" aria-label="切换记录">
+                      <Tooltip>
+                        <TooltipTrigger render={<Button ref={prevButton} variant="ghost" size="icon" disabled={!neighbors.previous} aria-label="上一条" onClick={() => stepNeighbor("previous")} />}><ChevronUp /></TooltipTrigger>
+                        <TooltipContent>上一条</TooltipContent>
+                      </Tooltip>
+                      <Tooltip>
+                        <TooltipTrigger render={<Button ref={nextButton} variant="ghost" size="icon" disabled={!neighbors.next} aria-label="下一条" onClick={() => stepNeighbor("next")} />}><ChevronDown /></TooltipTrigger>
+                        <TooltipContent>下一条</TooltipContent>
+                      </Tooltip>
+                    </div>}
+                    <PageHeaderActionsSlot className="max-w-full flex-wrap justify-end" />
+                  </div>
                   <DialogClose className="col-start-3" render={<Button variant="ghost" size="icon" />}>
                     <XIcon />
                     <span className="sr-only">关闭对话框</span>

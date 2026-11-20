@@ -1365,7 +1365,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 [data-overlay-detail] [data-slot="card"] > [data-slot="card-content"] { padding-bottom: 0; }
 [data-overlay-detail] [data-technical-information] { min-width: 0; max-width: 100%; }
 @media (max-width: 767px) {
-  [data-overlay-content] [data-overlay-primary] > [data-slot="dialog-header"] :is([data-page-header-actions] button, [data-slot="dialog-close"]) { min-width: 44px; min-height: 44px; margin: 0; }
+  [data-overlay-content] [data-overlay-primary] > [data-slot="dialog-header"] :is([data-page-header-actions] button, [data-overlay-record-pager] button, [data-slot="dialog-close"]) { min-width: 44px; min-height: 44px; margin: 0; }
   [data-overlay-footer] :is(button, a) { min-height: 44px; }
 }
 
@@ -1385,6 +1385,9 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
    in place, and the summary scrolls with the content in the box around both.
    Container lengths follow the root font size, so enlarged text counts too. */
 [data-overlay-content][data-overlay-presentation="drawer"] { container: record-drawer / size; }
+@container record-drawer (width < 22rem) {
+  [data-overlay-record-pager] { display: none; }
+}
 @container record-drawer (height < 36rem) {
   [data-overlay-record="true"] [data-overlay-body] {
     display: flex;
