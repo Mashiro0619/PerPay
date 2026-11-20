@@ -240,7 +240,9 @@ describe("readable standalone notification detail", () => {
     expect(summary.querySelector("[data-record-summary-meta]")).toHaveTextContent(/^已尝试 1 次$/);
     const notice = document.querySelector<HTMLElement>('[data-record-notice="danger"]')!;
     expect(notice).toHaveTextContent("请核对通知接收程序返回的确认回执");
-    expect(within(notice).getByRole("link", { name: "通知接入说明" })).toHaveAttribute("target", "_blank");
+    const guide = within(notice).getByRole("link", { name: "通知接入说明" });
+    expect(guide).toHaveAttribute("target", "_blank");
+    expect(guide).toHaveClass("inline-flex", "pointer-coarse:min-h-11");
   });
 
   it("points a delivery ended by a revoked payment confirmation at its order instead of offering a resend", async () => {

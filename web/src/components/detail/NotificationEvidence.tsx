@@ -106,10 +106,10 @@ export function deliveryPhrase(detail: WebhookDeliveryDetail): string {
 export function deliveryAdvice(detail: WebhookDeliveryDetail, attempts: readonly WebhookAttempt[]) {
   if (deliveryState(detail).confirmationRevoked) return notificationRecoveryHint("payment_confirmation_revoked");
   if (!detail.is_latest || !["DEAD_LETTER", "RETRY_WAIT"].includes(detail.delivery.status)) return null;
-  return <>
-    {notificationRecoveryHint(detail.delivery.last_error_code ?? latestAttempt(attempts)?.error_code ?? null)}{" "}
-    <a data-external-link className="underline underline-offset-4" href="https://github.com/Mashiro0619/PerPay/blob/main/USAGE.md#5-回调通知" target="_blank" rel="noopener noreferrer">通知接入说明</a>
-  </>;
+  return <span className="flex min-w-0 flex-col gap-1">
+    <span>{notificationRecoveryHint(detail.delivery.last_error_code ?? latestAttempt(attempts)?.error_code ?? null)}</span>
+    <a data-external-link className="inline-flex w-fit items-center underline underline-offset-4 pointer-coarse:min-h-11" href="https://github.com/Mashiro0619/PerPay/blob/main/USAGE.md#5-回调通知" target="_blank" rel="noopener noreferrer">通知接入说明</a>
+  </span>;
 }
 
 /** A delivery not attempted yet is scheduled; one that failed is waiting to be retried. */
