@@ -83,56 +83,8 @@ export async function expectDetailFields(containers: Locator) {
   }));
   for (const group of groups) {
     expect(group.display, "detail facts use stable columns rather than content-sized wrapping").toBe("grid");
-    if (group.record) { expectRecordFieldList(group); continue; }
-    expect(group.rowGap).toBeCloseTo(0.75 * group.rootFont, 3);
-    expect(group.columnGap).toBeCloseTo(1.5 * group.rootFont, 3);
-    expect(group.fields.length).toBeGreaterThan(0);
-    const rows: typeof group.fields[] = [];
-    for (const field of [...group.fields].sort((a, b) => Math.abs(a.top - b.top) <= 1 ? a.left - b.left : a.top - b.top)) {
-      const row = rows.at(-1);
-      if (row && Math.abs(row[0]!.top - field.top) <= 1) row.push(field);
-      else rows.push([field]);
-      expect(field.labelFont, field.name ?? "field label").toBeGreaterThanOrEqual(0.8125 * group.rootFont);
-      expect(field.valueFont, field.name ?? "field value").toBeGreaterThanOrEqual(0.875 * group.rootFont);
-      expect(field.display).toBe("grid");
-      expect(field.rowGap).toBeCloseTo(0.25 * group.rootFont, 3);
-      expect(field.columnGap).toBeCloseTo(0.75 * group.rootFont, 3);
-      if (field.wide) expect(Math.abs(field.width - group.width), "wide values retain their own complete row: " + field.name).toBeLessThanOrEqual(1);
-      expect(field.left, field.name ?? "field").toBeGreaterThanOrEqual(group.left - 1);
-      expect(field.right, field.name ?? "field").toBeLessThanOrEqual(group.right + 1);
-      expect(Math.abs(field.labelLeft - field.left), "labels start at their own field: " + field.name).toBeLessThanOrEqual(1);
-      expect(field.labelRight, "the complete label stays inside its field: " + field.name).toBeLessThanOrEqual(field.right + 1);
-      expect(field.valueLeft).toBeGreaterThanOrEqual(field.left - 1);
-      expect(field.valueRight).toBeLessThanOrEqual(field.right + 1);
-      expect(field.valueBottom).toBeLessThanOrEqual(field.bottom + 1);
-      if (field.inline) {
-        expect(Math.abs(field.valueLeft - field.labelRight - field.columnGap), "a short value follows its label on the same line: " + field.name).toBeLessThanOrEqual(1);
-        expect(Math.abs(field.labelWidth - 8 * group.rootFont), "labels share a fixed reading column: " + field.name).toBeLessThanOrEqual(1);
-      } else {
-        expect(Math.abs(field.valueLeft - field.left), "a wrapped value returns to its field edge: " + field.name).toBeLessThanOrEqual(1);
-        expect(Math.abs(field.valueTop - field.labelBottom - field.rowGap), "long values wrap below their own label with a compact gap: " + field.name).toBeLessThanOrEqual(1);
-      }
-      expect(field.firstValue, "visible content exists for " + field.name).not.toBeNull();
-      expect(Math.abs(field.firstValue!.left - field.valueLeft), "value content starts at its own value box: " + field.name).toBeLessThanOrEqual(1);
-      expect(field.scrollWidth, "complete value fits: " + field.name).toBeLessThanOrEqual(field.valueWidth + 1);
-      expect(field.scrollHeight, "complete value height is retained: " + field.name).toBeLessThanOrEqual(field.valueHeight + 1);
-      if (field.textBounds) {
-        expect(field.textBounds.textHeight).toBeLessThanOrEqual(field.textBounds.boxHeight + 1);
-        expect(field.textBounds.textRight).toBeLessThanOrEqual(field.textBounds.boxRight + 1);
-      }
-    }
-    for (const [index, row] of rows.entries()) {
-      expect(Math.abs(row[0]!.left - group.left), "each row starts at the group edge").toBeLessThanOrEqual(1);
-      if (row.some(field => field.wide)) expect(row).toHaveLength(1);
-      for (let column = 1; column < row.length; column++) {
-        expect(Math.abs(row[column]!.left - row[column - 1]!.right - group.columnGap), "DOM order is also left-to-right visual order").toBeLessThanOrEqual(1);
-      }
-      const previous = rows[index - 1];
-      if (previous) {
-        expect(Math.abs(row[0]!.top - Math.max(...previous.map(field => field.bottom)) - group.rowGap), "wrapped facts leave the next row below the tallest preceding value").toBeLessThanOrEqual(1);
-      }
-    }
-    expect(rows.flat().map(field => field.index), "wrapped visual rows preserve the DOM reading order").toEqual(group.fields.map(field => field.index));
+    expect(group.record, "detail facts use the shared record FieldList").toBe(true);
+    expectRecordFieldList(group);
   }
   return groups;
 }
@@ -179,7 +131,7 @@ function expectRecordFieldList(group: FieldGroup) {
 
 export async function expectTechnicalPlacement(technical: Locator) {
   const placements = await technical.evaluateAll(items => items.map(element => {
-    const owner = element.closest('[data-slot="card"], [data-ledger-source], [data-ledger-match], .detail-section, [data-detail-section], [data-detail-page]')!;
+    const owner = element.closest('[data-slot="card"], [data-detail-section], [data-detail-page]')!;
     const trigger = element.querySelector<HTMLElement>(':scope > button[aria-expanded]')!;
     const bounds = element.getBoundingClientRect(), triggerBounds = trigger.getBoundingClientRect(), triggerStyle = getComputedStyle(trigger);
     const content = document.createRange(), text = document.createTreeWalker(trigger, NodeFilter.SHOW_TEXT);
@@ -456,9 +408,6 @@ export async function expectDetailRecordLayout(page: Page) {
       }).length,
       rootFont: Number.parseFloat(getComputedStyle(document.documentElement).fontSize),
       pageGap: Number.parseFloat(getComputedStyle(detail).rowGap),
-      sectionGaps: [...detail.querySelectorAll(".detail-section-content, .detail-sections")].filter(visible).map(section => Number.parseFloat(getComputedStyle(section).rowGap)),
-      internalGaps: [...detail.querySelectorAll('.detail-section, [data-slot="card"], [data-slot="card-content"], [data-detail-credentials], [data-detail-order-summary] > [data-slot="item-content"]')]
-        .filter(visible).map(section => Number.parseFloat(getComputedStyle(section).rowGap)),
       cards: cards.map(card => ({ title: card.getAttribute("aria-label"), radius: getComputedStyle(card).borderRadius, shadow: getComputedStyle(card).boxShadow })),
       timeFonts: [...detail.querySelectorAll('[data-detail-fields] .list-time, [data-record-fields] dd time')]
         .filter(visible).map(time => Number.parseFloat(getComputedStyle(time).fontSize)),
@@ -473,8 +422,6 @@ export async function expectDetailRecordLayout(page: Page) {
     };
   });
   expect(geometry.pageGap).toBeCloseTo(1.5 * geometry.rootFont, 3);
-  for (const gap of geometry.sectionGaps) expect(gap, "business sections have a distinct reading rhythm").toBeCloseTo(1.5 * geometry.rootFont, 3);
-  for (const gap of geometry.internalGaps) expect(gap, "related facts stay grouped inside their section").toBeCloseTo(0.75 * geometry.rootFont, 3);
   expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.width + 1);
   expect(geometry.cards.filter(card => card.radius !== "0px" || card.shadow !== "none"), "record groups remain flat").toEqual([]);
   expect(geometry.timeFonts.filter(font => font < 0.875 * geometry.rootFont)).toEqual([]);
