@@ -364,6 +364,14 @@ export function OverlayHost({ routes }: { routes?: ReactNode }) {
   // through their steps. Editors stay centred and follow the step's size.
   const drawer = isRecordDetailRoute(definition);
   const pagerActive = !!(drawer && overlay?.hasOverlay && target && !overlay.canGoBack);
+  // A different record is read from its top. One that is already in memory replaces the previous
+  // content at full height in one commit, so the box that scrolls would keep the offset the last
+  // record was left at. Which box that is depends on the drawer's height, so all three start over.
+  useLayoutEffect(() => {
+    if (!drawer) return;
+    const shell = title.current?.closest("[data-overlay-content]");
+    for (const box of shell?.querySelectorAll<HTMLElement>("[data-overlay-primary], [data-overlay-body], [data-overlay-detail]") ?? []) box.scrollTop = 0;
+  }, [target?.pathname]);
   useLayoutEffect(() => {
     const next = pagerActive ? findRecordNeighbors(target.pathname) : null;
     setNeighbors(previous => sameNeighbors(previous, next) ? previous : next);

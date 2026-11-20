@@ -666,4 +666,36 @@ describe("one routed detail surface", () => {
     expect(second()).toHaveAttribute("data-record-state", "open");
     expect(first()).not.toHaveAttribute("data-record-state");
   });
+
+  it("reads a different record from its top and keeps the place within the same record", async () => {
+    mount();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("link", { name: "打开记录" }));
+    const dialog = await screen.findByRole("dialog", { name: "记录 order-1" });
+    // Which box scrolls depends on the drawer's height, so none may keep the last record's offset.
+    const boxes = ["[data-overlay-primary]", "[data-overlay-body]", "[data-overlay-detail]"].map(selector => dialog.querySelector<HTMLElement>(selector)!);
+    const scrollDown = () => { for (const box of boxes) box.scrollTop = 220; };
+    const offsets = () => boxes.map(box => box.scrollTop);
+    await waitFor(() => expect(within(dialog).getByRole("button", { name: "下一条" })).toBeEnabled());
+
+    scrollDown();
+    await user.click(within(dialog).getByRole("button", { name: "下一条" }));
+    await screen.findByRole("dialog", { name: "记录 order-2" });
+    expect(offsets()).toEqual([0, 0, 0]);
+
+    // Another query of the same record leaves the reader where they are.
+    scrollDown();
+    await user.click(within(dialog).getByRole("button", { name: "切换内部查询" }));
+    await waitFor(() => expect(within(dialog).getByTestId("detail-section")).toHaveTextContent("events"));
+    expect(offsets()).toEqual([220, 220, 220]);
+
+    // A related record starts at its top, and so does the record returned to.
+    await user.click(within(dialog).getByRole("link", { name: "关联通知" }));
+    await screen.findByRole("dialog", { name: "记录 delivery-1" });
+    expect(offsets()).toEqual([0, 0, 0]);
+    scrollDown();
+    await user.click(within(dialog).getByRole("button", { name: "返回上一步" }));
+    await screen.findByRole("dialog", { name: "记录 order-2" });
+    expect(offsets()).toEqual([0, 0, 0]);
+  });
 });
