@@ -108,13 +108,13 @@ test("ledger credentials keep genuine Alipay, website and PerPay identities dist
       const shared = eligible.length > 0 && (!several || entry.content_consistent);
       for (const source of entry.sources) {
         const card = several ? sources.locator('article[id="source-' + source.ledger_entry_id + '"]') : sources;
-        await copyField(page, card, "PerPay 流水编号", source.ledger_entry_id);
+        await copyField(page, card, "内部流水编号", source.ledger_entry_id);
         // A copy states an Alipay number of its own only where the copies disagree about it.
         for (const [label, fact] of [["支付宝订单号", "provider_order_no"], ["支付宝商户单号", "merchant_order_no"]] as const) {
           if (entry[fact] === null && source[fact]) await copyField(page, card, label, source[fact]);
           else await expect(card.getByText(label, { exact: true })).toHaveCount(0);
         }
-        if (entry.content_consistent) await expect(card.locator("dt")).toHaveText([...(several ? [] : ["PerPay 记录状态"]), "PerPay 流水编号", "保存时间"]);
+        if (entry.content_consistent) await expect(card.locator("dt")).toHaveText([...(several ? [] : ["PerPay 记录状态"]), "内部流水编号", "保存时间"]);
         await expect(card.getByRole("link", { name: "查看记录与处理", exact: true })).toHaveCount(0);
         // A copy is named only where there is a choice to make among several.
         await expect(card.getByRole("button", { name: "用这份记录关联", exact: true })).toHaveCount(several && (eligible.length > 1 || !shared) && eligible.includes(source) ? 1 : 0);
@@ -149,7 +149,7 @@ test("ledger credentials keep genuine Alipay, website and PerPay identities dist
         await tools.click();
         await page.getByRole("menuitem", { name: /^收款关联技术信息/ }).nth(index).click();
         const reader = page.getByRole("dialog", { name: "收款关联技术信息", exact: true });
-        await reader.getByRole("button", { name: "复制PerPay 流水编号", exact: true }).click();
+        await reader.getByRole("button", { name: "复制内部流水编号", exact: true }).click();
         await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(match.ledger_entry_id);
         await reader.getByRole("button", { name: "关闭", exact: true }).click();
         await expect(tools).toHaveAttribute("aria-expanded", "false");
