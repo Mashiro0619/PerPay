@@ -283,14 +283,14 @@ test.describe("compact mobile button visuals and separate touch targets", () => 
       bodyTop: element.getBoundingClientRect().top,
     }));
     expect(sectionStart.scrollTop).toBe(0);
-    const copy = reader.getByRole("button", { name: "复制内部流水编号（PerPay）", exact: true });
+    const copy = reader.getByRole("button", { name: "复制PerPay 流水编号", exact: true });
     await expect(reader.getByRole("heading", { name: "流水技术信息", exact: true })).toBeFocused();
     await page.keyboard.press("Tab");
     await expect(reader.getByRole("button", { name: "关闭流水技术信息", exact: true })).toBeFocused();
     await page.keyboard.press("Tab");
     await expect(copy).toBeFocused();
-    await expect(copy).toHaveAccessibleName("复制内部流水编号（PerPay）");
-    await expect(copy).toHaveAttribute("title", "复制内部流水编号（PerPay）");
+    await expect(copy).toHaveAccessibleName("复制PerPay 流水编号");
+    await expect(copy).toHaveAttribute("title", "复制PerPay 流水编号");
     await copy.hover();
     await page.clock.runFor(200);
     // The copy action uses its native title; no custom tooltip covers
