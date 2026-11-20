@@ -80,7 +80,7 @@ for (const layout of layouts) {
     const scenarios: Array<{ name: string; path: string; copy: string; sections: string[]; technicalSelector?: string; technicalMenu?: { trigger: string; item: string } }> = [
       { name: "order", path: manifest.details.orderLong!, copy: "复制内部订单编号", technicalMenu: { trigger: "更多操作，订单操作", item: "订单技术信息" }, sections: ["overview", "payments", "notifications", "history"] },
       { name: "notification", path: manifest.details.notificationDns!, copy: "复制投递编号", technicalMenu: { trigger: "更多操作，通知记录操作", item: "通知技术信息" }, sections: ["overview", "attempts", "order"] },
-      { name: "exception", path: manifest.details.exceptionOpen!, copy: "复制异常编号", technicalSelector: '[data-financial-exception] > [data-slot="card-content"] > [data-technical-information]', sections: [] },
+      { name: "exception", path: manifest.details.exceptionOpen!, copy: "复制异常编号", technicalMenu: { trigger: "更多操作，异常记录操作", item: "账务异常技术信息" }, sections: ["order", "ledger", "history"] },
       { name: "audit", path: auditPath, copy: "复制日志编号", technicalSelector: '[data-detail-page] > [data-technical-information]', sections: auditSections },
     ];
     const writes: string[] = [], errors: string[] = [];
