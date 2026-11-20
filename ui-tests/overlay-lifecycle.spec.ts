@@ -314,3 +314,57 @@ test("drawer previous/next stepping tracks the active list row and keeps the fin
   await expect(landedRow).toBeInViewport();
   expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
 });
+
+// Which box of the drawer scrolls follows its height: the content, the summary with the content, or the whole record.
+for (const [height, scroller] of [[680, "[data-overlay-detail]"], [520, "[data-overlay-body]"], [300, "[data-overlay-primary]"]] as const) {
+  test(`1440x${height}: stepping to a record that was already read starts it at the top again`, async ({ page, fixture }) => {
+    fixture.seedOrders(2);
+    await page.setViewportSize({ width: 1440, height });
+    await page.goto(fixture.origin + "/admin/orders");
+    const rows = page.locator('[data-business-table="orders"] a[data-row-link]');
+    await expect(rows).toHaveCount(2);
+    await rows.nth(0).click();
+    const overlay = page.locator("[data-overlay-content]");
+    const title = overlay.getByRole("heading", { level: 1 });
+    const prev = overlay.getByRole("button", { name: "上一条", exact: true });
+    const next = overlay.getByRole("button", { name: "下一条", exact: true });
+    const boxes = ["[data-overlay-primary]", "[data-overlay-body]", "[data-overlay-detail]"];
+    const offsets = () => overlay.evaluate((element, selectors) => selectors.map(selector => element.querySelector<HTMLElement>(selector)!.scrollTop), boxes);
+    const readToEnd = async () => {
+      await expect(overlay.locator('[data-overlay-detail] [data-slot="skeleton"]')).toHaveCount(0);
+      const scrolled = await overlay.evaluate((element, selectors) => {
+        const box = selectors.map(selector => element.querySelector<HTMLElement>(selector)!)
+          .find(candidate => getComputedStyle(candidate).overflowY === "auto" && candidate.scrollHeight > candidate.clientHeight + 1);
+        if (!box) return null;
+        box.scrollTop = box.scrollHeight;
+        return { selector: selectors.find(selector => box.matches(selector)), top: box.scrollTop };
+      }, boxes);
+      expect(scrolled?.selector, "the box that scrolls at this height").toBe(scroller);
+      expect(scrolled!.top, "the record is longer than its drawer").toBeGreaterThan(0);
+    };
+    // From the keyboard, as after an earlier step that left the focus on the button. A pointer has to bring
+    // the button into view first, and where the title scrolls with the record that alone returns the box to its top.
+    const press = async (button: typeof next) => {
+      await button.evaluate(element => (element as HTMLElement).focus({ preventScroll: true }));
+      await page.keyboard.press("Enter");
+    };
+
+    // Both records are read once. A record fetched for the first time shows a short placeholder,
+    // which returns any box to its top by itself; one already in memory replaces the content at full height.
+    await expect(title).toHaveText("翻页验收订单 02");
+    await next.click();
+    await expect(title).toHaveText("翻页验收订单 01");
+    await readToEnd();
+
+    await press(prev);
+    await expect(title).toHaveText("翻页验收订单 02");
+    await expect(rows.nth(0)).toHaveAttribute("data-record-state", "open");
+    expect(await offsets()).toEqual([0, 0, 0]);
+    await readToEnd();
+
+    await press(next);
+    await expect(title).toHaveText("翻页验收订单 01");
+    await expect(rows.nth(1)).toHaveAttribute("data-record-state", "open");
+    expect(await offsets()).toEqual([0, 0, 0]);
+  });
+}
