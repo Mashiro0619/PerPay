@@ -1,6 +1,6 @@
 import { workspaceApi } from "@/api/workspace";
 import { AlipayAccountIdentity } from "@/components/alipay-account-identity";
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AlertCircle, CheckCircle2, Clock3, RefreshCw } from "lucide-react";
 import { queryClient, result, type Order } from "@/api/client";
@@ -9,8 +9,8 @@ import { useOverlayContext } from "@/lib/overlay-context";
 import { OverlayActions } from "@/components/overlay-actions";
 import { dateTime, money, safeCheckoutUrl } from "@/lib/format";
 import { OrderStatusBadge } from "@/components/business-status";
-import { DetailFields } from "@/components/detail/DetailPrimitives";
-import { RecordTools } from "@/components/detail/RecordTools";
+import { TechnicalDetails } from "@/components/detail/DetailPrimitives";
+import { FieldList, type Field } from "@/components/record/FieldList";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -153,22 +153,17 @@ export function TestPaymentResult({
       <OrderStatusBadge payment={order.payment.status} checkout={order.checkout.status} />
     </div>
   );
-  const fields: Array<[string, ReactNode]> = [
-    ["收款账号", <AlipayAccountIdentity id={order.alipay_account_id} name={order.alipay_account_name} />],
-    ["测试金额", money(order.requested_amount_cents)],
-    [
-      "实际应付",
-      <strong className="tabular-nums">
-        {money(order.payable_amount_cents)}
-      </strong>,
-    ],
-    ["商户订单号", order.merchant_order_no],
+  const fields: Array<Field | false> = [
+    { label: "收款账号", value: <AlipayAccountIdentity id={order.alipay_account_id} name={order.alipay_account_name} /> },
+    { label: "测试金额", kind: "money", value: money(order.requested_amount_cents) },
+    { label: "实际应付", kind: "money", value: <strong>{money(order.payable_amount_cents)}</strong> },
+    { label: "商户订单号", kind: "id", value: order.merchant_order_no, copy: order.merchant_order_no },
+    order.received_amount_cents !== null && {
+      label: verified ? "实收金额" : "上次实收金额",
+      kind: "money",
+      value: money(order.received_amount_cents),
+    },
   ];
-  if (order.received_amount_cents !== null)
-    fields.push([
-      verified ? "实收金额" : "上次实收金额",
-      money(order.received_amount_cents),
-    ]);
   const content = (
     <div className="flex min-w-0 flex-col gap-4">
       {onClose && (
@@ -191,7 +186,7 @@ export function TestPaymentResult({
           {notice.description && <p>{notice.description}</p>}
         </AlertDescription>}
       </Alert>
-      <DetailFields items={fields} wide={["商户订单号"]} />
+      <FieldList items={fields} />
       <div className="flex flex-wrap items-center gap-2">
         <Button
           variant="outline"
@@ -227,7 +222,8 @@ export function TestPaymentResult({
           上次更新：{dateTime(new Date(current.dataUpdatedAt).toISOString())}
         </p>
       )}
-      <RecordTools
+      <TechnicalDetails
+        title="记录技术信息"
         data={order}
         identifiers={[["订单编号", created.order_id]]}
       />

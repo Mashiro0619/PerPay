@@ -16,9 +16,9 @@ import { isOperationResultUnknown, useOperationWait } from "@/hooks/use-operatio
 import { useMaintenanceAction, useMaintenanceJobs } from "@/hooks/use-maintenance";
 import { MaintenanceConfirmation, MaintenanceJobResult } from "@/components/maintenance-operation";
 import { BusinessTable, type BusinessColumn } from "@/components/business-table";
-import { CopyValue } from "@/components/copy-value";
 import { CursorPagination } from "@/components/cursor-pagination";
-import { DetailFields, DetailNavigation, DetailPage, TechnicalDetails } from "@/components/detail/DetailPrimitives";
+import { DetailNavigation, DetailPage, TechnicalDetails } from "@/components/detail/DetailPrimitives";
+import { FieldList } from "@/components/record/FieldList";
 import { StatusBadge } from "@/components/business-status";
 import { useSuccessToast } from "@/components/Feedback";
 import { PageHeading } from "@/components/page-heading";
@@ -269,10 +269,13 @@ function ArchiveDetail({ archiveId }: { archiveId: string }) {
     <DetailNavigation global back={{ to: "/settings/archives", label: "返回历史归档" }} identifier={archiveId} identifierLabel="归档编号" />
     {unavailable ? <ErrorNotice error={archive.error} /> : <QueryView query={archive}>{data => <>
       <Card size="sm"><CardHeader><CardTitle role="heading" aria-level={2}>归档信息</CardTitle><CardDescription>长期保留，只有手动永久删除才会移除归档文件。</CardDescription></CardHeader><CardContent className="flex min-w-0 flex-col gap-4">
-        <DetailFields items={[
-          ["创建时间", dateTime(data.archive.created_at)], ["截止时间（不含）", dateTime(data.archive.before)],
-          ["订单数量", count(data.archive.order_count)], ["流水数量", count(data.archive.ledger_count)],
-          ["文件大小", archiveSize(data.archive.size_bytes)], ["归档格式版本", count(data.archive.schema_version)],
+        <FieldList items={[
+          { label: "创建时间", kind: "time", value: dateTime(data.archive.created_at) },
+          { label: "截止时间（不含）", kind: "time", value: dateTime(data.archive.before) },
+          { label: "订单数量", value: count(data.archive.order_count) },
+          { label: "流水数量", value: count(data.archive.ledger_count) },
+          { label: "文件大小", value: archiveSize(data.archive.size_bytes) },
+          { label: "归档格式版本", value: count(data.archive.schema_version) },
         ]} />
         <ArchiveActions archive={data.archive} />
         <TechnicalDetails title="文件校验信息" data={{ archive_id: data.archive.archive_id, sha256: data.archive.sha256, size_bytes: data.archive.size_bytes }} />
@@ -362,12 +365,17 @@ function ArchivedOrderDetail({ archiveId, orderId }: { archiveId: string; orderI
     <DetailNavigation global back={{ to: archivePath(archiveId) + location.search, state: location.state, label: "返回归档" }} identifier={orderId} identifierLabel="订单编号" />
     {unavailable ? <ErrorNotice error={order.error} /> : <QueryView query={order}>{data => <>
       <Card size="sm"><CardHeader><CardTitle role="heading" aria-level={2}>订单信息</CardTitle><CardDescription>归档时保存的订单记录。</CardDescription></CardHeader><CardContent>
-        <DetailFields items={[
-          ["商户订单号", <CopyValue value={data.order.merchant_order_no} label="复制商户订单号" />], ["业务网站", data.order.site_name],
-          ["商品名称", data.order.product_name], ["收款状态", <StatusBadge value={data.order.payment_status} />],
-          ["请求金额", money(data.order.requested_amount_cents)], ["应付金额", money(data.order.payable_amount_cents)],
-          ["实收金额", money(data.order.received_amount_cents)], ["退款状态", <StatusBadge value={data.order.refund_status} />],
-          ["创建时间", dateTime(data.order.created_at)], ["最后更新时间", dateTime(data.order.updated_at)],
+        <FieldList items={[
+          { label: "商户订单号", kind: "id", value: data.order.merchant_order_no, copy: data.order.merchant_order_no },
+          { label: "业务网站", value: data.order.site_name },
+          { label: "商品名称", value: data.order.product_name },
+          { label: "收款状态", value: <StatusBadge value={data.order.payment_status} /> },
+          { label: "请求金额", kind: "money", value: money(data.order.requested_amount_cents) },
+          { label: "应付金额", kind: "money", value: money(data.order.payable_amount_cents) },
+          { label: "实收金额", kind: "money", value: money(data.order.received_amount_cents) },
+          { label: "退款状态", value: <StatusBadge value={data.order.refund_status} /> },
+          { label: "创建时间", kind: "time", value: dateTime(data.order.created_at) },
+          { label: "最后更新时间", kind: "time", value: dateTime(data.order.updated_at) },
         ]} />
       </CardContent></Card>
       <Card size="sm"><CardHeader><CardTitle role="heading" aria-level={2}>关联记录</CardTitle><CardDescription>共 {count(data.records.length)} 条归档记录，包含订单及其相关业务记录。</CardDescription></CardHeader><CardContent><TechnicalDetails title="查看完整归档记录" data={data.records} /></CardContent></Card>

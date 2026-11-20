@@ -19,7 +19,8 @@ import { AlipayAccountStatus } from "@/components/alipay-account-status";
 import { RefreshButton } from "@/components/refresh-button";
 import { ErrorNotice, Loading, QueryView, ReadPausedNotice } from "@/components/request-state";
 import { useRequestConnectionOnline } from "@/lib/request-notices";
-import { DetailFields, TechnicalDetailsDialog } from "@/components/detail/DetailPrimitives";
+import { TechnicalDetailsDialog } from "@/components/detail/DetailPrimitives";
+import { FieldList } from "@/components/record/FieldList";
 import { Dialog, DialogBody, DialogClose, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/admin-dialog";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { CopyValue } from "@/components/copy-value";
@@ -430,16 +431,19 @@ function LedgerDiagnosis({ data, open, onOpenChange, finalFocus }: { data: Syste
           <AlertDescription>{!data.configured ? "先补齐支付宝账号配置，再检查连接。" : data.ledger.last_error_code
             ? runtimeErrorMessage("查账", data.ledger.last_error_code) : data.ledger.in_flight ? "正在查询支付宝账单，请等待本轮结果。" : "核对下方账号的配置、连接检查和最近查账结果。"}</AlertDescription>
         </Alert>
-        <DetailFields items={[["最近成功查账", dateTime(data.ledger.last_success_at)], ["连续失败", data.ledger.consecutive_failures + " 次"]]} />
+        <FieldList items={[
+          { label: "最近成功查账", kind: "time", value: dateTime(data.ledger.last_success_at) },
+          { label: "连续失败", value: data.ledger.consecutive_failures + " 次" },
+        ]} />
         <LedgerIngestionDiagnostics diagnostics={data.ledger.diagnostics} />
         {accounts?.map(account => <section key={account.id} aria-label={account.name} className="flex min-w-0 flex-col gap-3">
           <h3 className="text-sm font-medium">{account.name}</h3>
-          <DetailFields items={[
-            ["配置状态", accountState(account)],
-            ["连接检查", account.last_check ? account.last_check.message : "尚未检查"],
-            ["最近检查", dateTime(account.last_check?.checked_at)],
-            ["查账状态", accountHealth(account)],
-            ["最近成功", dateTime(account.health?.last_success_at)],
+          <FieldList items={[
+            { label: "配置状态", value: accountState(account) },
+            { label: "连接检查", value: account.last_check ? account.last_check.message : "尚未检查" },
+            { label: "最近检查", kind: "time", value: dateTime(account.last_check?.checked_at) },
+            { label: "查账状态", value: accountHealth(account) },
+            { label: "最近成功", kind: "time", value: dateTime(account.health?.last_success_at) },
           ]} />
           <Link to={"/settings/accounts/" + encodeURIComponent(account.id)} className={buttonVariants({ variant: "outline", size: "sm" })} onClick={() => onOpenChange(false)}>配置{account.name}</Link>
         </section>)}
