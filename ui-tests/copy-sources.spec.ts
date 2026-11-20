@@ -254,11 +254,10 @@ test("a genuine associated order summary keeps a contract-length synthetic merch
     for (const width of widths) for (const theme of themes) {
       await presentation(page, width, theme);
       await page.goto(manifest.origin + "/admin" + candidatePath!);
-      const card = page.getByRole("group", { name: "可能匹配的记录", exact: true });
-      const orderSummary = card.locator('[data-detail-order-summary]');
-      const merchantField = orderSummary.locator('dl > div').filter({ has: page.getByText("商户订单号（业务网站）", { exact: true }) });
-      const reference = merchantField.locator("dd span.break-all");
-      await expect(merchantField).not.toHaveAttribute("data-field-wide", "true");
+      const orderSummary = page.locator('[data-overlay-content] [data-detail-section="order"] article[data-sub-record]');
+      await expect(orderSummary).toBeVisible();
+      const merchantField = orderSummary.locator('dl > div').filter({ has: page.getByText("商户订单号", { exact: true }) });
+      const reference = merchantField.locator("dd > div > span").first();
       await expect(reference).toContainText(merchantOrderNo);
       const created = orderSummary.locator('dl > div').filter({ has: page.getByText("创建时间", { exact: true }) });
       await expect(created.locator("time")).toHaveAttribute("datetime", original.created_at);
@@ -279,7 +278,7 @@ test("a genuine associated order summary keeps a contract-length synthetic merch
       if (width === 390) expect(measured.lines).toBeGreaterThan(1);
       await record(page, info, { feature: "copy-source-default-order-reference", evidence: "synthetic-order-get-reference-only-within-64-character-contract", width, theme, measured });
       await screenshot(page, info, "copy-source-default-order-reference-" + width + "-" + theme);
-      await card.getByRole("link", { name: original.product_name, exact: true }).click();
+      await orderSummary.getByRole("link", { name: "查看订单", exact: true }).click();
       await expectOverlayTarget(page, "/orders/" + original.order_id);
       await copyField(page, page.getByRole("region", { name: "订单信息", exact: true }), "商户订单号", merchantOrderNo);
     }
