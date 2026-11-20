@@ -92,7 +92,7 @@ export function ManualCandidatePicker({
             summary: {OPEN: "收银台开放中", CLOSED: "收银台已关闭", EXPIRED: "收银台已过期"}[order.checkout_status],
             amount: order.payable_amount_cents,
             occurredAt: order.created_at,
-            identifiers: [["商户订单号（业务网站）", order.merchant_order_no]],
+            identifiers: [["商户订单号", order.merchant_order_no]],
             website: order.site_name ?? "名称不可用",
             websiteId: order.api_client_id,
             recommendation,

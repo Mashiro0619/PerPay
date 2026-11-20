@@ -136,7 +136,7 @@ function DeliveryPage({
           meta={
             <ListMeta>
               {delivery.order_summary && context.showInSummary("order") && <span className="inline-flex min-w-0 flex-wrap items-baseline gap-x-1">
-                <span>商户订单号（业务网站）：</span>
+                <span>商户订单号：</span>
                 <Link className="list-secondary-link list-code" title={delivery.order_summary.merchant_order_no} to={"/orders/" + delivery.event.order_id}>{delivery.order_summary.merchant_order_no}</Link>
               </span>}
               {delivery.order_summary && (

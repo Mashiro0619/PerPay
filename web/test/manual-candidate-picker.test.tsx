@@ -116,7 +116,7 @@ describe("manual settlement selection instead of ID entry", () => {
     expect(screen.getByTitle("site-b")).toHaveTextContent(otherName === "网站 A" ? "所属网站：网站 A · site-b" : "所属网站：网站 B");
     if (otherName !== "网站 A") expect(identity).not.toHaveTextContent("site-a");
     const candidate = identity.closest('[data-slot="item"]')!;
-    expect(within(candidate as HTMLElement).getByText("商户订单号（业务网站）：shared-number")).toBeVisible();
+    expect(within(candidate as HTMLElement).getByText("商户订单号：shared-number")).toBeVisible();
     await userEvent.click(within(candidate as HTMLElement).getByRole("button", { name: /选择订单：.*网站 A · site-a/ }));
     expect(await screen.findByRole("button", { name: "确认关联收款" })).toBeEnabled();
     const siteField = within(screen.getByText("业务网站", { selector: "dt" }).parentElement!);
