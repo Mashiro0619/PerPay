@@ -253,7 +253,7 @@ test("exception technical dialogs and manual confirmation preserve copy, scope a
     await expect(tools).toBeFocused();
     const afterTechnical = await parentGeometry();
     for (const name of ["width", "height", "contentHeight", "scrollTop"] as const) expect(afterTechnical[name]).toBeCloseTo(beforeTechnical[name], 1);
-    await section(page, "ledger").getByRole("button", { name: "复制内部流水编号（PerPay）", exact: true }).click();
+    await section(page, "ledger").getByRole("button", { name: "复制PerPay 流水编号", exact: true }).click();
     await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(exception.ledger_entry_id);
     const action = footer(page).getByRole("button", { name: "人工关联收款", exact: true });
     await action.focus();
