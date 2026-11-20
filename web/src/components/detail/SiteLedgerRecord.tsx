@@ -14,7 +14,6 @@ import { Section, Sections } from "@/components/record/Sections";
 import { SubRecord } from "@/components/record/SubRecord";
 import { RecordTime } from "@/components/record/Timeline";
 import { ErrorNotice } from "@/components/request-state";
-import { Button } from "@/components/ui/button";
 import { useRelatedOrder } from "./DetailPrimitives";
 import { useAssociateIncome } from "./FinancialActions";
 import { evidenceNoteClass, orderPaymentStatus, PendingEvidence } from "./EvidenceParts";
@@ -35,10 +34,8 @@ export function SiteLedgerRecord({
 }) {
   const isCredit = entry.direction === "CREDIT";
   const canAssociate = isCredit && ["UNALLOCATED", "CANDIDATE", "CONFLICT"].includes(entry.state);
-  const associate = useAssociateIncome({
-    ledgerId: entry.ledger_entry_id,
-    ledgerLabel: money(entry.amount_cents) + " · " + dateTime(entry.occurred_at),
-  });
+  // A website cannot choose the order for a bare entry: the action is a link to the record for all websites.
+  const { action: handOff } = useAssociateIncome({ ledgerId: entry.ledger_entry_id });
   const records = isCredit ? candidates.data?.data ?? [] : [];
   const hasAccount = !!(entry.alipay_account_name || entry.alipay_account_id);
 
@@ -86,10 +83,7 @@ export function SiteLedgerRecord({
       </Section>
     </Sections>
     <ActionBar menuLabel="更多操作，流水记录操作"
-      primary={canAssociate && (associate.action.to
-        ? <Link global to={associate.action.to} className={recordActionButtonClass()}>{associate.action.label}</Link>
-        : <Button className="h-auto min-h-8 min-w-0 max-w-full whitespace-normal py-1.5" disabled={associate.action.disabled}
-          onClick={event => associate.action.onSelect?.(event.currentTarget)}>{associate.action.label}</Button>)}
+      primary={canAssociate && !!handOff.to && <Link global to={handOff.to} className={recordActionButtonClass()}>{handOff.label}</Link>}
       technical={technicalEntries([
         { title: "流水技术信息", created: entry.created_at, data: entry, identifiers: [
           ["内部流水编号", entry.ledger_entry_id],
@@ -103,7 +97,6 @@ export function SiteLedgerRecord({
           identifiers: [["可能匹配记录编号", candidate.candidate_id]] as const,
         })),
       ])} />
-    {associate.dialog}
   </>;
 }
 
