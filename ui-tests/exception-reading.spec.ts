@@ -265,7 +265,7 @@ test("exception technical dialogs and manual confirmation preserve copy, scope a
     const reason = "核对原始凭据后再确认，保留完整理由。\n".repeat(12);
     await confirmation.getByLabel("操作理由（可选）", { exact: true }).fill(reason);
     await expect(confirmation.getByLabel("操作理由（可选）", { exact: true })).toHaveValue(reason);
-    await expect(confirmation.locator('[data-detail-fields][data-layout="flow"]')).toHaveCount(0);
+    await expect(confirmation.locator("[data-record-fields]").first()).toBeVisible();
     await confirmation.getByRole("button", { name: "取消", exact: true }).click();
     await expect(confirmation).toHaveCount(0);
     await expect(action).toBeFocused();
