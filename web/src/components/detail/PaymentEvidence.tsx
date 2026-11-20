@@ -1,21 +1,17 @@
 import { useQuery } from '@/lib/workspace-query';
-import { useWorkspace, useWorkspaceApi } from "@/workspace";
+import { useWorkspaceApi } from "@/workspace";
 import { Link } from "@/navigation";
 import { useId, type ReactNode } from "react";
 
-import { result, type AdminOrderDetail, type FinancialException, type MatchCandidate, type PaymentMatchDetail, type ReconciliationLedgerEntry, type ReconciliationOrder } from "@/api/client";
+import { result, type AdminOrderDetail, type MatchCandidate, type PaymentMatchDetail, type ReconciliationLedgerEntry, type ReconciliationOrder } from "@/api/client";
 import {
   candidateFacts,
   candidateFactsBeyondLedger,
   candidateGuidance,
   detailTimestamp,
-  exceptionExplanation,
-  exceptionResolution,
-  exceptionStateLabel,
 } from "@/lib/detail-summary";
 import { dateTime, money } from "@/lib/format";
 import { ListDateTime, ListMoney } from "@/components/list-primitives";
-import { label } from "@/lib/labels";
 import { cn } from "@/lib/utils";
 import { useOverlayContext } from "@/lib/overlay-context";
 import { CopyValue } from "@/components/copy-value";
@@ -487,214 +483,6 @@ export function CandidateCard({
             />
           </CardFooter>
         )}
-    </Card>
-  );
-}
-export function ExceptionCard({
-  exception,
-  ledger,
-  order: knownOrder,
-  candidate: knownCandidate,
-  embedded = false,
-  density = "default",
-}: {
-  exception: FinancialException;
-  ledger?: ReconciliationLedgerEntry | undefined;
-  order?: DetailOrder | undefined;
-  candidate?: MatchCandidate | undefined;
-  embedded?: boolean;
-  density?: DetailDensity;
-}) {
-  const api = useWorkspaceApi();
-  const overlay = useOverlayContext();
-  const { clientId } = useWorkspace();
-  const { entry, query } = useRelatedLedger(exception.ledger_entry_id, ledger);
-  const { order, query: orderQuery } = useRelatedOrder(
-    exception.order_id,
-    knownOrder,
-  );
-  const candidateQuery = useQuery({
-    queryKey: ["candidate", exception.candidate_id],
-    enabled: !!exception.candidate_id && !knownCandidate,
-    queryFn: ({ signal }) =>
-      result(
-        api.getReconciliationCandidate({
-          path: { candidateId: exception.candidate_id! },
-          signal,
-        }),
-      ),
-  });
-  const candidate = knownCandidate ?? candidateQuery.data?.data;
-  const retired = ["UNMATCHED_DEBIT", "UNLINKED_REFUND"].includes(
-    exception.exception_type,
-  );
-  const payment = order
-    ? "payment" in order
-      ? order.payment.status
-      : order.payment_status
-    : null;
-  const resolution = exceptionResolution(exception);
-  const canAssociate =
-    !retired &&
-    exception.status === "OPEN" &&
-    ((!exception.order_id && !knownOrder) || payment === "UNPAID" || (payment === "DISPUTED" && !(order && "refund_mark" in order && order.refund_mark.marked))) &&
-    (!exception.ledger_entry_id ||
-      (entry?.direction === "CREDIT" &&
-        ["UNALLOCATED", "CANDIDATE", "CONFLICT"].includes(entry.state)));
-  const identifiers = [
-    ["异常编号", exception.exception_id],
-    ["网站编号", order?.api_client_id ?? clientId],
-    ["内部流水编号（PerPay）", entry?.ledger_entry_id ?? exception.ledger_entry_id],
-    ["内部订单编号", order?.order_id ?? exception.order_id],
-    ["可能匹配记录编号", candidate?.candidate_id ?? exception.candidate_id],
-  ] as const;
-  if (density === "comfortable" && !embedded) return (
-    <Card aria-label="账务异常记录" data-financial-exception>
-      <CardHeader className="flex flex-wrap items-start justify-between gap-4">
-        <div className="flex min-w-0 flex-1 basis-48 flex-col gap-1">
-          <div className={cn(overlay && "flex min-w-0 flex-wrap items-center gap-2")}>
-            <CardTitle role="heading" aria-level={2}>{label(exception.exception_type)}</CardTitle>
-            {overlay && <StatusBadge value={exception.reminder_ignored ? "NONE" : exception.status} label={exceptionStateLabel(exception)} />}
-          </div>
-          <CardDescription>{exceptionExplanation(exception)}</CardDescription>
-        </div>
-        <CardAction className="flex max-w-full flex-wrap items-center justify-end gap-2">
-          {!overlay && <StatusBadge value={exception.reminder_ignored ? "NONE" : exception.status} label={exceptionStateLabel(exception)} />}
-          {canAssociate && <AssociateIncomeAction
-            actionLabel={payment === "DISPUTED" ? "重新核对并确认收款" : "人工关联收款"}
-            orderId={order?.order_id ?? exception.order_id ?? ""}
-            ledgerId={exception.ledger_entry_id ?? ""}
-            orderLabel={order?.product_name}
-            ledgerLabel={entry ? money(entry.amount_cents) + " · " + dateTime(entry.occurred_at) : undefined}
-          />}
-          <RecordTools
-            inline
-            technical={!overlay}
-            data={exception}
-            identifiers={identifiers}
-            label="异常记录操作"
-          />
-        </CardAction>
-      </CardHeader>
-      <CardContent className="flex min-w-0 flex-col gap-6">
-        <EvidenceSection title="关联订单">
-        {order ? <OrderFacts order={order} density="comfortable" layout="flow" />
-          : exception.order_id && orderQuery.isPending ? <Loading label="正在读取关联订单…" />
-          : !exception.order_id ? <p className="text-sm text-muted-foreground">尚未关联订单</p> : null}
-        {!knownOrder && exception.order_id && <ErrorNotice scope="page" error={orderQuery.error} retry={() => { void orderQuery.refetch(); }} />}
-        </EvidenceSection>
-        {entry ? <LedgerFacts entry={entry} density="comfortable" layout="flow" groupIdentifiers />
-          : exception.ledger_entry_id && query.isPending ? <Loading label="正在读取关联流水…" /> : null}
-        {!ledger && exception.ledger_entry_id && <ErrorNotice scope="page" error={query.error} retry={() => { void query.refetch(); }} />}
-        <EvidenceSection title="处理记录">
-        <DetailFields density="comfortable" layout="flow" wide={["处理结果"]} items={[
-          ["发现时间", dateTime(exception.created_at)],
-          ...(exception.resolved_at ? [["处理时间", dateTime(exception.resolved_at)] as const] : []),
-          ...(resolution ? [["处理结果", resolution] as const] : []),
-        ]} />
-        </EvidenceSection>
-        {candidate && <CandidateEvidence candidate={candidate} ledger={entry} density="comfortable" layout="flow" />}
-        {!knownCandidate && exception.candidate_id && <ErrorNotice scope="page" error={candidateQuery.error} retry={() => { void candidateQuery.refetch(); }} />}
-        {overlay && <TechnicalDetails title="账务异常技术信息" data={exception} identifiers={identifiers} />}
-      </CardContent>
-    </Card>
-  );
-  return (
-    <Card size={embedded ? "sm" : "default"} data-density="compact" aria-label="账务异常记录">
-      <CardHeader>
-        <CardTitle className="record-list-title" role="heading" aria-level={2}>
-          {label(exception.exception_type)}
-        </CardTitle>
-        <CardDescription className="record-list-meta">{exceptionExplanation(exception)}</CardDescription>
-        <CardAction>
-          <StatusBadge
-            value={exception.reminder_ignored ? "NONE" : exception.status}
-            label={exceptionStateLabel(exception)}
-          />
-        </CardAction>
-      </CardHeader>
-      <CardContent className="flex min-w-0 flex-col gap-4">
-        {!embedded &&
-          (order ? (
-            <OrderFacts order={order} />
-          ) : exception.order_id && orderQuery.isPending ? (
-            <Loading label="正在读取关联订单…" />
-          ) : !exception.order_id ? (
-            <p className="text-sm text-muted-foreground">尚未关联订单</p>
-          ) : null)}
-        {!knownOrder && exception.order_id && (
-          <ErrorNotice
-            scope="page"
-            error={orderQuery.error}
-            retry={() => {
-              void orderQuery.refetch();
-            }}
-          />
-        )}
-        {entry ? (
-          <LedgerFacts entry={entry} density={overlay ? "comfortable" : "default"} layout={overlay ? "flow" : "columns"} groupIdentifiers={!!overlay} />
-        ) : exception.ledger_entry_id && query.isPending ? (
-          <Loading label="正在读取关联流水…" />
-        ) : null}
-        {!ledger && exception.ledger_entry_id && (
-          <ErrorNotice
-            scope="page"
-            error={query.error}
-            retry={() => {
-              void query.refetch();
-            }}
-          />
-        )}
-        <DetailFields
-          wide={["处理结果"]}
-          items={[
-            ["发现时间", dateTime(exception.created_at)],
-            ...(exception.resolved_at
-              ? [["处理时间", dateTime(exception.resolved_at)] as const]
-              : []),
-            ...(resolution ? [["处理结果", resolution] as const] : []),
-          ]}
-        />
-        {candidate && (
-          <CandidateEvidence candidate={candidate} ledger={entry} />
-        )}
-        {!knownCandidate && exception.candidate_id && (
-          <ErrorNotice
-            scope="page"
-            error={candidateQuery.error}
-            retry={() => {
-              void candidateQuery.refetch();
-            }}
-          />
-        )}
-        <RecordTools
-          data={exception}
-          identifiers={[["异常编号", exception.exception_id]]}
-          label="异常记录操作"
-          to={
-            embedded
-              ? "/reconciliation/exceptions/" + exception.exception_id
-              : undefined
-          }
-        />
-      </CardContent>
-      {canAssociate && (
-        <CardFooter>
-          <AssociateIncomeAction
-            actionLabel={payment === "DISPUTED" ? "重新核对并确认收款" : "人工关联收款"}
-            orderId={order?.order_id ?? exception.order_id ?? ""}
-            ledgerId={exception.ledger_entry_id ?? ""}
-            orderLabel={order?.product_name}
-            ledgerLabel={
-              entry
-                ? money(entry.amount_cents) +
-                  " · " +
-                  dateTime(entry.occurred_at)
-                : undefined
-            }
-          />
-        </CardFooter>
-      )}
     </Card>
   );
 }

@@ -19,11 +19,11 @@ import { label } from "@/lib/labels";
 import { QueryView } from "@/components/request-state";
 import {
   CandidateCard,
-  ExceptionCard,
   LedgerFacts,
   MatchCard,
 } from "@/components/detail/PaymentEvidence";
 import { ConflictCard } from "@/components/detail/ConflictEvidence";
+import { ExceptionRecord } from "@/components/detail/ExceptionRecord";
 import {
   DetailFields,
   DetailNavigation,
@@ -183,9 +183,9 @@ function ExceptionDetail({ resourceId }: { resourceId: string }) {
   });
   return (
     <DetailPage>
-      <EvidenceHeading title="账务异常详情" section="exceptions" loaded={query.isSuccess} density="comfortable" />
+      <EvidenceHeading title={query.data ? label(query.data.data.exception_type) : "账务异常详情"} section="exceptions" loaded={query.isSuccess} density="comfortable" />
       <QueryView query={query}>
-        {({ data }) => <ExceptionCard exception={data} density="comfortable" />}
+        {({ data }) => <ExceptionRecord key={data.exception_id} exception={data} />}
       </QueryView>
     </DetailPage>
   );
