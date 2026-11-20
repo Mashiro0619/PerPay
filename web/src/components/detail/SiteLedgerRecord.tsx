@@ -7,14 +7,14 @@ import { AlipayAccountIdentity } from "@/components/alipay-account-identity";
 import { OrderStatusBadge, StatusBadge } from "@/components/business-status";
 import { LedgerState } from "@/components/ledger-record";
 import { OverlaySummary } from "@/components/overlay-actions";
-import { ActionBar, technicalEntries } from "@/components/record/ActionBar";
+import { ActionBar, recordActionButtonClass, technicalEntries } from "@/components/record/ActionBar";
 import { FieldList } from "@/components/record/FieldList";
 import { RecordSummary } from "@/components/record/RecordSummary";
 import { Section, Sections } from "@/components/record/Sections";
 import { SubRecord } from "@/components/record/SubRecord";
 import { RecordTime } from "@/components/record/Timeline";
 import { ErrorNotice } from "@/components/request-state";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { useRelatedOrder } from "./DetailPrimitives";
 import { useAssociateIncome } from "./FinancialActions";
 import { evidenceNoteClass, orderPaymentStatus, PendingEvidence } from "./EvidenceParts";
@@ -87,7 +87,7 @@ export function SiteLedgerRecord({
     </Sections>
     <ActionBar menuLabel="更多操作，流水记录操作"
       primary={canAssociate && (associate.action.to
-        ? <Link global to={associate.action.to} className={buttonVariants()}>{associate.action.label}</Link>
+        ? <Link global to={associate.action.to} className={recordActionButtonClass()}>{associate.action.label}</Link>
         : <Button className="h-auto min-h-8 min-w-0 max-w-full whitespace-normal py-1.5" disabled={associate.action.disabled}
           onClick={event => associate.action.onSelect?.(event.currentTarget)}>{associate.action.label}</Button>)}
       technical={technicalEntries([

@@ -2,6 +2,7 @@ import { isValidElement, useEffect, useRef, useState, type ReactNode } from "rea
 import { Code, ExternalLink } from "lucide-react";
 import { Link } from "@/navigation";
 import { preciseDateTime } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import { OverlayActions } from "@/components/overlay-actions";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
@@ -29,12 +30,19 @@ function isRecordAction(value: ReactNode | RecordAction | undefined): value is R
   return typeof value === "object" && value !== null && !isValidElement(value) && !Array.isArray(value) && "label" in value && typeof value.label === "string";
 }
 
+const wrappingAction = "h-auto min-h-8 min-w-0 max-w-full whitespace-normal py-1.5";
+
+/** Wrappable button styling for footer links and secondary actions so narrow/zoomed drawers never overflow. */
+export function recordActionButtonClass(variant: "default" | "outline" = "default") {
+  return cn(buttonVariants({ variant }), wrappingAction);
+}
+
 function SecondaryAction({ action }: { action: RecordAction }) {
-  if (action.href && !action.disabled) return <a className={buttonVariants({ variant: "outline" })} href={action.href} target="_blank" rel="noopener noreferrer" title={action.title}>
+  if (action.href && !action.disabled) return <a className={recordActionButtonClass("outline")} href={action.href} target="_blank" rel="noopener noreferrer" title={action.title}>
     {action.label}<ExternalLink data-icon="inline-end" aria-hidden="true" />
   </a>;
-  if (action.to && !action.disabled) return <Link to={action.to} global={action.global ?? false} className={buttonVariants({ variant: "outline" })}>{action.label}</Link>;
-  return <Button type="button" variant="outline" disabled={action.disabled} onClick={event => action.onSelect?.(event.currentTarget)}>{action.label}</Button>;
+  if (action.to && !action.disabled) return <Link to={action.to} global={action.global ?? false} className={recordActionButtonClass("outline")}>{action.label}</Link>;
+  return <Button type="button" variant="outline" className={wrappingAction} disabled={action.disabled} onClick={event => action.onSelect?.(event.currentTarget)}>{action.label}</Button>;
 }
 
 export type TechnicalEntry = {

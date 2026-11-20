@@ -6,13 +6,13 @@ import { candidateFacts, candidateFactsBeyondLedger, exceptionExplanation, excep
 import { dateTime, money } from "@/lib/format";
 import { StatusBadge } from "@/components/business-status";
 import { OverlaySummary } from "@/components/overlay-actions";
-import { ActionBar } from "@/components/record/ActionBar";
+import { ActionBar, recordActionButtonClass } from "@/components/record/ActionBar";
 import { FieldList } from "@/components/record/FieldList";
 import { RecordSummary } from "@/components/record/RecordSummary";
 import { Section, Sections } from "@/components/record/Sections";
 import { Timeline, type TimelineEntry } from "@/components/record/Timeline";
 import { ErrorNotice } from "@/components/request-state";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { useAssociateIncome } from "./FinancialActions";
 import { useRelatedOrder } from "./DetailPrimitives";
 import { evidenceLinkClass, evidenceNoteClass, ledgerEntryFields, orderLedgerComparison, PendingEvidence, RelatedOrderRecord, useRelatedLedger } from "./EvidenceParts";
@@ -87,7 +87,7 @@ export function ExceptionRecord({ exception }: { exception: FinancialException }
     </Sections>
     <ActionBar menuLabel="更多操作，异常记录操作"
       primary={canAssociate && (associate.action.to
-        ? <Link global to={associate.action.to} className={buttonVariants()}>{associate.action.label}</Link>
+        ? <Link global to={associate.action.to} className={recordActionButtonClass()}>{associate.action.label}</Link>
         : <Button className="h-auto min-h-8 min-w-0 max-w-full whitespace-normal py-1.5" disabled={associate.action.disabled}
           onClick={event => associate.action.onSelect?.(event.currentTarget)}>{associate.action.label}</Button>)}
       technical={[{ title: "账务异常技术信息", data: exception, identifiers: [

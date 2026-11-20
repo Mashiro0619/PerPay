@@ -10,7 +10,7 @@ import { PageHeading } from "@/components/page-heading";
 import { PageHeaderActions } from "@/components/page-header-actions";
 import { RefreshButton } from "@/components/refresh-button";
 import { DetailPage } from "@/components/detail/DetailPrimitives";
-import { ActionBar } from "@/components/record/ActionBar";
+import { ActionBar, recordActionButtonClass } from "@/components/record/ActionBar";
 import { FieldList } from "@/components/record/FieldList";
 import { RecordSummary } from "@/components/record/RecordSummary";
 import { ScrollingTabs } from "@/components/scrolling-tabs";
@@ -222,7 +222,7 @@ export function SiteSummaryOverlay() {
         { label: "客户端 ID", value: current.api_client_id ?? current.client_id, kind: "id", copy: current.api_client_id ?? current.client_id },
       ]} />
       <ActionBar menuLabel="更多操作，网站操作"
-        primary={<Link to={"/sites/" + encodeURIComponent(current.client_id) + "?range=" + range} className={buttonVariants()}>查看网站总览</Link>}
+        primary={<Link to={"/sites/" + encodeURIComponent(current.client_id) + "?range=" + range} className={recordActionButtonClass()}>查看网站总览</Link>}
         secondary={{ label: "编辑网站", to: "/sites/" + encodeURIComponent(current.client_id) + "/edit?section=basic" }} />
     </DetailPage>;
   }}</QueryView>;
