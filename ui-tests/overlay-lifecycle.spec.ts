@@ -3,13 +3,18 @@ import { test as base, expect, type Page } from "@playwright/test";
 import { createSettingsServer } from "./settings-server";
 import { HTTP_TEST_ADMIN_PASSWORD } from "../test/http-fixture";
 import { LedgerStore } from "../src/ledger/store";
+import { createOrderRequestSchema } from "../src/orders/model";
 import { ReconciliationStore } from "../src/reconciliation/store";
 
-type SettingsFixture = Awaited<ReturnType<typeof createSettingsServer>>;
+type SettingsFixture = Awaited<ReturnType<typeof createSettingsServer>> & {
+  seedOrders(count: number): string[];
+};
 const test = base.extend<{ fixture: SettingsFixture }>({
   fixture: async ({}, use) => {
     const epoch = Date.now();
+    let orderService: Parameters<NonNullable<NonNullable<Parameters<typeof createSettingsServer>[1]>["runtime"]>>[0]["orders"] | null = null;
     const fixture = await createSettingsServer(epoch, { runtime: services => {
+      orderService = services.orders;
       const snapshot = services.settings.instanceSnapshot();
       const healthy = { enabled: true, state: "healthy" as const, inFlight: false, lastAttemptAt: epoch, lastSuccessAt: epoch, lastErrorCode: null, consecutiveFailures: 0, paymentRevision: snapshot.paymentRevision };
       // Real local stores with explicit readiness; no provider or webhook transport runs.
@@ -23,7 +28,20 @@ const test = base.extend<{ fixture: SettingsFixture }>({
         accountHealth: () => ({ state: "healthy", lastSuccessAt: epoch, lastErrorCode: null, collectionReady: true }),
       };
     } });
-    try { await use(fixture); } finally { await fixture.close(); }
+    const seedOrders = (count: number) => {
+      const ids: string[] = [];
+      for (let index = 1; index <= count; index++) {
+        const label = String(index).padStart(2, "0");
+        ids.push(orderService!.create(createOrderRequestSchema.parse({
+          idempotency_key: "overlay-pager-" + label,
+          merchant_order_no: "OVERLAY-PAGER-" + label,
+          amount_cents: 1000 + index * 100,
+          product_name: "翻页验收订单 " + label,
+        })).order.orderId);
+      }
+      return ids;
+    };
+    try { await use({ ...fixture, seedOrders }); } finally { await fixture.close(); }
   },
   page: async ({ page, fixture }, use) => {
     await page.context().route("**/*", route => new URL(route.request().url()).origin === fixture.origin ? route.continue() : route.abort("blockedbyclient"));
@@ -250,4 +268,49 @@ test("site-scoped related details keep a global parent and restore foreground hi
   await expect.poll(() => new URL(page.url()).searchParams.get("overlay")).toBe(target);
   await overlay.getByRole("button", { name: "关闭对话框", exact: true }).click();
   await expect(page).toHaveURL(parent);
+});
+
+test("drawer previous/next stepping tracks the active list row and keeps the final row in view after closing", async ({ page, fixture }) => {
+  fixture.seedOrders(16);
+  await page.setViewportSize({ width: 1440, height: 520 });
+  await page.goto(fixture.origin + "/admin/orders");
+  const rows = page.locator('[data-business-table="orders"] a[data-row-link]');
+  await expect(rows).toHaveCount(16);
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  const targetInitialBox = await rows.nth(13).boundingBox();
+  expect(targetInitialBox).not.toBeNull();
+  expect(targetInitialBox!.y).toBeGreaterThan(520);
+
+  await rows.nth(0).click();
+  const overlay = page.locator("[data-overlay-content]");
+  await expect(overlay).toBeVisible();
+  const prev = overlay.getByRole("button", { name: "上一条", exact: true });
+  const next = overlay.getByRole("button", { name: "下一条", exact: true });
+  await expect(prev).toBeDisabled();
+  await expect(next).toBeEnabled();
+  await expect(rows.nth(0)).toHaveAttribute("data-record-state", "open");
+
+  for (let step = 1; step <= 13; step++) {
+    await next.click();
+    await expect(rows.nth(step)).toHaveAttribute("data-record-state", "open");
+  }
+  await expect(prev).toBeEnabled();
+  await expect(next).toBeEnabled();
+  await expect(next).toBeFocused();
+
+  await prev.click();
+  await expect(rows.nth(12)).toHaveAttribute("data-record-state", "open");
+  await expect(prev).toBeFocused();
+  const landedRow = rows.nth(12);
+  const landedTarget = new URL((await landedRow.getAttribute("href"))!, fixture.origin).searchParams.get("overlay");
+  expect(new URL(page.url()).searchParams.get("overlay")).toBe(landedTarget);
+
+  await overlay.getByRole("button", { name: "关闭对话框", exact: true }).click();
+  await expect(overlay).toHaveCount(0);
+  await expect(page).toHaveURL(fixture.origin + "/admin/orders");
+  await expect(landedRow).toHaveAttribute("data-record-state", "recent");
+  await expect(landedRow).toBeFocused();
+  await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+  await expect(landedRow).toBeInViewport();
+  expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
 });
