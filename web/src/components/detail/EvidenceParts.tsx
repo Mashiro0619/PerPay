@@ -1,5 +1,7 @@
+import { useQuery } from "@/lib/workspace-query";
+import { useWorkspaceApi } from "@/workspace";
 import { Link } from "@/navigation";
-import type { AdminOrderDetail, ReconciliationLedgerEntry, ReconciliationOrder } from "@/api/client";
+import { result, type AdminOrderDetail, type ReconciliationLedgerEntry, type ReconciliationOrder } from "@/api/client";
 import { money } from "@/lib/format";
 import { OrderStatusBadge, StatusBadge } from "@/components/business-status";
 import { FieldList, type Field } from "@/components/record/FieldList";
@@ -91,4 +93,23 @@ export function ledgerEntryFields(entry: ReconciliationLedgerEntry): Array<Field
     !!entry.merchant_order_no && { label: "支付宝商户单号", kind: "id", value: entry.merchant_order_no, copy: entry.merchant_order_no },
     { label: "内部流水编号（PerPay）", kind: "id", value: entry.ledger_entry_id, copy: entry.ledger_entry_id },
   ];
+}
+
+export function useRelatedLedger(
+  ledgerId: string | null,
+  known?: ReconciliationLedgerEntry,
+) {
+  const api = useWorkspaceApi();
+  const query = useQuery({
+    queryKey: ["ledger", ledgerId],
+    enabled: !!ledgerId && !known,
+    queryFn: ({ signal }) =>
+      result(
+        api.getReconciliationLedgerEntry({
+          path: { ledgerEntryId: ledgerId! },
+          signal,
+        }),
+      ),
+  });
+  return { entry: known ?? query.data?.data, query };
 }

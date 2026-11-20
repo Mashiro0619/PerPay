@@ -68,9 +68,9 @@ describe("ordinary administrator views", () => {
           : undefined,
     });
     expect(
-      await screen.findByRole("heading", { name: "可能匹配的记录" }),
+      await screen.findByRole("heading", { name: "匹配依据" }),
     ).toBeVisible();
-    expect(screen.getByText("匹配依据")).toBeVisible();
+    expect(screen.getByRole("heading", { name: "可能匹配的记录" })).toBeVisible();
     expect(screen.queryByText(/规则版本/)).not.toBeInTheDocument();
   });
 

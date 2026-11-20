@@ -1,6 +1,5 @@
 import { WorkspaceProvider, WorkspaceNavigationProvider, WorkspaceOutlet, useWorkspace, adminRoutePathname, useWorkspaceNavigation } from "@/workspace";
 import { workspaceScope } from "@/lib/workspace-scope";
-import { isReadableDetailPage } from "@/lib/detail-layout";
 import { prepareWorkspaceNavigation } from "@/lib/workspace-navigation";
 import { OVERLAY_PARAMETER, readOverlayTarget } from "@/lib/overlay-navigation";
 import { AdminContent, ContentWidthProvider } from "@/components/content-width";
@@ -213,7 +212,7 @@ function Workspace() {
       <SidebarInset className="min-w-0" aria-busy={switching}>
         <SiteHeader overview={overview} busy={switching} />
         <PageHeadingProvider routeKey={location.pathname}>
-        <AdminContent busy={switching} layout={isReadableDetailPage(location.pathname) ? "detail" : "default"}>
+        <AdminContent busy={switching}>
           <PageHeadingSlot title={title} actions={<PageActions overview={overview} busy={switching} />} />
           {!maintenanceJob && <RequestNoticeBanner />}
           {!pageShowsMaintenance && <MaintenanceJobResult job={maintenanceJob} />}

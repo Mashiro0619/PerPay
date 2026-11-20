@@ -3,9 +3,20 @@ import { ExternalLink, MoreHorizontal } from "lucide-react";
 import { Link } from "@/navigation";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import type { RecordAction } from "@/components/detail/RecordTools";
 
-export type { RecordAction };
+export type RecordAction = {
+  label: string;
+  danger?: boolean;
+  disabled?: boolean;
+  onSelect?: (trigger: HTMLButtonElement | null) => void;
+  to?: string;
+  /** Resolves `to` outside the current site workspace. */
+  global?: boolean;
+  /** An address outside the console, opened in a new tab. */
+  href?: string;
+  /** Tooltip of an `href` action. */
+  title?: string;
+};
 
 /** The element an action navigates with, or nothing when it only runs `onSelect`. */
 function destination(action: RecordAction) {

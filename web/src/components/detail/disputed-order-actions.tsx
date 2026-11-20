@@ -5,7 +5,7 @@ import { useOperationKey } from "@/lib/idempotency";
 import { useFixedOperation } from "@/lib/fixed-operation";
 import { refreshFinancialRecords } from "@/lib/record-refresh";
 import { useSuccessToast } from "@/components/Feedback";
-import type { RecordAction } from "./RecordTools";
+import type { RecordAction } from "@/components/record/ActionMenu";
 
 /** What a disputed order still needs: who may act on it, and on which of its records. */
 export function disputeState(order: AdminOrderDetail) {

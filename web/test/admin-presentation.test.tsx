@@ -1,12 +1,11 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { DetailFields } from "../src/components/detail/DetailPrimitives";
+import { FieldList } from "../src/components/record/FieldList";
 import { Empty, EmptyHeader, EmptyTitle, InlineEmpty } from "../src/components/admin-empty";
 describe("administrator content presentation", () => {
   it("uses its own container and preserves zero values while normalizing blanks", () => {
-    const {container} = render(<DetailFields items={[["空值", null], ["空文本", ""], ["零", 0], ["长值", "x".repeat(300)]]} wide={["长值"]} />);
-    expect(container.firstChild).toHaveClass("@container/detail-fields");
-    expect(container.querySelector("dl")).toHaveClass("@sm/detail-fields:grid-cols-2");
+    const {container} = render(<FieldList items={[{ label: "空值", value: null }, { label: "空文本", value: "" }, { label: "零", value: 0 }, { label: "长值", value: "x".repeat(300) }]} />);
+    expect(container.firstChild).toHaveClass("@container/fields");
     expect(screen.getAllByText("—")).toHaveLength(2);
     expect(screen.getByText("0")).toBeVisible();
     expect(screen.getByText("x".repeat(300))).toHaveClass("wrap-anywhere");

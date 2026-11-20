@@ -13,7 +13,6 @@ import { ErrorNotice } from "@/components/request-state";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { useAssociateIncome } from "./FinancialActions";
 import { useRelatedOrder } from "./DetailPrimitives";
-import { useRelatedLedger } from "./PaymentEvidence";
 import {
   evidenceLinkClass,
   evidenceNoteClass,
@@ -22,6 +21,7 @@ import {
   orderPaymentStatus,
   PendingEvidence,
   RelatedOrderRecord,
+  useRelatedLedger,
   type EvidenceOrder,
 } from "./EvidenceParts";
 

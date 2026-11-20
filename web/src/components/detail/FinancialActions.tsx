@@ -10,7 +10,7 @@ import { useSuccessToast } from "../Feedback";
 import { Button } from "@/components/ui/button";
 import { money } from "../../lib/format";
 import { FieldList } from "@/components/record/FieldList";
-import type { RecordAction } from "./RecordTools";
+import type { RecordAction } from "@/components/record/ActionMenu";
 type AssociateIncomeOptions = {
   orderId?: string;
   ledgerId?: string;

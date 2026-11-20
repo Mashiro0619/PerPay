@@ -12,7 +12,7 @@ import { OperationNavigationDialog } from "@/components/operation-navigation-dia
 import { StatusBadge } from "@/components/business-status";
 import { ListMoney } from "@/components/list-primitives";
 import { ErrorNotice } from "@/components/request-state";
-import type { RecordAction } from "@/components/detail/RecordTools";
+import type { RecordAction } from "@/components/record/ActionMenu";
 import { Disclosure } from "@/components/record/Disclosure";
 import { FieldList } from "@/components/record/FieldList";
 import { RecordTime, Timeline } from "@/components/record/Timeline";

@@ -16,7 +16,7 @@ import type { ReactNode } from "react";
 import { queryClient } from "../src/api/client";
 import { AuthBoundary, AuthPage } from "../src/auth";
 import { ReasonDialog } from "../src/components/ReasonDialog";
-import { DetailFields } from "../src/components/detail/DetailPrimitives";
+import { FieldList } from "../src/components/record/FieldList";
 import { AssociateIncomeAction } from "../src/components/detail/FinancialActions";
 import { FinancialDialog } from "../src/pages/FinancialDialog";
 import { PasswordEditorPage } from "../src/pages/SecuritySettings";
@@ -485,7 +485,7 @@ describe("operation dialog layout", () => {
             onClose={onClose}
             onSuccess={onSuccess}
           >
-            <DetailFields items={[["商品", productName]]} />
+            <FieldList items={[{ label: "商品", value: productName }]} />
           </ReasonDialog>
         ) : (
           <FinancialDialog

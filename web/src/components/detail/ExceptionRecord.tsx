@@ -15,8 +15,7 @@ import { ErrorNotice } from "@/components/request-state";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { useAssociateIncome } from "./FinancialActions";
 import { useRelatedOrder } from "./DetailPrimitives";
-import { useRelatedLedger } from "./PaymentEvidence";
-import { evidenceLinkClass, evidenceNoteClass, ledgerEntryFields, orderLedgerComparison, PendingEvidence, RelatedOrderRecord } from "./EvidenceParts";
+import { evidenceLinkClass, evidenceNoteClass, ledgerEntryFields, orderLedgerComparison, PendingEvidence, RelatedOrderRecord, useRelatedLedger } from "./EvidenceParts";
 
 /** A financial exception: why it was raised, the order and the entry it concerns, and what became of it. */
 export function ExceptionRecord({ exception }: { exception: FinancialException }) {

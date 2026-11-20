@@ -13,7 +13,8 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { describe, expect, it, vi } from "vitest";
 
-import { RecordTools } from "../src/components/detail/RecordTools";
+import { ActionBar } from "../src/components/record/ActionBar";
+import { ActionMenu } from "../src/components/record/ActionMenu";
 import { ReasonDialog } from "../src/components/ReasonDialog";
 import { Button } from "../src/components/ui/button";
 import { ErrorNotice } from "../src/components/request-state";
@@ -45,11 +46,11 @@ describe("official record action menus", () => {
     const user = userEvent.setup();
     render(
       <MemoryRouter>
-        <RecordTools data={{}} label="订单操作" />
+        <ActionBar menuLabel="更多操作，订单操作" technical={[{ title: "技术详情", data: {} }]} />
       </MemoryRouter>,
     );
     const trigger = screen.getByRole("button", { name: "更多操作，订单操作" });
-    expect(trigger).toHaveTextContent("更多操作");
+    expect(trigger).toHaveTextContent("更多");
     trigger.focus();
     await user.keyboard("{Enter}");
     expect(await screen.findByRole("menuitem", { name: "技术详情" })).toBeVisible();
@@ -61,14 +62,14 @@ describe("official record action menus", () => {
     const user = userEvent.setup();
     render(
       <MemoryRouter>
-        <RecordTools
-          data={{}}
-          label="更多操作"
-          actions={[
+        <ActionBar
+          menuLabel="更多操作"
+          menu={[
             { label: "首项", onSelect: selected },
             { label: "不可用", disabled: true, onSelect: selected },
             { label: "末项", onSelect: selected },
           ]}
+          technical={[{ title: "技术详情", data: {} }]}
         />
       </MemoryRouter>,
     );
@@ -96,8 +97,7 @@ describe("official record action menus", () => {
     const user = userEvent.setup();
     render(
       <MemoryRouter>
-        <RecordTools
-          data={{}}
+        <ActionMenu
           label="更多操作"
           actions={[{ label: "处理", onSelect: selected }]}
         />
@@ -119,8 +119,7 @@ describe("official record action menus", () => {
       const focus = useRef<HTMLButtonElement | null>(null);
       return (
         <>
-          <RecordTools
-            data={{}}
+          <ActionMenu
             label="更多操作"
             actions={[
               {
@@ -165,14 +164,14 @@ describe("official record action menus", () => {
     await waitFor(() => expect(trigger).toHaveFocus());
     expect(execute).not.toHaveBeenCalled();
   });
-  it("retains standalone URLs and expands technical data in place", async () => {
+  it("retains standalone URLs and opens technical data in a dialog", async () => {
     const user = userEvent.setup();
     render(
       <MemoryRouter>
-        <RecordTools
-          data={{ trace: "synthetic-evidence" }}
-          to="/orders/example"
-          label="更多操作"
+        <ActionBar
+          menuLabel="更多操作"
+          menu={[{ label: "查看详情", to: "/orders/example" }]}
+          technical={[{ title: "技术详情", data: { trace: "synthetic-evidence" } }]}
         />
       </MemoryRouter>,
     );

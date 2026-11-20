@@ -4,14 +4,13 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
-import { queryClient, type AdminOrderDetail, type OrderWebhookDeliveryDetail, type ReconciliationOrder, type WebhookDeliverySummary } from "../src/api/client";
+import { queryClient, type OrderWebhookDeliveryDetail, type WebhookDeliverySummary } from "../src/api/client";
 import Notifications from "../src/pages/Notifications";
 import NotificationDetail from "../src/pages/NotificationDetail";
 import { DataTable } from "../src/components/data-table";
-import { OrderFacts } from "../src/components/detail/DetailPrimitives";
 import { OrderNotificationsSection, useOrderNotifications } from "../src/components/detail/OrderNotificationRecords";
 import { WorkspaceProvider } from "../src/workspace";
-import { delivery, deliveryId, failedAttempt, paidOrder, paymentMatch } from "./detail-fixtures";
+import { delivery, deliveryId, failedAttempt, paidOrder } from "./detail-fixtures";
 import { json } from "./fixtures";
 import { mobileMedia } from "./mobile-media";
 import { recordAction } from "./menu-helper";
@@ -123,41 +122,6 @@ describe("order and notification copy follows its actual source", () => {
     expect(screen.getByText(paidOrder.merchant_order_no)).toBeVisible();
     expect(screen.getByRole("link", { name: paidOrder.product_name })).toHaveAttribute("href", "/orders/" + paidOrder.order_id);
     expect(screen.queryByText(paidOrder.order_id)).not.toBeInTheDocument();
-  });
-
-  it.each(["default", "comfortable"] as const)("preserves complete merchant identity and copy in %s order facts", async density => {
-    const merchant = "BUSINESS-" + "0123456789".repeat(12);
-    mount(<OrderFacts order={{ ...paidOrder, merchant_order_no: merchant }} density={density} layout="flow" />);
-    expect(screen.getByRole("link", { name: paidOrder.product_name })).toHaveAttribute("href", "/orders/" + paidOrder.order_id);
-    if (density === "comfortable") {
-      expect(screen.getByText("商户订单号（业务网站）", { selector: "dt" })).toBeVisible();
-      await userEvent.setup().click(screen.getByRole("button", { name: "复制商户订单号" }));
-      expect(await navigator.clipboard.readText()).toBe(merchant);
-    } else {
-      expect(screen.getByText(/商户订单号（业务网站）：/)).toHaveTextContent(merchant);
-      expect(screen.getByText(/网站编号（PerPay）：/)).toHaveTextContent(paidOrder.api_client_id);
-    }
-  });
-
-  it.each(["default", "comfortable"] as const)("keeps automatic, manual and absent bases distinct in %s summaries", density => {
-    function facts(shape: "admin" | "reconciliation", basis: "INFERRED" | "MANUAL" | "NONE") {
-      const value: AdminOrderDetail | ReconciliationOrder = shape === "admin"
-        ? { ...paidOrder, payment: { ...paidOrder.payment, basis } }
-        : { ...paymentMatch.order!, payment_basis: basis };
-      return <QueryClientProvider client={queryClient}><MemoryRouter><OrderFacts order={value} density={density} /></MemoryRouter></QueryClientProvider>;
-    }
-    const view = render(facts("admin", "INFERRED"));
-    for (const shape of ["admin", "reconciliation"] as const) {
-      view.rerender(facts(shape, "INFERRED"));
-      expect(screen.getByText("PerPay 按金额和付款时间推断")).toBeVisible();
-      expect(screen.queryByText("管理员人工关联")).not.toBeInTheDocument();
-      view.rerender(facts(shape, "MANUAL"));
-      expect(screen.getByText("管理员人工关联")).toBeVisible();
-      expect(screen.queryByText("PerPay 按金额和付款时间推断")).not.toBeInTheDocument();
-      view.rerender(facts(shape, "NONE"));
-      expect(screen.queryByText("管理员人工关联")).not.toBeInTheDocument();
-      expect(screen.queryByText("PerPay 按金额和付款时间推断")).not.toBeInTheDocument();
-    }
   });
 
   it.each([true, false])("identifies the acknowledgement time as a local notification receipt (latest=%s)", async latest => {

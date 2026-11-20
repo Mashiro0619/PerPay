@@ -5,7 +5,6 @@ import { MemoryRouter, Route, Routes } from "react-router";
 import { describe, expect, it, vi } from "vitest";
 import type { AdminOrderDetail, FinancialException } from "../src/api/client";
 import { queryClient } from "../src/api/client";
-import { LedgerFacts } from "../src/components/detail/PaymentEvidence";
 import { Toaster } from "../src/components/ui/toast";
 import EvidenceDetail from "../src/pages/ReconciliationDetail";
 import { WorkspaceProvider } from "../src/workspace";
@@ -199,13 +198,5 @@ describe("readable financial exception detail", () => {
       "/api/admin/v1/orders/" + orderId, "/api/admin/v1/reconciliation/ledger-entries/" + ledgerId,
     ]);
     expect(requests.every(request => request.method === "GET")).toBe(true);
-  });
-
-  it("does not group the identifiers in unrelated LedgerFacts callers", () => {
-    const { rerender } = render(<QueryClientProvider client={queryClient}><MemoryRouter><LedgerFacts entry={availableLedger} density="comfortable" layout="flow" /></MemoryRouter></QueryClientProvider>);
-    expect(screen.queryByRole("region", { name: "核对凭据" })).not.toBeInTheDocument();
-    expect(screen.getByText(availableLedger.provider_order_no)).toBeVisible();
-    rerender(<QueryClientProvider client={queryClient}><MemoryRouter><LedgerFacts entry={availableLedger} groupIdentifiers /></MemoryRouter></QueryClientProvider>);
-    expect(screen.queryByRole("region", { name: "核对凭据" })).not.toBeInTheDocument();
   });
 });

@@ -2,7 +2,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { describe, expect, it, vi } from "vitest";
-import { RecordTools } from "../src/components/detail/RecordTools";
+import { ActionBar } from "../src/components/record/ActionBar";
 import { TechnicalDetails } from "../src/components/detail/DetailPrimitives";
 import { mountOnboarding } from "./onboarding-fixture";
 import { recordAction } from "./menu-helper";
@@ -40,9 +40,13 @@ describe("context-preserving secondary dialogs", () => {
     const user = userEvent.setup();
     const { container } = render(
       <MemoryRouter>
-        <RecordTools
-          data={{ evidence: "raw-evidence", nested: { count: 2 } }}
-          identifiers={[["订单编号", "test-order"]]}
+        <ActionBar
+          menuLabel="更多操作，记录操作"
+          technical={[{
+            title: "技术详情",
+            data: { evidence: "raw-evidence", nested: { count: 2 } },
+            identifiers: [["订单编号", "test-order"]],
+          }]}
         />
       </MemoryRouter>,
     );

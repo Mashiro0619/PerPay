@@ -12,8 +12,8 @@ import { SubRecord } from "@/components/record/SubRecord";
 import { RecordTime } from "@/components/record/Timeline";
 import type { DatedTechnicalEntry } from "@/components/record/ActionBar";
 import { useIgnoreDisputeReminder } from "./disputed-order-actions";
+import { useRelatedLedger } from "./EvidenceParts";
 import { useAssociateIncome, useReverseMatch } from "./FinancialActions";
-import { useRelatedLedger } from "./PaymentEvidence";
 
 /** The facts needed to check an entry against the order, and the ones consulted only occasionally. */
 function ledgerFields(entry: ReconciliationLedgerEntry): { primary: Field[]; extra: Field[] } {
