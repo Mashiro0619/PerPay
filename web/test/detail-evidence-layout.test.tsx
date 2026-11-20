@@ -11,8 +11,8 @@ import {
 import { attemptEntries } from "../src/components/detail/NotificationEvidence";
 import { ConflictRecord } from "../src/components/detail/ConflictEvidence";
 import { ConflictComparison } from "../src/components/detail/ConflictComparison";
-import { CandidateEvidence } from "../src/components/detail/PaymentEvidence";
-import { candidate, failedAttempt, detailLedger } from "./detail-fixtures";
+import { CandidateRecord } from "../src/components/detail/CandidateRecord";
+import { candidate, failedAttempt, detailLedger, paidOrder } from "./detail-fixtures";
 import { mobileMedia } from "./mobile-media";
 const id = "11111111-1111-4111-8111-111111111111";
 const time = "2026-09-23T00:00:00.000Z";
@@ -215,12 +215,18 @@ describe("always-visible detail evidence", () => {
     ).toHaveTextContent("仅在技术详情查看的原始证据");
   });
   it("exposes matching facts immediately while keeping redundant ledger facts out", () => {
-    render(<CandidateEvidence candidate={candidate} ledger={detailLedger} />);
-    expect(screen.getByRole("heading", { name: "匹配依据" })).toBeVisible();
-    expect(screen.getByText("金额占用时间")).toBeVisible();
-    expect(
-      screen.queryByRole("button", { name: "匹配依据" }),
-    ).not.toBeInTheDocument();
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <CandidateRecord candidate={candidate} ledger={detailLedger} order={paidOrder} />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    const evidence = document.querySelector<HTMLElement>('[data-detail-section="evidence"]')!;
+    expect(within(evidence).getByRole("heading", { name: "匹配依据" })).toBeVisible();
+    expect(within(evidence).getByText("金额占用时间")).toBeVisible();
+    expect(within(evidence).queryByText("匹配金额")).not.toBeInTheDocument();
+    expect(within(evidence).queryByRole("button", { name: "匹配依据" })).not.toBeInTheDocument();
   });
   it("highlights differing incoming values without a separate difference column", () => {
     const detail = conflict(true);

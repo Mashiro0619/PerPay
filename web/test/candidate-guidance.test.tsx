@@ -1,13 +1,15 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, within } from "@testing-library/react";
 import type { ComponentProps } from "react";
-import { MemoryRouter } from "react-router";
+import { MemoryRouter, Route, Routes } from "react-router";
 import { describe, expect, it, vi } from "vitest";
 
 import { queryClient, type MatchCandidate } from "../src/api/client";
 import { CandidateRecord } from "../src/components/detail/CandidateRecord";
+import EvidenceDetail from "../src/pages/ReconciliationDetail";
+import { WorkspaceProvider } from "../src/workspace";
 import { candidate, detailLedger, paidOrder, paymentMatch } from "./detail-fixtures";
-import { apiError, order } from "./fixtures";
+import { apiError, json, ledgerId, order, orderId } from "./fixtures";
 
 const eligibleCandidate: MatchCandidate = {
   ...candidate,
@@ -112,5 +114,40 @@ describe("candidate guidance follows the current payment and ledger state", () =
     expect(screen.getByText(/订单或流水状态未知，暂不能人工关联/)).toBeVisible();
     expect(screen.queryByText(/需要你确认|核对订单与流水后可人工关联/)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "人工关联收款" })).not.toBeInTheDocument();
+  });
+
+  it("renders a scoped site ledger entry as a record with its candidate suggestions", async () => {
+    const unallocated = { ...detailLedger, state: "CANDIDATE" as const };
+    vi.stubGlobal("fetch", vi.fn(async (request: Request) => {
+      const path = new URL(request.url).pathname;
+      if (path === "/api/admin/v1/sites/shop") return json({ data: { client_id: "shop", deleted_at: null, configuration: { name: "测试网站" } } });
+      if (path === "/api/admin/v1/sites/shop/reconciliation/ledger-entries/" + ledgerId) return json({ data: unallocated });
+      if (path === "/api/admin/v1/sites/shop/reconciliation/ledger-entries/" + ledgerId + "/candidates") return json({ data: [eligibleCandidate] });
+      if (path === "/api/admin/v1/sites/shop/orders/" + orderId) return json({ data: { ...order, api_client_id: "shop" } });
+      throw new Error("unexpected request " + path);
+    }));
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={["/sites/shop/reconciliation/ledger/" + ledgerId]}>
+          <WorkspaceProvider>
+            <Routes>
+              <Route path="/sites/:clientId/reconciliation/:kind/:resourceId" element={<EvidenceDetail />} />
+            </Routes>
+          </WorkspaceProvider>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    const summary = await screen.findByRole("group", { name: "流水概况" });
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("支付宝收款 · 测试买家");
+    expect(within(summary).getByText("+¥1.01", { exact: true })).toBeVisible();
+    expect(await screen.findByRole("heading", { level: 3, name: order.product_name })).toBeVisible();
+    expect(screen.getAllByRole("heading", { level: 2 }).map(heading => heading.textContent)).toEqual([
+      "交易信息",
+      "可能匹配的订单，共 1 项",
+      "PerPay 记录",
+    ]);
+    const link = screen.getByRole("link", { name: "到全部网站处理这笔流水" });
+    expect(new URL(link.getAttribute("href")!, "http://perpay.test").pathname).toBe("/reconciliation/transactions/" + ledgerId);
+    expect(screen.getByRole("button", { name: "更多操作，流水记录操作" }).closest("[data-overlay-actions]")).not.toBeNull();
   });
 });

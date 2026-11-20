@@ -14,37 +14,19 @@ import { LedgerDetailRedirect } from "./ReconciliationRedirect";
 import { Link, useDetailBack } from "@/navigation";
 import { result } from "@/api/client";
 import { refreshReconciliationDetails } from "@/lib/record-refresh";
-import { dateTime, money } from "@/lib/format";
 import { label } from "@/lib/labels";
 import { QueryView } from "@/components/request-state";
-import {
-  CandidateCard,
-  LedgerFacts,
-} from "@/components/detail/PaymentEvidence";
 import { CandidateRecord } from "@/components/detail/CandidateRecord";
 import { ConflictRecord } from "@/components/detail/ConflictEvidence";
 import { ExceptionRecord } from "@/components/detail/ExceptionRecord";
 import { MatchRecord } from "@/components/detail/MatchRecord";
+import { SiteLedgerRecord, siteLedgerTitle } from "@/components/detail/SiteLedgerRecord";
 import {
-  DetailFields,
   DetailNavigation,
   DetailPage,
-  TechnicalDetails,
-  type DetailDensity,
   useDetailFetching,
 } from "@/components/detail/DetailPrimitives";
-import { DetailSection } from "@/components/detail/DetailSections";
-import { RecordTools } from "@/components/detail/RecordTools";
-import { AssociateIncomeAction } from "@/components/detail/FinancialActions";
 import { buttonVariants } from "@/components/ui/button";
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardContent,
-  CardFooter,
-} from "@/components/ui/card";
 import { Empty, EmptyHeader, EmptyTitle, EmptyDescription, EmptyContent, EmptyMedia } from "@/components/admin-empty";
 export default function EvidenceDetail() {
   const { clientId } = useWorkspace();
@@ -86,18 +68,13 @@ export function ReconciliationRecovery() {
 function EvidenceHeading({
   title,
   section,
-  loaded,
-  density = "default",
 }: {
   title: string;
   section?: string;
-  loaded?: boolean;
-  density?: DetailDensity;
 }) {
   const systemName = useSystemName();
   const overlay = useOverlayContext();
   const { clientId, site } = useWorkspace();
-  const { resourceId = "" } = useParams();
   const siteName = clientId ? site?.data?.data.configuration.name ?? clientId : "全部网站";
   const back = useDetailBack(
     "/reconciliation" + (section ? "?tab=" + section : ""),
@@ -108,27 +85,12 @@ function EvidenceHeading({
     if (!overlay) document.title = title + ` · ${siteName} · ${systemName}`;
   }, [title, systemName, siteName, overlay]);
   return (
-    <><PageHeading title={!overlay && loaded && density !== "comfortable" ? `${title} · ${resourceId}` : title} />
-    {density === "comfortable" || overlay ? (
-      <DetailNavigation back={back}>
-        <PageHeaderActions><RefreshButton disabled={fetching > 0} onClick={() => {
-          void refreshReconciliationDetails();
-        }} busy={fetching > 0} /></PageHeaderActions>
-      </DetailNavigation>
-    ) : (
-    <div className="flex items-center justify-between gap-4">
-      <Link
-        to={back.to}
-        state={back.state}
-        className={buttonVariants({ variant: "ghost", size: "sm" })}
-      >
-        <ArrowLeft data-icon="inline-start" />
-        {back.label}
-      </Link>
+    <><PageHeading title={title} />
+    <DetailNavigation back={back}>
       <PageHeaderActions><RefreshButton disabled={fetching > 0} onClick={() => {
-          void refreshReconciliationDetails();
-        }} busy={fetching > 0} /></PageHeaderActions>
-    </div>)}
+        void refreshReconciliationDetails();
+      }} busy={fetching > 0} /></PageHeaderActions>
+    </DetailNavigation>
     </>
   );
 }
@@ -143,7 +105,7 @@ function ConflictDetail({ resourceId }: { resourceId: string }) {
   });
   return (
     <DetailPage>
-      <EvidenceHeading title={query.data ? label(query.data.data.conflict.conflict_type) : "账本冲突"} section="conflicts" loaded={query.isSuccess} density="comfortable" />
+      <EvidenceHeading title={query.data ? label(query.data.data.conflict.conflict_type) : "账本冲突"} section="conflicts" />
       <QueryView query={query}>
         {({ data }) => <ConflictRecord key={data.conflict.conflict_id} detail={data} />}
       </QueryView>
@@ -163,7 +125,7 @@ function MatchDetail({ resourceId }: { resourceId: string }) {
   });
   return (
     <DetailPage>
-      <EvidenceHeading title="收款关联" loaded={query.isSuccess} density="comfortable" />
+      <EvidenceHeading title="收款关联" />
       <QueryView query={query}>
         {({ data }) => clientId ? <MatchRecord key={data.payment_match_id} match={data} /> : <Navigate replace to={{ pathname: "/reconciliation/transactions/" + data.ledger_entry_id, search: location.search, hash: "#match-" + data.payment_match_id }} state={location.state} />}
       </QueryView>
@@ -184,7 +146,7 @@ function ExceptionDetail({ resourceId }: { resourceId: string }) {
   });
   return (
     <DetailPage>
-      <EvidenceHeading title={query.data ? label(query.data.data.exception_type) : "账务异常详情"} section="exceptions" loaded={query.isSuccess} density="comfortable" />
+      <EvidenceHeading title={query.data ? label(query.data.data.exception_type) : "账务异常详情"} section="exceptions" />
       <QueryView query={query}>
         {({ data }) => <ExceptionRecord key={data.exception_id} exception={data} />}
       </QueryView>
@@ -205,7 +167,7 @@ function CandidateDetail({ resourceId }: { resourceId: string }) {
   });
   return (
     <DetailPage>
-      <EvidenceHeading title="可能匹配的记录" loaded={query.isSuccess} density="comfortable" />
+      <EvidenceHeading title="可能匹配的记录" />
       <QueryView query={query}>
         {({ data }) => <CandidateRecord key={data.candidate_id} candidate={data} />}
       </QueryView>
@@ -214,7 +176,6 @@ function CandidateDetail({ resourceId }: { resourceId: string }) {
 }
 function LedgerDetail({ resourceId }: { resourceId: string }) {
   const api = useWorkspaceApi();
-  const overlay = useOverlayContext();
   const ledger = useQuery({
     queryKey: ["ledger", resourceId],
     queryFn: ({ signal }) =>
@@ -238,76 +199,9 @@ function LedgerDetail({ resourceId }: { resourceId: string }) {
   });
   return (
     <DetailPage>
-      <EvidenceHeading title="支付宝流水" loaded={ledger.isSuccess} />
+      <EvidenceHeading title={ledger.data ? siteLedgerTitle(ledger.data.data) : "支付宝流水"} />
       <QueryView query={ledger}>
-        {({ data }) => (
-          <>
-            <Card>
-              <CardHeader>
-                <CardTitle role="heading" aria-level={2}>
-                  支付宝流水
-                </CardTitle>
-                <CardDescription>PerPay 处理状态：{label(data.state)}</CardDescription>
-              </CardHeader>
-              <CardContent className="flex min-w-0 flex-col gap-4">
-                <LedgerFacts entry={data} density={overlay ? "comfortable" : "default"} layout={overlay ? "flow" : "columns"} groupIdentifiers={!!overlay} />
-                {overlay ? <DetailSection title="PerPay 记录" headingLevel={3}>
-                  <DetailFields items={[["写入时间", dateTime(data.created_at)]]} />
-                </DetailSection> : <DetailFields
-                  items={[["写入时间", dateTime(data.created_at)]]}
-                />}
-                <RecordTools
-                  technical={!overlay}
-                  data={data}
-                  identifiers={[
-                    ["内部流水编号（PerPay）", resourceId],
-                    ["支付宝流水号", data.external_event_id],
-                  ]}
-                  label="流水记录操作"
-                />
-                {overlay && <TechnicalDetails title="流水技术信息" data={data} identifiers={[
-                  ["内部流水编号（PerPay）", resourceId],
-                  ["支付宝流水号", data.external_event_id],
-                ]} />}
-              </CardContent>
-              {data.direction === "CREDIT" &&
-                ["UNALLOCATED", "CANDIDATE", "CONFLICT"].includes(
-                  data.state,
-                ) && (
-                  <CardFooter>
-                    <AssociateIncomeAction
-                      ledgerId={resourceId}
-                      ledgerLabel={
-                        money(data.amount_cents) +
-                        " · " +
-                        dateTime(data.occurred_at)
-                      }
-                    />
-                  </CardFooter>
-                )}
-            </Card>
-            {data.direction === "CREDIT" && (
-              <QueryView query={candidates}>
-                {({ data: records }) =>
-                  records.length ? (
-                    records.map((candidate) => (
-                      <CandidateCard
-                        key={candidate.candidate_id}
-                        candidate={candidate}
-                        ledger={data}
-                        embedded
-                      />
-                    ))
-                  ) : (
-                    <p className="text-sm text-muted-foreground">
-                      暂无可能匹配的订单。
-                    </p>
-                  )
-                }
-              </QueryView>
-            )}
-          </>
-        )}
+        {({ data }) => <SiteLedgerRecord key={data.ledger_entry_id} entry={data} candidates={candidates} />}
       </QueryView>
     </DetailPage>
   );
