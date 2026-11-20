@@ -8,6 +8,7 @@ import { Link } from "@/navigation";
 import { ListDateTime, ListMoney } from "@/components/list-primitives";
 import { cn } from "@/lib/utils";
 import { CopyValue } from "@/components/copy-value";
+import { FieldList } from "@/components/record/FieldList";
 import { useOverlayContext } from "@/lib/overlay-context";
 import { OrderStatusBadge, paymentBasisDescription } from "@/components/business-status";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -203,16 +204,18 @@ export function TechnicalDetailsDialog({
         <DialogBody>
           {children}
           {identifiers.length > 0 && (
-            <DetailFields
-              wide={identifiers.map(([name]) => name)}
+            <FieldList
               items={identifiers
                 .filter(
                   (entry): entry is readonly [string, string] => !!entry[1],
                 )
-                .map(([name, value]) => [
-                  name,
-                  <CopyValue value={value} label={"复制" + name} />,
-                ])}
+                .map(([name, value]) => ({
+                  label: name,
+                  kind: "id" as const,
+                  value,
+                  copy: value,
+                  copyLabel: "复制" + name,
+                }))}
             />
           )}
           <pre

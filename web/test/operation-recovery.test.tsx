@@ -13,7 +13,8 @@ import { describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
 import { ApiError, queryClient } from "../src/api/client";
 import { ReasonDialog } from "../src/components/ReasonDialog";
-import { ReverseMatchAction } from "../src/components/detail/FinancialActions";
+import { useReverseMatch } from "../src/components/detail/FinancialActions";
+import { ActionMenu } from "../src/components/record/ActionMenu";
 import { Toaster } from "../src/components/ui/toast";
 import { paymentMatch } from "./detail-fixtures";
 import { json } from "./fixtures";
@@ -139,15 +140,22 @@ describe("fixed-evidence operation recovery", () => {
 
 describe("reversal focus after success", () => {
   it.each([true, false])(
-    "uses stable content only for an embedded action (%s)",
-    async (embedded) => {
+    "uses stable content only when reversal moves the record (%s)",
+    async (movesOnSuccess) => {
       vi.spyOn(queryClient, "invalidateQueries").mockResolvedValue(undefined);
       const fetchMock = vi.fn(async () => json({ data: {} }));
       vi.stubGlobal("fetch", fetchMock);
+      function Example() {
+        const { action, dialog } = useReverseMatch(paymentMatch, movesOnSuccess);
+        return <>
+          <ActionMenu actions={action ? [action] : []} label="更多操作，收款关联记录操作" />
+          {dialog}
+        </>;
+      }
       mount(
         <main id="main-content" tabIndex={-1}>
           <a href="#order-overview">返回订单</a>
-          <ReverseMatchAction match={paymentMatch} embedded={embedded} />
+          <Example />
         </main>,
       );
       const user = userEvent.setup();
@@ -167,7 +175,7 @@ describe("reversal focus after success", () => {
       );
       await waitFor(() =>
         expect(
-          embedded ? screen.getByRole("link", { name: "返回订单" }) : trigger,
+          movesOnSuccess ? screen.getByRole("link", { name: "返回订单" }) : trigger,
         ).toHaveFocus(),
       );
       expect(fetchMock).toHaveBeenCalledOnce();

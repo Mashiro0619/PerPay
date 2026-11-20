@@ -8,9 +8,8 @@ import { useWorkspaceApi } from "@/workspace";
 import { StatusBadge } from "@/components/business-status";
 import { useSuccessToast } from "@/components/Feedback";
 import { ReasonDialog } from "@/components/ReasonDialog";
-import type { Field } from "@/components/record/FieldList";
+import { FieldList, type Field } from "@/components/record/FieldList";
 import { RecordTime, type TimelineEntry } from "@/components/record/Timeline";
-import { DetailFields } from "./DetailPrimitives";
 
 type DeliveryContext = WebhookDeliveryDetail & {
   attempts: readonly WebhookAttempt[];
@@ -58,11 +57,10 @@ export function useRedelivery(detail: DeliveryContext) {
             void refreshNotificationRecords(detail.event.order_id, detail.delivery.delivery_id);
           }}
         >
-          <DetailFields
-            wide={["通知地址"]}
+          <FieldList
             items={[
-              ["事件", label(snapshot.event.event_type)],
-              ["通知地址", snapshot.target.target_url],
+              { label: "事件", value: label(snapshot.event.event_type) },
+              { label: "通知地址", kind: "id", value: snapshot.target.target_url },
             ]}
           />
         </ReasonDialog>

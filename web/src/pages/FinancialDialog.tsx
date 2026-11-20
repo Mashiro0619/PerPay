@@ -18,9 +18,9 @@ import { OperationRecoveryNotice } from "@/components/operation-recovery-notice"
 import { OperationNavigationDialog } from "@/components/operation-navigation-dialog";
 import { useOperationNavigation } from "@/drafts";
 import { ErrorNotice } from "@/components/request-state";
-import { DetailFields, OrderFacts } from "@/components/detail/DetailPrimitives";
 import { AlipayAccountIdentity } from "@/components/alipay-account-identity";
-import { LedgerFacts } from "@/components/detail/PaymentEvidence";
+import { ledgerEntryFields, RelatedOrderRecord } from "@/components/detail/EvidenceParts";
+import { FieldList } from "@/components/record/FieldList";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { ManualCandidatePicker } from "@/components/detail/ManualCandidatePicker";
@@ -88,6 +88,7 @@ export function FinancialDialog({
   const reasonField = useRef<HTMLTextAreaElement>(null);
   const content = useRef<HTMLDivElement>(null);
   const hintId = useId();
+  const ledgerHeadingId = useId();
   const previewController = useRef<AbortController | null>(null);
   const recheckedConflict = useRef(false);
   const preview = useMutation({
@@ -315,18 +316,23 @@ export function FinancialDialog({
             <ErrorNotice error={preview.error} />
             {preview.data && (
               <>
-                <DetailFields items={[
-                  ["订单收款账号", <div className="flex min-w-0 flex-col gap-1">
-                    <AlipayAccountIdentity id={preview.data.order.alipay_account_id} name={preview.data.order.alipay_account_name} />
-                    {showAccountIds && <span className="text-xs text-muted-foreground">账号 ID：{preview.data.order.alipay_account_id}</span>}
-                  </div>],
-                  ["流水收款账号", <div className="flex min-w-0 flex-col gap-1">
-                    <AlipayAccountIdentity id={preview.data.ledger.alipay_account_id} name={preview.data.ledger.alipay_account_name} />
-                    {showAccountIds && <span className="text-xs text-muted-foreground">账号 ID：{preview.data.ledger.alipay_account_id}</span>}
-                  </div>],
+                <FieldList items={[
+                  {
+                    label: "订单收款账号",
+                    value: <AlipayAccountIdentity id={preview.data.order.alipay_account_id} name={preview.data.order.alipay_account_name} />,
+                    ...(showAccountIds ? { hint: "账号 ID：" + preview.data.order.alipay_account_id } : {}),
+                  },
+                  {
+                    label: "流水收款账号",
+                    value: <AlipayAccountIdentity id={preview.data.ledger.alipay_account_id} name={preview.data.ledger.alipay_account_name} />,
+                    ...(showAccountIds ? { hint: "账号 ID：" + preview.data.ledger.alipay_account_id } : {}),
+                  },
                 ]} />
-                <OrderFacts order={preview.data.order} linked={false} />
-                <LedgerFacts entry={preview.data.ledger} />
+                <RelatedOrderRecord order={preview.data.order} linked={false} showSiteId />
+                <section className="flex min-w-0 flex-col gap-2" aria-labelledby={ledgerHeadingId}>
+                  <h3 id={ledgerHeadingId} className="text-sm font-medium">支付宝流水</h3>
+                  <FieldList items={ledgerEntryFields(preview.data.ledger)} />
+                </section>
                 {disputed && !refunded && <Alert>
                   <AlertCircle />
                   <AlertDescription>核对付款人、交易凭证与金额后填写理由。确认后将重新确认本订单收款，并发送新的收款通知。</AlertDescription>

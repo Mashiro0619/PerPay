@@ -52,18 +52,23 @@ export function orderLedgerComparison(order: EvidenceOrder, entry: Reconciliatio
   ];
 }
 
-/** One related order presented as a sub-record with its business facts and a link to its full record. */
-export function RelatedOrderRecord({ order }: { order: EvidenceOrder }) {
+/** One related order presented as a sub-record with its business facts and an optional link to its full record. */
+export function RelatedOrderRecord({ order, linked = true, showSiteId = false }: { order: EvidenceOrder; linked?: boolean; showSiteId?: boolean }) {
   const payment = orderPaymentStatus(order);
   const checkout = "checkout" in order ? order.checkout.status : order.checkout_status;
   const refundMarked = "refund_mark" in order && order.refund_mark.marked;
   const ended = orderCheckoutEnd(order);
+  const siteName = order.site_name ?? "业务网站名称暂不可用";
   return <SubRecord title={order.product_name}
     status={<OrderStatusBadge payment={payment} checkout={checkout} refundMarked={refundMarked} />}
-    href={"/orders/" + order.order_id} hrefLabel="查看订单">
+    {...(linked ? { href: "/orders/" + order.order_id, hrefLabel: "查看订单" } : {})}>
     <FieldList items={[
       { label: "商户订单号", kind: "id", value: order.merchant_order_no, copy: order.merchant_order_no },
-      { label: "业务网站", value: <Link global className="underline underline-offset-4" to={"/sites/" + encodeURIComponent(order.api_client_id) + "/summary"}>{order.site_name ?? "业务网站名称暂不可用"}</Link> },
+      {
+        label: "业务网站",
+        value: linked ? <Link global className="underline underline-offset-4" to={"/sites/" + encodeURIComponent(order.api_client_id) + "/summary"}>{siteName}</Link> : siteName,
+        ...(showSiteId ? { hint: "网站编号：" + order.api_client_id } : {}),
+      },
       { label: "应付金额", kind: "money", value: money(order.payable_amount_cents) },
       order.received_amount_cents !== null && { label: "实收金额", kind: "money", value: money(order.received_amount_cents) },
       { label: "创建时间", kind: "time", value: <RecordTime value={order.created_at} /> },

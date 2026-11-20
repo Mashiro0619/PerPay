@@ -9,8 +9,8 @@ import { ReasonDialog } from "../ReasonDialog";
 import { useSuccessToast } from "../Feedback";
 import { Button } from "@/components/ui/button";
 import { money } from "../../lib/format";
-import { DetailFields } from "./DetailPrimitives";
-import { RecordTools, type RecordAction } from "./RecordTools";
+import { FieldList } from "@/components/record/FieldList";
+import type { RecordAction } from "./RecordTools";
 type AssociateIncomeOptions = {
   orderId?: string;
   ledgerId?: string;
@@ -128,59 +128,15 @@ export function useReverseMatch(match: PaymentMatchDetail | undefined, movesOnSu
         void refreshFinancialRecords();
       }}
     >
-      <DetailFields
+      <FieldList
         items={[
-          ["商品", snapshot.order.product_name],
-          ["商户订单号", snapshot.order.merchant_order_no],
-          ["支付宝交易金额", money(snapshot.ledger_entry.amount_cents)],
-          ["支付宝订单号", snapshot.ledger_entry.provider_order_no],
+          { label: "商品", value: snapshot.order.product_name },
+          { label: "商户订单号", kind: "id", value: snapshot.order.merchant_order_no },
+          { label: "支付宝交易金额", kind: "money", value: money(snapshot.ledger_entry.amount_cents) },
+          { label: "支付宝订单号", kind: "id", value: snapshot.ledger_entry.provider_order_no },
         ]}
       />
     </ReasonDialog>
   );
   return { action, dialog };
-}
-export function ReverseMatchAction({
-  match,
-  embedded = false,
-  inline = false,
-  technical = true,
-  includeOrderIdentifiers = false,
-  movesOnSuccess = false,
-}: {
-  match: PaymentMatchDetail;
-  embedded?: boolean;
-  inline?: boolean;
-  technical?: boolean;
-  includeOrderIdentifiers?: boolean;
-  /** The surrounding list moves a reversed record into its history section. */
-  movesOnSuccess?: boolean;
-}) {
-  const { action, dialog } = useReverseMatch(match, embedded || movesOnSuccess);
-  return (
-    <>
-      <RecordTools
-        inline={inline}
-        technical={technical}
-        label="收款关联记录操作"
-        data={match}
-        identifiers={[
-          ["关联编号", match.payment_match_id],
-          ["流水编号", match.ledger_entry_id],
-          ["可能匹配记录编号", match.candidate_id],
-          ...(includeOrderIdentifiers ? [
-            ["内部订单编号", match.order.order_id],
-            ["网站编号", match.order.api_client_id],
-          ] as const : []),
-        ]}
-        to={
-          embedded
-            ? "/reconciliation/matches/" + match.payment_match_id
-            : undefined
-        }
-        actions={action ? [action] : []}
-      />
-      {dialog}
-    </>
-  );
 }
