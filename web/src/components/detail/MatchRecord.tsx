@@ -90,7 +90,7 @@ export function MatchRecord({ match }: { match: PaymentMatchDetail }) {
       menu={reverse.action ? [reverse.action] : []}
       technical={[{ title: "收款关联技术信息", data: match, identifiers: [
         ["关联编号", match.payment_match_id],
-        ["流水编号", match.ledger_entry_id],
+        ["PerPay 流水编号", match.ledger_entry_id],
         ["可能匹配记录编号", match.candidate_id],
         ["内部订单编号", match.order.order_id],
         ["网站编号", match.order.api_client_id],

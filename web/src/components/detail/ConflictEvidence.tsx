@@ -15,8 +15,7 @@ import { Section, Sections } from "@/components/record/Sections";
 import { RecordTime, Timeline, type TimelineEntry } from "@/components/record/Timeline";
 import { Button } from "@/components/ui/button";
 import { ConflictComparison, conflictAttentionCount } from "./ConflictComparison";
-
-const link = "text-[0.8125rem] leading-5 underline underline-offset-4";
+import { evidenceLinkClass } from "./EvidenceParts";
 
 const explanations: Record<string, string> = {
   DUPLICATE_EXTERNAL_ID: "同一支付宝流水号对应不同交易内容，已有流水未被覆盖。",
@@ -75,7 +74,7 @@ export function ConflictRecord({ detail }: { detail: LedgerConflictDetail }) {
     </OverlaySummary>
     <Sections label="账本冲突详情内容">
       {hasComparison && <Section id="comparison" title="交易对照" {...(attention ? { count: attention } : {})}
-        actions={existing && <Link to={"/reconciliation/ledger/" + existing.ledger_entry_id} className={link}>查看已有流水<span aria-hidden="true"> ›</span></Link>}>
+        actions={existing && <Link to={"/reconciliation/ledger/" + existing.ledger_entry_id} className={evidenceLinkClass}>查看已有流水<span aria-hidden="true"> ›</span></Link>}>
         <ConflictComparison detail={detail} />
       </Section>}
       {detail.raw_page && <Section id="collection" title="查账摘要">

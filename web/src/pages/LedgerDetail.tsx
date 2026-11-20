@@ -279,7 +279,7 @@ function LedgerRecord({ entry }: { entry: AdminLedgerDetail }) {
         ...entry.matches.map((match, index) => {
           const detail = matchQueries[index]?.data?.data;
           return { id: "match-" + match.payment_match_id, title: "收款关联技术信息", created: match.created_at, data: detail ?? match, identifiers: [
-            ["关联编号", match.payment_match_id], ["流水编号", match.ledger_entry_id], ["可能匹配记录编号", detail?.candidate_id ?? null],
+            ["关联编号", match.payment_match_id], ["PerPay 流水编号", match.ledger_entry_id], ["可能匹配记录编号", detail?.candidate_id ?? null],
             ["内部订单编号", match.order_id], ["网站编号", match.api_client_id],
           ] as const };
         }),

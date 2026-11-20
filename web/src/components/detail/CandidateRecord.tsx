@@ -85,7 +85,7 @@ export function CandidateRecord({
         {!entry && <PendingEvidence query={ledgerQuery} label="正在读取关联流水…" />}
         {!ledger && <ErrorNotice scope="page" error={ledgerQuery.error} retainedData={!!entry} retry={() => { void ledgerQuery.refetch(); }} placeholder="关联流水读取失败，请刷新重试。" />}
       </Section>
-      <Section id="evidence" title="匹配依据">
+      <Section id="evidence" title="匹配依据" empty={!incomplete && !facts.length ? "暂无更多匹配依据。" : undefined}>
         {incomplete && <p className={evidenceNoteClass}>匹配信息不完整</p>}
         <FieldList items={facts.map(([label, value]) => ({ label, value }))} />
       </Section>

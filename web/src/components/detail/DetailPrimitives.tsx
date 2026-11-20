@@ -37,7 +37,7 @@ export function useDetailFetching() {
   });
 }
 export function DetailPage({ children }: { children: ReactNode }) {
-  return <div className="flex min-w-0 flex-col gap-4" data-detail-page data-detail-layout="readable">{children}</div>;
+  return <div className="flex min-w-0 flex-col gap-4" data-detail-page>{children}</div>;
 }
 export function DetailNavigation({ back, identifier, identifierLabel = "记录编号", global = false, children }: {
   back: { to: string; label: string; state?: unknown };
