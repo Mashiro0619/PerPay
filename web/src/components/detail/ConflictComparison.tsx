@@ -1,13 +1,10 @@
-import { useId, useState } from "react";
-import { ArrowLeftRight, ChevronDown, CircleAlert } from "lucide-react";
 import type { LedgerConflictDetail } from "@/api/client";
 import { comparisonAmount, conflictComparison } from "@/lib/conflict-comparison";
 import { money } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { useOverlayContext } from "@/lib/overlay-context";
 import { useListSize } from "@/hooks/use-list-size";
-import { Button } from "@/components/ui/button";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Disclosure } from "@/components/record/Disclosure";
+import { FieldList, type Field } from "@/components/record/FieldList";
 import {
   Table,
   TableHeader,
@@ -16,34 +13,31 @@ import {
   TableHead,
   TableCell,
 } from "@/components/ui/table";
-import {
-  Item,
-  ItemGroup,
-  ItemHeader,
-  ItemTitle,
-  ItemContent,
-} from "@/components/ui/item";
+
 type ComparisonRow = ReturnType<typeof conflictComparison>[number];
-function Difference({ row }: { row: ComparisonRow }) {
-  if (!row.differs && !row.invalid)
-    return (
-      <span className="text-muted-foreground" role="img" aria-label="未标记差异">
-        —
-      </span>
-    );
-  const Icon = row.invalid ? CircleAlert : ArrowLeftRight;
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1 whitespace-nowrap",
-        row.invalid && "text-destructive",
-      )}
-    >
-      <Icon className="size-3.5" aria-hidden="true" />
-      {row.invalid ? "异常" : "不同"}
-    </span>
-  );
+
+const note = "text-[0.8125rem] leading-5 text-muted-foreground";
+const identifierFields = new Set(["支付宝流水号", "支付宝订单号", "支付宝商户单号"]);
+
+function formatRows(detail: LedgerConflictDetail): ComparisonRow[] {
+  return conflictComparison(detail).map((row) => {
+    if (row.name !== "支付宝交易金额" || row.invalid) return row;
+    const cents = comparisonAmount(row.incoming);
+    return cents === null ? row : { ...row, incoming: money(cents) };
+  });
 }
+
+/** Count of differing or invalid fields when both incoming and existing records are present. */
+export function conflictAttentionCount(detail: LedgerConflictDetail): number {
+  if (!detail.incoming_event || !detail.existing_ledger_entry) return 0;
+  return formatRows(detail).filter((row) => row.differs || row.invalid).length;
+}
+
+/**
+ * Compares an incoming conflict event against the existing ledger entry.
+ * When both sides exist, differing or invalid fields lead and matching ones
+ * fold away; when only one side exists, it is shown as a single field list.
+ */
 export function ConflictComparison({
   detail,
 }: {
@@ -52,174 +46,162 @@ export function ConflictComparison({
   if (!detail.incoming_event && !detail.existing_ledger_entry) return null;
   return <ComparisonContent key={detail.conflict.conflict_id} detail={detail} />;
 }
+
+function singleSideFields(rows: ComparisonRow[], side: "incoming" | "existing"): Field[] {
+  return rows.map((row) => {
+    const raw = row[side];
+    const kind: Field["kind"] = identifierFields.has(row.name) && raw ? "id"
+      : row.name === "支付宝交易金额" && !row.invalid ? "money"
+        : row.name === "支付宝交易时间" && !row.invalid ? "time"
+          : "text";
+    return {
+      label: row.name,
+      kind,
+      ...(kind === "id" && raw ? { copy: raw } : {}),
+      value: row.invalid ? (
+        <span className="inline-flex flex-wrap items-baseline gap-1.5" data-comparison-invalid>
+          <span className="font-medium text-destructive">{raw ?? "未提供"}</span>
+          <span className="text-xs font-medium text-destructive">异常</span>
+        </span>
+      ) : (raw ?? "未提供"),
+    };
+  });
+}
+
 function ComparisonContent({
   detail,
 }: {
   detail: LedgerConflictDetail;
 }) {
-  const titleId = useId();
-  const [showSame, setShowSame] = useState(false);
-  const overlay = useOverlayContext();
-  const { ref, isSummary } = useListSize<HTMLElement>();
+  const { ref, size } = useListSize<HTMLDivElement>();
+  // A 3-column comparison table fits comfortably from 32rem up (44rem drawers are ~39.5rem inside).
+  const compact = size.container > 0 && size.container < 32 * size.rem;
   const existing = detail.existing_ledger_entry;
-  const rows = conflictComparison(detail).map((row) => {
-    if (row.name !== "支付宝交易金额" || row.invalid) return row;
-    const cents = comparisonAmount(row.incoming);
-    return cents === null ? row : { ...row, incoming: money(cents) };
-  });
+  const incoming = detail.incoming_event;
+  const rows = formatRows(detail);
   const attention = rows.filter((row) => row.differs || row.invalid);
   const remaining = rows.filter((row) => !row.differs && !row.invalid);
-  const canCompare = !!existing && !!detail.incoming_event;
-  const visibleRows = canCompare ? attention : [...attention, ...remaining];
-  return (
-    <section
-      ref={ref}
-      className={cn("flex w-full min-w-0 flex-col gap-3", overlay && "detail-section")}
-      aria-labelledby={titleId}
-      data-conflict-comparison
-    >
-      <div className="flex flex-wrap items-baseline gap-2">
-        <h3 id={titleId} className="text-sm font-medium">
-          交易对照
-        </h3>
-        {!existing && (
-          <p className="text-xs text-muted-foreground">无可对照流水</p>
-        )}
+  const canCompare = !!existing && !!incoming;
+
+  if (!canCompare) {
+    return (
+      <div ref={ref} className="flex w-full min-w-0 flex-col gap-3" data-conflict-comparison>
+        <p className={note}>{existing ? "无本次收到的单笔记录，以下为已保存的支付宝流水。" : "无可对照流水"}</p>
+        <FieldList items={singleSideFields(rows, incoming ? "incoming" : "existing")} />
       </div>
-      {canCompare && (
-        <p className="text-sm text-muted-foreground" data-comparison-summary>
-          {attention.length > 0
-            ? `${attention.length} 项需核对 · ${remaining.length} 项相同`
-            : "当前对照字段未标记差异"}
-        </p>
-      )}
-      {visibleRows.length > 0 && (
+    );
+  }
+
+  return (
+    <div ref={ref} className="flex w-full min-w-0 flex-col gap-3" data-conflict-comparison>
+      <p className={note} data-comparison-summary>
+        {attention.length > 0
+          ? `${attention.length} 项需核对 · ${remaining.length} 项相同`
+          : "当前对照字段未标记差异"}
+      </p>
+      {attention.length > 0 && (
         <ComparisonRows
-          rows={visibleRows}
-          existing={!!existing}
-          isSummary={isSummary}
-          label={isSummary ? "逐字段交易对照" : "交易对照"}
+          rows={attention}
+          compact={compact}
+          label={compact ? "逐字段交易对照" : "交易对照"}
         />
       )}
-      {canCompare && remaining.length > 0 && (
-        <Collapsible open={showSame} onOpenChange={setShowSame} className="flex min-w-0 flex-col gap-3">
-          <CollapsibleTrigger render={<Button variant="outline" size="sm" />} className="h-auto min-h-8 max-w-full self-start whitespace-normal">
-            <ChevronDown data-icon="inline-start" className={cn(showSame && "rotate-180")} />
-            {showSame ? "收起" : "查看"}相同字段（{remaining.length}）
-          </CollapsibleTrigger>
-          <CollapsibleContent>
-            <ComparisonRows rows={remaining} existing isSummary={isSummary} label="相同字段对照" />
-          </CollapsibleContent>
-        </Collapsible>
+      {remaining.length > 0 && (
+        <Disclosure label="相同字段" count={remaining.length}>
+          <ComparisonRows rows={remaining} compact={compact} label="相同字段对照" />
+        </Disclosure>
       )}
-    </section>
+    </div>
   );
 }
 
 function ComparisonRows({
   rows,
-  existing,
-  isSummary,
+  compact,
   label,
 }: {
   rows: ComparisonRow[];
-  existing: boolean;
-  isSummary: boolean;
+  compact: boolean;
   label: string;
 }) {
-  return (
-    !isSummary ? (
-      <div
-        className="business-table-surface"
-        data-embedded="true"
-        data-density="compact"
-        data-comparison-desktop
-      >
-        <Table aria-label={label} className="business-table table-fixed">
-          <colgroup>
-            <col className="w-32" />
-            <col />
-            {existing && <col />}
-            <col className="w-20" />
-          </colgroup>
-          <TableHeader>
-            <TableRow>
-              <TableHead>字段</TableHead>
-              <TableHead className="whitespace-normal">本次收到的记录{existing && "（新值）"}</TableHead>
-              {existing && <TableHead className="whitespace-normal">已保存的支付宝流水（旧值）</TableHead>}
-              <TableHead>{existing ? "差异" : "校验结果"}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {rows.map((row) => (
-              <TableRow
-                key={row.name}
-                data-different={row.differs || undefined}
-                data-invalid={row.invalid || undefined}
-              >
-                <TableHead scope="row" className="whitespace-normal">
-                  {row.name}
-                </TableHead>
-                <TableCell className="whitespace-pre-wrap wrap-anywhere">
-                  {row.incoming ?? "未提供"}
-                </TableCell>
-                {existing && (
-                  <TableCell className="whitespace-pre-wrap wrap-anywhere">
-                    {row.existing ?? "未提供"}
-                  </TableCell>
-                )}
-                <TableCell data-comparison-result>
-                  <Difference row={row} />
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
-      ) : (
-      <ItemGroup
-        role="group"
-        aria-label={label}
-        className="record-list"
-        data-density="compact"
-        data-comparison-mobile
-      >
+  if (compact) {
+    return (
+      <div role="group" aria-label={label} className="flex min-w-0 flex-col gap-2" data-comparison-mobile>
         {rows.map((row) => (
-          <Item
+          <div
             key={row.name}
             role="group"
             aria-label={row.name}
-            size="xs"
-            className="record-list-row items-stretch"
             data-comparison-field
+            data-different={row.differs || undefined}
+            data-invalid={row.invalid || undefined}
+            className="flex min-w-0 flex-col gap-1.5 rounded-lg border px-3 py-2.5"
           >
-            <ItemHeader>
-              <ItemTitle className="record-list-title">{row.name}</ItemTitle>
-              <span data-comparison-result>
-                <Difference row={row} />
-              </span>
-            </ItemHeader>
-            <ItemContent className="min-w-0">
-              <dl className="flex min-w-0 flex-col gap-3">
-                <div className="flex min-w-0 flex-col gap-1">
-                  <dt className="text-xs text-muted-foreground">本次收到的记录{existing && "（新值）"}</dt>
-                  <dd className="whitespace-pre-wrap wrap-anywhere">
-                    {row.incoming ?? "未提供"}
-                  </dd>
-                </div>
-                {existing && (
-                  <div className="flex min-w-0 flex-col gap-1">
-                    <dt className="text-xs text-muted-foreground">已保存的支付宝流水（旧值）</dt>
-                    <dd className="whitespace-pre-wrap wrap-anywhere">
-                      {row.existing ?? "未提供"}
-                    </dd>
-                  </div>
-                )}
-              </dl>
-            </ItemContent>
-          </Item>
+            <div className="flex flex-wrap items-baseline gap-2">
+              <span className="text-[0.8125rem] leading-5 font-medium text-foreground">{row.name}</span>
+              {row.invalid && <span className="text-xs font-medium text-destructive" data-comparison-invalid>异常</span>}
+            </div>
+            <dl className="flex min-w-0 flex-col gap-2 text-sm leading-5">
+              <div className="flex min-w-0 flex-col gap-0.5">
+                <dt className="text-xs text-muted-foreground">本次收到（新值）</dt>
+                <dd className={cn("min-w-0 whitespace-pre-wrap wrap-anywhere", (row.differs || row.invalid) && "font-medium text-destructive")}>
+                  {row.incoming ?? "未提供"}
+                </dd>
+              </div>
+              <div className="flex min-w-0 flex-col gap-0.5">
+                <dt className="text-xs text-muted-foreground">已有流水（旧值）</dt>
+                <dd className="min-w-0 whitespace-pre-wrap wrap-anywhere">
+                  {row.existing ?? "未提供"}
+                </dd>
+              </div>
+            </dl>
+          </div>
         ))}
-      </ItemGroup>
-      )
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="business-table-surface"
+      data-embedded="true"
+      data-density="compact"
+      data-comparison-desktop
+    >
+      <Table aria-label={label} className="business-table table-fixed">
+        <colgroup>
+          <col className="w-[7.5rem]" />
+          <col />
+          <col />
+        </colgroup>
+        <TableHeader>
+          <TableRow>
+            <TableHead>字段</TableHead>
+            <TableHead className="whitespace-normal">本次收到（新值）</TableHead>
+            <TableHead className="whitespace-normal">已有流水（旧值）</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.map((row) => (
+            <TableRow
+              key={row.name}
+              data-different={row.differs || undefined}
+              data-invalid={row.invalid || undefined}
+            >
+              <TableHead scope="row" className="whitespace-normal text-[0.8125rem] font-normal text-muted-foreground">
+                {row.name}
+              </TableHead>
+              <TableCell className={cn("whitespace-pre-wrap wrap-anywhere", (row.differs || row.invalid) && "font-medium text-destructive")}>
+                {row.incoming ?? "未提供"}
+                {row.invalid && <span className="ml-1.5 text-xs font-medium" data-comparison-invalid>（异常）</span>}
+              </TableCell>
+              <TableCell className="whitespace-pre-wrap wrap-anywhere">
+                {row.existing ?? "未提供"}
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
   );
 }

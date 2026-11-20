@@ -22,7 +22,7 @@ import {
   LedgerFacts,
   MatchCard,
 } from "@/components/detail/PaymentEvidence";
-import { ConflictCard } from "@/components/detail/ConflictEvidence";
+import { ConflictRecord } from "@/components/detail/ConflictEvidence";
 import { ExceptionRecord } from "@/components/detail/ExceptionRecord";
 import {
   DetailFields,
@@ -142,9 +142,9 @@ function ConflictDetail({ resourceId }: { resourceId: string }) {
   });
   return (
     <DetailPage>
-      <EvidenceHeading title="账本冲突" section="conflicts" loaded={query.isSuccess} />
+      <EvidenceHeading title={query.data ? label(query.data.data.conflict.conflict_type) : "账本冲突"} section="conflicts" loaded={query.isSuccess} density="comfortable" />
       <QueryView query={query}>
-        {({ data }) => <ConflictCard detail={data} />}
+        {({ data }) => <ConflictRecord key={data.conflict.conflict_id} detail={data} />}
       </QueryView>
     </DetailPage>
   );
