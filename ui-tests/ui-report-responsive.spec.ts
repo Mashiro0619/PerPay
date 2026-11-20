@@ -201,28 +201,27 @@ for (const layout of [{ width: 320, height: 560, text: 200 }, { width: 640, heig
       for (const kind of ['matchSite', 'matchManual', 'matchReversed']) {
         await page.goto(manifest.origin + '/admin' + manifest.details[kind]);
         overlay = await settleOverlay(page);
-        // A site's evidence detail keeps its card. A global association is a record among its transaction's orders,
+        // Both a scoped match detail and a global transaction show the related order as a sub-record,
         // headed by the order's name with its link and action beside it.
         const scoped = kind === 'matchSite';
-        const card = scoped ? overlay.locator('[data-match-summary]').first()
+        const card = scoped ? overlay.locator('[data-detail-section="order"] article[data-sub-record]').first()
           : overlay.locator('article[id="match-' + manifest.details[kind]!.split('/').at(-1) + '"]');
         await expect(card).toBeVisible();
-        await card.locator(scoped ? '[data-slot="card-title"]' : 'h3').first().scrollIntoViewIfNeeded();
-        const geometry = await card.evaluate((element, scoped) => {
-          const header = element.querySelector(scoped ? '[data-slot="card-header"]' : ':scope > header')!;
-          const title = header.querySelector(scoped ? '[data-slot="card-title"]' : 'h3')!, action = scoped ? header.querySelector('[data-slot="card-action"]')! : header.lastElementChild!;
+        await card.locator('h3').first().scrollIntoViewIfNeeded();
+        const geometry = await card.evaluate(element => {
+          const header = element.querySelector(':scope > header')!;
+          const title = header.querySelector('h3')!, action = header.lastElementChild!;
           const bounds = title.getBoundingClientRect(), range = document.createRange(); range.selectNodeContents(title);
           const style = getComputedStyle(title), titleText = range.getBoundingClientRect();
           return { title: title.textContent, titleBounds: bounds.toJSON(), actionBounds: action.getBoundingClientRect().toJSON(),
             // A record's link and action reach into its own padding, so its width is judged at the record's edge.
-            titleText: titleText.toJSON(), lineHeight: parseFloat(style.lineHeight), scrollWidth: (scoped ? header : element).scrollWidth, width: (scoped ? header : element).clientWidth,
+            titleText: titleText.toJSON(), lineHeight: parseFloat(style.lineHeight), scrollWidth: element.scrollWidth, width: element.clientWidth,
             headerWidth: header.getBoundingClientRect().width, rootFont: parseFloat(getComputedStyle(document.documentElement).fontSize) };
-        }, scoped);
+        });
         expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.width + 1);
-        // A card's heading is a short fixed phrase. A record is headed by the order's name, which may wrap over
-        // several lines, so there the heading keeps at least its 8rem share of the row, or the whole row if narrower.
-        if (scoped) expect(geometry.titleText.height, "a short heading is never squeezed into a column of individual characters").toBeLessThanOrEqual(geometry.lineHeight * 2 + 2);
-        else expect(geometry.titleBounds.width, "a record's heading is never squeezed by its link and action").toBeGreaterThanOrEqual(Math.min(8 * geometry.rootFont, geometry.headerWidth) - 1);
+        // A record is headed by the order's name, which may wrap over several lines, so the heading keeps
+        // at least its 8rem share of the row, or the whole row if narrower.
+        expect(geometry.titleBounds.width, "a record's heading is never squeezed by its link and action").toBeGreaterThanOrEqual(Math.min(8 * geometry.rootFont, geometry.headerWidth) - 1);
         expect(geometry.titleText.right).toBeLessThanOrEqual(geometry.titleBounds.right + 1);
         const overlaps = geometry.titleBounds.left < geometry.actionBounds.right && geometry.titleBounds.right > geometry.actionBounds.left && geometry.titleBounds.top < geometry.actionBounds.bottom && geometry.titleBounds.bottom > geometry.actionBounds.top;
         expect(overlaps, "title and actions occupy separate space").toBe(false);
