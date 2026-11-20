@@ -23,22 +23,26 @@ async function appearance(page: Page, theme: "light" | "dark", mode: "compact" |
     localStorage.setItem("perpay:content-width", mode);
   }, { theme, mode });
 }
+/** Opens an exception and returns its drawer. The record is named after what went wrong; its kind stays above the title. */
 async function open(page: Page, manifest: Manifest, key: string) {
   await page.goto(manifest.origin + "/admin" + path(manifest, key));
-  await settleOverlay(page);
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("账务异常详情");
-  const card = page.getByRole("group", { name: "账务异常记录", exact: true });
-  await expect(card).toBeVisible();
+  const overlay = await settleOverlay(page);
+  await expect(overlay.locator("[data-overlay-eyebrow-text]")).toHaveText("对账详情");
+  await expect(summary(page)).toBeVisible();
   await expect(page.locator('[data-overlay-detail] [data-slot="skeleton"]')).toHaveCount(0);
   await page.evaluate(() => document.fonts.ready);
-  return card;
+  return overlay;
 }
+const summary = (page: Page) => page.locator("[data-overlay-content]").getByRole("group", { name: "异常概况", exact: true });
+const section = (page: Page, id: string) => page.locator(`[data-overlay-content] [data-detail-section="${id}"]`);
+const footer = (page: Page) => page.locator("[data-overlay-content] [data-overlay-footer]");
 // pre-wrap may hang line-ending spaces outside a line box. Check every
 // non-whitespace character with the same 1 px tolerance, and retain raw ranges
 // plus hanging whitespace as evidence instead of treating invisible advances as ink.
 function completeFieldGeometry(field: Element) {
   const value = field.querySelector("dd")!, box = value.getBoundingClientRect();
-  const textElement = value.querySelector("span.break-all") ?? value;
+  // A record's value is the first span of its row; the copy button beside it is not part of the text.
+  const textElement = value.querySelector("span.break-all") ?? value.querySelector("span") ?? value;
   const textBox = textElement.getBoundingClientRect();
   const range = document.createRange(); range.selectNodeContents(textElement);
   const raw = range.getBoundingClientRect();
@@ -71,11 +75,9 @@ async function geometry(page: Page, mode: "compact" | "full") {
   const main = page.locator("[data-overlay-detail]");
   await expect(page.locator("[data-content-width]")).toHaveAttribute("data-content-width", mode);
   const measured = await expectDetailRecordLayout(page);
-  const card = main.locator("[data-financial-exception]");
-  await expect(card).toHaveCSS("border-radius", "0px");
-  await expect(card).toHaveCSS("box-shadow", "none");
-  await expect(card.locator('[data-slot="card-footer"]')).toHaveCount(0);
-  await expect(card.getByRole("button", { name: "账务异常技术信息", exact: true })).toBeVisible();
+  // The record's content holds no card and no technical entry; both actions live in the fixed footer.
+  await expect(main.locator('[data-slot="card"], [data-technical-information]')).toHaveCount(0);
+  await expect(footer(page).getByRole("button", { name: "更多操作，异常记录操作", exact: true })).toBeVisible();
   await expect(main.locator("[data-detail-identifier]")).toHaveCount(0);
   return measured;
 }
@@ -91,10 +93,16 @@ test("exception global and site overlays retain readable evidence across the com
     await page.setViewportSize({ width, height: 900 });
     await appearance(page, theme, mode);
     const card = await open(page, manifest, key);
-    await expect(card.getByRole("heading", { level: 2 })).toHaveText("收银台结束后收到付款");
-    await expect(card.locator("[data-detail-order-summary]")).toBeVisible();
-    await expect(card.getByRole("region", { name: "核对凭据", exact: true })).toBeVisible();
-    await expect(card.locator('[data-slot="card-action"]').getByRole("button", { name: "人工关联收款", exact: true })).toBeVisible();
+    await expect(card.getByRole("heading", { level: 1 })).toHaveText("收银台结束后收到付款");
+    await expect(card.locator("[data-overlay-detail]").getByRole("heading", { level: 2 })).toHaveText(["关联订单", "支付宝流水", /^(匹配依据|处理记录)$/, ...(await section(page, "evidence").count() ? ["处理记录"] : [])]);
+    // What was due beside what arrived, and when the checkout ended beside when the payment was made: the late payment is marked.
+    const compared = summary(page).locator("[data-record-compare] > div");
+    await expect(compared.locator("dt")).toHaveText(["金额", "时间"]);
+    await expect(compared.nth(1)).toHaveAttribute("data-differs", "true");
+    await expect(compared.nth(1)).toContainText("（已结束）");
+    await expect(section(page, "order").locator("article[data-sub-record]")).toBeVisible();
+    await expect(section(page, "ledger").locator("[data-record-fields]")).toBeVisible();
+    await expect(footer(page).getByRole("button", { name: "人工关联收款", exact: true })).toBeVisible();
     await expect(page.locator("[data-content-width]")).toHaveAttribute("data-content-width", mode);
     await expect(page.locator("html")).toHaveClass(theme === "dark" ? /dark/ : /^(?!.*\bdark\b)/);
     const measured = await geometry(page, mode);
@@ -115,26 +123,29 @@ test("genuine ignored, resolved, candidate and unlinked exceptions keep their ev
     const card = await open(page, manifest, key);
     if (key === "exceptionIgnored") {
       expect(exception.reminder_ignored).toBe(true);
-      await expect(card.locator('[data-slot="card-header"]').getByText("未处理 · 已忽略", { exact: true })).toBeVisible();
+      await expect(summary(page).getByText("未处理 · 已忽略", { exact: true })).toBeVisible();
     }
     if (key === "exceptionResolved") {
       expect(exception.status).toBe("RESOLVED");
-      await expect(card.locator('[data-slot="card-header"]').getByText("已处理", { exact: true })).toBeVisible();
-      await expect(card.getByText("处理结果", { exact: true })).toBeVisible();
+      await expect(summary(page).getByText("已处理", { exact: true })).toBeVisible();
+      // The outcome heads the history, above the discovery it answers.
+      await expect(section(page, "history").getByRole("listitem")).toHaveText([/^异常已处理/, /^发现异常/]);
       await expect(card.getByRole("button", { name: "人工关联收款", exact: true })).toHaveCount(0);
     }
     if (key === "exceptionCandidate") {
       expect(exception.candidate_id).toBeTruthy();
-      await expect(card.getByRole("heading", { name: "匹配依据", exact: true })).toBeVisible();
-      await expect(card.getByText("金额占用时间", { exact: true })).toBeVisible();
+      await expect(section(page, "evidence").getByRole("heading", { name: "匹配依据", exact: true, level: 2 })).toBeVisible();
+      await expect(section(page, "evidence").getByText("金额占用时间", { exact: true })).toBeVisible();
       await expect(card.getByRole("button", { name: "人工关联收款", exact: true })).toHaveCount(0);
     }
     if (key === "exceptionUnmatched") {
       expect(exception.order_id).toBeNull();
-      await expect(card.getByText("尚未关联订单", { exact: true })).toBeVisible();
-      await expect(card.locator("[data-detail-order-summary]")).toHaveCount(0);
+      await expect(section(page, "order").getByText("尚未关联订单", { exact: true })).toBeVisible();
+      await expect(section(page, "order").locator("article")).toHaveCount(0);
+      // With no order there is nothing to compare the entry with.
+      await expect(summary(page).locator("[data-record-compare]")).toHaveCount(0);
     }
-    if (exception.ledger_entry_id) await expect(card.getByRole("region", { name: "核对凭据", exact: true }).getByText(exception.ledger_entry_id, { exact: true })).toBeVisible();
+    if (exception.ledger_entry_id) await expect(section(page, "ledger").getByText(exception.ledger_entry_id, { exact: true })).toBeVisible();
     await record(page, info, { feature: "exception-domain-scenarios", key, exceptionType: exception.exception_type, status: exception.status, measured: await geometry(page, "compact") });
     await screenshot(page, info, "exception-" + key);
   }
@@ -148,11 +159,12 @@ test("retired and context-free synthetic exceptions remain readable without inve
     const exception: FinancialException = { ...structuredClone(original), order_id: null, candidate_id: null, ledger_entry_id: null, exception_type: retired ? "UNMATCHED_DEBIT" : "UNMATCHED_CREDIT" };
     await page.route(manifest.origin + endpoint(manifest, "exceptionUnmatched"), route => route.fulfill({ status: 200, json: { data: exception } }));
     const card = await open(page, manifest, "exceptionUnmatched");
-    await expect(card.getByText("尚未关联订单", { exact: true })).toBeVisible();
-    await expect(card.getByRole("region", { name: "核对凭据", exact: true })).toHaveCount(0);
-    await expect(card.getByRole("heading", { name: "匹配依据", exact: true })).toHaveCount(0);
+    await expect(section(page, "order").getByText("尚未关联订单", { exact: true })).toBeVisible();
+    await expect(section(page, "ledger").getByText("这条异常没有对应的支付宝流水", { exact: true })).toBeVisible();
+    await expect(section(page, "ledger").locator("[data-record-fields]")).toHaveCount(0);
+    await expect(section(page, "evidence")).toHaveCount(0);
     if (retired) {
-      await expect(card.locator('[data-slot="card-header"]').getByText("历史记录", { exact: true })).toBeVisible();
+      await expect(summary(page).getByText("历史记录", { exact: true })).toBeVisible();
       await expect(card.getByText("旧版支出提示，不再提醒。", { exact: true })).toBeVisible();
       await expect(card.getByRole("button", { name: "人工关联收款", exact: true })).toHaveCount(0);
     } else await expect(card.getByRole("button", { name: "人工关联收款", exact: true })).toBeVisible();
@@ -176,15 +188,21 @@ test("exception and source read failures stay explicit and recover only after re
     });
     await page.goto(manifest.origin + "/admin" + path(manifest, "exceptionOpen"));
     const main = page.locator("[data-overlay-detail]");
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText("账务异常详情");
+    // Until the exception itself is read the record has only its kind for a title.
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText(failedPath === exceptionPath ? "账务异常详情" : "收银台结束后收到付款");
     const alert = main.getByRole("alert").filter({ hasText: "合成的异常凭据读取失败" });
     await expect(alert).toBeVisible();
-    await expect(main.getByRole("region", { name: "核对凭据", exact: true })).toHaveCount(0);
-    if (failedPath !== exceptionPath) await expect(main.locator("[data-detail-order-summary]")).toBeVisible();
+    await expect(section(page, "ledger").locator("[data-record-fields]")).toHaveCount(0);
+    if (failedPath !== exceptionPath) {
+      await expect(section(page, "order").locator("article[data-sub-record]")).toBeVisible();
+      // Without the entry there is nothing to set beside the order.
+      await expect(summary(page).locator("[data-record-compare]")).toHaveCount(0);
+    }
     const before = reads;
     unavailable = false;
     await alert.getByRole("button", { name: "重试", exact: true }).click();
-    await expect(main.getByRole("region", { name: "核对凭据", exact: true })).toBeVisible();
+    await expect(section(page, "ledger").locator("[data-record-fields]")).toBeVisible();
+    await expect(summary(page).locator("[data-record-compare]")).toBeVisible();
     await expect(alert).toHaveCount(0);
     expect(reads).toBeGreaterThan(before);
     await record(page, info, { feature: "exception-read-recovery", failedPath, before, after: reads, evidence: "synthetic-503-then-real-fixture-read" });
@@ -200,9 +218,9 @@ test("exception technical dialogs and manual confirmation preserve copy, scope a
   page.on("request", request => { if (!["GET", "HEAD"].includes(request.method())) writes.push(request.method() + " " + new URL(request.url()).pathname); });
   for (const key of ["exceptionOpen", "exceptionSite"]) {
     const exception = await read<FinancialException>(page, manifest, endpoint(manifest, key));
-    const card = await open(page, manifest, key);
-    const entry = card.locator("[data-technical-information]");
-    const tools = entry.getByRole("button", { name: "账务异常技术信息", exact: true });
+    await open(page, manifest, key);
+    // Technical information is opened from the menu of the record's footer.
+    const tools = footer(page).getByRole("button", { name: "更多操作，异常记录操作", exact: true });
     const parent = page.locator("[data-overlay-content]");
     await tools.focus();
     const parentGeometry = () => parent.evaluate(element => {
@@ -213,10 +231,11 @@ test("exception technical dialogs and manual confirmation preserve copy, scope a
     const beforeTechnical = await parentGeometry();
     const detailUrl = page.url();
     await page.keyboard.press("Enter");
+    await page.getByRole("menuitem", { name: "账务异常技术信息", exact: true }).click();
     const technical = page.getByRole("dialog", { name: "账务异常技术信息", exact: true });
     await expect(technical).toBeVisible();
     await expect(technical.locator('pre[aria-label="账务异常技术信息"]')).toBeVisible();
-    await expect(entry.locator("pre")).toHaveCount(0);
+    await expect(parent.locator("pre")).toHaveCount(0);
     expect(await technical.evaluate(element => !!element.closest("[data-overlay-content]"))).toBe(false);
     const duringTechnical = await parentGeometry();
     for (const name of ["width", "height", "contentHeight", "scrollTop"] as const) expect(duringTechnical[name]).toBeCloseTo(beforeTechnical[name], 1);
@@ -234,10 +253,9 @@ test("exception technical dialogs and manual confirmation preserve copy, scope a
     await expect(tools).toBeFocused();
     const afterTechnical = await parentGeometry();
     for (const name of ["width", "height", "contentHeight", "scrollTop"] as const) expect(afterTechnical[name]).toBeCloseTo(beforeTechnical[name], 1);
-    const credentials = card.getByRole("region", { name: "核对凭据", exact: true });
-    await credentials.getByRole("button", { name: "复制内部流水编号（PerPay）", exact: true }).click();
+    await section(page, "ledger").getByRole("button", { name: "复制内部流水编号（PerPay）", exact: true }).click();
     await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(exception.ledger_entry_id);
-    const action = card.getByRole("button", { name: "人工关联收款", exact: true });
+    const action = footer(page).getByRole("button", { name: "人工关联收款", exact: true });
     await action.focus();
     await page.keyboard.press("Enter");
     const confirmation = page.getByRole("dialog", { name: "人工关联收款", exact: true });
@@ -253,7 +271,7 @@ test("exception technical dialogs and manual confirmation preserve copy, scope a
     await expect(action).toBeFocused();
     await expect(page.locator("[data-overlay-content]")).toHaveAttribute("data-overlay-record", "true");
     const scope = path(manifest, key).split("/reconciliation/")[0];
-    const orderLink = card.locator('[data-detail-order-summary] [data-slot="item-title"] a');
+    const orderLink = section(page, "order").getByRole("link", { name: "查看订单", exact: true });
     const orderHref = new URL((await orderLink.getAttribute("href"))!, page.url());
     expect(orderHref.searchParams.get("overlay")).toBe(scope + "/orders/" + exception.order_id);
     await record(page, info, { feature: "exception-technical-dialog-focus-copy", key, reasonLength: reason.length, parentBefore: beforeTechnical, parentDuring: duringTechnical, parentAfter: afterTechnical, evidence: "read-only-technical-dialog-and-confirmation-open-and-cancel" });
@@ -277,8 +295,9 @@ test("exception back navigation preserves scoped filters and record identity", a
     const scrollBefore = await page.evaluate(() => scrollY);
     await page.keyboard.press("Enter");
     await expect(page).toHaveURL(manifest.origin + href);
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText("账务异常详情");
     const overlay = await settleOverlay(page);
+    await expect(overlay.locator("[data-overlay-eyebrow-text]")).toHaveText("对账详情");
+    const title = await overlay.getByRole("heading", { level: 1 }).innerText();
     await overlay.getByRole("button", { name: "关闭对话框", exact: true }).click();
     await expect(page).toHaveURL(listUrl);
     await page.clock.runFor(250);
@@ -294,8 +313,8 @@ test("exception back navigation preserves scoped filters and record identity", a
     await returned.focus();
     await page.keyboard.press("Enter");
     await expect(page).toHaveURL(manifest.origin + href);
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText("账务异常详情");
-    await expect(page.locator("[data-financial-exception]")).toBeVisible();
+    await expect(summary(page)).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText(title);
   }
 });
 
@@ -319,10 +338,10 @@ test("exception long credentials, counterparties and multiline notes wrap comple
     await page.setViewportSize({ width, height: 900 });
     await appearance(page, theme, "compact");
     const card = await open(page, manifest, key);
-    await expect(card.locator('[data-detail-order-summary] [data-slot="item-title"]')).toHaveText(product);
+    await expect(section(page, "order").getByRole("heading", { level: 3 })).toHaveText(product);
     await expect(card.locator("dd").filter({ hasText: "第三行：备注末尾" })).toHaveText(memo);
     const wrapped = [];
-    for (const [name, value] of [["所属网站", site], ["支付宝交易对方", counterpart], ["支付宝订单号", number]]) {
+    for (const [name, value] of [["业务网站", site], ["对方", counterpart], ["支付宝订单号", number]]) {
       const field = card.locator("dt").filter({ hasText: new RegExp("^" + name + "$") }).locator("..");
       await expect(field.locator("dd")).toContainText(value!);
       const measured = await field.evaluate(completeFieldGeometry);
