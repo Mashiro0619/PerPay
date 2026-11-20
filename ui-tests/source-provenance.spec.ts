@@ -79,7 +79,7 @@ test("order and ledger sources remain distinct at desktop and 320 pixels", async
     await expect(transaction).toContainText(grouped.external_event_id);
     // PerPay's own identifier belongs to the stored copy, not to what Alipay reports.
     await expect(summary.getByText(selectedMatch.ledger_entry_id)).toHaveCount(0);
-    await expect(transaction.getByText("内部流水编号（PerPay）", { exact: true })).toHaveCount(0);
+    await expect(transaction.getByText("PerPay 流水编号", { exact: true })).toHaveCount(0);
     const ledgerPath = info.outputPath(`ledger-sources-${width}.png`);
     await transaction.screenshot({ path: ledgerPath });
     await info.attach(`ledger-sources-${width}`, { path: ledgerPath, contentType: "image/png" });
@@ -91,9 +91,9 @@ test("order and ledger sources remain distinct at desktop and 320 pixels", async
     const sourceId = selectedMatch.ledger_entry_id;
     const source = several ? sources.locator('article[id="source-' + sourceId + '"]') : sources;
     if (!several) await expect(source.getByText("PerPay 记录状态", { exact: true })).toBeVisible();
-    await expect(source.getByText("内部流水编号（PerPay）", { exact: true })).toBeVisible();
+    await expect(source.getByText("PerPay 流水编号", { exact: true })).toBeVisible();
     await expect(source.getByText(sourceId, { exact: true })).toBeVisible();
-    await expect(source.getByRole("button", { name: "复制内部流水编号（PerPay）", exact: true })).toBeVisible();
+    await expect(source.getByRole("button", { name: "复制PerPay 流水编号", exact: true })).toBeVisible();
     await expect(sources.locator("[data-ledger-freshness]")).toContainText("最近查账成功：");
     await record(page, info, { feature: "ledger-provenance", width, sourceId, transaction: grouped.external_event_id, sourceCount: grouped.sources.length });
   }
