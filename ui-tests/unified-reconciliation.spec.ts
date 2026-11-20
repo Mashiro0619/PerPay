@@ -229,7 +229,8 @@ test("legacy global details resolve the unified transaction while site evidence 
   await page.goto(manifest.origin + "/admin" + sitePath);
   await expectOverlayTarget(page, sitePath);
   expect(new URL(page.url()).pathname).toBe("/admin/sites/" + siteMatch.order.api_client_id + "/work-items");
-  await expect((await settleOverlay(page)).locator("[data-match-summary]")).toContainText(siteMatch.order.product_name);
+  await settleOverlay(page);
+  await expect(detailSection(page, "order").locator("article[data-sub-record]")).toContainText(siteMatch.order.product_name);
   expect(requests).toContain("/api/admin/v1" + sitePath);
   expect(requests).not.toContain("/api/admin/v1/reconciliation/matches/" + siteMatch.payment_match_id);
   await record(page, info, { feature: "legacy-global-and-scoped-detail", sitePath, siteRequests: requests, refreshed });
