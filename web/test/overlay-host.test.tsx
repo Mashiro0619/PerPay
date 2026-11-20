@@ -614,12 +614,25 @@ describe("one routed detail surface", () => {
     await screen.findByRole("dialog", { name: "记录 order-2" });
     expect(second()).toHaveAttribute("data-record-state", "open");
 
-    // Closing after multiple steps exits in one hop and restores focus to the last viewed row.
-    await user.click(within(dialog).getByRole("button", { name: "完成查看" }));
-    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-    expect(view.router.state.location.pathname).toBe("/orders");
-    expect(second()).toHaveAttribute("data-record-state", "recent");
-    await waitFor(() => expect(second()).toHaveFocus());
+    // Closing after multiple steps exits in one hop, restores focus to the last viewed row,
+    // and scrolls that row into view instead of pulling back to the original scrollY.
+    const scrollTo = vi.spyOn(window, "scrollTo").mockImplementation(() => {});
+    scrollTo.mockClear();
+    const scrolled: Array<{ target: HTMLElement; arg: unknown }> = [];
+    const scrollSpy = vi.spyOn(HTMLElement.prototype, "scrollIntoView").mockImplementation(function (this: HTMLElement, arg?: boolean | ScrollIntoViewOptions) {
+      scrolled.push({ target: this, arg });
+    });
+    try {
+      await user.click(within(dialog).getByRole("button", { name: "完成查看" }));
+      await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+      expect(view.router.state.location.pathname).toBe("/orders");
+      expect(second()).toHaveAttribute("data-record-state", "recent");
+      await waitFor(() => expect(second()).toHaveFocus());
+      await waitFor(() => expect(scrolled).toContainEqual({ target: second(), arg: { block: "nearest" } }));
+      expect(scrollTo).not.toHaveBeenCalled();
+    } finally {
+      scrollSpy.mockRestore();
+    }
   });
 
   it("keeps the current record when stepping is blocked by a close guard or a dirty draft", async () => {

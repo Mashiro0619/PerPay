@@ -18,14 +18,14 @@ import { cn } from "@/lib/utils";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { useToastFooterDock } from "@/lib/toast-layout";
 
-type RootPosition = { trigger: HTMLElement | null; triggerId: string | null; y: number; canReturn: boolean };
+type RootPosition = { trigger: HTMLElement | null; triggerId: string | null; y: number; canReturn: boolean; stepped?: boolean };
 type RecordNeighbor = { to: Path; element: HTMLAnchorElement };
 type RecordNeighbors = { previous: RecordNeighbor | null; next: RecordNeighbor | null };
 type InternalNavigation = OverlayNavigation & {
   readonly hasOverlay: boolean;
   readonly canGoBack: boolean;
   navigateTarget(to: To, options?: NavigateOptions): void;
-  step(to: Path, trigger: HTMLAnchorElement | null): void;
+  step(to: Path, trigger: HTMLAnchorElement | null): boolean;
   blocked(): boolean;
   registerCloseGuard(id: string, check: (() => boolean) | null): void;
   restoreFocus(): HTMLElement | null;
@@ -98,23 +98,27 @@ export function OverlayProvider({ children }: { children: ReactNode }) {
   const pendingStep = useRef<{ pathname: string; trigger: HTMLAnchorElement | null } | null>(null);
   // Related records visited inside the overlay do not take the mark from the row that was opened.
   const recordWasOpen = useRef(false);
-  if (target && pendingStep.current?.pathname === target.pathname) {
-    lastRecord.current = { page: location.pathname, pathname: target.pathname };
-    const trigger = pendingStep.current.trigger;
+  const committedStep = target && pendingStep.current?.pathname === target.pathname ? pendingStep.current : null;
+  const nextRecord = !target
+    ? (lastRecord.current?.page === location.pathname ? lastRecord.current : null)
+    : committedStep || !recordWasOpen.current || !lastRecord.current
+      ? { page: location.pathname, pathname: target.pathname }
+      : lastRecord.current;
+  const recordPath = nextRecord?.pathname ?? null;
+  const recordOpen = !!target;
+  useLayoutEffect(() => {
+    lastRecord.current = nextRecord;
+    recordWasOpen.current = !!target;
+    if (!target) { pendingStep.current = null; return; }
+    if (!committedStep) return;
     pendingStep.current = null;
+    const trigger = committedStep.trigger;
     if (history && trigger?.isConnected) {
       trigger.scrollIntoView?.({ block: "nearest" });
       const saved = positions.current.get(history.rootKey);
-      if (saved) positions.current.set(history.rootKey, { ...saved, trigger, triggerId: trigger.id || null, y: Math.max(0, window.scrollY) });
+      if (saved) positions.current.set(history.rootKey, { ...saved, trigger, triggerId: trigger.id || null, stepped: true });
     }
-  } else if (target && (!recordWasOpen.current || !lastRecord.current)) {
-    lastRecord.current = { page: location.pathname, pathname: target.pathname };
-  }
-  recordWasOpen.current = !!target;
-  if (!target) pendingStep.current = null;
-  if (!target && lastRecord.current?.page !== location.pathname) lastRecord.current = null;
-  const recordPath = lastRecord.current?.pathname ?? null;
-  const recordOpen = !!target;
+  }, [location.pathname, target?.pathname, history?.rootKey]);
   const closeGuards = useRef(new Map<string, () => boolean>());
   const pendingTrigger = useRef<HTMLElement | null>(null);
   const registerCloseGuard = useCallback((id: string, check: (() => boolean) | null) => {
@@ -160,9 +164,10 @@ export function OverlayProvider({ children }: { children: ReactNode }) {
   }, [navigateTarget]);
 
   const step = useCallback((to: Path, trigger: HTMLAnchorElement | null) => {
-    if (blocked()) return;
+    if (blocked()) return false;
     pendingStep.current = { pathname: to.pathname, trigger };
     navigateTarget(to, { replace: true });
+    return true;
   }, [blocked, navigateTarget]);
 
   const close = useCallback(() => {
@@ -190,10 +195,19 @@ export function OverlayProvider({ children }: { children: ReactNode }) {
     const history = active?.history;
     const root = history ? new URL(history.rootUrl, "https://perpay.invalid") : active?.background;
     const saved = root && sameBackground(background, root) && history
-      ? positions.current.get(history.rootKey) ?? { trigger: null, triggerId: null, y: history.scrollY }
+      ? positions.current.get(history.rootKey) ?? { trigger: null, triggerId: null, y: history.scrollY, stepped: false }
       : null;
-    if (saved) requestAnimationFrame(() => window.scrollTo({ top: saved.y, left: 0, behavior: "instant" }));
-    return saved?.trigger?.isConnected ? saved.trigger : saved?.triggerId ? document.getElementById(saved.triggerId) ?? document.getElementById("main-content") : document.getElementById("main-content");
+    const trigger = saved?.trigger?.isConnected
+      ? saved.trigger
+      : saved?.triggerId ? document.getElementById(saved.triggerId) : null;
+    if (saved) {
+      if (saved.stepped) {
+        if (trigger) requestAnimationFrame(() => trigger.scrollIntoView?.({ block: "nearest" }));
+      } else {
+        requestAnimationFrame(() => window.scrollTo({ top: saved.y, left: 0, behavior: "instant" }));
+      }
+    }
+    return trigger ?? document.getElementById("main-content");
   }, [background]);
   const virtualLocation: Location | null = target ? { ...target, state: readOverlayHistory(location.state)?.detailState ?? null,
     key: location.key, mask: undefined } : null;
@@ -295,7 +309,7 @@ export function OverlayHost({ routes }: { routes?: ReactNode }) {
   const title = useRef<HTMLDivElement>(null);
   const prevButton = useRef<HTMLButtonElement>(null);
   const nextButton = useRef<HTMLButtonElement>(null);
-  const pendingPagerFocus = useRef<"previous" | "next" | null>(null);
+  const pendingPagerFocus = useRef<{ direction: "previous" | "next"; pathname: string } | null>(null);
   const [neighbors, setNeighbors] = useState<RecordNeighbors | null>(null);
   const nestedModals = useRef(new Set<string>());
   const registerNestedModal = useCallback((id: string, open: boolean) => {
@@ -354,10 +368,10 @@ export function OverlayHost({ routes }: { routes?: ReactNode }) {
     const next = pagerActive ? findRecordNeighbors(target.pathname) : null;
     setNeighbors(previous => sameNeighbors(previous, next) ? previous : next);
     if (!overlay?.hasOverlay || activeStep || nestedModals.current.size) return;
-    const direction = pendingPagerFocus.current;
+    const pending = pendingPagerFocus.current;
     pendingPagerFocus.current = null;
-    if (direction) {
-      const targetButton = direction === "previous"
+    if (pending && pending.pathname === target?.pathname) {
+      const targetButton = pending.direction === "previous"
         ? (next?.previous ? prevButton.current : null)
         : (next?.next ? nextButton.current : null);
       if (targetButton) { targetButton.focus({ preventScroll: true }); return; }
@@ -382,8 +396,9 @@ export function OverlayHost({ routes }: { routes?: ReactNode }) {
   const stepNeighbor = (direction: "previous" | "next") => {
     const neighbor = direction === "previous" ? neighbors?.previous : neighbors?.next;
     if (!neighbor) return;
-    pendingPagerFocus.current = direction;
-    overlay.step(neighbor.to, neighbor.element);
+    if (overlay.step(neighbor.to, neighbor.element)) {
+      pendingPagerFocus.current = { direction, pathname: neighbor.to.pathname };
+    }
   };
   return <Dialog open={overlay.hasOverlay} onOpenChange={(open, event) => { if (!open) { event.cancel(); overlay.close(); } }}>
     <DialogContent kind="detail" size={size} data-overlay-content data-overlay-size={size}
