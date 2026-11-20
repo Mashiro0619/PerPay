@@ -22,6 +22,13 @@ const valueKinds = {
 } as const;
 
 /**
+ * A status badge keeps to one line wherever its box may grow. A value's cell has a given width,
+ * so there the badge wraps instead of reaching past it (a five-character state in a 320px drawer at doubled text),
+ * in lines of similar length rather than with one character left over.
+ */
+const badgeInValue = "[&_[data-slot=badge]]:h-auto [&_[data-slot=badge]]:min-h-5 [&_[data-slot=badge]]:max-w-full [&_[data-slot=badge]]:whitespace-normal [&_[data-slot=badge]]:text-balance";
+
+/**
  * One column of "label left, value right" rows whose values share a left edge.
  * The whole list stacks labels above values only when its container is narrow,
  * never row by row.
@@ -40,7 +47,7 @@ export function FieldList({ items, className }: {
           <dt className="py-1 text-[0.8125rem] leading-5 text-muted-foreground @max-[22rem]/fields:pb-0">{field.label}</dt>
           <dd className="min-w-0 py-1 text-sm leading-5 @max-[22rem]/fields:pt-0">
             <div className="flex min-w-0 items-start gap-1">
-              <span className={cn("min-w-0 whitespace-pre-wrap wrap-anywhere", valueKinds[field.kind ?? "text"])}>{empty ? "—" : field.value}</span>
+              <span className={cn("min-w-0 whitespace-pre-wrap wrap-anywhere", badgeInValue, valueKinds[field.kind ?? "text"])}>{empty ? "—" : field.value}</span>
               {field.copy && <span data-field-copy className="-my-0.5 shrink-0 opacity-0 transition-opacity duration-(--motion-instant) group-focus-within/field:opacity-100 group-hover/field:opacity-100 has-[[data-copy-state]:not([data-copy-state=idle])]:opacity-100 pointer-coarse:opacity-100">
                 <CopyValue buttonOnly size="icon-xs" value={field.copy} label={field.copyLabel ?? "复制" + field.label} />
               </span>}
