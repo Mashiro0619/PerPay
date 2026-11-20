@@ -73,17 +73,6 @@ async function openDetail(page: Page, manifest: Manifest, key: string) {
   await expect(detailBody(page).locator('[data-slot="skeleton"]')).toHaveCount(0);
   await expect(detailBody(page).locator("[data-detail-identifier]")).toHaveCount(0);
   await page.evaluate(() => document.fonts.ready);
-  // These geometry cases inspect the complete values after an explicit reveal.
-  // The default collapsed state is covered by detail-record-layout.
-  await expandCredentials(detailBody(page));
-}
-async function expandCredentials(owner: Locator) {
-  for (const trigger of await owner.locator('[data-detail-credentials] button[aria-expanded]').all()) {
-    if (await trigger.getAttribute("aria-expanded") === "false") {
-      await trigger.click();
-      await expect(trigger).toHaveAttribute("aria-expanded", "true");
-    }
-  }
 }
 async function fields(owner: Locator, names: readonly string[]) {
   for (const name of names) await expect(owner.locator("dt").filter({ hasText: new RegExp("^" + name + "$") })).toBeVisible();
@@ -177,20 +166,9 @@ function completeFieldGeometry(field: Element) {
 }
 
 async function readingFlowGeometry(page: Page, _longContent = false) {
-  // A record lists its facts in one column per group; the other details still flow theirs into columns.
-  const groups = await expectDetailFields(detailBody(page).locator('[data-record-fields]:visible, [data-detail-fields][data-density="comfortable"][data-layout="flow"]:visible'));
+  const groups = await expectDetailFields(detailBody(page).locator("[data-record-fields]:visible"));
   expect(groups.length).toBeGreaterThan(0);
   return groups;
-}
-async function readingCredentialsGeometry(page: Page) {
-  const sections = detailBody(page).locator("[data-detail-credentials]:visible");
-  for (const section of await sections.all()) {
-    await expect(section).toHaveAccessibleName(/.+/);
-    await expect(section.getByRole("heading")).toHaveCount(1);
-    const trigger = section.locator("button[aria-expanded]");
-    if (await trigger.count()) await expect(trigger).toHaveAttribute("aria-expanded", "true");
-  }
-  return expectDetailFields(sections.locator("[data-detail-fields]"));
 }
 async function headerControlsGeometry(page: Page) {
   const header = foreground(page).locator('[data-overlay-primary] > [data-slot="dialog-header"]');
@@ -452,8 +430,7 @@ test.describe("detail reading width matrix", () => {
           const geometry = await readingLayout(page, mode);
           const technicalDialog = await keyboardTools(page, scenario.tools);
           const id = `reading-${scenario.key}-${width}-${theme}-${mode}`;
-          const credentials = await readingCredentialsGeometry(page);
-          await record(page, info, { feature: "detail-reading-matrix", width, theme, mode, scenario: scenario.key, flows, credentials, geometry, technicalDialog, evidence: "local-synthetic-domain" });
+          await record(page, info, { feature: "detail-reading-matrix", width, theme, mode, scenario: scenario.key, flows, geometry, technicalDialog, evidence: "local-synthetic-domain" });
           await screenshot(page, info, id);
           if (width === 320 && mode === "compact") await audit(page, info, id);
         }
@@ -909,7 +886,7 @@ test("technical record identifiers remain copyable without crowding the business
   // its own; several sources each have an entry.
   const cases: Array<{ key: string; tools: string; item?: string; values: Array<[string, string | null]> }> = [
     { key: "notificationDns", tools: "更多操作，通知记录操作", values: [["投递编号", notification.delivery.delivery_id], ["事件编号", notification.event.event_id]] },
-    { key: "matchInferred", tools: "更多操作，流水操作", item: "收款关联技术信息", values: [["关联编号", match.payment_match_id], ["流水编号", match.ledger_entry_id]] },
+    { key: "matchInferred", tools: "更多操作，流水操作", item: "收款关联技术信息", values: [["关联编号", match.payment_match_id], ["PerPay 流水编号", match.ledger_entry_id]] },
     { key: "ledgerAssociated", tools: "更多操作，流水操作", values: [["PerPay 流水编号", ledger.ledger_entry_id], ["支付宝 App ID", source.app_id], ["采集来源标识", source.provider_account_key]] },
     { key: "ledgerIdentical", tools: "更多操作，流水操作", item: "采集记录 2 技术信息", values: [["PerPay 流水编号", copy.ledger_entry_id], ["支付宝 App ID", copy.app_id], ["采集来源标识", copy.provider_account_key]] },
   ];
@@ -1048,8 +1025,7 @@ test("long products, complete identifiers and multiline details wrap without cli
         wrappedFacts.push(wrapped);
       }
       const flows = await readingFlowGeometry(page, true);
-      const credentials = await readingCredentialsGeometry(page);
-      await record(page, info, { feature: "detail-long-content", evidence: "synthetic-response-variants", width, theme, scenario: scenario.key, bounds, wrappedFacts, flows, credentials, notificationUrlLength: targetUrl.length });
+      await record(page, info, { feature: "detail-long-content", evidence: "synthetic-response-variants", width, theme, scenario: scenario.key, bounds, wrappedFacts, flows, notificationUrlLength: targetUrl.length });
       await screenshot(page, info, `reading-long-${scenario.key}-${width}-${theme}`);
     }
   }
