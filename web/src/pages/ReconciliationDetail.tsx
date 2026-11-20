@@ -21,6 +21,7 @@ import {
   CandidateCard,
   LedgerFacts,
 } from "@/components/detail/PaymentEvidence";
+import { CandidateRecord } from "@/components/detail/CandidateRecord";
 import { ConflictRecord } from "@/components/detail/ConflictEvidence";
 import { ExceptionRecord } from "@/components/detail/ExceptionRecord";
 import { MatchRecord } from "@/components/detail/MatchRecord";
@@ -204,9 +205,9 @@ function CandidateDetail({ resourceId }: { resourceId: string }) {
   });
   return (
     <DetailPage>
-      <EvidenceHeading title="可能匹配的记录详情" loaded={query.isSuccess} />
+      <EvidenceHeading title="可能匹配的记录" loaded={query.isSuccess} density="comfortable" />
       <QueryView query={query}>
-        {({ data }) => <CandidateCard candidate={data} />}
+        {({ data }) => <CandidateRecord key={data.candidate_id} candidate={data} />}
       </QueryView>
     </DetailPage>
   );

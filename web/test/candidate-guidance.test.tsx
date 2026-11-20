@@ -1,11 +1,11 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import type { ComponentProps } from "react";
 import { MemoryRouter } from "react-router";
 import { describe, expect, it, vi } from "vitest";
 
 import { queryClient, type MatchCandidate } from "../src/api/client";
-import { CandidateCard } from "../src/components/detail/PaymentEvidence";
+import { CandidateRecord } from "../src/components/detail/CandidateRecord";
 import { candidate, detailLedger, paidOrder, paymentMatch } from "./detail-fixtures";
 import { apiError, order } from "./fixtures";
 
@@ -16,11 +16,11 @@ const eligibleCandidate: MatchCandidate = {
   decided_by_operation_id: null,
 };
 
-function mount(props: ComponentProps<typeof CandidateCard>) {
+function mount(props: ComponentProps<typeof CandidateRecord>) {
   return render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter>
-        <CandidateCard {...props} />
+        <CandidateRecord {...props} />
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -36,6 +36,11 @@ describe("candidate guidance follows the current payment and ledger state", () =
     expect(screen.getByText(/已选用，订单收款已确认/)).toBeVisible();
     expect(screen.queryByText(/需要你确认|核对订单与流水后可人工关联/)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "人工关联收款" })).not.toBeInTheDocument();
+    const summary = screen.getByRole("group", { name: "匹配概况" });
+    expect(summary.querySelectorAll("[data-record-compare] > div")).toHaveLength(2);
+    expect(screen.getAllByRole("heading", { level: 2 }).map(heading => heading.textContent)).toEqual(["关联订单", "支付宝流水", "匹配依据", "处理记录"]);
+    expect(within(screen.getByRole("list", { name: "处理记录" })).getAllByRole("listitem")).toHaveLength(2);
+    expect(screen.getByRole("button", { name: "更多操作，可能匹配记录操作" }).closest("[data-overlay-actions]")).not.toBeNull();
   });
 
   it("describes a selected record with a disputed payment without claiming it is still confirmed", () => {
