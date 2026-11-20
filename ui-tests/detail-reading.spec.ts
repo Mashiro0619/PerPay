@@ -9,7 +9,7 @@ import type { AdminLedgerDetail, AdminOrderDetail, PaymentMatchDetail, WebhookAt
 const scenarios = [
   // A notification is titled by the event it reports.
   { key: "notificationDns", kind: "notification", heading: "收款已确认", tools: "更多操作，通知记录操作" },
-  { key: "matchSite", kind: "match", heading: "收款关联详情", tools: "更多操作，收款关联记录操作" },
+  { key: "matchSite", kind: "match", heading: "收款关联", tools: "更多操作，收款关联记录操作" },
   // A transaction is titled by its kind and its counterparty; all of its technical entries sit in the footer's menu.
   { key: "ledgerAssociated", kind: "ledger", heading: /^支付宝收款 · /, tools: "更多操作，流水操作" },
 ] as const;
@@ -65,8 +65,8 @@ async function openDetail(page: Page, manifest: Manifest, key: string) {
   else if (key.startsWith("match")) {
     const target = targetUrl(page);
     const matchId = detailPath(manifest, key).split("/").at(-1)!;
-    // A site's evidence detail keeps its cards; the global one is a record among its transaction's orders.
-    if (target.pathname.startsWith("/sites/")) await expect(detailBody(page).locator("[data-match-summary] [data-detail-order-summary]")).toBeVisible();
+    // A site's match opens as its own record; the global one is a record among its transaction's orders.
+    if (target.pathname.startsWith("/sites/")) await expect(detailSection(page, "order").locator("article[data-sub-record]")).toBeVisible();
     else await expect(detailSection(page, "payments").locator(`article[id="match-${matchId}"]`)).toBeVisible();
   }
   else await expect(detailSection(page, "transaction").locator("[data-record-fields]")).toBeVisible();
@@ -127,7 +127,7 @@ async function technicalEntry(page: Page, label: string, menuItem?: string): Pro
   if (label.includes("通知")) return { technical: footerMenu, menuItem: "通知技术信息" };
   // A transaction lists its own entry, and one for each of its sources, associations, suggestions and conflicts.
   if (label.includes("流水操作")) return { technical: footerMenu, menuItem: menuItem ?? "流水技术信息" };
-  return { technical: detailBody(page).locator('[data-match-evidence] > [data-slot="card-content"] > [data-technical-information]') };
+  return { technical: footerMenu, menuItem: menuItem ?? "收款关联技术信息" };
 }
 async function keyboardTools(page: Page, label: string) {
   const { technical, menuItem } = await technicalEntry(page, label);
@@ -145,7 +145,8 @@ async function keyboardTools(page: Page, label: string) {
 // plus hanging whitespace as evidence instead of treating invisible advances as ink.
 function completeFieldGeometry(field: Element) {
   const value = field.querySelector("dd")!, box = value.getBoundingClientRect();
-  const textElement = value.querySelector("span.break-all") ?? value;
+  // A record's value is the first span of its row; the copy button beside it is not part of the text.
+  const textElement = value.querySelector("span.break-all") ?? value.querySelector("span") ?? value;
   const textBox = textElement.getBoundingClientRect();
   const range = document.createRange(); range.selectNodeContents(textElement);
   const raw = range.getBoundingClientRect();
@@ -305,9 +306,11 @@ test("detail overlays separate facts into readable business sections", async ({ 
       await expectAttempts(page, 1);
       await readDetailSection(page, "投递信息");
     } else if (scenario.kind === "match") {
-      await expect(detailBody(page).getByRole("heading", { level: 2 })).toHaveText(["关联摘要与订单", "支付宝交易", "匹配依据与处理记录"]);
-      await expect(detailBody(page).getByRole("group", { name: "收款关联记录", exact: true }).locator("[data-detail-order-summary]")).toBeVisible();
-      await expect(detailBody(page).getByRole("group", { name: "匹配依据与处理记录", exact: true }).getByRole("heading", { name: "匹配依据", exact: true })).toBeVisible();
+      await expect(detailBody(page).getByRole("heading", { level: 2 })).toHaveText(["关联订单", "支付宝流水", "匹配依据", "处理记录"]);
+      await expect(detailSection(page, "order").locator("article[data-sub-record]").getByRole("link", { name: "查看订单", exact: true })).toBeVisible();
+      await expect(detailSection(page, "ledger").locator("[data-record-fields]")).toBeVisible();
+      await expect(detailSection(page, "evidence").getByRole("heading", { name: "匹配依据", exact: true })).toBeVisible();
+      await expect(foreground(page).locator("[data-overlay-footer]").getByRole("button", { name: scenario.tools, exact: true })).toBeVisible();
     } else {
       // What the summary states (the amount, the direction, the time and the account) is not repeated among the facts.
       await expect(detailBody(page).getByRole("heading", { level: 2 })).toHaveText(["交易信息", /^对应订单/, /^采集记录/]);
@@ -377,20 +380,14 @@ test("summaries and credentials retain reading order in stable responsive column
     }
     return wrapping;
   };
-  // A record lists its facts in one column; payment evidence still flows the related order's facts into columns.
+  // Every record lists its facts in one column and stacks the whole list once its container is narrow.
   await openDetail(page, manifest, "matchSite");
-  const wrapping = await checkWrapping(page.locator('[data-detail-order-summary] [data-detail-fields]'));
+  const wrapping = await checkWrapping(detailSection(page, "order").locator("[data-record-fields]"));
   await record(page, info, { feature: "detail-flow-content-wrapping", wrapping });
   await screenshot(page, info, "reading-flow-wrapping-restored");
 
-  const flows = await readingFlowGeometry(page);
-  const twoFacts = flows.find(group => group.fields.length === 2 && group.fields.map(field => field.name).join("/") === "关联方式/关联时间");
-  expect(twoFacts, "the genuine inferred match has two short processing facts").toBeTruthy();
-  // A record drawer is narrower than the two-column threshold: the facts stack in one full-width column.
-  expect(twoFacts!.rows).toEqual([["关联方式"], ["关联时间"]]);
-  expect(Math.abs(twoFacts!.fields[0]!.width - twoFacts!.fields[1]!.width), "processing facts share one column width").toBeLessThanOrEqual(1);
-  expect(Math.abs(twoFacts!.width - twoFacts!.fields[0]!.width), "the column uses the available width").toBeLessThanOrEqual(1);
-  await record(page, info, { feature: "detail-flow-two-facts", evidence: "local-synthetic-domain", geometry: twoFacts });
+  const ledgerWrapping = await checkWrapping(detailSection(page, "ledger").locator("[data-record-fields]"));
+  await record(page, info, { feature: "detail-flow-ledger-wrapping", evidence: "local-synthetic-domain", wrapping: ledgerWrapping });
   await screenshot(page, info, "reading-flow-two-facts");
 
   // A transaction's identifiers are rows of its field list, which stacks as a whole once it is narrow.
@@ -428,9 +425,14 @@ test.describe("detail reading width matrix", () => {
             await expect((await expectAttempts(page, 1)).getByText(/通知域名解析失败/)).toBeVisible();
             await readDetailSection(page, "投递信息");
           } else if (scenario.kind === "match") {
-            await fields(detailBody(page), ["支付宝交易金额", "支付宝交易时间", "支付宝交易对方", "支付宝订单号", "支付宝交易备注", "金额占用时间"]);
-            await expect(page.getByRole("heading", { name: "匹配依据", exact: true })).toBeVisible();
-            await expect(page.getByRole("button", { name: "匹配依据", exact: true })).toHaveCount(0);
+            await expect(detailSection(page, "order").locator("article[data-sub-record]")).toBeVisible();
+            await readDetailSection(page, "支付宝流水");
+            await fields(detailSection(page, "ledger"), ["交易金额", "交易时间", "对方", "支付宝流水号", "支付宝订单号", "支付宝备注", "内部流水编号（PerPay）"]);
+            await readDetailSection(page, "匹配依据");
+            await fields(detailSection(page, "evidence"), ["金额占用时间"]);
+            await expect(detailSection(page, "evidence").getByRole("heading", { name: "匹配依据", exact: true })).toBeVisible();
+            await expect(detailSection(page, "evidence").getByRole("button", { name: "匹配依据", exact: true })).toHaveCount(0);
+            await readDetailSection(page, "关联订单");
           } else {
             await readDetailSection(page, "交易信息");
             await fields(detailSection(page, "transaction"), ["对方", "支付宝流水号", "支付宝订单号"]);
@@ -714,12 +716,13 @@ test("automatic, manual and reversed matches keep full evidence in unified and s
     await openDetail(page, manifest, key);
     const match = await data<PaymentMatchDetail>(page, manifest, apiPath(detailPath(manifest, key)));
     const scoped = key === "matchSite";
-    // A site's evidence detail keeps its cards. The global one is a record among its transaction's orders:
-    // the transaction's facts stand beside it, so it adds only the order and how the two were associated.
-    const card = scoped ? detailBody(page).getByRole("group", { name: "收款关联记录", exact: true })
+    // Both a scoped match detail and a global transaction use the record layout: the scoped one has its own sections,
+    // while the global one sits among its transaction's orders and does not repeat the transaction's facts.
+    const card = scoped ? detailSection(page, "order").locator("article[data-sub-record]")
       : detailSection(page, "payments").locator(`article[id="match-${match.payment_match_id}"]`);
-    const transaction = scoped ? page.getByRole("group", { name: "支付宝交易", exact: true }) : detailSection(page, "transaction");
-    const evidence = scoped ? page.getByRole("group", { name: "匹配依据与处理记录", exact: true }) : card;
+    const transaction = scoped ? detailSection(page, "ledger") : detailSection(page, "transaction");
+    const evidence = scoped ? detailSection(page, "evidence") : card;
+    const history = scoped ? detailSection(page, "history") : card;
     if (!scoped) {
       await expectOverlayTarget(page, "/reconciliation/transactions/" + match.ledger_entry_id + "#match-" + match.payment_match_id);
       // The link leads to the association itself, wherever it stands among the orders.
@@ -731,13 +734,15 @@ test("automatic, manual and reversed matches keep full evidence in unified and s
       await expect(sourceLink).toHaveCount(entry.sources.length > 1 ? 1 : 0);
       if (entry.sources.length > 1) expect(targetUrl(page, (await sourceLink.getAttribute("href"))!).hash).toBe("#source-" + match.ledger_entry_id);
       await readDetailSection(page, "交易信息");
-    }
+    } else await readDetailSection(page, "支付宝流水");
     await expect(transaction.getByText(match.ledger_entry.provider_order_no!, { exact: true })).toBeVisible();
-    if (!scoped) await readDetailSection(page, /^对应订单/);
-    await expect(scoped ? card.locator("[data-detail-order-summary]") : card).toContainText(match.order.merchant_order_no);
+    await readDetailSection(page, scoped ? "关联订单" : /^对应订单/);
+    await expect(card).toContainText(match.order.merchant_order_no);
     if (match.candidate) {
-      if (scoped) await expect(evidence.getByRole("heading", { name: "匹配依据", exact: true })).toBeVisible();
-      else {
+      if (scoped) {
+        await readDetailSection(page, "匹配依据");
+        await expect(evidence.getByRole("heading", { name: "匹配依据", exact: true })).toBeVisible();
+      } else {
         // Folded until asked for: it holds only what the transaction does not state itself.
         const basis = card.getByRole("button", { name: /^匹配依据/ });
         await expect(basis).toHaveAttribute("aria-expanded", "false");
@@ -747,20 +752,32 @@ test("automatic, manual and reversed matches keep full evidence in unified and s
       await expect(evidence.getByText("金额占用时间", { exact: true })).toBeVisible();
     }
     if (match.evidence_type === "MANUAL") {
-      if (scoped) await expect(evidence.getByText("管理员人工关联", { exact: true })).toBeVisible();
-      else await expect(card.locator("header")).toContainText("管理员人工关联 · ");
-      expect(match.creation_operation.reason).toBeTruthy();
-      await expect(evidence.locator("dd").filter({ hasText: match.creation_operation.reason! })).toBeVisible();
+      if (scoped) {
+        await readDetailSection(page, "处理记录");
+        await expect(history.getByText("管理员人工关联", { exact: true })).toBeVisible();
+        expect(match.creation_operation.reason).toBeTruthy();
+        await expect(history).toContainText(match.creation_operation.reason!);
+      } else {
+        await expect(card.locator("header")).toContainText("管理员人工关联 · ");
+        expect(match.creation_operation.reason).toBeTruthy();
+        await expect(card.locator("dd").filter({ hasText: match.creation_operation.reason! })).toBeVisible();
+      }
     }
     if (match.status === "REVERSED") {
-      await fields(evidence, ["撤销时间", "撤销操作人", "撤销理由"]);
       expect(match.resolution_operation?.reason).toBeTruthy();
-      await expect(evidence.locator("dd").filter({ hasText: match.resolution_operation!.reason! })).toBeVisible();
-      await expect(page.getByRole("menuitem", { name: "撤销错误关联", exact: true })).toHaveCount(0);
       if (scoped) {
-        await expect(card.getByRole("button", { name: "更多操作，收款关联记录操作", exact: true })).toHaveCount(0);
-        await expect(card.getByRole("button", { name: "收款关联技术信息", exact: true })).toBeVisible();
+        await readDetailSection(page, "处理记录");
+        await expect(history).toContainText("撤销收款关联");
+        await expect(history).toContainText(match.resolution_operation!.reason!);
+        await foreground(page).locator("[data-overlay-footer]").getByRole("button", { name: "更多操作，收款关联记录操作", exact: true }).click();
+        await expect(page.getByRole("menuitem", { name: "收款关联技术信息", exact: true })).toBeVisible();
+        await expect(page.getByRole("menuitem", { name: "撤销错误关联", exact: true })).toHaveCount(0);
+        await page.keyboard.press("Escape");
+        await expect(page.getByRole("menu")).toHaveCount(0);
       } else {
+        await fields(card, ["撤销时间", "撤销操作人", "撤销理由"]);
+        await expect(card.locator("dd").filter({ hasText: match.resolution_operation!.reason! })).toBeVisible();
+        await expect(page.getByRole("menuitem", { name: "撤销错误关联", exact: true })).toHaveCount(0);
         // A reversed association offers nothing; its technical information stays in the transaction's menu.
         await expect(card.getByRole("button", { name: "撤销错误关联", exact: true })).toHaveCount(0);
         await foreground(page).locator("[data-overlay-footer]").getByRole("button", { name: "更多操作，流水操作", exact: true }).click();
@@ -769,8 +786,10 @@ test("automatic, manual and reversed matches keep full evidence in unified and s
         await expect(page.getByRole("menu")).toHaveCount(0);
       }
     } else {
-      // A site's card collects its actions in a menu; a record with a single action shows it as a button.
-      const trigger = card.getByRole("button", { name: scoped ? "更多操作，收款关联记录操作" : "撤销错误关联", exact: true });
+      // A scoped match puts the destructive reversal in its footer menu; a sub-record with a single action shows it as a button.
+      const trigger = scoped
+        ? foreground(page).locator("[data-overlay-footer]").getByRole("button", { name: "更多操作，收款关联记录操作", exact: true })
+        : card.getByRole("button", { name: "撤销错误关联", exact: true });
       await trigger.click();
       if (scoped) await page.getByRole("menuitem", { name: "撤销错误关联", exact: true }).click();
       const dialog = page.getByRole("dialog", { name: "撤销收款关联？", exact: true });
@@ -782,7 +801,8 @@ test("automatic, manual and reversed matches keep full evidence in unified and s
       await expect(trigger).toBeFocused();
     }
     const orderPrefix = scoped ? "/sites/" + match.order.api_client_id : "";
-    const orderLink = scoped ? card.locator('[data-detail-order-summary] [data-slot="item-title"] a') : card.getByRole("link", { name: "查看订单", exact: true });
+    if (scoped) await readDetailSection(page, "关联订单");
+    const orderLink = card.getByRole("link", { name: "查看订单", exact: true });
     expect(targetUrl(page, (await orderLink.getAttribute("href"))!).pathname).toBe(orderPrefix + "/orders/" + match.order_id);
     await record(page, info, { feature: "match-domain-scenarios", key, evidenceType: match.evidence_type, status: match.status });
     await screenshot(page, info, "reading-" + key);
@@ -972,16 +992,14 @@ test("long products, complete identifiers and multiline details wrap without cli
     for (const scenario of scenarios) {
       await openDetail(page, manifest, scenario.key);
       if (scenario.kind === "ledger") await readDetailSection(page, /^对应订单/);
-      else if (scenario.kind === "notification") await readDetailSection(page, "关联订单");
+      else await readDetailSection(page, "关联订单");
       const orderOwner = scenario.kind === "ledger"
         ? detailSection(page, "payments").locator(`article[id="match-${ledger.matches[0]!.payment_match_id}"]`)
-        : scenario.kind === "notification" ? detailSection(page, "order").locator("article[data-sub-record]")
-          : detailBody(page).getByRole("group", { name: "收款关联记录", exact: true });
+        : detailSection(page, "order").locator("article[data-sub-record]");
       const factsOwner = scenario.kind === "ledger" ? detailSection(page, "transaction")
         : scenario.kind === "notification" ? detailSection(page, "overview")
-          : detailBody(page).getByRole("group", { name: "支付宝交易", exact: true });
-      // A record names its related order in the sub-record's heading; a site's evidence detail still uses the order summary's title.
-      const title = scenario.kind === "match" ? orderOwner.locator('[data-detail-order-summary] [data-slot="item-title"]') : orderOwner.getByRole("heading", { level: 3 });
+          : detailSection(page, "ledger");
+      const title = orderOwner.getByRole("heading", { level: 3 });
       await expect(title).toHaveText(product);
       const bounds = await title.evaluate(element => {
         const range = document.createRange(); range.selectNodeContents(element);
@@ -991,6 +1009,7 @@ test("long products, complete identifiers and multiline details wrap without cli
       expect(bounds.textHeight).toBeLessThanOrEqual(bounds.boxHeight + 1);
       expect(bounds.textRight).toBeLessThanOrEqual(bounds.boxRight + 1);
       if (scenario.kind === "ledger") await readDetailSection(page, "交易信息");
+      else if (scenario.kind === "match") await readDetailSection(page, "支付宝流水");
       await expect(factsOwner.locator("dd").filter({ hasText: "第三行：可见末尾标记" })).toHaveText(memo);
       if (scenario.kind === "notification") {
         await expect(factsOwner.getByText(targetUrl, { exact: true })).toBeVisible();
@@ -1007,10 +1026,12 @@ test("long products, complete identifiers and multiline details wrap without cli
           }
         }
       }
-      const longFacts = scenario.kind === "notification" ? [["业务网站", siteName]] : scenario.kind === "match" ? [["所属网站", siteName], ["支付宝交易对方", counterparty]] : [["对方", counterparty]];
+      const longFacts = scenario.kind === "notification" ? [["业务网站", siteName]] : scenario.kind === "match" ? [["业务网站", siteName], ["对方", counterparty]] : [["对方", counterparty]];
       const wrappedFacts = [];
       for (const [name, value] of longFacts) {
-        const fieldOwner = name === "所属网站" && scenario.kind === "match" ? orderOwner : factsOwner;
+        const fieldOwner = name === "业务网站" && scenario.kind === "match" ? orderOwner : factsOwner;
+        if (fieldOwner === orderOwner) await readDetailSection(page, "关联订单");
+        else if (scenario.kind === "match") await readDetailSection(page, "支付宝流水");
         const field = fieldOwner.locator("dt").filter({ hasText: new RegExp("^" + name + "$") }).locator("..");
         await expect(field).not.toHaveAttribute("data-field-wide", "true");
         await expect(field.locator("dd")).toHaveText(value!);
