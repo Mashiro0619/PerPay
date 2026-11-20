@@ -149,7 +149,7 @@ test("ledger credentials keep genuine Alipay, website and PerPay identities dist
         await tools.click();
         await page.getByRole("menuitem", { name: /^收款关联技术信息/ }).nth(index).click();
         const reader = page.getByRole("dialog", { name: "收款关联技术信息", exact: true });
-        await reader.getByRole("button", { name: "复制流水编号", exact: true }).click();
+        await reader.getByRole("button", { name: "复制PerPay 流水编号", exact: true }).click();
         await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(match.ledger_entry_id);
         await reader.getByRole("button", { name: "关闭", exact: true }).click();
         await expect(tools).toHaveAttribute("aria-expanded", "false");
