@@ -115,7 +115,14 @@ test("one order's different incoming payments keep distinct list identities and 
     const exceptionTarget = await rows.first().locator("a[data-row-link]").getAttribute("href");
     await rows.first().locator("a[data-row-link]").click();
     await expect(page).toHaveURL(manifest.origin + exceptionTarget);
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText("账务异常详情");
+    // An exception record is titled by what went wrong; its kind stays in the eyebrow above it.
+    const exceptionNames: Record<string, string> = {
+      AMOUNT_MISMATCH: "实收金额不符", CHECKOUT_ENDED_PAYMENT: "收银台结束后收到付款",
+      DUPLICATE_PAYMENT: "订单重复付款", AMBIGUOUS_MATCH: "多个订单符合收款条件",
+      UNMATCHED_CREDIT: "收入尚未匹配订单", RECONCILIATION_CONFLICT: "对账结果冲突",
+    };
+    await expect(page.locator("[data-overlay-eyebrow-text]")).toHaveText("对账详情");
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText(exceptionNames[originals[0]!.exception_type]!);
   }
 
   for (const [index, item] of items.entries()) {
