@@ -29,7 +29,7 @@ function ledgerFields(entry: ReconciliationLedgerEntry): { primary: Field[]; ext
     ],
     extra: [
       ...(entry.merchant_order_no ? [{ label: "支付宝商户单号", kind: "id" as const, value: entry.merchant_order_no, copy: entry.merchant_order_no }] : []),
-      { label: "内部流水编号（PerPay）", kind: "id", value: entry.ledger_entry_id, copy: entry.ledger_entry_id },
+      { label: "PerPay 流水编号", kind: "id", value: entry.ledger_entry_id, copy: entry.ledger_entry_id },
     ],
   };
 }

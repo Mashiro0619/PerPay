@@ -329,7 +329,7 @@ describe("administrator ledger pages", () => {
     expect(within(record("match-" + reversedMatchId)).queryByText("存在多条关联")).not.toBeInTheDocument();
     // Each source states for itself what the transaction as a whole cannot.
     for (const id of [ledgerId, secondSourceId]) {
-      expect(within(record("source-" + id)).getAllByRole("term").map(term => term.textContent)).toEqual(["交易金额", "收支方向", "交易时间", "内部流水编号（PerPay）", "保存时间"]);
+      expect(within(record("source-" + id)).getAllByRole("term").map(term => term.textContent)).toEqual(["交易金额", "收支方向", "交易时间", "PerPay 流水编号", "保存时间"]);
     }
     const conflict = record("conflict-66666666-6666-4666-8666-666666666666");
     expect(within(conflict).getByRole("heading", { name: "支付宝流水号重复", level: 3 })).toBeVisible();

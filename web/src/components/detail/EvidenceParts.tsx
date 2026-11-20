@@ -91,7 +91,7 @@ export function ledgerEntryFields(entry: ReconciliationLedgerEntry): Array<Field
       ? { label: "支付宝订单号", kind: "id", value: entry.provider_order_no, copy: entry.provider_order_no }
       : { label: "支付宝订单号", value: "未提供" },
     !!entry.merchant_order_no && { label: "支付宝商户单号", kind: "id", value: entry.merchant_order_no, copy: entry.merchant_order_no },
-    { label: "内部流水编号（PerPay）", kind: "id", value: entry.ledger_entry_id, copy: entry.ledger_entry_id },
+    { label: "PerPay 流水编号", kind: "id", value: entry.ledger_entry_id, copy: entry.ledger_entry_id },
   ];
 }
 

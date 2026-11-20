@@ -105,7 +105,7 @@ function sourceFields(source: AdminLedgerSource, entry: AdminLedgerDetail, state
     entry.memo === null && !!source.memo && { label: "支付宝备注", value: source.memo },
     entry.provider_order_no === null && !!source.provider_order_no && { label: "支付宝订单号", kind: "id", value: source.provider_order_no, copy: source.provider_order_no },
     entry.merchant_order_no === null && !!source.merchant_order_no && { label: "支付宝商户单号", kind: "id", value: source.merchant_order_no, copy: source.merchant_order_no },
-    { label: "内部流水编号（PerPay）", kind: "id", value: source.ledger_entry_id, copy: source.ledger_entry_id },
+    { label: "PerPay 流水编号", kind: "id", value: source.ledger_entry_id, copy: source.ledger_entry_id },
     { label: "保存时间", kind: "time", value: <RecordTime value={source.created_at} /> },
   ];
 }
@@ -258,7 +258,7 @@ function LedgerRecord({ entry }: { entry: AdminLedgerDetail }) {
               !!conflict.resolved_at && { label: "处理时间", kind: "time", value: <RecordTime value={conflict.resolved_at} /> },
               !!existing && !!number && { label: "涉及的采集记录", value: <SourceLink id={existing} number={number} /> },
               // A source of this transaction is already shown above; any other entry is named here.
-              !!existing && !numbers.has(existing) && { label: "关联内部流水编号（PerPay）", kind: "id", value: existing, copy: existing },
+              !!existing && !numbers.has(existing) && { label: "关联 PerPay 流水", kind: "id", value: existing, copy: existing },
             ]} />
           </SubRecord>;
         })}
@@ -269,12 +269,12 @@ function LedgerRecord({ entry }: { entry: AdminLedgerDetail }) {
         onClick={event => associate.action.onSelect?.(event.currentTarget)}>{associate.action.label}</Button>}
       technical={technicalEntries([
         { title: "流水技术信息", created: entry.created_at, data: entry, identifiers: [
-          ["内部流水编号（PerPay）", entry.ledger_entry_id], ["支付宝流水号", entry.external_event_id],
+          ["PerPay 流水编号", entry.ledger_entry_id], ["支付宝流水号", entry.external_event_id],
           ...(several ? [] : entry.sources.flatMap(sourceIdentifiers)),
         ] },
         ...(several ? entry.sources.map((source, index) => ({
           id: "source-" + source.ledger_entry_id, title: `采集记录 ${index + 1} 技术信息`, created: source.created_at, data: source,
-          identifiers: [["内部流水编号（PerPay）", source.ledger_entry_id] as const, ...sourceIdentifiers(source)],
+          identifiers: [["PerPay 流水编号", source.ledger_entry_id] as const, ...sourceIdentifiers(source)],
         })) : []),
         ...entry.matches.map((match, index) => {
           const detail = matchQueries[index]?.data?.data;
@@ -289,7 +289,7 @@ function LedgerRecord({ entry }: { entry: AdminLedgerDetail }) {
         })),
         ...entry.conflicts.map(conflict => ({
           id: "conflict-" + conflict.conflict_id, title: "账本冲突技术信息", created: conflict.created_at, data: conflict,
-          identifiers: [["账本冲突编号", conflict.conflict_id], ["关联内部流水编号（PerPay）", conflict.existing_ledger_entry_id]] as const,
+          identifiers: [["账本冲突编号", conflict.conflict_id], ["关联 PerPay 流水", conflict.existing_ledger_entry_id]] as const,
         })),
       ])} />
     {associate.dialog}

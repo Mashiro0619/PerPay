@@ -95,7 +95,7 @@ export function ConflictRecord({ detail }: { detail: LedgerConflictDetail }) {
         onClick={event => { finalFocus.current = event.currentTarget; setConfirm(true); }}>{label(action)}</Button>}
       technical={[{ title: "冲突记录技术信息", data: detail, identifiers: [
         ["冲突编号", conflict.conflict_id],
-        ["关联内部流水编号（PerPay）", existing?.ledger_entry_id ?? null],
+        ["关联 PerPay 流水", existing?.ledger_entry_id ?? null],
         ["原始查账页编号", conflict.raw_page_id],
         ["原始事件编号", conflict.raw_event_id],
       ] }]} />
