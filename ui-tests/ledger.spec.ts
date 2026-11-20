@@ -183,7 +183,7 @@ test("ledger tells the current order apart from reversed history without repeati
   expect(entry.sources).toHaveLength(1);
   const sources = await revealDetailSection(page, "sources");
   await expect(sources.locator('article[id^="source-"]')).toHaveCount(0);
-  await expect(sources.locator("dt")).toHaveText(["PerPay 记录状态", "内部流水编号（PerPay）", "保存时间"]);
+  await expect(sources.locator("dt")).toHaveText(["PerPay 记录状态", "PerPay 流水编号", "保存时间"]);
   await expect(sources.getByText("已分配", { exact: true })).toBeVisible();
   await expect(detailSection(page, "conflicts")).toHaveCount(0);
   await screenshot(page, info, "ledger-current-order-reading");
