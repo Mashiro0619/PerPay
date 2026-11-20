@@ -87,7 +87,7 @@ export function RecordSummary({ label, value, size = "amount", status, tone = "d
 }) {
   const hasValue = value !== undefined && value !== null && value !== false && value !== "";
   const lines = meta.filter(line => line !== false && line !== null && line !== undefined && line !== "").slice(0, 2);
-  return <div role="group" aria-label={label} data-record-summary className="flex min-w-0 flex-col gap-3">
+  return <div role="group" aria-label={label} data-record-summary className="@container/record-summary flex min-w-0 flex-col gap-3">
     {(hasValue || status) && <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5">
       {hasValue && <p data-record-summary-value className={cn("min-w-0 font-semibold wrap-anywhere",
         size === "amount" ? "text-[1.75rem] leading-9 tracking-tight tabular-nums max-md:text-2xl max-md:leading-8" : "text-base leading-6",
@@ -97,11 +97,11 @@ export function RecordSummary({ label, value, size = "amount", status, tone = "d
     {lines.length > 0 && <div data-record-summary-meta className="flex min-w-0 flex-col text-[0.8125rem] leading-5 text-muted-foreground tabular-nums">
       {lines.map((line, index) => <p key={index} className="min-w-0 wrap-anywhere">{line}</p>)}
     </div>}
-    {compare.length > 0 && <dl data-record-compare className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_minmax(0,1fr)] gap-x-4 gap-y-1 text-sm leading-5">
-      {compare.map(row => <div key={row.label} data-differs={row.differs || undefined} className="col-span-full grid min-w-0 grid-cols-subgrid items-baseline">
+    {compare.length > 0 && <dl data-record-compare className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_minmax(0,1fr)] gap-x-4 gap-y-1 text-sm leading-5 @max-[32rem]/record-summary:grid-cols-[auto_minmax(0,1fr)] @max-[32rem]/record-summary:gap-x-3 @max-[32rem]/record-summary:gap-y-1.5">
+      {compare.map(row => <div key={row.label} data-differs={row.differs || undefined} className="col-span-full grid min-w-0 grid-cols-subgrid items-baseline gap-y-0.5">
         <dt className="text-[0.8125rem] text-muted-foreground">{row.label}</dt>
         <dd className="min-w-0 tabular-nums wrap-anywhere">{row.left}</dd>
-        <dd className={cn("min-w-0 tabular-nums wrap-anywhere", row.differs && "font-medium text-destructive")}>{row.right}</dd>
+        <dd className={cn("min-w-0 tabular-nums wrap-anywhere @max-[32rem]/record-summary:col-start-2", row.differs && "font-medium text-destructive")}>{row.right}</dd>
       </div>)}
     </dl>}
     {nav.length >= 3 && <SectionNav items={nav} />}
