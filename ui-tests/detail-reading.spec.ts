@@ -85,7 +85,7 @@ function sourceTerms(entry: AdminLedgerDetail, source: AdminLedgerDetail["source
     ...(entry.other_account === null && source.other_account ? ["对方"] : []), ...(entry.memo === null && source.memo ? ["支付宝备注"] : []),
     ...(entry.provider_order_no === null && source.provider_order_no ? ["支付宝订单号"] : []),
     ...(entry.merchant_order_no === null && source.merchant_order_no ? ["支付宝商户单号"] : []),
-    "PerPay 流水编号", "保存时间",
+    "内部流水编号", "保存时间",
   ];
 }
 
@@ -405,7 +405,7 @@ test.describe("detail reading width matrix", () => {
           } else if (scenario.kind === "match") {
             await expect(detailSection(page, "order").locator("article[data-sub-record]")).toBeVisible();
             await readDetailSection(page, "支付宝流水");
-            await fields(detailSection(page, "ledger"), ["交易金额", "交易时间", "对方", "支付宝流水号", "支付宝订单号", "支付宝备注", "PerPay 流水编号"]);
+            await fields(detailSection(page, "ledger"), ["交易金额", "交易时间", "对方", "支付宝流水号", "支付宝订单号", "支付宝备注", "内部流水编号"]);
             await readDetailSection(page, "匹配依据");
             await fields(detailSection(page, "evidence"), ["金额占用时间"]);
             await expect(detailSection(page, "evidence").getByRole("heading", { name: "匹配依据", exact: true })).toBeVisible();
@@ -418,7 +418,7 @@ test.describe("detail reading width matrix", () => {
             await expect(foreground(page).getByRole("group", { name: "流水概况", exact: true }).locator("[data-record-summary-value]")).toHaveText(/^\+¥/);
             await expect(detailBody(page).locator('dt').filter({ hasText: /^(支付宝 App ID|交易金额|收支方向|交易时间)$/ })).toHaveCount(0);
             await readDetailSection(page, /^采集记录/);
-            await fields(detailSection(page, "sources"), ["PerPay 流水编号"]);
+            await fields(detailSection(page, "sources"), ["内部流水编号"]);
             await readingFlowGeometry(page);
             await readDetailSection(page, /^对应订单/);
             await expect(detailSection(page, "payments").locator("article[data-sub-record]").first()).toBeVisible();
@@ -886,9 +886,9 @@ test("technical record identifiers remain copyable without crowding the business
   // its own; several sources each have an entry.
   const cases: Array<{ key: string; tools: string; item?: string; values: Array<[string, string | null]> }> = [
     { key: "notificationDns", tools: "更多操作，通知记录操作", values: [["投递编号", notification.delivery.delivery_id], ["事件编号", notification.event.event_id]] },
-    { key: "matchInferred", tools: "更多操作，流水操作", item: "收款关联技术信息", values: [["关联编号", match.payment_match_id], ["PerPay 流水编号", match.ledger_entry_id]] },
-    { key: "ledgerAssociated", tools: "更多操作，流水操作", values: [["PerPay 流水编号", ledger.ledger_entry_id], ["支付宝 App ID", source.app_id], ["采集来源标识", source.provider_account_key]] },
-    { key: "ledgerIdentical", tools: "更多操作，流水操作", item: "采集记录 2 技术信息", values: [["PerPay 流水编号", copy.ledger_entry_id], ["支付宝 App ID", copy.app_id], ["采集来源标识", copy.provider_account_key]] },
+    { key: "matchInferred", tools: "更多操作，流水操作", item: "收款关联技术信息", values: [["关联编号", match.payment_match_id], ["内部流水编号", match.ledger_entry_id]] },
+    { key: "ledgerAssociated", tools: "更多操作，流水操作", values: [["内部流水编号", ledger.ledger_entry_id], ["支付宝 App ID", source.app_id], ["采集来源标识", source.provider_account_key]] },
+    { key: "ledgerIdentical", tools: "更多操作，流水操作", item: "采集记录 2 技术信息", values: [["内部流水编号", copy.ledger_entry_id], ["支付宝 App ID", copy.app_id], ["采集来源标识", copy.provider_account_key]] },
   ];
   for (const scenario of cases) {
     await openDetail(page, manifest, scenario.key);
