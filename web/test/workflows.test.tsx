@@ -16,8 +16,9 @@ import type { ReactNode } from "react";
 import { queryClient } from "../src/api/client";
 import { AuthBoundary, AuthPage } from "../src/auth";
 import { ReasonDialog } from "../src/components/ReasonDialog";
+import { ActionButton } from "../src/components/record/ActionMenu";
 import { FieldList } from "../src/components/record/FieldList";
-import { AssociateIncomeAction } from "../src/components/detail/FinancialActions";
+import { useAssociateIncome } from "../src/components/detail/FinancialActions";
 import { FinancialDialog } from "../src/pages/FinancialDialog";
 import { PasswordEditorPage } from "../src/pages/SecuritySettings";
 import Settings, { SettingsEditorOverlay } from "../src/pages/Settings";
@@ -45,6 +46,12 @@ function renderPage(children: ReactNode, path = "/") {
       <MemoryRouter initialEntries={[path]}>{children}</MemoryRouter>
     </Toaster></QueryClientProvider>,
   );
+}
+
+/** The association action the way a sub-record shows it: the action, then the dialog it opens. */
+function AssociateIncome({ orderId, ledgerId }: { orderId: string; ledgerId: string }) {
+  const { action, dialog } = useAssociateIncome({ orderId, ledgerId });
+  return <><ActionButton action={action} />{dialog}</>;
 }
 
 function initialization(value: string) {
@@ -763,7 +770,7 @@ describe("state-changing workflows", () => {
       );
       renderPage(
         <main id="main-content" aria-label="订单内容" tabIndex={-1}>
-          <AssociateIncomeAction orderId={orderId} ledgerId={ledgerId} />
+          <AssociateIncome orderId={orderId} ledgerId={ledgerId} />
         </main>,
       );
       const user = userEvent.setup();

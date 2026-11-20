@@ -1,5 +1,4 @@
 import { useWorkspace } from "@/workspace";
-import { Link } from "@/navigation";
 import { useWorkspaceApi } from "@/workspace";
 import { useRef, useState } from "react";
 import { result, type PaymentMatchDetail } from "../../api/client";
@@ -7,7 +6,6 @@ import { refreshFinancialRecords } from "@/lib/record-refresh";
 import { FinancialDialog } from "../../pages/FinancialDialog";
 import { ReasonDialog } from "../ReasonDialog";
 import { useSuccessToast } from "../Feedback";
-import { Button } from "@/components/ui/button";
 import { money } from "../../lib/format";
 import { FieldList } from "@/components/record/FieldList";
 import type { RecordAction } from "@/components/record/ActionMenu";
@@ -63,22 +61,6 @@ export function useAssociateIncome({
     />
   );
   return { action, dialog };
-}
-export function AssociateIncomeAction(props: AssociateIncomeOptions) {
-  const { action, dialog } = useAssociateIncome(props);
-  if (action.to) return <Link global to={action.to}>{action.label}</Link>;
-  return (
-    <>
-      <Button
-        className="h-auto min-h-8 min-w-0 max-w-full whitespace-normal py-1.5"
-        disabled={action.disabled}
-        onClick={(event) => action.onSelect?.(event.currentTarget)}
-      >
-        {action.label}
-      </Button>
-      {dialog}
-    </>
-  );
 }
 /**
  * The reversal dialog and the action that opens it. There is no action once a
