@@ -441,11 +441,19 @@ async function reconcileUnmatchedIncome(page: Page, fixture: BusinessFixture, in
   await page.getByRole("searchbox", { name: "订单关键词搜索", exact: true }).fill(merchantOrderNo);
   await page.getByRole("button", { name: "搜索", exact: true }).click();
   await page.locator(`a[data-row-link][href*="${manualOrder.order_id}"]`).click();
-  // A disputed order keeps its next step in the action bar, beside marking it refunded.
+  // A disputed order keeps its next step in the action bar; on phones, the secondary decision moves into the menu.
   const orderActions = overlay.locator("[data-overlay-footer]");
   const reviewAction = orderActions.locator("[data-record-primary-actions]").getByRole("button", { name: "重新核对并确认收款", exact: true });
   await expectReachable(reviewAction);
-  await expectReachable(orderActions.getByRole("button", { name: "标记已退款", exact: true }));
+  if (width < 768) {
+    const more = orderActions.getByRole("button", { name: "更多操作，订单操作", exact: true });
+    await expectReachable(more);
+    await more.click();
+    await expect(page.getByRole("menuitem", { name: "标记已退款", exact: true })).toBeVisible();
+    await page.keyboard.press("Escape");
+  } else {
+    await expectReachable(orderActions.getByRole("button", { name: "标记已退款", exact: true }));
+  }
   await screenshot(page, info, "09e-disputed-order-next-actions");
   await reviewAction.click();
   await manual.getByRole("searchbox", { name: /^搜索(共享)?收入流水$/ }).fill(unmatched.ledgerEntryId);
