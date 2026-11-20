@@ -52,7 +52,7 @@ test("a settled transaction states Alipay's numbers without unfolding and leads 
   // A single stored copy is the record itself, so there is no separate record of it to look for.
   await expect(sources.locator('article[id^="source-"]')).toHaveCount(0);
   await expect(sources.getByText(entry.active_match!.ledger_entry_id, { exact: true })).toBeVisible();
-  await expect(sources.getByRole("button", { name: "复制PerPay 流水编号", exact: true })).toBeVisible();
+  await expect(sources.getByRole("button", { name: "复制内部流水编号", exact: true })).toBeVisible();
 });
 
 for (const layout of layouts) {
