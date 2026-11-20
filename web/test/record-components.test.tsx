@@ -112,6 +112,32 @@ describe("record sections", () => {
     await waitFor(() => expect(document.querySelector('[data-detail-section="history"]')).toHaveFocus());
   });
 
+  it.each(["#obsolete", "#%E0%A4%A"])("falls back to the requested section when the anchor %s cannot be resolved", async hash => {
+    const scroll = vi.spyOn(HTMLElement.prototype, "scrollIntoView");
+    at("/record?section=history" + hash, <Sections>
+      <Section id="overview" title="订单信息"><p>订单字段</p></Section>
+      <Section id="history" title="动态"><p>动态内容</p></Section>
+    </Sections>);
+    const history = document.querySelector<HTMLElement>('[data-detail-section="history"]')!;
+    await waitFor(() => expect(history).toHaveFocus());
+    expect(scroll.mock.contexts).toEqual([history]);
+    expect(document.querySelector("[data-anchor-hit]")).toBeNull();
+  });
+
+  it.each(["?section=unknown", "#obsolete", "#%E0%A4%A", ""])("leaves the record where it opened for the absent or invalid destination \"%s\"", async suffix => {
+    const scroll = vi.spyOn(HTMLElement.prototype, "scrollIntoView");
+    at("/record" + suffix, <Sections>
+      <Section id="overview" title="订单信息"><p>订单字段</p></Section>
+      <Section id="history" title="动态"><p>动态内容</p></Section>
+    </Sections>);
+    // Locating happens in an animation frame, so give one time to pass.
+    await act(() => new Promise(resolve => setTimeout(resolve, 60)));
+    expect(scroll).not.toHaveBeenCalled();
+    expect(document.querySelector("[data-detail-section]:focus")).toBeNull();
+    expect(screen.getByText("订单字段")).toBeVisible();
+    expect(screen.getByText("动态内容")).toBeVisible();
+  });
+
   it("opens the collapsed history around an anchor before moving to it", async () => {
     at("/record#match-old", <Sections>
       <Section id="payments" title="收款关联" anchorPrefixes={["match-"]}>
