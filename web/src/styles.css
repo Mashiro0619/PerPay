@@ -1176,10 +1176,6 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain;
 }
 [data-technical-dialog] > [data-slot="dialog-footer"] { margin: 0; padding: var(--overlay-chrome-space) 0 0; background: transparent; }
-[data-technical-dialog] [data-detail-fields] > dl { display: flex; flex-direction: column; gap: 0.5rem; }
-[data-technical-dialog] [data-detail-fields] > dl > div { min-width: 0; display: flex; flex-direction: row; flex-wrap: wrap; align-items: baseline; gap: 0.125rem 0.5rem; }
-[data-technical-dialog] [data-detail-fields] :is(dt, dd) { max-width: 100%; }
-[data-technical-dialog] [data-detail-fields] dt { font-size: 0.8125rem; }
 [data-overlay-step-host] > [data-slot="dialog-portal"]:not([hidden]) { display: contents; }
 [data-overlay-step] { max-height: 100%; max-width: 100%; overflow: visible; }
 [data-overlay-step]:has(> [data-overlay-step-scroll][data-scrollable="true"]):has(> [data-slot="dialog-close"]) { padding-top: calc(max(40px, 1.75rem) + var(--overlay-chrome-space, 1rem)); }
