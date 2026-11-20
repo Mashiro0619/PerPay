@@ -788,6 +788,22 @@ describe("order record layout", () => {
     expect(await recordAction("撤销退款标记")).toBeVisible();
   });
 
+  it("keeps the footer reconfirmation unique while labeling an exception's specific ledger shortcut", async () => {
+    const released = { ...reversedMatch, ledger_entry: { ...detailLedger, state: "UNALLOCATED" as const } };
+    const withEntry = { ...financialException, exception_id: "exc-with-entry", ledger_entry_id: released.ledger_entry_id, candidate_id: null };
+    const withoutEntry = { ...financialException, exception_id: "exc-no-entry", ledger_entry_id: null, candidate_id: null };
+    mockData({
+      ...paidOrder,
+      payment: { ...paidOrder.payment, status: "DISPUTED" },
+      reconciliation: { matches: [released], exceptions: [withEntry, withoutEntry] },
+    }, []);
+    mount();
+    await screen.findByRole("heading", { name: "订单信息" });
+    expect(screen.getAllByRole("button", { name: "重新核对并确认收款" })).toHaveLength(1);
+    expect(within(document.getElementById("exception-exc-with-entry")!).getByRole("button", { name: "用此流水重新确认" })).toBeVisible();
+    expect(within(document.getElementById("exception-exc-no-entry")!).queryByRole("button", { name: /重新确认|人工关联/ })).not.toBeInTheDocument();
+  });
+
   it.each([
     { name: "a reversed association inside collapsed history", hash: "#match-" + matchId, target: () => document.getElementById("match-" + matchId), exact: true },
     { name: "an ignored exception inside collapsed history", hash: "#exception-" + financialException.exception_id, target: () => document.getElementById("exception-" + financialException.exception_id), exact: true },

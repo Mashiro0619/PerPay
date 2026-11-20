@@ -112,12 +112,16 @@ export function OrderExceptionRecord({ exception, order, ledger, candidate: know
   const candidate = knownCandidate ?? candidateQuery.data?.data;
   const payment = order.payment.status;
   const resolution = exceptionResolution(exception);
+  // The order footer already offers a general association entry; the exception
+  // sub-record only adds a shortcut for its own specific available credit entry.
   const canAssociate = !["UNMATCHED_DEBIT", "UNLINKED_REFUND"].includes(exception.exception_type) &&
     exception.status === "OPEN" &&
     (payment === "UNPAID" || (payment === "DISPUTED" && !order.refund_mark.marked)) &&
-    (!exception.ledger_entry_id || (entry?.direction === "CREDIT" && ["UNALLOCATED", "CANDIDATE", "CONFLICT"].includes(entry.state)));
+    !!exception.ledger_entry_id &&
+    entry?.direction === "CREDIT" &&
+    ["UNALLOCATED", "CANDIDATE", "CONFLICT"].includes(entry.state);
   const associate = useAssociateIncome({
-    actionLabel: payment === "DISPUTED" ? "重新核对并确认收款" : "人工关联收款",
+    actionLabel: payment === "DISPUTED" ? "用此流水重新确认" : "用此流水关联",
     orderId: order.order_id,
     ledgerId: exception.ledger_entry_id ?? "",
     orderLabel: order.product_name,

@@ -71,6 +71,7 @@ describe("disputed order review", () => {
     mount(<OrderExceptionRecord exception={exception} order={data} ledger={{ ...ledger, state: "CONFLICT" }} dismissible={state.dismissible.has(exception.exception_id)} />);
     expect(document.getElementById("exception-" + exceptionId)).not.toBeNull();
     expect(screen.queryByRole("button", { name: "重新核对并确认收款" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "用此流水重新确认" })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "忽略此提醒" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "已忽略" })).toBeDisabled());
     expect(writes).toHaveLength(1);
