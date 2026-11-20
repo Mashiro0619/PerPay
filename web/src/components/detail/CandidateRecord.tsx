@@ -101,7 +101,7 @@ export function CandidateRecord({
       technical={[{ title: "匹配记录技术信息", data: candidate, identifiers: [
         ["可能匹配记录编号", candidate.candidate_id],
         ["内部订单编号", candidate.order_id],
-        ["PerPay 流水编号", candidate.ledger_entry_id],
+        ["内部流水编号", candidate.ledger_entry_id],
       ] }]} />
     {associate.dialog}
   </>;

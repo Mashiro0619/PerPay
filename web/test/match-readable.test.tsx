@@ -70,7 +70,7 @@ describe("readable payment match detail", () => {
 
       const ledgerSection = section("ledger");
       expect(within(ledgerSection).getByRole("link", { name: /^查看流水/ })).toHaveAttribute("href", scope + "/reconciliation/ledger/" + paymentMatch.ledger_entry_id);
-      expect(terms(ledgerSection)).toEqual(["交易金额", "交易时间", "对方", "支付宝备注", "支付宝流水号", "支付宝订单号", "PerPay 流水编号"]);
+      expect(terms(ledgerSection)).toEqual(["交易金额", "交易时间", "对方", "支付宝备注", "支付宝流水号", "支付宝订单号", "内部流水编号"]);
 
       expect(terms(section("evidence"))).toEqual(["金额占用时间"]);
       expect(within(section("history")).getAllByRole("listitem").map(item => item.querySelector("span:nth-of-type(2)")!.textContent)).toEqual(["按金额和付款时间推断"]);

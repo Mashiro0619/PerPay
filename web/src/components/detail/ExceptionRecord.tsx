@@ -93,7 +93,7 @@ export function ExceptionRecord({ exception }: { exception: FinancialException }
       technical={[{ title: "账务异常技术信息", data: exception, identifiers: [
         ["异常编号", exception.exception_id],
         ["网站编号", order?.api_client_id ?? clientId ?? null],
-        ["PerPay 流水编号", exception.ledger_entry_id],
+        ["内部流水编号", exception.ledger_entry_id],
         ["内部订单编号", exception.order_id],
         ["可能匹配记录编号", exception.candidate_id],
       ] }]} />

@@ -79,7 +79,7 @@ describe("readable financial exception detail", () => {
     expect(terms(related)).toEqual(["商户订单号", "业务网站", "应付金额", "创建时间", "收银台到期"]);
 
     const entry = section("ledger");
-    expect(terms(entry)).toEqual(["交易金额", "交易时间", "对方", "支付宝备注", "支付宝流水号", "支付宝订单号", "支付宝商户单号", "PerPay 流水编号"]);
+    expect(terms(entry)).toEqual(["交易金额", "交易时间", "对方", "支付宝备注", "支付宝流水号", "支付宝订单号", "支付宝商户单号", "内部流水编号"]);
     for (const value of [availableLedger.external_event_id, availableLedger.provider_order_no, availableLedger.merchant_order_no, ledgerId]) expect(within(entry).getByText(value, { exact: true })).toBeVisible();
     expect(within(entry).getByText(/保留原始交易备注\s+第二行完整内容/)).toBeVisible();
     expect(within(entry).getByRole("link", { name: /^查看流水/ })).toHaveAttribute("href", scope + "/reconciliation/ledger/" + ledgerId);
@@ -97,7 +97,7 @@ describe("readable financial exception detail", () => {
     const tools = screen.getByRole("button", { name: "更多操作，异常记录操作" });
     await user.click(await recordAction("账务异常技术信息", "异常记录操作"));
     const dialog = await screen.findByRole("dialog", { name: "账务异常技术信息" });
-    for (const [label, value] of [["异常编号", exceptionId], ["网站编号", scope ? "shop" : order.api_client_id], ["PerPay 流水编号", ledgerId], ["内部订单编号", orderId], ["可能匹配记录编号", candidateId]]) {
+    for (const [label, value] of [["异常编号", exceptionId], ["网站编号", scope ? "shop" : order.api_client_id], ["内部流水编号", ledgerId], ["内部订单编号", orderId], ["可能匹配记录编号", candidateId]]) {
       await user.click(within(dialog).getByRole("button", { name: "复制" + label }));
       expect(await navigator.clipboard.readText()).toBe(value);
     }

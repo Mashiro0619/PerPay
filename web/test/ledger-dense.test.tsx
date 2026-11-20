@@ -84,10 +84,10 @@ describe("unified transaction detail", () => {
       expect(within(card).getByRole("heading", { name: "采集记录 " + (index + 1), level: 3 })).toBeVisible();
       expect(within(card).getByText("未分配", { exact: true })).toBeVisible();
       // Identical sources repeat none of the transaction's facts.
-      expect(terms(card)).toEqual(["PerPay 流水编号", "保存时间"]);
+      expect(terms(card)).toEqual(["内部流水编号", "保存时间"]);
       // A copy can still be used by name: one kept from an account that no longer exists may be open to other orders.
       expect(within(card).getByRole("button", { name: "用这份记录关联" })).toBeVisible();
-      await user.click(within(card).getByRole("button", { name: "复制PerPay 流水编号" }));
+      await user.click(within(card).getByRole("button", { name: "复制内部流水编号" }));
       expect(writeText).toHaveBeenLastCalledWith(id);
     }
     // Copies that agree stand for one another, so the record offers the association without asking which.
@@ -118,7 +118,7 @@ describe("unified transaction detail", () => {
     expect(sources.querySelector("[data-sub-record]")).toBeNull();
     expect(document.getElementById("source-" + ledgerId)).toBeNull();
     expect(value(sources, "PerPay 记录状态")).toHaveTextContent(/^未分配$/);
-    await user.click(within(sources).getByRole("button", { name: "复制PerPay 流水编号" }));
+    await user.click(within(sources).getByRole("button", { name: "复制内部流水编号" }));
     expect(writeText).toHaveBeenLastCalledWith(ledgerId);
     const associate = screen.getByRole("button", { name: "人工关联收款" });
     expect(associate.closest("[data-overlay-actions]")).not.toBeNull();
@@ -128,14 +128,14 @@ describe("unified transaction detail", () => {
     if (consistent) {
       await user.click(within(facts).getByRole("button", { name: "复制支付宝订单号" }));
       expect(writeText).toHaveBeenLastCalledWith("20261103");
-      expect(terms(sources)).toEqual(["PerPay 记录状态", "PerPay 流水编号", "保存时间"]);
+      expect(terms(sources)).toEqual(["PerPay 记录状态", "内部流水编号", "保存时间"]);
       expect(document.querySelector("[data-record-notice]")).toBeNull();
     } else {
       // The stored copy states for itself what the transaction as a whole no longer can.
       expect(value(facts, "支付宝订单号")).toHaveTextContent(/^有争议$/);
       expect(within(facts).queryByRole("button", { name: "复制支付宝订单号" })).not.toBeInTheDocument();
       expect(screen.getByRole("group", { name: "流水概况" })).toHaveTextContent("金额有争议");
-      expect(terms(sources)).toEqual(["PerPay 记录状态", "交易金额", "支付宝订单号", "PerPay 流水编号", "保存时间"]);
+      expect(terms(sources)).toEqual(["PerPay 记录状态", "交易金额", "支付宝订单号", "内部流水编号", "保存时间"]);
       expect(value(sources, "交易金额")).toHaveTextContent(/^¥1\.01$/);
       await user.click(within(sources).getByRole("button", { name: "复制支付宝订单号" }));
       expect(writeText).toHaveBeenLastCalledWith("20261103");
@@ -162,7 +162,7 @@ describe("unified transaction detail", () => {
     expect((await screen.findAllByRole("menuitem")).map(item => item.textContent)).toEqual(["流水技术信息", "采集记录 1 技术信息", "采集记录 2 技术信息"]);
     await user.click(screen.getByRole("menuitem", { name: "采集记录 2 技术信息" }));
     const dialog = await screen.findByRole("dialog", { name: "采集记录 2 技术信息" });
-    for (const [name, text] of [["PerPay 流水编号", secondSourceId], ["原始事件编号", "raw-" + secondSourceId], ["支付宝 App ID", "2026000000000001"], ["采集来源标识", "historical-account"], ["语义指纹", ledger.semantic_fingerprint]] as const) {
+    for (const [name, text] of [["内部流水编号", secondSourceId], ["原始事件编号", "raw-" + secondSourceId], ["支付宝 App ID", "2026000000000001"], ["采集来源标识", "historical-account"], ["语义指纹", ledger.semantic_fingerprint]] as const) {
       await user.click(within(dialog).getByRole("button", { name: "复制" + name }));
       expect(writeText).toHaveBeenLastCalledWith(text);
     }
@@ -189,7 +189,7 @@ describe("unified transaction detail", () => {
     expect((await screen.findAllByRole("menuitem")).map(item => item.textContent)).toEqual(["流水技术信息", "收款关联技术信息"]);
     await user.click(screen.getByRole("menuitem", { name: "流水技术信息" }));
     const dialog = await screen.findByRole("dialog", { name: "流水技术信息" });
-    for (const name of ["PerPay 流水编号", "支付宝流水号", "原始事件编号", "支付宝 App ID", "采集来源标识", "语义指纹"]) {
+    for (const name of ["内部流水编号", "支付宝流水号", "原始事件编号", "支付宝 App ID", "采集来源标识", "语义指纹"]) {
       expect(within(dialog).getByRole("button", { name: "复制" + name })).toBeVisible();
     }
     expect(fetchMock.mock.calls.every(([request]) => request.method === "GET")).toBe(true);
@@ -337,7 +337,7 @@ describe("unified transaction detail", () => {
     // An expense is never matched to an order, so it is not called unassociated either.
     expect(within(summary).queryByText("未关联")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "人工关联收款" })).not.toBeInTheDocument();
-    expect(within(section("sources")).getByRole("button", { name: "复制PerPay 流水编号" })).toBeVisible();
+    expect(within(section("sources")).getByRole("button", { name: "复制内部流水编号" })).toBeVisible();
     expect(screen.getByRole("button", { name: "更多操作，流水操作" })).toBeVisible();
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
@@ -353,8 +353,8 @@ describe("unified transaction detail", () => {
       expect(within(card).getByRole("link", { name: "采集记录 2" }).getAttribute("href")).toContain("#source-" + secondSourceId);
     } else {
       // An entry that is not one of this transaction's copies can only be named.
-      expect(terms(card)).toEqual(["发现时间", "处理时间", "关联 PerPay 流水"]);
-      expect(within(card).getByRole("button", { name: "复制关联 PerPay 流水" })).toBeVisible();
+      expect(terms(card)).toEqual(["发现时间", "处理时间", "关联内部流水编号"]);
+      expect(within(card).getByRole("button", { name: "复制关联内部流水编号" })).toBeVisible();
     }
     expect(document.querySelector("[data-record-notice]")).toBeNull();
     expect(within(screen.getByRole("group", { name: "流水概况" })).queryByText("需要核查")).not.toBeInTheDocument();

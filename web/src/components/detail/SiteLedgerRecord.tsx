@@ -80,7 +80,7 @@ export function SiteLedgerRecord({
       <Section id="record" title="PerPay 记录">
         <FieldList items={[
           { label: "PerPay 记录状态", value: <LedgerState value={entry.state} /> },
-          { label: "PerPay 流水编号", kind: "id", value: entry.ledger_entry_id, copy: entry.ledger_entry_id },
+          { label: "内部流水编号", kind: "id", value: entry.ledger_entry_id, copy: entry.ledger_entry_id },
           { label: "保存时间", kind: "time", value: <RecordTime value={entry.created_at} /> },
         ]} />
       </Section>
@@ -92,7 +92,7 @@ export function SiteLedgerRecord({
           onClick={event => associate.action.onSelect?.(event.currentTarget)}>{associate.action.label}</Button>)}
       technical={technicalEntries([
         { title: "流水技术信息", created: entry.created_at, data: entry, identifiers: [
-          ["PerPay 流水编号", entry.ledger_entry_id],
+          ["内部流水编号", entry.ledger_entry_id],
           ["支付宝流水号", entry.external_event_id],
         ] },
         ...records.map(candidate => ({

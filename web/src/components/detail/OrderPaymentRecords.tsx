@@ -29,7 +29,7 @@ function ledgerFields(entry: ReconciliationLedgerEntry): { primary: Field[]; ext
     ],
     extra: [
       ...(entry.merchant_order_no ? [{ label: "支付宝商户单号", kind: "id" as const, value: entry.merchant_order_no, copy: entry.merchant_order_no }] : []),
-      { label: "PerPay 流水编号", kind: "id", value: entry.ledger_entry_id, copy: entry.ledger_entry_id },
+      { label: "内部流水编号", kind: "id", value: entry.ledger_entry_id, copy: entry.ledger_entry_id },
     ],
   };
 }
@@ -154,7 +154,7 @@ export function paymentTechnical(order: AdminOrderDetail): DatedTechnicalEntry[]
   return [
     ...order.reconciliation.matches.map(match => ({
       id: "match-" + match.payment_match_id, title: "收款关联技术信息", created: match.created_at, data: match,
-      identifiers: [["关联编号", match.payment_match_id], ["PerPay 流水编号", match.ledger_entry_id], ["可能匹配记录编号", match.candidate_id]] as const,
+      identifiers: [["关联编号", match.payment_match_id], ["内部流水编号", match.ledger_entry_id], ["可能匹配记录编号", match.candidate_id]] as const,
     })),
     ...order.reconciliation.exceptions.map(exception => ({
       id: "exception-" + exception.exception_id, title: "异常记录技术信息", created: exception.created_at, data: exception,
