@@ -20,10 +20,10 @@ import { QueryView } from "@/components/request-state";
 import {
   CandidateCard,
   LedgerFacts,
-  MatchCard,
 } from "@/components/detail/PaymentEvidence";
 import { ConflictRecord } from "@/components/detail/ConflictEvidence";
 import { ExceptionRecord } from "@/components/detail/ExceptionRecord";
+import { MatchRecord } from "@/components/detail/MatchRecord";
 import {
   DetailFields,
   DetailNavigation,
@@ -162,9 +162,9 @@ function MatchDetail({ resourceId }: { resourceId: string }) {
   });
   return (
     <DetailPage>
-      <EvidenceHeading title="收款关联详情" loaded={query.isSuccess} density="comfortable" />
+      <EvidenceHeading title="收款关联" loaded={query.isSuccess} density="comfortable" />
       <QueryView query={query}>
-        {({ data }) => clientId ? <MatchCard match={data} density="comfortable" /> : <Navigate replace to={{ pathname: "/reconciliation/transactions/" + data.ledger_entry_id, search: location.search, hash: "#match-" + data.payment_match_id }} state={location.state} />}
+        {({ data }) => clientId ? <MatchRecord key={data.payment_match_id} match={data} /> : <Navigate replace to={{ pathname: "/reconciliation/transactions/" + data.ledger_entry_id, search: location.search, hash: "#match-" + data.payment_match_id }} state={location.state} />}
       </QueryView>
     </DetailPage>
   );
