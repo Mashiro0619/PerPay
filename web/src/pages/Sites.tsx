@@ -223,7 +223,7 @@ export function SiteSummaryOverlay() {
       ]} />
       <ActionBar menuLabel="更多操作，网站操作"
         primary={<Link to={"/sites/" + encodeURIComponent(current.client_id) + "?range=" + range} className={buttonVariants()}>查看网站总览</Link>}
-        secondary={<Link to={"/sites/" + encodeURIComponent(current.client_id) + "/edit?section=basic"} className={buttonVariants({ variant: "outline" })}>编辑网站</Link>} />
+        secondary={{ label: "编辑网站", to: "/sites/" + encodeURIComponent(current.client_id) + "/edit?section=basic" }} />
     </DetailPage>;
   }}</QueryView>;
 }

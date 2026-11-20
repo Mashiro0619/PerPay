@@ -10,6 +10,7 @@ import { RecordNotice, RecordSummary } from "../src/components/record/RecordSumm
 import { Section, Sections } from "../src/components/record/Sections";
 import { SubRecord } from "../src/components/record/SubRecord";
 import { Timeline } from "../src/components/record/Timeline";
+import { mobileMedia } from "./mobile-media";
 
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
@@ -391,5 +392,30 @@ describe("record action bar", () => {
     const dialog = await screen.findByRole("dialog", { name: "收款关联技术信息" });
     expect(dialog).toHaveTextContent('"match": 2');
     expect(screen.getAllByRole("dialog")).toHaveLength(1);
+  });
+
+  it("folds a secondary action into the menu beside a primary one on phones, but leaves a sole secondary action out", async () => {
+    const media = mobileMedia(390);
+    const refund = vi.fn();
+    const view = at("/record", <ActionBar menuLabel="更多操作，订单操作"
+      primary={<button>重新核对并确认收款</button>}
+      secondary={{ label: "标记已退款", onSelect: refund }}
+      menu={[{ label: "查看收银台结果", href: "/checkout" }]} />);
+    expect(Array.from(document.querySelectorAll("[data-record-primary-actions] > *")).map(node => node.textContent)).toEqual(["重新核对并确认收款"]);
+    const trigger = screen.getByRole("button", { name: "更多操作，订单操作" });
+    const user = userEvent.setup();
+    await user.click(trigger);
+    expect((await screen.findAllByRole("menuitem")).map(item => item.textContent)).toEqual(["标记已退款", "查看收银台结果"]);
+    await user.click(screen.getByRole("menuitem", { name: "标记已退款" }));
+    expect(refund).toHaveBeenCalledWith(trigger);
+
+    media.resize(1280);
+    expect(Array.from(document.querySelectorAll("[data-record-primary-actions] > *")).map(node => node.textContent)).toEqual(["标记已退款", "重新核对并确认收款"]);
+
+    media.resize(390);
+    view.rerender(<MemoryRouter initialEntries={["/record"]}><ActionBar menuLabel="更多操作，订单操作"
+      secondary={{ label: "查看收银台结果", href: "/checkout" }} /></MemoryRouter>);
+    expect(screen.queryByRole("button", { name: "更多操作，订单操作" })).not.toBeInTheDocument();
+    expect(Array.from(document.querySelectorAll("[data-record-primary-actions] > *")).map(node => node.textContent)).toEqual(["查看收银台结果"]);
   });
 });

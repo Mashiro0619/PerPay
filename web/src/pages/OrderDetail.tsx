@@ -3,7 +3,6 @@ import { useWorkspace, useWorkspaceApi } from "@/workspace";
 import { PageHeaderActions } from "@/components/page-header-actions";
 import { PageHeading } from "@/components/page-heading";
 import { RefreshButton } from "@/components/refresh-button";
-import { ExternalLink } from "lucide-react";
 import { useParams } from "react-router";
 import { queryClient, result, type AdminOrderDetail, type AdminOrderEvent, type PaymentMatchDetail } from "@/api/client";
 import { Link, useDetailBack } from "@/navigation";
@@ -27,7 +26,7 @@ import { FieldList } from "@/components/record/FieldList";
 import { RecordNotice, RecordSummary } from "@/components/record/RecordSummary";
 import { Section, Sections } from "@/components/record/Sections";
 import { RecordTime, Timeline, type TimelineEntry } from "@/components/record/Timeline";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { RefundMarkStatus, useRefundMark } from "./RefundMark";
 
 export function OrderDetail() {
@@ -185,8 +184,8 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
     <ActionBar menuLabel="更多操作，订单操作"
       primary={(unpaid || unresolved) && <Button className="h-auto min-h-8 min-w-0 max-w-full whitespace-normal py-1.5" disabled={associate.action.disabled} onClick={event => associate.action.onSelect?.(event.currentTarget)}>{associate.action.label}</Button>}
       secondary={unresolved
-        ? <Button variant="outline" onClick={event => refund.open(true, event.currentTarget, true)}>标记已退款</Button>
-        : <a className={buttonVariants({ variant: "outline" })} href={checkout.href} target="_blank" rel="noopener noreferrer" title={checkout.title}>{checkout.label}<ExternalLink data-icon="inline-end" aria-hidden="true" /></a>}
+        ? { label: "标记已退款", onSelect: trigger => refund.open(true, trigger, true) }
+        : checkout}
       menu={[...(refund.action && !unresolved ? [refund.action] : []), ...(unresolved ? [checkout] : [])]}
       technical={technicalEntries([
         { title: "订单技术信息", created: order.created_at, data: order, identifiers: [["内部订单编号", order.order_id], ["网站编号", order.api_client_id]] },

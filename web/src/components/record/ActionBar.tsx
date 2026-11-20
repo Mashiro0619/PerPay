@@ -1,10 +1,41 @@
-import { useRef, useState, type ReactNode } from "react";
-import { Code } from "lucide-react";
+import { isValidElement, useEffect, useRef, useState, type ReactNode } from "react";
+import { Code, ExternalLink } from "lucide-react";
+import { Link } from "@/navigation";
 import { preciseDateTime } from "@/lib/format";
 import { OverlayActions } from "@/components/overlay-actions";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { TechnicalDetailsDialog } from "@/components/detail/DetailPrimitives";
 import { ActionMenu, type RecordAction } from "./ActionMenu";
+
+const COMPACT_FOOTER_QUERY = "(max-width: 767px)";
+
+function useCompactFooter() {
+  const [compact, setCompact] = useState(() =>
+    typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia(COMPACT_FOOTER_QUERY).matches,
+  );
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
+    const query = window.matchMedia(COMPACT_FOOTER_QUERY);
+    const update = () => setCompact(query.matches);
+    query.addEventListener("change", update);
+    update();
+    return () => query.removeEventListener("change", update);
+  }, []);
+  return compact;
+}
+
+function isRecordAction(value: ReactNode | RecordAction | undefined): value is RecordAction {
+  return typeof value === "object" && value !== null && !isValidElement(value) && !Array.isArray(value) && "label" in value && typeof value.label === "string";
+}
+
+function SecondaryAction({ action }: { action: RecordAction }) {
+  if (action.href && !action.disabled) return <a className={buttonVariants({ variant: "outline" })} href={action.href} target="_blank" rel="noopener noreferrer" title={action.title}>
+    {action.label}<ExternalLink data-icon="inline-end" aria-hidden="true" />
+  </a>;
+  if (action.to && !action.disabled) return <Link to={action.to} global={action.global ?? false} className={buttonVariants({ variant: "outline" })}>{action.label}</Link>;
+  return <Button type="button" variant="outline" disabled={action.disabled} onClick={event => action.onSelect?.(event.currentTarget)}>{action.label}</Button>;
+}
 
 export type TechnicalEntry = {
   title: string;
@@ -29,27 +60,36 @@ export function technicalEntries(entries: readonly DatedTechnicalEntry[]): Techn
 /**
  * The record's fixed footer. At most one filled primary and one outlined
  * secondary action sit on the right; destructive actions and the record's only
- * "技术信息" entry go into the menu on the left.
+ * "技术信息" entry go into the menu on the left. On phones, a secondary
+ * RecordAction beside a primary one moves into the menu so the primary button
+ * keeps full breathing room.
  */
 export function ActionBar({ primary, secondary, menu = [], menuLabel, technical = [] }: {
   primary?: ReactNode;
-  secondary?: ReactNode;
+  secondary?: ReactNode | RecordAction;
   menu?: readonly RecordAction[];
   /** Accessible name of the menu, such as "更多操作，订单操作". */
   menuLabel: string;
   /** Raw data of the record and its sub-records, each opened from the menu. */
   technical?: readonly TechnicalEntry[];
 }) {
+  const compact = useCompactFooter();
   const [shown, setShown] = useState<string | null>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   if (!primary && !secondary && !menu.length && !technical.length) return null;
+  const secondaryAction = isRecordAction(secondary) ? secondary : null;
+  const foldSecondary = !!secondaryAction && !!primary && compact;
+  const effectiveMenu = foldSecondary ? [secondaryAction, ...menu] : menu;
+  const visibleSecondary: ReactNode = isRecordAction(secondary)
+    ? (foldSecondary ? null : <SecondaryAction action={secondary} />)
+    : secondary;
   const key = (entry: TechnicalEntry) => entry.id ?? entry.title;
   return <OverlayActions className="justify-start">
-    <ActionMenu align="start" actions={menu} label={menuLabel} text="更多" triggerRef={trigger}
+    <ActionMenu align="start" actions={effectiveMenu} label={menuLabel} text="更多" triggerRef={trigger}
       extra={technical.map(entry => <DropdownMenuItem key={key(entry)} onClick={() => setShown(key(entry))}>
         <Code aria-hidden="true" />{entry.title}{entry.note && <> · <span className="text-muted-foreground">{entry.note}</span></>}
       </DropdownMenuItem>)} />
-    {(primary || secondary) && <div data-record-primary-actions className="ml-auto flex min-w-0 flex-wrap justify-end gap-2 max-md:flex-1 max-md:[&>*]:flex-1">{secondary}{primary}</div>}
+    {(primary || visibleSecondary) && <div data-record-primary-actions className="ml-auto flex min-w-0 flex-wrap justify-end gap-2 max-md:flex-1 max-md:[&>*]:flex-1">{visibleSecondary}{primary}</div>}
     {technical.map(entry => <TechnicalDetailsDialog key={key(entry)} open={shown === key(entry)} onOpenChange={open => setShown(open ? key(entry) : null)}
       finalFocus={() => trigger.current} data={entry.data} identifiers={entry.identifiers ?? []} title={entry.title} />)}
   </OverlayActions>;
