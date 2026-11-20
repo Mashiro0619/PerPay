@@ -11,7 +11,7 @@ export function measureDetailTextContrast(element: Element, scope: "detail" | "t
   const eligible = scope === "tabs" ? tabScroller && element.matches('button[role="tab"][data-slot="tabs-trigger"]') && element.getAttribute("aria-disabled") !== "true" && !element.hasAttribute("disabled")
     : scope === "toast" ? toast && element.matches('h2[data-slot="toast-title"]') && element.childElementCount === 0 &&
       toast.closest('[data-slot="toast-viewport"][role="region"]') && !toast.matches('[data-limited], [data-starting-style], [data-ending-style]')
-    : detail && element.matches('p, h1, h2, h3, h4, h5, h6, dt, dd, span, a, div[data-slot$="-description"], div[data-slot="item-title"]');
+    : detail && element.matches('p, h1, h2, h3, h4, h5, h6, dt, dd, span, time, a, div[data-slot$="-description"], div[data-slot="item-title"]');
   if (!eligible ||
     [...element.querySelectorAll("*")].some(node => !["SPAN", "TIME", "A", "STRONG", "EM", "B", "I", "CODE", "BR", "SMALL"].includes(node.tagName))) return null;
   const context = document.createElement("canvas").getContext("2d")!;
