@@ -72,7 +72,8 @@ export function ExceptionRecord({ exception }: { exception: FinancialException }
   const evidence = !!exception.candidate_id && (!candidate || facts.length > 0 || incomplete);
   const history: TimelineEntry[] = [
     ...(exception.resolved_at ? [{ id: "resolved", title: "异常已处理", time: exception.resolved_at, body: resolution, tone: "success" as const }] : []),
-    { id: "created", title: "发现异常", time: exception.created_at, body: exceptionExplanation(exception) },
+    // Why it was raised is the summary's sentence; the history only dates it.
+    { id: "created", title: "发现异常", time: exception.created_at },
   ];
 
   return <>

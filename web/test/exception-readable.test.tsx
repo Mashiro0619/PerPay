@@ -87,6 +87,8 @@ describe("readable financial exception detail", () => {
     // The evidence adds only what the entry does not state itself.
     expect(terms(section("evidence"))).toEqual(["匹配金额", "金额占用时间"]);
     expect(within(section("history")).getAllByRole("listitem").map(item => item.querySelector("span:nth-of-type(2)")!.textContent)).toEqual(["发现异常"]);
+    // The explanation is said once, in the summary.
+    expect(screen.getAllByText("支付宝交易金额 ¥1.02 与可能关联订单的应付 ¥1.01 不一致；此关联仅为推断。")).toHaveLength(1);
 
     // One primary action in the footer; identifiers only in the technical information behind its menu.
     const associate = screen.getByRole("button", { name: "人工关联收款" });
