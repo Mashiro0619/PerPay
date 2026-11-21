@@ -47,7 +47,7 @@ export function CandidateRecord({
     orderLabel: order?.product_name,
     ledgerLabel: entry ? money(entry.amount_cents) + " · " + dateTime(entry.occurred_at) : undefined,
   });
-  const facts = candidateFactsBeyondLedger(candidate, entry);
+  const facts = candidateFactsBeyondLedger(candidate, entry, order);
   const incomplete = candidateFacts(candidate).length < 3;
   const history: TimelineEntry[] = [
     ...(candidate.decided_at ? [{

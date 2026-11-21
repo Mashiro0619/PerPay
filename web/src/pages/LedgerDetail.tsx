@@ -1,7 +1,7 @@
 import { useIsFetching, useQueries, useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { useLocation, useParams } from "react-router";
 import { api, result, type AdminLedgerDetail, type AdminLedgerMatch, type AdminLedgerSource, type AdminOrderDetail, type MatchCandidate, type PaymentMatchEnvelope, type ReconciliationOrder } from "@/api/client";
-import { candidateFacts, candidateFactsBeyondLedger, candidateGuidance } from "@/lib/detail-summary";
+import { candidateFacts, candidateFactsBeyondLedger, candidateGuidance, type CandidateOrderRelease } from "@/lib/detail-summary";
 import { dateTime, money } from "@/lib/format";
 import { label } from "@/lib/labels";
 import { isReconciliationDetailQuery, refreshReconciliationDetails } from "@/lib/record-refresh";
@@ -344,14 +344,18 @@ function LedgerMatchRecord({ match, query, source, multiple }: {
     ]} />
     <Pending query={query} label="正在读取收款关联…" />
     <ErrorNotice scope="page" error={query.error} retainedData={!!detail} retry={() => { void query.refetch(); }} placeholder="收款关联读取失败，请刷新重试。" />
-    {detail?.candidate && <MatchingEvidence candidate={detail.candidate} ledger={detail.ledger_entry} />}
+    {detail?.candidate && <MatchingEvidence candidate={detail.candidate} ledger={detail.ledger_entry} order={detail.order} />}
     {reverse.dialog}
   </SubRecord>;
 }
 
 /** Why PerPay paired the order with the entry, beyond what the entry itself states. */
-function MatchingEvidence({ candidate, ledger }: { candidate: MatchCandidate; ledger: { amount_cents: number; occurred_at: string } }) {
-  const facts = candidateFactsBeyondLedger(candidate, ledger);
+function MatchingEvidence({ candidate, ledger, order }: {
+  candidate: MatchCandidate;
+  ledger: { amount_cents: number; occurred_at: string };
+  order?: CandidateOrderRelease | null | undefined;
+}) {
+  const facts = candidateFactsBeyondLedger(candidate, ledger, order);
   const incomplete = candidateFacts(candidate).length < 3;
   if (!facts.length && !incomplete) return null;
   return <Disclosure label="匹配依据" {...(facts.length ? { count: facts.length } : {})}>
@@ -387,7 +391,7 @@ function LedgerCandidateRecord({ candidate, source, number, settled }: {
         siteField(order.api_client_id, order.site_name ?? null),
         ...orderFields(order, source.amount_cents),
       ] : []),
-      ...candidateFactsBeyondLedger(candidate, source).map(([name, value]) => ({ label: name, value })),
+      ...candidateFactsBeyondLedger(candidate, source, order).map(([name, value]) => ({ label: name, value })),
       !!number && { label: "采集记录", value: <SourceLink id={source.ledger_entry_id} number={number} /> },
       { label: "形成时间", kind: "time", value: <RecordTime value={candidate.created_at} /> },
       !!candidate.decided_at && { label: "决定时间", kind: "time", value: <RecordTime value={candidate.decided_at} /> },

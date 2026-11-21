@@ -1,7 +1,7 @@
 import { useQuery } from "@/lib/workspace-query";
 import { useWorkspaceApi } from "@/workspace";
 import { result, type AdminOrderDetail, type FinancialException, type MatchCandidate, type PaymentMatchDetail, type ReconciliationLedgerEntry } from "@/api/client";
-import { candidateFacts, candidateFactsBeyondLedger, exceptionExplanation, exceptionResolution, exceptionStateLabel } from "@/lib/detail-summary";
+import { candidateFacts, candidateFactsBeyondLedger, exceptionExplanation, exceptionResolution, exceptionStateLabel, type CandidateOrderRelease } from "@/lib/detail-summary";
 import { dateTime, money } from "@/lib/format";
 import { label } from "@/lib/labels";
 import { StatusBadge } from "@/components/business-status";
@@ -35,13 +35,14 @@ function ledgerFields(entry: ReconciliationLedgerEntry): { primary: Field[]; ext
 }
 
 /** Collapsed evidence of a sub-record. `anchor` makes the candidate a `#candidate-…` target. */
-function Evidence({ extra, candidate, ledger, anchor }: {
+function Evidence({ extra, candidate, ledger, order, anchor }: {
   extra: readonly Field[];
   candidate?: MatchCandidate | null | undefined;
   ledger?: ReconciliationLedgerEntry | undefined;
+  order?: CandidateOrderRelease | null | undefined;
   anchor: boolean;
 }) {
-  const facts = candidate ? candidateFactsBeyondLedger(candidate, ledger) : [];
+  const facts = candidate ? candidateFactsBeyondLedger(candidate, ledger, order) : [];
   const incomplete = !!candidate && candidateFacts(candidate).length < 3;
   if (!extra.length && !facts.length && !incomplete) return null;
   return <Disclosure label="核对凭据" count={extra.length + facts.length}>
@@ -82,7 +83,7 @@ export function OrderMatchRecord({ match, release = false }: { match: PaymentMat
         { label: "撤销理由", value: reversal?.reason ?? "未记录" },
       ] : []),
     ]} />
-    <Evidence extra={extra} candidate={match.candidate} ledger={match.ledger_entry} anchor />
+    <Evidence extra={extra} candidate={match.candidate} ledger={match.ledger_entry} order={match.order} anchor />
     {reverse.dialog}
     {reassign.dialog}
   </SubRecord>;
@@ -144,7 +145,7 @@ export function OrderExceptionRecord({ exception, order, ledger, candidate: know
       !!resolution && { label: "处理结果", value: resolution },
     ]} />
     {!knownCandidate && exception.candidate_id && <ErrorNotice scope="page" error={candidateQuery.error} retry={() => { void candidateQuery.refetch(); }} />}
-    <Evidence extra={fields.extra} candidate={candidate} ledger={entry} anchor={candidateAnchor} />
+    <Evidence extra={fields.extra} candidate={candidate} ledger={entry} order={order} anchor={candidateAnchor} />
     {associate.dialog}
   </SubRecord>;
 }

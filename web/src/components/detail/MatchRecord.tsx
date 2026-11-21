@@ -22,7 +22,7 @@ export function MatchRecord({ match }: { match: PaymentMatchDetail }) {
   const reversal = match.status === "REVERSED" ? match.resolution_operation : null;
   const reverse = useReverseMatch(match, false);
   const difference = match.ledger_entry.amount_cents - match.order.payable_amount_cents;
-  const facts = match.candidate ? candidateFactsBeyondLedger(match.candidate, match.ledger_entry) : [];
+  const facts = match.candidate ? candidateFactsBeyondLedger(match.candidate, match.ledger_entry, match.order) : [];
   const incomplete = !!match.candidate && candidateFacts(match.candidate).length < 3;
   const evidence = !!match.candidate && (facts.length > 0 || incomplete);
 

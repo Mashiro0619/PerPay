@@ -45,8 +45,27 @@ export function numberField(
     ? value
     : null;
 }
+export type CandidateOrderRelease =
+  | { checkout: { status: string; closed_at: string | null } }
+  | { checkout_status: string; closed_at: string | null };
+
+function orderReleaseState(order?: CandidateOrderRelease | null): {
+  status?: string;
+  releasedAt: number | null;
+} {
+  if (!order) return { releasedAt: null };
+  const status = "checkout" in order ? order.checkout.status : order.checkout_status;
+  const closedAt = "checkout" in order ? order.checkout.closed_at : order.closed_at;
+  const parsed = closedAt ? Date.parse(closedAt) : NaN;
+  return {
+    status,
+    releasedAt: Number.isFinite(parsed) ? parsed : null,
+  };
+}
+
 export function candidateFacts(
   candidate: MatchCandidate,
+  order?: CandidateOrderRelease | null,
 ): Array<[string, string]> {
   const evidence = candidate.evidence;
   if (evidence.schema !== "perpay:match-candidate:v3") return [];
@@ -54,6 +73,19 @@ export function candidateFacts(
   const occurred = numberField(evidence, "occurred_at");
   const start = numberField(evidence, "slot_occupied_from");
   const end = numberField(evidence, "slot_released_at");
+  const current = orderReleaseState(order);
+  const interval =
+    start !== null && start >= 0
+      ? end !== null && end >= start
+        ? `${detailTimestamp(start)} 至 ${detailTimestamp(end)}`
+        : evidence.slot_released_at === null
+          ? current.releasedAt !== null && current.releasedAt >= start
+            ? `${detailTimestamp(start)} 至 ${detailTimestamp(current.releasedAt)}（匹配时尚未释放）`
+            : current.status === "OPEN"
+              ? `${detailTimestamp(start)} 起（当前仍在占用中）`
+              : `${detailTimestamp(start)} 起（匹配时尚未释放）`
+          : `${detailTimestamp(start)} 起（未记录释放时间）`
+      : null;
   return [
     ...(amount !== null && amount > 0
       ? [["匹配金额", money(amount)] as [string, string]]
@@ -61,19 +93,8 @@ export function candidateFacts(
     ...(occurred !== null && occurred >= 0
       ? [["支付宝交易时间", detailTimestamp(occurred)] as [string, string]]
       : []),
-    ...(start !== null && start >= 0
-      ? [
-          [
-            "金额占用时间",
-            detailTimestamp(start) +
-              " 至 " +
-              (end !== null && end >= start
-                ? detailTimestamp(end)
-                : evidence.slot_released_at === null
-                  ? "生成这条记录时，金额还没释放"
-                  : "没有记录释放时间"),
-          ] as [string, string],
-        ]
+    ...(interval !== null
+      ? [["金额占用时间", interval] as [string, string]]
       : []),
   ];
 }
@@ -81,8 +102,9 @@ export function candidateFacts(
 export function candidateFactsBeyondLedger(
   candidate: MatchCandidate,
   ledger?: { amount_cents: number; occurred_at: string } | undefined,
+  order?: CandidateOrderRelease | null,
 ): Array<[string, string]> {
-  return candidateFacts(candidate).filter(
+  return candidateFacts(candidate, order).filter(
     ([name]) =>
       !ledger ||
       (name === "匹配金额"

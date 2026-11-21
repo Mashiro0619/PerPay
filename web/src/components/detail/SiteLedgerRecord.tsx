@@ -134,7 +134,7 @@ function SiteLedgerCandidate({ candidate, entry }: { candidate: MatchCandidate; 
         order.received_amount_cents !== null && { label: "实收金额", kind: "money" as const, value: money(order.received_amount_cents) },
         { label: "订单收款状态", value: <OrderStatusBadge payment={orderPaymentStatus(order)} checkout={"checkout" in order ? order.checkout.status : order.checkout_status} refundMarked={"refund_mark" in order && order.refund_mark.marked} /> },
       ] : []),
-      ...candidateFactsBeyondLedger(candidate, entry).map(([name, value]) => ({ label: name, value })),
+      ...candidateFactsBeyondLedger(candidate, entry, order).map(([name, value]) => ({ label: name, value })),
       { label: "形成时间", kind: "time", value: <RecordTime value={candidate.created_at} /> },
       !!candidate.decided_at && { label: "决定时间", kind: "time", value: <RecordTime value={candidate.decided_at} /> },
     ]} />

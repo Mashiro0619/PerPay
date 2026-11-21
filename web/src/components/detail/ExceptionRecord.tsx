@@ -40,7 +40,7 @@ export function ExceptionRecord({ exception }: { exception: FinancialException }
     orderId: exception.order_id ?? "", ledgerId: exception.ledger_entry_id ?? "", orderLabel: order?.product_name,
     ledgerLabel: entry ? money(entry.amount_cents) + " · " + dateTime(entry.occurred_at) : undefined,
   });
-  const facts = candidate ? candidateFactsBeyondLedger(candidate, entry) : [];
+  const facts = candidate ? candidateFactsBeyondLedger(candidate, entry, order) : [];
   const incomplete = !!candidate && candidateFacts(candidate).length < 3;
   const evidence = !!exception.candidate_id && (!candidate || facts.length > 0 || incomplete);
   const history: TimelineEntry[] = [
