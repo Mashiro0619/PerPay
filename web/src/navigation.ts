@@ -71,9 +71,7 @@ export function Link({ viewTransition = true, global = false, preserveSelectedSi
   const isRowLink = "data-row-link" in props && props["data-row-link"] !== false && props["data-row-link"] !== undefined;
   const targetPathname = isRowLink && detailTarget ? detailTarget.pathname : null;
   const registered = useRef<{ list: OverlayRecordListScope; pathname: string; element: HTMLAnchorElement } | null>(null);
-  const anchorNode = useRef<HTMLAnchorElement | null>(null);
   const bindRef = useCallback((node: HTMLAnchorElement | null) => {
-    anchorNode.current = node;
     if (registered.current) {
       registered.current.list.registerRowElement(registered.current.pathname, null, registered.current.element);
       registered.current = null;
@@ -85,18 +83,7 @@ export function Link({ viewTransition = true, global = false, preserveSelectedSi
     if (typeof forwardedRef === "function") forwardedRef(node);
     else if (forwardedRef) forwardedRef.current = node;
   }, [forwardedRef, recordList, targetPathname]);
-  useLayoutEffect(() => {
-    const node = anchorNode.current;
-    if (registered.current && (registered.current.list !== recordList || registered.current.pathname !== targetPathname)) {
-      registered.current.list.registerRowElement(registered.current.pathname, null, registered.current.element);
-      registered.current = null;
-    }
-    if (node && recordList && targetPathname && !registered.current) {
-      recordList.registerRowElement(targetPathname, node);
-      registered.current = { list: recordList, pathname: targetPathname, element: node };
-    }
-  }, [recordList, targetPathname]);
-  return createElement(RouterLink, { ...props, ref: bindRef, ...navigationFeedback(to), ...(record ? { "data-record-state": record } : null), to: href,
+  return createElement(RouterLink, { ...props, ref: isRowLink && recordList ? bindRef : forwardedRef, ...navigationFeedback(to), ...(record ? { "data-record-state": record } : null), to: href,
     state: props.state !== undefined ? props.state : detailNavigationState(to, location), viewTransition: motion,
     onClick(event) {
       props.onClick?.(event);
