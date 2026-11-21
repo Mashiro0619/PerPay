@@ -250,22 +250,46 @@ test("a short step inside a tall drawer pins its flush transparent footer to the
     await page.setViewportSize(size);
     await page.goto(fixture.origin + "/admin/orders/" + fixture.orderId);
     const drawer = page.locator('[data-overlay-content][data-overlay-presentation="drawer"]');
+    const primaryChrome = await drawer.evaluate(shell => {
+      const eyebrow = shell.querySelector<HTMLElement>('[data-overlay-primary] [data-overlay-eyebrow-text]')!;
+      const heading = shell.querySelector<HTMLElement>('[data-overlay-primary] > [data-slot="dialog-header"] h1')!;
+      const close = shell.querySelector<HTMLElement>('[data-overlay-primary] > [data-slot="dialog-header"] [data-slot="dialog-close"]')!;
+      const eyebrowBox = eyebrow.getBoundingClientRect();
+      const headingBox = heading.getBoundingClientRect();
+      const closeBox = close.getBoundingClientRect();
+      const headingStyle = getComputedStyle(heading);
+      return {
+        eyebrow: { text: eyebrow.textContent?.trim(), left: eyebrowBox.left, centerY: eyebrowBox.top + eyebrowBox.height / 2 },
+        heading: { left: headingBox.left, top: headingBox.top, fontSize: headingStyle.fontSize, fontWeight: headingStyle.fontWeight },
+        close: { right: closeBox.right, top: closeBox.top, width: closeBox.width, height: closeBox.height },
+      };
+    });
     await drawer.locator("[data-overlay-footer] [data-record-primary-actions]").getByRole("button", { name: "人工关联收款", exact: true }).click();
     const manual = page.getByRole("dialog", { name: "人工关联收款", exact: true });
     await expect(manual.getByRole("button", { name: "取消", exact: true })).toBeVisible();
     const geometry = await drawer.evaluate(shell => {
+      const eyebrow = shell.querySelector<HTMLElement>('[data-overlay-step] [data-overlay-step-bar] [data-overlay-eyebrow-text]')!;
+      const close = shell.querySelector<HTMLElement>('[data-overlay-step] [data-overlay-step-bar] [data-slot="dialog-close"]')!;
       const header = shell.querySelector<HTMLElement>('[data-overlay-step] > [data-slot="dialog-header"]')!;
+      const title = header.querySelector<HTMLElement>('[data-slot="dialog-title"]')!;
       const body = shell.querySelector<HTMLElement>('[data-overlay-step] [data-overlay-step-scroll]')!;
       const firstChild = body.firstElementChild as HTMLElement;
       const footer = shell.querySelector<HTMLElement>('[data-overlay-step] [data-slot="dialog-footer"]')!;
       const shellBox = shell.getBoundingClientRect();
+      const eyebrowBox = eyebrow.getBoundingClientRect();
+      const closeBox = close.getBoundingClientRect();
       const headerBox = header.getBoundingClientRect();
+      const titleBox = title.getBoundingClientRect();
       const firstBox = firstChild.getBoundingClientRect();
       const footerBox = footer.getBoundingClientRect();
+      const titleStyle = getComputedStyle(title);
       const headerStyle = getComputedStyle(header);
       const style = getComputedStyle(footer);
       return {
         shell: { left: shellBox.left, right: shellBox.right, bottom: shellBox.bottom, height: shellBox.height },
+        eyebrow: { text: eyebrow.textContent?.trim(), left: eyebrowBox.left, centerY: eyebrowBox.top + eyebrowBox.height / 2 },
+        close: { right: closeBox.right, top: closeBox.top, width: closeBox.width, height: closeBox.height },
+        title: { left: titleBox.left, top: titleBox.top, fontSize: titleStyle.fontSize, fontWeight: titleStyle.fontWeight },
         header: { left: headerBox.left, right: headerBox.right, bottom: headerBox.bottom, borderBottom: headerStyle.borderBottomWidth },
         firstTop: firstBox.top,
         footer: { left: footerBox.left, right: footerBox.right, bottom: footerBox.bottom, height: footerBox.height },
@@ -273,6 +297,17 @@ test("a short step inside a tall drawer pins its flush transparent footer to the
         radius: style.borderBottomLeftRadius,
       };
     });
+    expect(geometry.eyebrow.text, "step eyebrow names the parent record drawer").toBe(primaryChrome.eyebrow.text);
+    expect(Math.abs(geometry.eyebrow.left - primaryChrome.eyebrow.left), "step eyebrow aligns horizontally with primary eyebrow").toBeLessThanOrEqual(1);
+    expect(Math.abs(geometry.eyebrow.centerY - primaryChrome.eyebrow.centerY), "step eyebrow aligns vertically with primary eyebrow").toBeLessThanOrEqual(1);
+    expect(Math.abs(geometry.close.right - primaryChrome.close.right), "step close aligns on the right with primary close").toBeLessThanOrEqual(1);
+    expect(Math.abs(geometry.close.top - primaryChrome.close.top), "step close aligns on the top with primary close").toBeLessThanOrEqual(1);
+    expect(Math.abs(geometry.close.width - primaryChrome.close.width), "step close matches primary close width").toBeLessThanOrEqual(1);
+    expect(Math.abs(geometry.close.height - primaryChrome.close.height), "step close matches primary close height").toBeLessThanOrEqual(1);
+    expect(Math.abs(geometry.title.left - primaryChrome.heading.left), "step title aligns horizontally with primary title").toBeLessThanOrEqual(1);
+    expect(Math.abs(geometry.title.top - primaryChrome.heading.top), "step title aligns vertically with primary title").toBeLessThanOrEqual(1);
+    expect(geometry.title.fontSize, "step title matches primary title font size").toBe(primaryChrome.heading.fontSize);
+    expect(geometry.title.fontWeight, "step title matches primary title font weight").toBe(primaryChrome.heading.fontWeight);
     expect(Math.abs(geometry.header.left - geometry.shell.left), "step header divider spans to drawer left edge").toBeLessThanOrEqual(1);
     expect(Math.abs(geometry.header.right - geometry.shell.right), "step header divider spans to drawer right edge").toBeLessThanOrEqual(1);
     expect(geometry.header.borderBottom, "step header separates cleanly from scrolling body").toBe("1px");

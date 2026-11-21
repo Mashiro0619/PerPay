@@ -472,6 +472,10 @@ describe("one routed detail surface", () => {
     // The step asks for the narrower default size; a record drawer keeps its own width.
     expect(detail).toHaveAttribute("data-overlay-size", "lg");
     expect(step.closest("[data-overlay-content]")).toBe(detail);
+    expect(step.querySelector("[data-overlay-step-bar] [data-overlay-eyebrow-text]")).toHaveTextContent("订单详情");
+    const stepClose = within(step).getByRole("button", { name: "关闭对话框" });
+    expect(stepClose.closest("[data-overlay-step-bar]")).not.toBeNull();
+    expect(stepClose.closest("[data-overlay-step-scroll]")).toBeNull();
     expect(document.querySelectorAll("[data-slot=dialog-overlay]")).toHaveLength(1);
     expect(detail.querySelector("[data-overlay-primary]")).not.toBeVisible();
     await user.type(within(step).getByLabelText("内部步骤理由"), "固定理由");
