@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { AlertTriangle, CircleAlert } from "lucide-react";
 import { Link } from "@/navigation";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -115,13 +116,22 @@ export function RecordNotice({ tone, children, jump }: {
   jump?: { section: string; label: string } | { to: string; label: string };
 }) {
   const root = useRef<HTMLDivElement>(null);
-  const link = "w-fit text-left underline underline-offset-4 outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring";
-  const button = "h-auto w-fit gap-0 rounded-sm border-0 p-0 text-sm leading-5 font-normal whitespace-normal text-foreground underline";
-  return <div ref={root} data-record-notice={tone} className={cn("flex min-w-0 flex-col gap-1 border-l-2 pl-3 text-sm leading-5",
-    tone === "danger" ? "border-destructive" : "border-warning-foreground")}>
-    <div className="min-w-0 wrap-anywhere">{children}</div>
-    {jump && ("section" in jump
-      ? <Button type="button" variant="link" size="sm" className={button} onClick={() => showSection(root.current, jump.section)}>{jump.label}<span aria-hidden="true" className="whitespace-pre"> ›</span></Button>
-      : <Link to={jump.to} className={link}>{jump.label}<span aria-hidden="true"> ›</span></Link>)}
+  const danger = tone === "danger";
+  const Icon = danger ? CircleAlert : AlertTriangle;
+  const link = "inline-flex w-fit items-center gap-0.5 rounded-xs text-[0.8125rem] leading-5 font-medium text-foreground/90 underline decoration-current/40 underline-offset-4 outline-none transition-colors hover:text-foreground hover:decoration-current focus-visible:ring-2 focus-visible:ring-ring";
+  const button = "h-auto w-fit gap-0.5 rounded-xs border-0 p-0 text-[0.8125rem] leading-5 font-medium whitespace-normal text-foreground/90 underline decoration-current/40 underline-offset-4 hover:text-foreground hover:decoration-current";
+  return <div ref={root} data-record-notice={tone} className={cn(
+    "flex min-w-0 items-start gap-2.5 rounded-lg border px-3.5 py-3 text-sm leading-5 text-foreground",
+    danger
+      ? "border-danger-foreground/25 bg-danger/65 dark:border-danger-foreground/20 dark:bg-danger/40"
+      : "border-warning-foreground/25 bg-warning/65 dark:border-warning-foreground/20 dark:bg-warning/40",
+  )}>
+    <Icon aria-hidden="true" className={cn("mt-0.5 size-4 shrink-0", danger ? "text-danger-foreground" : "text-warning-foreground")} />
+    <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+      <div className="min-w-0 wrap-anywhere">{children}</div>
+      {jump && ("section" in jump
+        ? <Button type="button" variant="link" size="sm" className={button} onClick={() => showSection(root.current, jump.section)}>{jump.label}<span aria-hidden="true" className="whitespace-pre"> ›</span></Button>
+        : <Link to={jump.to} className={link}>{jump.label}<span aria-hidden="true"> ›</span></Link>)}
+    </div>
   </div>;
 }
