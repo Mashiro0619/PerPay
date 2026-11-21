@@ -87,6 +87,10 @@ const details = {
   ledgerAssociated: "/ledger/" + inferredMatch.ledger_id,
   ledgerIdentical: "/ledger/" + demo.scenarios.ledger.identical,
   ledgerDisputed: "/ledger/" + demo.scenarios.ledger.inconsistent,
+  conflictDuplicateOpen: "/reconciliation/conflicts/" + demo.scenarios.financial.conflicts.duplicateOpen,
+  conflictDuplicateResolved: "/reconciliation/conflicts/" + demo.scenarios.financial.conflicts.duplicateResolved,
+  conflictIsolated: "/reconciliation/conflicts/" + demo.scenarios.financial.conflicts.invalidAmount,
+  conflictRawPage: "/reconciliation/conflicts/" + demo.scenarios.financial.conflicts.rawPageVariant,
 };
 const checkouts: Record<string, string> = {};
 for (const [name, id] of Object.entries(demo.scenarios.lifecycle)) {
