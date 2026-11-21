@@ -15,7 +15,7 @@ test.describe("touch and reduced motion", () => {
       await button.scrollIntoViewIfNeeded();
       targets.push(await expectTouchTarget(button));
     }
-    const query = page.getByRole("button", { name: "查询付款状态", exact: true });
+    const query = page.getByRole("button", { name: "我已付款，查询状态", exact: true });
     const bounds = (await query.boundingBox())!;
     expect(bounds.y + bounds.height).toBeLessThanOrEqual(560);
     await record(page, info, { touch: true, targets, reducedMotion: true });

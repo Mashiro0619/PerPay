@@ -3,7 +3,7 @@ test("checkout keeps one query before order information on phones and scales the
   for (const [width, height] of [[360, 560], [390, 664], [320, 720], [390, 844], [430, 720], [768, 768], [1023, 768], [1024, 768], [1280, 800], [1920, 1080], [2560, 1440]]) {
     await page.setViewportSize({ width: width!, height: height! });
     await page.goto(manifest.origin + manifest.checkouts.open!);
-    const query = page.getByRole("button", { name: "查询付款状态", exact: true });
+    const query = page.getByRole("button", { name: "我已付款，查询状态", exact: true });
     await expect(query).toBeVisible();
     await expect(query).toHaveCount(1);
     const bounds = await page.evaluate(() => {

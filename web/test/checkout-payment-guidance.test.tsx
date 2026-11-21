@@ -30,7 +30,7 @@ describe("checkout payment essentials", () => {
   it("shows the exact payable amount and query action without verbose payment guidance", () => {
     render(<CheckoutApp initial={initial()} />);
     expect(document.querySelector('[data-payable-amount]')).toHaveTextContent("¥10.01");
-    expect(screen.getByRole("button", { name: "查询付款状态" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "我已付款，查询状态" })).toBeVisible();
     expect(screen.queryByText(/请输入准确金额/)).not.toBeInTheDocument();
     expect(screen.queryByText(/付款后会自动查账确认/)).not.toBeInTheDocument();
   });

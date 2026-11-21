@@ -55,7 +55,7 @@ describe("observing payment after checkout ends", () => {
     vi.stubGlobal("fetch", fetch);
     render(<CheckoutApp initial={value} />);
     expect(screen.queryByRole("button", { name: "保存二维码" })).not.toBeInTheDocument();
-    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "查询付款状态" })); });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "刷新付款状态" })); });
     expect(fetch).toHaveBeenCalledWith(expect.any(URL), expect.objectContaining({ method: "GET" }));
     expect(String(fetch.mock.calls[0]?.[0])).toMatch(/\/checkouts\/pct1_observation$/);
   });

@@ -25,7 +25,7 @@ function markup(
 describe("checkout presents payment results without internal confirmation explanations", () => {
   it("shows the confirmed result, amount and order without automatic inference details in the first render", () => {
     const html = markup("INFERRED");
-    expect(html).toContain("收款已确认");
+    expect(html).toContain("付款成功");
     expect(html).toContain("¥10.01");
     expect(html).toContain("merchant-source-number");
     expect(html).not.toContain("按支付宝流水的金额和付款时间推断");
@@ -34,29 +34,29 @@ describe("checkout presents payment results without internal confirmation explan
   });
   it("shows manual confirmation as the payment result without an internal explanation", () => {
     const html = markup("MANUAL");
-    expect(html).toContain("收款已确认");
+    expect(html).toContain("付款成功");
     expect(html).toContain("¥10.01");
     expect(html).not.toContain("商家管理员已根据支付宝流水人工确认这笔收款");
     expect(html).not.toContain("付款时间推断");
   });
   it("does not invent a confirmation basis when it is unavailable", () => {
     const html = markup("NONE");
-    expect(html).toContain("收款已确认");
+    expect(html).toContain("付款成功");
     expect(html).not.toContain("付款时间推断");
     expect(html).not.toContain("商家管理员已根据支付宝流水人工确认");
   });
   it("keeps disputed payments actionable without describing internal reversal details", () => {
     const html = markup("INFERRED", "DISPUTED");
-    expect(html).toContain("付款待核实");
-    expect(html).toContain("请联系商家核实，勿重复付款。");
+    expect(html).toContain("付款待商家核实");
+    expect(html).toContain("请勿重复付款，联系商家核对付款记录即可。");
     expect(html).not.toContain("商家撤销了这笔收款确认");
     expect(html).not.toContain("已确认这笔收款");
     expect(html).not.toContain("data-qr-image");
   });
   it.each([["PARTIAL", "部分"], ["FULL", "全额"]] as const)("identifies %s as historical refund data", (refund, label) => {
     const html = markup("MANUAL", "CONFIRMED", refund);
-    expect(html).toContain("历史退款记录：" + label);
-    expect(html).toContain("具体金额请联系商家");
+    expect(html).toContain("订单已有" + label + "退款记录");
+    expect(html).toContain("具体退款金额与到账进度请联系商家确认");
     expect(html).not.toContain("款项已");
     expect(html).not.toContain("refund_mark");
   });

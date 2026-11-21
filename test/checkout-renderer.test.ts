@@ -55,8 +55,8 @@ describe("public checkout SSR", () => {
     );
     assert.match(html, /data-payable-amount[^>]*>¥10\.01<\/strong>/);
     assert.doesNotMatch(html, /data-qr-image|data-countdown|放大二维码|保存二维码/);
-    assert.match(checkoutText(html), /请暂勿付款/);
-    assert.match(checkoutText(html), /请启用 JavaScript 或刷新页面后再付款/);
+    assert.match(checkoutText(html), /正在加载收银台…/);
+    assert.match(checkoutText(html), /页面正在准备中，请稍候；如长时间未显示二维码，请刷新页面或更换浏览器打开/);
     assert.match(html, /<a[^>]+href="\/checkout\/pct1_test-token"[^>]+data-checkout-reload/);
     assert.match(checkoutText(html), /应付金额/);
     assert.doesNotMatch(checkoutText(html), /请勿修改|扫码付款/);
@@ -163,8 +163,8 @@ describe("public checkout SSR", () => {
     });
     assert.equal(deriveCheckoutVisualState(confirmed), "CONFIRMED");
     assert.equal(readCheckoutInitial(html).checkout?.refund.status, "PARTIAL");
-    assert.match(checkoutText(html), /收款已确认/);
-    assert.match(checkoutText(html), /历史退款记录：部分/);
+    assert.match(checkoutText(html), /付款成功/);
+    assert.match(checkoutText(html), /订单已有部分退款记录/);
     assert.doesNotMatch(checkoutText(html), /付款时间推断|人工确认这笔收款/);
     assert.doesNotMatch(html, /data-qr-image/);
   });
@@ -236,12 +236,12 @@ describe("public checkout SSR", () => {
         /data-qr-image|data-countdown|放大二维码|保存二维码/,
       );
       const buttons = html.match(/<button\b[^>]*>[\s\S]*?<\/button>/g) ?? [];
-      assert.ok(buttons.every(button => !button.includes("查询付款状态")));
+      assert.ok(buttons.every(button => !button.includes("我已付款，查询状态") && !button.includes("刷新付款状态")));
       assert.match(html, /data-product-name/);
     });
   for (const [status, state, heading] of [
-    [503, "UNAVAILABLE", "暂时无法确认付款"],
-    [429, "RATE_LIMITED", "请求过于频繁"],
+    [503, "UNAVAILABLE", "收银台暂不可用"],
+    [429, "RATE_LIMITED", "当前访问较多"],
     [404, "NOT_FOUND", "找不到这个订单"],
   ] as const)
     it("preserves the meaning of route status " + status, () => {
@@ -271,7 +271,7 @@ describe("public checkout SSR", () => {
       if (status === 404) {
         assert.equal(initial.apiUrl, "");
         assert.equal(initial.qrUrl, "");
-        assert.doesNotMatch(checkoutText(html), /重新获取订单|查询付款状态/);
+        assert.doesNotMatch(checkoutText(html), /重新获取订单|查询状态|刷新付款状态/);
       } else assert.match(checkoutText(html), /刷新页面/);
     });
   it("disables an existing order during a service outage", () => {

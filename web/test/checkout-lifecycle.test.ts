@@ -118,8 +118,8 @@ describe("checkout payment layout", () => {
     expect(html).not.toMatch(
       /data-qr-image|data-countdown|放大二维码|保存二维码/,
     );
-    expect(html).toContain("请暂勿付款");
-    expect(html).toContain("请启用 JavaScript 或刷新页面后再付款");
+    expect(html).toContain("正在加载收银台…");
+    expect(html).toContain("页面正在准备中，请稍候；如长时间未显示二维码，请刷新页面或更换浏览器打开");
     expect(html).toContain('href="/checkout/pct1_test"');
     expect(html).toContain("data-checkout-reload");
     expect(html).toContain("刷新页面");
@@ -281,7 +281,7 @@ describe("checkout payment layout", () => {
         order.checkout = { ...order.checkout, status };
       }
       await act(async () => {
-        fireEvent.click(screen.getByRole("button", { name: "查询付款状态" }));
+        fireEvent.click(screen.getByRole("button", { name: "我已付款，查询状态" }));
         finish(response(order));
       });
       expect(screen.queryAllByRole("timer")).toHaveLength(0);
@@ -316,7 +316,7 @@ describe("checkout desktop composition", () => {
       screen.getByRole("button", { name: "复制商家订单号" }),
     );
     expect(container.querySelector("[data-checkout-actions]")).toContainElement(
-      screen.getByRole("button", { name: "查询付款状态" }),
+      screen.getByRole("button", { name: "我已付款，查询状态" }),
     );
     expect(payment).not.toContainElement(summary);
     expect(container.querySelectorAll("[data-qr-image]")).toHaveLength(1);
@@ -325,7 +325,7 @@ describe("checkout desktop composition", () => {
     expect(summary.querySelectorAll("[data-countdown]")).toHaveLength(1);
     expect(container.querySelectorAll("[data-countdown]")).toHaveLength(2);
     expect(
-      screen.getAllByRole("button", { name: "查询付款状态" }),
+      screen.getAllByRole("button", { name: "我已付款，查询状态" }),
     ).toHaveLength(1);
   });
   it("keeps the same QR and in-flight read while resizing instead of mounting another checkout", async () => {
@@ -334,18 +334,18 @@ describe("checkout desktop composition", () => {
       createElement(CheckoutApp, { initial: initial() }),
     );
     const qr = container.querySelector("[data-qr-image]");
-    const query = screen.getByRole("button", { name: "查询付款状态" });
+    const query = screen.getByRole("button", { name: "我已付款，查询状态" });
     fireEvent.click(query);
     fireEvent(window, new Event("resize"));
     expect(container.querySelector("[data-qr-image]")).toBe(qr);
-    expect(screen.getByRole("button", { name: "查询付款状态" })).toBe(query);
+    expect(screen.getByRole("button", { name: "我已付款，查询状态" })).toBe(query);
     expect(read).toHaveBeenCalledTimes(1);
     expect(read.mock.calls[0]?.[1]?.signal?.aborted).toBe(false);
     await act(async () => {
       finish(response());
     });
     expect(container.querySelector("[data-checkout-actions]")).toContainElement(
-      screen.getByText("核实进度暂不可用，页面会继续自动更新。"),
+      screen.getByText("付款结果同步中，页面会自动刷新，请勿重复付款。"),
     );
   });
   it("shows the confirmed return action and removes the QR and countdown", async () => {
@@ -361,7 +361,7 @@ describe("checkout desktop composition", () => {
       received_amount_cents: 1001,
     };
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "查询付款状态" }));
+      fireEvent.click(screen.getByRole("button", { name: "我已付款，查询状态" }));
       finish(response(paid));
     });
     expect(container.querySelector("[data-checkout-actions]")).toContainElement(
@@ -450,7 +450,7 @@ describe("checkout compact order summary", () => {
       ).toHaveLength(1);
       expect(actions!.compareDocumentPosition(summary) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
       expect(actions).toContainElement(
-        screen.getByRole("button", { name: "查询付款状态" }),
+        screen.getByRole("button", { name: "我已付款，查询状态" }),
       );
       expect(summary.querySelectorAll("dt")).toHaveLength(
         showProductName ? 2 : 1,
@@ -505,7 +505,7 @@ describe("checkout controller", () => {
     expect(container.querySelector("[data-product-name]")).toBeNull();
     expect(container.querySelector("[data-brand=alipay]")).not.toBeNull();
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "查询付款状态" }));
+      fireEvent.click(screen.getByRole("button", { name: "我已付款，查询状态" }));
       await vi.advanceTimersByTimeAsync(2500);
     });
     expect(fetch).toHaveBeenCalled();
@@ -548,7 +548,7 @@ describe("checkout controller", () => {
     pending.finish(response());
     await first;
     expect(view.getSnapshot().feedback).toBe(
-      "核实进度暂不可用，页面会继续自动更新。",
+      "付款结果同步中，页面会自动刷新，请勿重复付款。",
     );
   });
   it.each(["offline", "hidden", "pagehide"])(
@@ -913,7 +913,7 @@ describe("checkout shadcn view and PNG lifecycle", () => {
     const view = prepareDownload();
     fireEvent.click(screen.getByRole("button", { name: "保存二维码" }));
     act(() => view.callbacks[0]!(null));
-    expect(screen.getByText(/无法生成 PNG/)).toBeVisible();
+    expect(screen.getByText(/二维码图片保存失败/)).toBeVisible();
     expect(view.image).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: "保存二维码" }));
     expect(view.callbacks).toHaveLength(2);
@@ -1010,7 +1010,7 @@ describe("checkout merchant actions", () => {
         screen.queryByRole("link", { name: "商家帮助" }),
       ).not.toBeInTheDocument();
       expect(container.querySelector("[data-checkout-help]")).toBeNull();
-      expect(screen.getByRole("button", { name: "查询付款状态" })).toBeVisible();
+      expect(screen.getByRole("button", { name: "刷新付款状态" })).toBeVisible();
     },
   );
 
@@ -1068,7 +1068,7 @@ describe("checkout merchant actions", () => {
         screen.queryByText("此订单不再收款，请勿付款。"),
       ).not.toBeInTheDocument();
       if (state === "EXPIRED")
-        expect(screen.getByText(/已付款请查询付款状态/)).toBeVisible();
+        expect(screen.getByText(/如已完成付款，请点击下方“刷新付款状态”/)).toBeVisible();
     },
   );
 
@@ -1137,7 +1137,7 @@ describe("manual verification versus background refresh", () => {
     );
     await check;
     expect(view.getSnapshot().busy).toBe(true);
-    expect(view.getSnapshot().feedback).toContain("等待核实");
+    expect(view.getSnapshot().feedback).toContain("正在排队查询");
     const progress = view.refresh();
     pending.finish(
       response({
@@ -1151,7 +1151,7 @@ describe("manual verification versus background refresh", () => {
       }),
     );
     await progress;
-    expect(view.getSnapshot().feedback).toContain("核对付款");
+    expect(view.getSnapshot().feedback).toContain("正在确认付款结果");
     const complete = view.refresh();
     pending.finish(
       response({
@@ -1166,7 +1166,7 @@ describe("manual verification versus background refresh", () => {
     );
     await complete;
     expect(view.getSnapshot().busy).toBe(false);
-    expect(view.getSnapshot().feedback).toContain("目前还没有确认这笔付款");
+    expect(view.getSnapshot().feedback).toContain("暂未查到付款");
   });
   it("ends the manual spinner after 30 seconds without resubmitting the operation", async () => {
     const value = {
@@ -1185,7 +1185,7 @@ describe("manual verification versus background refresh", () => {
     expect(view.getSnapshot().busy).toBe(true);
     await vi.advanceTimersByTimeAsync(30000);
     expect(view.getSnapshot().busy).toBe(false);
-    expect(view.getSnapshot().feedback).toContain("核实仍可能继续");
+    expect(view.getSnapshot().feedback).toContain("仍在查询付款结果");
   });
 });
 
