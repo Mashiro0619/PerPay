@@ -182,8 +182,8 @@ describe("business list sorting continuity", () => {
       if (change === "keyword") {
         await user.type(screen.getByRole("searchbox", { name: "订单关键词搜索" }), "新条件{Enter}");
       } else {
-        await user.click(screen.getByRole("combobox", { name: "付款状态筛选" }));
-        await user.click(await screen.findByRole("option", { name: "已确认" }));
+        await user.click(screen.getByRole("combobox", { name: "收款状态筛选" }));
+        await user.click(await screen.findByRole("option", { name: "收款已确认" }));
       }
       await waitFor(() => expect(requests.some(isChanged)).toBe(true));
       expect(old).not.toBeInTheDocument();

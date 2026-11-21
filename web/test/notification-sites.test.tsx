@@ -26,7 +26,7 @@ describe("notification website identity", () => {
       if (width < 640) {
         expect(within(row).getByText("收款已确认").closest(".activity-summary-context")).toHaveTextContent("通知类型：收款已确认");
         expect(within(row).getByText("尝试次数", { selector: "dt" }).nextElementSibling).toHaveTextContent("3");
-        expect(within(row).getByText("下次尝试", { selector: "dt" }).nextElementSibling).toHaveTextContent("2026/11/04 12:00");
+        expect(within(row).getByText("下次重试", { selector: "dt" }).nextElementSibling).toHaveTextContent("2026/11/04 12:00");
       }
     }
   });

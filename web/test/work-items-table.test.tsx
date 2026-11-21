@@ -193,7 +193,7 @@ describe("work item business context", () => {
       [1, "团队版订阅", "2026103010350010000002", "¥599.01"],
     ] as const) {
       const row = within(rows()[index]!);
-      expect(row.getByRole("link", { name: "通知正在等待重试" })).toBeVisible();
+      expect(row.getByRole("link", { name: "通知等待重试" })).toBeVisible();
       const productLink = row.getByRole("link", { name: "查看订单：" + product });
       expect(productLink).toBeVisible();
       expect(productLink.closest('[aria-hidden="true"]')).toBeNull();
@@ -252,7 +252,7 @@ describe("work item business context", () => {
     const item = notification();
     mount([item]);
     const row = rows()[0]!;
-    const primary = within(row).getByRole("link", { name: "通知正在等待重试" });
+    const primary = within(row).getByRole("link", { name: "通知等待重试" });
     expect(primary).toHaveAttribute("data-row-link");
     expect(primary).toHaveAttribute("data-reminder-id", item.type + ":" + item.resource_id);
     expect(row).not.toHaveAttribute("tabindex");
@@ -272,7 +272,7 @@ describe("work item business context", () => {
     const prefix = scoped ? "/sites/site_a" : "";
     mount([notification()], prefix + "/work-items", true);
     expect(screen.getByRole("link", { name: "查看订单：专业版订阅" })).toHaveAttribute("href", prefix + "/orders/" + orderId);
-    expect(screen.getByRole("link", { name: "通知正在等待重试" })).toHaveAttribute("href", prefix + "/notifications/00000000-0000-4000-8000-000000000002");
+    expect(screen.getByRole("link", { name: "通知等待重试" })).toHaveAttribute("href", prefix + "/notifications/00000000-0000-4000-8000-000000000002");
     if (scoped) {
       await waitFor(() => expect(fetch).toHaveBeenCalledOnce());
       expect(screen.queryByRole("link", { name: "订阅网站 · site_a" })).not.toBeInTheDocument();
@@ -283,9 +283,9 @@ describe("work item business context", () => {
   });
 
   it.each([
-    ["PENDING", "通知等待投递", "计划投递"],
-    ["LEASED", "通知正在投递", null],
-    ["RETRY_WAIT", "通知正在等待重试", "下次重试"],
+    ["PENDING", "通知待发送", "计划发送"],
+    ["LEASED", "通知发送中", null],
+    ["RETRY_WAIT", "通知等待重试", "下次重试"],
     ["ACKNOWLEDGED", "通知已确认", null],
     ["DEAD_LETTER", "通知已停止重试", null],
   ] as const)("keeps the actual %s schedule and error semantics in embedded reminders", (status, title, schedule) => {

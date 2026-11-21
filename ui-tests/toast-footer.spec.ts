@@ -60,12 +60,12 @@ for (const layout of [
         await expect(page.locator("html")).toHaveCSS("font-size", (16 * layout.font / 100) + "px");
         // Only this page permits intercepted writes. No provider key is changed.
         await page.evaluate(() => delete document.documentElement.dataset.perpayDemo);
-        await page.getByRole("button", { name: "轮换 API 密钥", exact: true }).click();
-        await page.getByRole("button", { name: "确认轮换", exact: true }).click();
+        await page.getByRole("button", { name: "更换 API 密钥", exact: true }).click();
+        await page.getByRole("button", { name: "确认更换", exact: true }).click();
         const dialog = page.getByRole("dialog", { name: "API 密钥", exact: true });
         const notification = page.locator('[data-slot="toast"]');
         await expect(dialog).toBeVisible();
-        await expect(notification.locator('[data-slot="toast-title"]')).toHaveText("密钥已生成或轮换，请更新业务网站配置。");
+        await expect(notification.locator('[data-slot="toast-title"]')).toHaveText("密钥已更新，请同步更新业务网站配置。");
         await expect.poll(() => notification.evaluate(element => {
           const title = element.querySelector<HTMLElement>('[data-slot="toast-title"]')!;
           return title.getBoundingClientRect().width / parseFloat(getComputedStyle(title).fontSize);

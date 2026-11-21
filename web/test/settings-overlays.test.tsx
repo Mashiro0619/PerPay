@@ -54,8 +54,8 @@ describe("settings summaries and owned editing overlays", () => {
     const body = dialog.querySelector<HTMLElement>("[data-overlay-detail]")!;
     expect(body.querySelectorAll("[data-detail-fields]")).toHaveLength(1);
     expect(Array.from(body.querySelectorAll("[data-detail-fields] > dl > div")).map(row => [row.querySelector("dt")!.textContent, row.querySelector("dd")!.textContent]))
-      .toEqual([["通知", "关闭"], ["客户端 ID", "overlay_site"]]);
-    expect(within(body).getByRole("button", { name: "复制客户端 ID" })).toBeVisible();
+      .toEqual([["通知", "关闭"], ["网站 ID", "overlay_site"]]);
+    expect(within(body).getByRole("button", { name: "复制网站 ID" })).toBeVisible();
     expect(body.querySelector("[data-detail-section]")).toBeNull();
     expect(within(body).queryByRole("link")).not.toBeInTheDocument();
     const actions = footer(dialog).getAllByRole("link");
@@ -81,11 +81,11 @@ describe("settings summaries and owned editing overlays", () => {
     const view = mountOnboarding({ stage: 4, path: "/settings/display?selected_site=site_test" });
     const user = userEvent.setup();
     const edit = await screen.findByRole("link", { name: "编辑界面显示" });
-    expect(screen.queryByLabelText("支付系统名称")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("系统名称")).not.toBeInTheDocument();
     await user.click(edit);
     const dialog = await screen.findByRole("dialog", { name: "编辑界面显示" });
     expect(dialog).not.toHaveAttribute("data-overlay-record");
-    const name = within(dialog).getByLabelText("支付系统名称");
+    const name = within(dialog).getByLabelText("系统名称");
     const chart = within(dialog).getByRole("group", { name: "收款趋势默认图形" });
     await user.click(within(chart).getByRole("button", { name: "折线图" }));
     await user.clear(name); await user.type(name, "尚未保存的名称");
@@ -107,7 +107,7 @@ describe("settings summaries and owned editing overlays", () => {
     const user = userEvent.setup();
     await user.click(await screen.findByRole("link", { name: "编辑界面显示" }));
     const dialog = await screen.findByRole("dialog", { name: "编辑界面显示" });
-    const field = within(dialog).getByLabelText("支付系统名称");
+    const field = within(dialog).getByLabelText("系统名称");
     await user.click(within(dialog).getByRole("button", { name: "柱状图" }));
     await user.clear(field); await user.type(field, "保存后的系统名称");
     const save = footer(dialog).getByRole("button", { name: "保存" }) as HTMLButtonElement;
@@ -182,7 +182,7 @@ describe("settings summaries and owned editing overlays", () => {
     await waitFor(() => expect(footer(dialog).getByRole("button", { name: "更多账号操作" })).toHaveFocus());
     await user.clear(name); await user.type(name, "跨分组账号");
     await user.click(within(dialog).getByRole("tab", { name: "应用信息" }));
-    const appId = within(dialog).getByLabelText("应用 ID（App ID）");
+    const appId = within(dialog).getByLabelText("App ID");
     await user.clear(appId); await user.type(appId, "app-updated");
     expect(new URL(within(dialog).getByRole("link", { name: "打开支付宝应用管理" }).getAttribute("href")!).searchParams.get("appId")).toBe("app-updated");
     await user.click(within(dialog).getByRole("tab", { name: "收款码" }));
@@ -505,7 +505,7 @@ describe("settings summaries and owned editing overlays", () => {
     expect(publicKey).toHaveValue(pending.public_key);
     expect(dialog.querySelectorAll("[data-account-public-key]")).toHaveLength(1);
     expect(within(dialog).getByRole("tab", { name: "应用信息" })).toHaveAttribute("aria-selected", "true");
-    expect(within(dialog).getByLabelText("应用 ID（App ID）")).toBeDisabled();
+    expect(within(dialog).getByLabelText("App ID")).toBeDisabled();
     expect(within(dialog).queryByRole("button", { name: "保存并检查" })).not.toBeInTheDocument();
     await user.type(within(dialog).getByLabelText("新的支付宝公钥"), "returned-platform-public-key");
     await user.click(within(dialog).getByRole("button", { name: "验证并启用" }));
@@ -525,7 +525,7 @@ describe("settings summaries and owned editing overlays", () => {
     ]);
     expect(within(dialog).queryByRole("tab", { name: "使用情况" })).not.toBeInTheDocument();
     await user.type(name, "待添加账号");
-    for (const [tab, field] of [["基本信息", "账号名称"], ["应用信息", "应用 ID（App ID）"], ["收款码", "支付宝收款码内容"]]) {
+    for (const [tab, field] of [["基本信息", "账号名称"], ["应用信息", "App ID"], ["收款码", "支付宝收款码内容"]]) {
       await user.click(within(dialog).getByRole("tab", { name: tab }));
       const control = within(dialog).getByRole("textbox", { name: field });
       expect(control).toBeVisible();
@@ -679,8 +679,8 @@ describe("settings summaries and owned editing overlays", () => {
     } });
     const user = userEvent.setup();
     await user.type(await screen.findByLabelText("业务网站名称"), site.configuration.name);
-    const dialog = screen.getByRole("dialog", { name: "添加业务网站" });
-    await user.click(footer(dialog).getByRole("button", { name: "创建业务网站" }));
+    const dialog = screen.getByRole("dialog", { name: "添加网站" });
+    await user.click(footer(dialog).getByRole("button", { name: "添加网站" }));
     await waitFor(() => expect(view.writes()).toHaveLength(1));
     await user.keyboard("{Escape}");
     expect(new URLSearchParams(view.router.state.location.search).get("overlay")).toBe("/sites/new");
@@ -738,11 +738,11 @@ describe("settings summaries and owned editing overlays", () => {
     await user.click(device);
     expect(within(body).getByText(sessions[0]!.user_agent!)).toBeVisible();
     // The header already closes the drawer; the footer keeps only the session's own action.
-    expect(footer(dialog).getAllByRole("button").map(button => button.textContent)).toEqual(["撤销此会话"]);
-    await user.click(footer(dialog).getByRole("button", { name: "撤销此会话" }));
-    const confirm = await screen.findByRole("alertdialog", { name: "撤销此会话？" });
+    expect(footer(dialog).getAllByRole("button").map(button => button.textContent)).toEqual(["强制下线"]);
+    await user.click(footer(dialog).getByRole("button", { name: "强制下线" }));
+    const confirm = await screen.findByRole("alertdialog", { name: "强制下线此设备？" });
     expect(view.writes()).toHaveLength(0);
-    await user.click(within(confirm).getByRole("button", { name: "撤销" }));
+    await user.click(within(confirm).getByRole("button", { name: "强制下线" }));
     expect(await within(dialog).findByText("此会话已结束")).toBeVisible();
     expect(view.writes()).toHaveLength(1);
     expect(queryClient.getQueryData(["administrator-sessions"])).toEqual({ data: [] });
@@ -765,9 +765,9 @@ describe("settings summaries and owned editing overlays", () => {
     // Without a recorded User-Agent there is nothing to disclose.
     expect(within(body).getByText("设备信息", { selector: "dt" }).nextElementSibling).toHaveTextContent(/^未记录$/);
     expect(within(body).queryByRole("button", { name: "设备信息" })).not.toBeInTheDocument();
-    expect(footer(dialog).getAllByRole("button").map(button => button.textContent)).toEqual(["退出当前会话"]);
-    await userEvent.click(footer(dialog).getByRole("button", { name: "退出当前会话" }));
-    expect(await screen.findByRole("alertdialog", { name: "退出当前会话？" })).toBeVisible();
+    expect(footer(dialog).getAllByRole("button").map(button => button.textContent)).toEqual(["退出当前登录"]);
+    await userEvent.click(footer(dialog).getByRole("button", { name: "退出当前登录" }));
+    expect(await screen.findByRole("alertdialog", { name: "退出当前登录？" })).toBeVisible();
   });
 });
 

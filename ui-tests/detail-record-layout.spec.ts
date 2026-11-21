@@ -79,7 +79,7 @@ for (const layout of layouts) {
     // A record with a footer keeps its technical entries in the footer's menu; the others end their content with one entry.
     const scenarios: Array<{ name: string; path: string; copy: string; sections: string[]; technicalSelector?: string; technicalMenu?: { trigger: string; item: string } }> = [
       { name: "order", path: manifest.details.orderLong!, copy: "复制内部订单编号", technicalMenu: { trigger: "更多操作，订单操作", item: "订单技术信息" }, sections: ["overview", "payments", "notifications", "history"] },
-      { name: "notification", path: manifest.details.notificationDns!, copy: "复制投递编号", technicalMenu: { trigger: "更多操作，通知记录操作", item: "通知技术信息" }, sections: ["overview", "attempts", "order"] },
+      { name: "notification", path: manifest.details.notificationDns!, copy: "复制通知编号", technicalMenu: { trigger: "更多操作，通知记录操作", item: "通知技术信息" }, sections: ["overview", "attempts", "order"] },
       { name: "exception", path: manifest.details.exceptionOpen!, copy: "复制异常编号", technicalMenu: { trigger: "更多操作，异常记录操作", item: "账务异常技术信息" }, sections: ["order", "ledger", "history"] },
       { name: "audit", path: auditPath, copy: "复制日志编号", technicalSelector: '[data-detail-page] > [data-technical-information]', sections: auditSections },
     ];
@@ -98,7 +98,7 @@ for (const layout of layouts) {
         await expect(overlay.getByRole("tab")).toHaveCount(0);
         expect(await overlay.locator("[data-detail-section]").evaluateAll(sections => sections.map(section => section.getAttribute("data-detail-section")))).toEqual(scenario.sections);
         if (scenario.name === "notification") {
-          await expect(overlay.locator("[data-overlay-detail]").getByRole("heading", { level: 2 })).toHaveText(["投递信息", /^投递尝试/, "关联订单"]);
+          await expect(overlay.locator("[data-overlay-detail]").getByRole("heading", { level: 2 })).toHaveText(["通知信息", /^发送记录/, "关联订单"]);
           // The related order is one sub-record that keeps its business facts, one per row.
           const related = detailSection(page, "order").locator("article[data-sub-record]");
           await expect(related).toHaveCount(1);

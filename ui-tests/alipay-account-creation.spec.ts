@@ -5,7 +5,7 @@ import { createSettingsServer } from "./settings-server";
 
 const creationSections = [
   ["basic", "基本信息", "账号名称"],
-  ["application", "应用信息", "应用 ID（App ID）"],
+  ["application", "应用信息", "App ID"],
   ["collection", "收款码", "支付宝收款码内容"],
 ] as const;
 

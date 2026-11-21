@@ -166,7 +166,7 @@ for (const layout of [{ width: 320, height: 560, text: 200 }, { width: 640, heig
 
       await page.goto(manifest.origin + '/admin/sites/defaults');
       overlay = await settleOverlay(page);
-      const defaultsTabs = await exerciseSections(page, overlay, '模板分组', ['订单设置', '收银台展示', '通知策略']);
+      const defaultsTabs = await exerciseSections(page, overlay, '模板分组', ['订单设置', '收银台展示', '通知设置']);
       const defaultWidth = await overlay.locator('[data-overlay-detail]').evaluate(element => ({ width: element.clientWidth, scrollWidth: element.scrollWidth }));
       expect(defaultWidth.scrollWidth).toBeLessThanOrEqual(defaultWidth.width + 1);
       await record(page, info, { feature: 'site-default-category-reflow', layout, defaultsTabs, defaultWidth });

@@ -184,11 +184,11 @@ describe("work item table", () => {
   });
 });
 const attemptLabels: Record<WebhookAttemptOutcome, string> = {
-  STARTED: "投递已开始",
+  STARTED: "发送已开始",
   ACKNOWLEDGED: "通知已确认",
-  RETRYABLE_FAILURE: "投递失败（可重试错误）",
-  PERMANENT_FAILURE: "投递失败（不可重试错误）",
-  OUTCOME_UNKNOWN: "投递结果未知",
+  RETRYABLE_FAILURE: "发送失败（可重试错误）",
+  PERMANENT_FAILURE: "发送失败（不可重试错误）",
+  OUTCOME_UNKNOWN: "发送结果未知",
 };
 
 describe("notification attempt labels", () => {

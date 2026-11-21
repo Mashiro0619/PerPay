@@ -36,7 +36,7 @@ function mount(path: string) {
 describe("website-aware instance settings", () => {
   it("does not show global business keys or a default client ID in security", async () => {
     mount("/settings/security");
-    expect(await screen.findByRole("link", { name: "业务网站密钥与客户端 ID" })).toHaveAttribute("href", "/sites");
+    expect(await screen.findByRole("link", { name: "业务网站密钥与网站 ID" })).toHaveAttribute("href", "/sites");
     expect(screen.queryByRole("button", { name: "生成 API 密钥" })).not.toBeInTheDocument();
     expect(screen.queryByText("default", { exact: true })).not.toBeInTheDocument();
     expect(screen.queryByText("通知签名密钥", { exact: true })).not.toBeInTheDocument();
@@ -48,7 +48,7 @@ describe("website-aware instance settings", () => {
 
   it("saves the instance name while preserving its chart default and omitting website display fields", async () => {
     const view = mount("/settings/display/edit");
-    const name = await screen.findByRole("textbox", { name: "支付系统名称" });
+    const name = await screen.findByRole("textbox", { name: "系统名称" });
     expect(screen.queryByRole("textbox", { name: "商家帮助链接" })).not.toBeInTheDocument();
     expect(screen.queryByRole("switch", { name: "收银台显示商品名称" })).not.toBeInTheDocument();
     expect(screen.queryByRole("group", { name: "首页图表样式" })).not.toBeInTheDocument();
@@ -83,7 +83,7 @@ describe("website-aware instance settings", () => {
     expect(screen.getByRole("heading", { name: "配置网站" })).toBeVisible();
     expect(screen.queryByRole("button", { name: "保存通知" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "生成 API 密钥" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "下一步：试收款" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "下一步：测试收款" })).toBeDisabled();
     expect(screen.queryByText("自动备份")).not.toBeInTheDocument();
   });
 
@@ -112,11 +112,11 @@ describe("website-aware instance settings", () => {
     } });
     const user = userEvent.setup();
     await user.type(await screen.findByRole("textbox", { name: "业务网站名称" }), "测试网站");
-    await user.click(screen.getByRole("button", { name: "创建业务网站" }));
-    await waitFor(() => expect(screen.getByRole("button", { name: "下一步：试收款" })).toBeEnabled());
+    await user.click(screen.getByRole("button", { name: "添加网站" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "下一步：测试收款" })).toBeEnabled());
     await waitFor(() => expect(queryClient.getQueryState(["workspace-site", "site_created"])?.status).toBe("success"));
     await act(async () => { await view.router.navigate("/settings/onboarding/check"); });
-    expect(await screen.findByRole("heading", { name: "试收款" })).toBeVisible();
+    expect(await screen.findByRole("heading", { name: "测试收款" })).toBeVisible();
     expect(writes).toEqual(["/api/admin/v1/sites"]);
   });
 });

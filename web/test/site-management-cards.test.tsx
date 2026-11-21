@@ -92,8 +92,8 @@ function mount(handler: RequestHandler, path = "/sites", onCommit?: () => void) 
   }));
   const router = createMemoryRouter([
     { path: "/sites", element: <Profiler id="site-management" onRender={() => onCommit?.()}><Sites /></Profiler> },
-    { path: "/sites/new", element: <h1>创建业务网站页面</h1> },
-    { path: "/sites/defaults", element: <h1>默认模板页面</h1> },
+    { path: "/sites/new", element: <h1>添加网站页面</h1> },
+    { path: "/sites/defaults", element: <h1>新网站默认设置页面</h1> },
     { path: "/sites/:clientId", element: <h1>网站后台页面</h1> },
     { path: "/sites/:clientId/summary", element: <h1>网站概况弹层</h1> },
     { path: "/sites/:clientId/settings/basic", element: <h1>网站设置页面</h1> },
@@ -117,8 +117,8 @@ describe("website management compact table", () => {
   it("keeps creation and template entries while loading without inventing receipts or a clickable website", async () => {
     const pending = deferredResponse();
     mount(() => pending.promise);
-    expect(screen.getByRole("link", { name: "创建业务网站" })).toHaveAttribute("href", "/sites/new");
-    expect(screen.getByRole("link", { name: "默认模板" })).toHaveAttribute("href", "/sites/defaults");
+    expect(screen.getByRole("link", { name: "添加网站" })).toHaveAttribute("href", "/sites/new");
+    expect(screen.getByRole("link", { name: "新网站默认设置" })).toHaveAttribute("href", "/sites/defaults");
     expect(screen.getByRole("status")).toHaveAccessibleName(/读取|加载/);
     expect(document.querySelectorAll("[data-slot=skeleton]").length).toBeGreaterThan(0);
     expect(cards()).toHaveLength(0);
@@ -436,8 +436,8 @@ describe("website management compact table", () => {
     expect(await screen.findByText("暂无网站", { exact: true })).toBeVisible();
     expect(cards()).toHaveLength(0);
     expect(screen.queryByText("¥0.00", { exact: true })).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "创建业务网站" })).toBeVisible();
-    expect(screen.getByRole("link", { name: "默认模板" })).toBeVisible();
+    expect(screen.getByRole("link", { name: "添加网站" })).toBeVisible();
+    expect(screen.getByRole("link", { name: "新网站默认设置" })).toBeVisible();
   });
 
   it.each([

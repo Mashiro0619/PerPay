@@ -80,7 +80,7 @@ describe("overview order progress", () => {
     expect(screen.getAllByLabelText(/^(应付|实收)金额 /)).toHaveLength(1);
     expect(screen.getByText("应付", { exact: true })).toBeVisible();
     expect(screen.queryByText("实收", { exact: true })).not.toBeInTheDocument();
-    expect(screen.getByText("网站订单号")).toBeVisible();
+    expect(screen.getByText("商户订单号")).toBeVisible();
     expect(screen.getByText("收款已确认")).toBeVisible();
     expect(screen.getByText("等待重试")).toHaveAttribute("data-variant", "warning");
     expect(screen.queryByText(/^已确认 \d+\/\d+ 项$/)).not.toBeInTheDocument();
@@ -165,9 +165,9 @@ describe("overview order progress", () => {
   it.each([
     ["NOT_CONFIGURED", "此订单未设置通知地址", 0, 0, "secondary"],
     ["NO_EVENT", "暂无通知事件", 0, 0, "secondary"],
-    ["UNMATERIALIZED", "等待生成投递", 1, 0, "warning"],
-    ["PENDING", "等待投递", 1, 0, "secondary"],
-    ["LEASED", "投递中", 1, 0, "warning"],
+    ["UNMATERIALIZED", "待创建通知", 1, 0, "warning"],
+    ["PENDING", "待发送", 1, 0, "secondary"],
+    ["LEASED", "发送中", 1, 0, "warning"],
     ["RETRY_WAIT", "等待重试", 2, 1, "warning"],
     ["DEAD_LETTER", "已停止重试", 2, 1, "destructive"],
     ["ACKNOWLEDGED", "通知已确认", 2, 2, "success"],
@@ -187,7 +187,7 @@ describe("overview order progress", () => {
 
   it("keeps a later unmaterialized event pending despite earlier acknowledgements", () => {
     mount([{ ...recent, notification_summary: { status: "UNMATERIALIZED", total_events: 2, acknowledged_events: 1 } }]);
-    expect(screen.getByText("等待生成投递")).toHaveAttribute("data-variant", "warning");
+    expect(screen.getByText("待创建通知")).toHaveAttribute("data-variant", "warning");
     expect(screen.queryByText(/^已确认 \d+\/\d+ 项$/)).not.toBeInTheDocument();
     expect(screen.queryByText("尚无投递记录")).not.toBeInTheDocument();
     expect(screen.queryByText("通知已确认")).not.toBeInTheDocument();
@@ -268,7 +268,7 @@ describe("overview order progress", () => {
     mount([{ ...recent, product_name: "same", merchant_order_no: "same" }]);
     expect(screen.getByRole("link", { name: "same" })).toBeVisible();
     expect(screen.getByText("same", { selector: ".list-code" })).toHaveAttribute("title", "same");
-    expect(screen.getByText("网站订单号")).toBeVisible();
+    expect(screen.getByText("商户订单号")).toBeVisible();
   });
 
   it("keeps the primary row and website link independent and preserves keyboard access", async () => {

@@ -36,7 +36,7 @@ for (const layout of [{ width: 1440, height: 900, font: 100 }, { width: 390, hei
         await page.getByRole("link", { name: "配置" + account.name, exact: true }).click();
         const dialog = page.locator("[data-overlay-content]");
         await selectSettingsSection(page, dialog, "支付宝账号配置分组", "应用信息");
-        const appId = dialog.getByRole("textbox", { name: "应用 ID（App ID）", exact: true });
+        const appId = dialog.getByRole("textbox", { name: "App ID", exact: true });
         await appId.fill("edited-app-id");
         const link = dialog.getByRole("link", { name: "打开支付宝应用管理", exact: true });
         expect(new URL((await link.getAttribute("href"))!).searchParams.get("appId")).toBe("edited-app-id");

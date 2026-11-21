@@ -168,7 +168,7 @@ for (const width of [1440, 390, 320]) {
         await page.evaluate(() => { document.documentElement.style.fontSize = ""; });
         await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
         const rotating = page.waitForResponse(response => new URL(response.url()).pathname.endsWith("/actions/rotate"));
-        await warning.getByRole("button", { name: "确认轮换", exact: true }).click();
+        await warning.getByRole("button", { name: "确认更换", exact: true }).click();
         const rotated = (await (await rotating).json()).data as { secret: string };
         expect(rotated.secret).not.toBe(secret);
         await expect(warning).toHaveCount(0);

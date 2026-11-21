@@ -63,7 +63,7 @@ describe("网站密钥独立弹窗", () => {
     expect(await screen.findByDisplayValue("explicit-secret")).toBeVisible();
     await closeSecret(user);
     expect(screen.getByRole("button", { name: "查看" + label })).toBeEnabled();
-    expect(screen.getByRole("button", { name: "轮换" + label })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "更换" + label })).toBeEnabled();
     expect(view.requests).toHaveLength(1);
     expect(view.requests[0]!.url).toContain(`/secrets/${purpose}/actions/rotate`);
   });
@@ -126,10 +126,10 @@ describe("网站密钥独立弹窗", () => {
   it.each(["api_secret", "webhook_secret"] as const)("%s轮换显示警告并在处理中禁关，离开页面后迟到结果只更新版本", async purpose => {
     const view = mount("rotate", purpose), user = userEvent.setup(), name = secretName(purpose);
     view.delay();
-    await user.click(await screen.findByRole("button", { name: purpose === "api_secret" ? "轮换 API 密钥" : "轮换通知签名密钥" }));
-    const warning = await screen.findByRole("alertdialog", { name: "轮换" + (purpose === "api_secret" ? " " : "") + name + "？" });
+    await user.click(await screen.findByRole("button", { name: purpose === "api_secret" ? "更换 API 密钥" : "更换通知签名密钥" }));
+    const warning = await screen.findByRole("alertdialog", { name: "更换" + (purpose === "api_secret" ? " " : "") + name + "？" });
     expect(view.requests).toHaveLength(0);
-    await user.click(within(warning).getByRole("button", { name: "确认轮换" }));
+    await user.click(within(warning).getByRole("button", { name: "确认更换" }));
     expect(within(warning).getByRole("button", { name: "取消" })).toBeDisabled();
     await waitFor(() => expect(view.requests).toHaveLength(1));
     await act(async () => { window.dispatchEvent(new Event("pagehide")); });
@@ -144,11 +144,11 @@ describe("网站密钥独立弹窗", () => {
   it("轮换失败留在警告弹窗，关闭前不能再次提交", async () => {
     const view = mount("rotate", "api_secret"), user = userEvent.setup();
     view.fail();
-    await user.click(await screen.findByRole("button", { name: "轮换 API 密钥" }));
-    await user.click(screen.getByRole("button", { name: "确认轮换" }));
+    await user.click(await screen.findByRole("button", { name: "更换 API 密钥" }));
+    await user.click(screen.getByRole("button", { name: "确认更换" }));
     const warning = screen.getByRole("alertdialog");
     await within(warning).findByText("密钥读取暂不可用");
-    expect(within(warning).getByRole("button", { name: "确认轮换" })).toBeDisabled();
+    expect(within(warning).getByRole("button", { name: "确认更换" })).toBeDisabled();
     await user.click(within(warning).getByRole("button", { name: "关闭" }));
     await user.click(screen.getByRole("button", { name: "查看 API 密钥" }));
     expect(await screen.findByDisplayValue("explicit-secret")).toBeVisible();

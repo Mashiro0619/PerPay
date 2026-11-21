@@ -97,7 +97,7 @@ for (const size of [
         await save.press("Enter");
         const confirmation = page.locator("[data-overlay-step]:visible");
         await expect(confirmation).toBeVisible();
-        await expect(confirmation).toHaveAccessibleName("确认保存访问规则？");
+        await expect(confirmation).toHaveAccessibleName("确认保存 IP 白名单？");
         await expect(page.getByRole("dialog")).toHaveCount(1);
         if (!size.isMobile) {
           const scroll = confirmation.locator("[data-overlay-step-scroll]");

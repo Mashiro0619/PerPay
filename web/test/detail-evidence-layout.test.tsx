@@ -225,7 +225,7 @@ describe("always-visible detail evidence", () => {
     const evidence = document.querySelector<HTMLElement>('[data-detail-section="evidence"]')!;
     expect(within(evidence).getByRole("heading", { name: "匹配依据" })).toBeVisible();
     expect(within(evidence).getByText("金额占用时间")).toBeVisible();
-    expect(within(evidence).queryByText("匹配金额")).not.toBeInTheDocument();
+    expect(within(evidence).queryByText("交易金额")).not.toBeInTheDocument();
     expect(within(evidence).queryByRole("button", { name: "匹配依据" })).not.toBeInTheDocument();
   });
   it("highlights differing incoming values without a separate difference column", () => {
@@ -267,7 +267,7 @@ describe("always-visible detail evidence", () => {
         expect(
           [...amount.querySelectorAll("dd")].map((e) => e.textContent),
         ).toEqual(["1.001", "¥1.00"]);
-        const memo = within(mobile).getByRole("group", { name: "支付宝交易备注" });
+        const memo = within(mobile).getByRole("group", { name: "支付宝备注" });
         expect(memo.querySelector("dd")?.textContent).toBe(
           detail.incoming_event!.trans_memo,
         );
@@ -276,7 +276,7 @@ describe("always-visible detail evidence", () => {
         const amount = screen.getByText("支付宝交易金额", { selector: "dt" }).parentElement!;
         expect(within(amount).getByText("1.001")).toBeVisible();
         expect(within(amount).getByText("异常")).toBeVisible();
-        const memo = screen.getByText("支付宝交易备注", { selector: "dt" }).parentElement!;
+        const memo = screen.getByText("支付宝备注", { selector: "dt" }).parentElement!;
         expect(memo.querySelector("dd")?.textContent).toBe(detail.incoming_event!.trans_memo);
       }
       expect(container.querySelector("[data-conflict-comparison]")).toHaveClass("w-full", "min-w-0");
@@ -298,7 +298,7 @@ describe("always-visible detail evidence", () => {
     render(<ConflictComparison detail={detail} />);
 
     expect(screen.getByText("1 项需核对 · 8 项相同")).toBeVisible();
-    expect(screen.getByText("支付宝交易备注")).toBeVisible();
+    expect(screen.getByText("支付宝备注")).toBeVisible();
     const toggle = screen.getByRole("button", { name: /^相同字段，共 ?8 ?项$/ });
     expect(toggle).toHaveAttribute("aria-expanded", "false");
     expect(screen.getByText("支付宝交易金额")).not.toBeVisible();
@@ -313,7 +313,7 @@ describe("always-visible detail evidence", () => {
 
     await user.click(toggle);
     await waitFor(() => expect(screen.getByText("支付宝交易金额")).not.toBeVisible());
-    expect(screen.getByText("支付宝交易备注")).toBeVisible();
+    expect(screen.getByText("支付宝备注")).toBeVisible();
     expect(detail).toEqual(original);
   });
   it("keeps an invalid field visible even when its normalized value matches", () => {
@@ -343,6 +343,6 @@ describe("always-visible detail evidence", () => {
     render(<ConflictComparison detail={detail} />);
     expect(screen.queryByRole("button", { name: /相同字段/ })).not.toBeInTheDocument();
     expect(screen.getByText("支付宝商户单号", { selector: "dt" })).toBeVisible();
-    expect(screen.getByText("支付宝交易备注", { selector: "dt" })).toBeVisible();
+    expect(screen.getByText("支付宝备注", { selector: "dt" })).toBeVisible();
   });
 });

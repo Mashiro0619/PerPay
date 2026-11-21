@@ -51,7 +51,7 @@ for (const surface of [
         // Notification identity now includes the order, amount and both dates;
         // verify those readable fields rather than the older, shorter row height.
         const field = (label: string) => row.locator(".business-summary-field").filter({ has: page.locator("dt").filter({ hasText: new RegExp("^" + label + "$") }) });
-        for (const label of ["商户订单号", "尝试次数", "创建时间", "下次尝试", "应付金额"]) {
+        for (const label of ["商户订单号", "尝试次数", "创建时间", "下次重试", "应付金额"]) {
           await expect(field(label).locator("dt")).toBeVisible();
           await expect(field(label).locator("dd")).toBeVisible();
         }
@@ -60,7 +60,7 @@ for (const surface of [
         expect(new URL((await orderLink.getAttribute("href"))!, manifest.origin).searchParams.get("overlay")).toMatch(/^\/orders\/[^/]+$/);
         await expect(field("应付金额").locator("dd")).toHaveText(/^¥[\d,.]+$/);
         await expect(field("创建时间").locator("time")).toBeVisible();
-        await expect(field("下次尝试").locator("time")).toBeVisible();
+        await expect(field("下次重试").locator("time")).toBeVisible();
         await expect(row.locator("time")).toHaveCount(2);
         await expect(row.locator("[data-summary-message]")).toBeVisible();
       }

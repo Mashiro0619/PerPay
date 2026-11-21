@@ -60,7 +60,7 @@ test("order and ledger sources remain distinct at desktop and 320 pixels", async
       }
       await expect(association.getByText("支付宝交易金额", { exact: true }).locator("..")).toContainText(currency(match.ledger_entry.amount_cents));
       await expect(association.getByText("支付宝订单号", { exact: true }).locator("..").locator("dd")).toContainText(match.ledger_entry.provider_order_no ?? "未提供");
-      await expect(association.getByText("支付宝交易对方", { exact: true }).locator("..").locator("dd")).toHaveText(match.ledger_entry.other_account ?? "未提供");
+      await expect(association.getByText("交易对方", { exact: true }).locator("..").locator("dd")).toHaveText(match.ledger_entry.other_account ?? "未提供");
     }
     await record(page, info, { feature: "order-provenance", width, orderId: order.order_id, website: order.api_client_id, requested: order.requested_amount_cents, payable: order.payable_amount_cents, received: order.received_amount_cents, ledgerSources: matches.map(match => match.ledger_entry_id) });
 

@@ -78,7 +78,7 @@ describe("administrator checkout entry", () => {
       else expect(link.closest("[data-record-primary-actions]")).not.toBeNull();
       const information = await screen.findByRole("region", { name: "订单信息" });
       const checkout = within(information).getByText("收银台状态").closest("div")!;
-      expect(within(checkout).getByText({ OPEN: "开放中", CLOSED: "已关闭", EXPIRED: "已过期" }[checkoutStatus])).toBeVisible();
+      expect(within(checkout).getByText({ OPEN: "收款中", CLOSED: "已关闭", EXPIRED: "已过期" }[checkoutStatus])).toBeVisible();
       expect(requests.every((request) => request.method === "GET")).toBe(true);
       expect(
         requests.some((request) => request.url.endsWith("/checkout")),

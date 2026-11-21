@@ -107,7 +107,7 @@ describe("支付宝账号设置", () => {
     expect(screen.getByText("查账连接正常")).toBeVisible();
     await user.click(screen.getByRole("button", { name: "继续配置收款码" }));
     expect(screen.getByRole("tab", { name: "收款码" })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByRole("button", { name: "上传二维码" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "上传收款码" })).toBeVisible();
     await user.click(screen.getByRole("tab", { name: "基本信息" }));
     const name = screen.getByRole("textbox", { name: "账号名称" });
     await user.clear(name); await user.type(name, "配置草稿");
@@ -610,7 +610,7 @@ describe("账号配置向导", () => {
     ).toBeVisible();
     expect(
       screen.getByRole("navigation", { name: "配置步骤" }),
-    ).toHaveTextContent("1配置支付宝账号2配置网站3试收款");
+    ).toHaveTextContent("1配置支付宝账号2配置网站3测试收款");
     expect(screen.queryByText("自动备份")).not.toBeInTheDocument();
     await waitFor(() =>
       expect(

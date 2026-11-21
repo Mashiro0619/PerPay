@@ -203,7 +203,7 @@ test("security session cancellation keeps focus through card reflow without writ
   await session.evaluate(element => element.setAttribute("data-security-flow-session", "original"));
   await session.click();
   const menu = page.getByRole("menu", { includeHidden: true });
-  const revoke = menu.getByRole("menuitem", { name: "注销全部会话", exact: true });
+  const revoke = menu.getByRole("menuitem", { name: "退出全部设备", exact: true });
   await menu.evaluate(element => element.setAttribute("data-security-flow-menu", "original"));
   await revoke.focus();
   await page.setViewportSize({ width: 390, height: 900 });
@@ -212,7 +212,7 @@ test("security session cancellation keeps focus through card reflow without writ
   await expect(menu).toHaveAttribute("data-security-flow-menu", "original");
   await expect(revoke).toBeFocused();
   await page.keyboard.press("Enter");
-  const confirmation = page.getByRole("alertdialog", { name: "注销全部会话？", exact: true });
+  const confirmation = page.getByRole("alertdialog", { name: "退出全部设备？", exact: true });
   await expect(confirmation).toBeVisible();
   await page.setViewportSize({ width: 2190, height: 900 });
   await storageWidth(page, "full");

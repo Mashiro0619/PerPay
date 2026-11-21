@@ -61,7 +61,7 @@ describe("audit log browsing", () => {
     expect(query.has("selected_site")).toBe(false);
     expect(query.has("sort_order")).toBe(false);
     expect(screen.queryByText(/核心审计持续保留/)).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "采集正常，查看采集状态" })).toBeVisible();
+    expect(screen.getByRole("link", { name: "记录正常，查看日志记录状态" })).toBeVisible();
     expect(screen.queryByText("2026/11/01 10:03:59")).not.toBeInTheDocument();
     expect(screen.queryByRole("combobox", { name: "关联网站" })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "高级筛选" }));
@@ -73,8 +73,8 @@ describe("audit log browsing", () => {
     mount("/audit?view=all&outcome=SUCCESS&cursor=older&page=3&selected_site=site_a");
     await screen.findByRole("link", { name: "更新显示设置" });
     const user = userEvent.setup();
-    await user.click(screen.getByRole("link", { name: "采集正常，查看采集状态" }));
-    expect(await screen.findByRole("heading", { name: "审计采集状态" })).toBeVisible();
+    await user.click(screen.getByRole("link", { name: "记录正常，查看日志记录状态" }));
+    expect(await screen.findByRole("heading", { name: "日志记录状态" })).toBeVisible();
     expect(screen.getByText("2026/11/01 10:03:59")).toBeVisible();
     expect(screen.getByText("2026/11/01 10:04:00")).toBeVisible();
     expect(screen.getByText(/核心审计持续保留/)).toBeVisible();
@@ -254,10 +254,10 @@ describe("audit log browsing", () => {
   it("does not claim a successful write before the first healthy capture flush", async () => {
     backend({ metadata: { ...auditMetadata, capture: { ...auditMetadata.capture, last_flush_at: null, buffered_events: 2 } } });
     mount();
-    await userEvent.click(await screen.findByRole("link", { name: "采集正常，查看采集状态" }));
+    await userEvent.click(await screen.findByRole("link", { name: "记录正常，查看日志记录状态" }));
     expect(await screen.findByText("等待首次成功写入")).toBeVisible();
     expect(screen.getByText("等待写入").parentElement).toHaveTextContent("2 条");
-    expect(screen.getByRole("group", { name: "采集状态" })).toHaveTextContent("采集正常等待首次成功写入");
+    expect(screen.getByRole("group", { name: "日志记录状态" })).toHaveTextContent("记录正常等待首次成功写入");
     expect(screen.queryByText(/最近成功写入/)).not.toBeInTheDocument();
     expect(screen.queryByText("2026/11/01 10:03:59")).not.toBeInTheDocument();
   });
@@ -265,11 +265,11 @@ describe("audit log browsing", () => {
   it("leads the capture status with its state and last write, above one field list and the rules", async () => {
     backend({ metadata: { ...auditMetadata, capture: { ...auditMetadata.capture, buffered_events: 3, spool_last_import_at: "2026-11-01T01:00:00.000Z" } } });
     mount("/audit/status?snapshot_at=2026-11-01T02%3A04%3A00.000Z");
-    const summary = await screen.findByRole("group", { name: "采集状态" });
-    expect(summary.querySelector("[data-record-summary-value]")).toHaveTextContent(/^采集正常$/);
+    const summary = await screen.findByRole("group", { name: "日志记录状态" });
+    expect(summary.querySelector("[data-record-summary-value]")).toHaveTextContent(/^记录正常$/);
     expect(summary.querySelector("[data-record-summary-meta]")).toHaveTextContent(/^最近成功写入：2026\/11\/01 10:03:59$/);
     expect(summary.querySelector("[data-record-nav]")).toBeNull();
-    const fields = screen.getByRole("group", { name: "采集概况" });
+    const fields = screen.getByRole("group", { name: "日志记录概况" });
     expect(fields.querySelectorAll("[data-detail-fields]")).toHaveLength(1);
     expect(Array.from(fields.querySelectorAll("dl > div")).map(row => [row.querySelector("dt")!.textContent, row.querySelector("dd")!.textContent])).toEqual([
       ["等待写入", "3 条"], ["最近维护日志导入", "2026/11/01 09:00:00"], ["列表读取时间", "2026/11/01 10:04:00"],
@@ -285,12 +285,12 @@ describe("audit log browsing", () => {
   it("keeps the capture alert and its error code when capture has gaps", async () => {
     backend({ metadata: { ...auditMetadata, capture: { ...auditMetadata.capture, state: "degraded", dropped_events: 4, last_dropped_at: "2026-11-01T02:00:00.000Z", last_error_code: "activity_http_budget_exceeded" } } });
     mount("/audit/status");
-    const summary = await screen.findByRole("group", { name: "采集状态" });
-    expect(summary.querySelector("[data-record-summary-value]")).toHaveTextContent(/^采集有缺口$/);
+    const summary = await screen.findByRole("group", { name: "日志记录状态" });
+    expect(summary.querySelector("[data-record-summary-value]")).toHaveTextContent(/^部分日志未记录$/);
     const alert = document.querySelector<HTMLElement>("[data-audit-capture]")!;
     expect(within(alert).getByText("部分活动日志未完整记录")).toBeVisible();
     expect(within(alert).getByText("未记录活动：4 条")).toBeVisible();
-    const fields = screen.getByRole("group", { name: "采集概况" });
+    const fields = screen.getByRole("group", { name: "日志记录概况" });
     expect(within(fields).getByText("最近丢弃活动").parentElement).toHaveTextContent("2026/11/01 10:00:00");
     expect(within(fields).getByText("最近错误代码").parentElement).toHaveTextContent("activity_http_budget_exceeded");
   });
@@ -383,7 +383,7 @@ describe("audit event details", () => {
     backend({ detail });
     mount(`/audit/core/${auditEvent.event_id}`);
     expect(await screen.findByText(detail.details.reason)).toBeVisible();
-    expect(screen.getByRole("link", { name: "查看收款账号" })).toHaveAttribute("href", "/settings/accounts/account-checked");
+    expect(screen.getByRole("link", { name: "查看支付宝账号" })).toHaveAttribute("href", "/settings/accounts/account-checked");
     expect(screen.queryByRole("region", { name: "配置变更" })).not.toBeInTheDocument();
   });
 
@@ -553,12 +553,12 @@ describe("audit records in the overlay", () => {
 
   it("keeps the capture status title, leads with its state and has no footer", async () => {
     mountOnboarding({ stage: 4, path: "/audit/status", handle });
-    const dialog = await screen.findByRole("dialog", { name: "审计采集状态" });
+    const dialog = await screen.findByRole("dialog", { name: "日志记录状态" });
     expect(dialog).toHaveAttribute("data-overlay-record", "true");
     // The record type and the title are the same words, so the type is not shown twice.
     expect(dialog.querySelector("[data-overlay-eyebrow-text]")).toHaveAttribute("aria-hidden", "true");
     const fixed = dialog.querySelector<HTMLElement>("[data-overlay-summary]")!;
-    expect(await within(fixed).findByRole("group", { name: "采集状态" })).toHaveTextContent(/^采集正常最近成功写入：2026\/11\/01 10:03:59$/);
+    expect(await within(fixed).findByRole("group", { name: "日志记录状态" })).toHaveTextContent(/^记录正常最近成功写入：2026\/11\/01 10:03:59$/);
     const body = dialog.querySelector<HTMLElement>("[data-overlay-detail]")!;
     expect(body.querySelectorAll("[data-detail-fields]")).toHaveLength(1);
     expect(within(body).getByRole("region", { name: "记录与导出规则" })).toBeVisible();

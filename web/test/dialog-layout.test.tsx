@@ -56,9 +56,9 @@ it("bounds the session confirmation without changing its cancel behavior", async
     </QueryClientProvider>,
   );
   const user = userEvent.setup();
-  await user.click(await recordAction("注销全部会话", "会话操作"));
+  await user.click(await recordAction("退出全部设备", "会话操作"));
   const dialog = await screen.findByRole("alertdialog", {
-    name: "注销全部会话？",
+    name: "退出全部设备？",
   });
   expect(dialog).toHaveClass(
     "max-h-[calc(100dvh-2rem)]",

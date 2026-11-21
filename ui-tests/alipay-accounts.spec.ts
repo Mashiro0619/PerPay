@@ -97,7 +97,7 @@ for (const width of [390, 1440]) {
       await expect(page.getByText("账号已保存", { exact: true })).toHaveCount(0);
       await selectSettingsSection(page, page, "支付宝账号配置分组", "应用信息");
       await page
-        .getByLabel("应用 ID（App ID）", { exact: true })
+        .getByLabel("App ID", { exact: true })
         .fill("2026000000000002");
       await page.getByLabel("支付宝公钥", { exact: true }).fill(platformKey);
       await selectSettingsSection(page, page, "支付宝账号配置分组", "收款码");
@@ -154,7 +154,7 @@ for (const width of [390, 1440]) {
         fullPage: true,
       });
       await page
-        .getByRole("button", { name: "创建业务网站", exact: true })
+        .getByRole("button", { name: "添加网站", exact: true })
         .click();
       await expect.poll(() => new URL(page.url()).searchParams.get("overlay")).toMatch(/^\/sites\/site_[^/]+\/edit\?section=integration$/);
       const siteId = new URL(new URL(page.url()).searchParams.get("overlay")!, fixture.origin).pathname.split("/")[2]!;

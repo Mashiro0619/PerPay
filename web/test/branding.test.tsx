@@ -33,7 +33,7 @@ describe("custom system branding", () => {
       <Name /><SettingsEditor section="display" settings={settings} onSaved={vi.fn()} />
     </MemoryRouter></QueryClientProvider>);
     const user = userEvent.setup();
-    const input = screen.getByRole("textbox", { name: "支付系统名称" });
+    const input = screen.getByRole("textbox", { name: "系统名称" });
     expect(input).toHaveValue("PerPay");
     expect(input).toHaveAttribute("maxlength", "40");
     await user.clear(input);

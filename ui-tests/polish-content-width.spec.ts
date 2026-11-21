@@ -259,7 +259,7 @@ test("notification columns stay readable across compact desktop widths", async (
     const table = page.locator('[data-business-table="notifications"]');
     await expect(table.getByRole("columnheader", { name: "网站", exact: true })).toHaveCount(measured >= 48 * 16 ? 1 : 0);
     await expect(table.getByRole("columnheader", { name: /创建时间/ })).toHaveCount(measured >= 68 * 16 ? 1 : 0);
-    await expect(table.getByRole("columnheader", { name: /下次尝试/ })).toHaveCount(measured >= 56 * 16 ? 1 : 0);
+    await expect(table.getByRole("columnheader", { name: /下次重试/ })).toHaveCount(measured >= 56 * 16 ? 1 : 0);
     expect(await table.locator('td[data-column-id="identity"]').first().evaluate(cell => cell.getBoundingClientRect().width)).toBeGreaterThanOrEqual(160);
   }
 });
@@ -285,7 +285,7 @@ test("display, security and account drafts survive viewport changes while backgr
     if (new URL(request.url()).pathname.startsWith("/api/admin/") && !["GET", "HEAD"].includes(request.method())) writes.push(request.method() + " " + new URL(request.url()).pathname);
   });
   for (const scenario of [
-    { ...settings(account)[3]!, label: "支付系统名称", draft: "内容宽度切换草稿" },
+    { ...settings(account)[3]!, label: "系统名称", draft: "内容宽度切换草稿" },
     { ...settings(account)[4]!, label: "允许的 IP / 网段", draft: "192.0.2.1\n198.51.100.0/24" },
     { ...settings(account)[5]!, label: "账号名称", draft: "未保存的账号名称" },
   ]) {

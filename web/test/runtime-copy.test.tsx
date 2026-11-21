@@ -24,7 +24,7 @@ describe("runtime failure explanations", () => {
     render(<QueryClientProvider client={queryClient}><MaintenanceFixture><RouterProvider router={router} /></MaintenanceFixture></QueryClientProvider>);
     expect(await screen.findByText("2 份")).toBeVisible();
     expect(screen.getByText("perpay-verified.sqlite3")).toBeVisible();
-    expect(screen.getByText("定时备份未运行，可立即创建备份。")).toBeVisible();
+    expect(screen.getByText("自动备份未运行，可立即创建备份。")).toBeVisible();
     expect(screen.getByRole("button", { name: "立即备份" })).toBeEnabled();
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
     expect(await screen.findByText("暂无备份文件")).toBeVisible();

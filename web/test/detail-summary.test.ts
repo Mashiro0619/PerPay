@@ -91,7 +91,7 @@ describe("readable evidence without stronger financial claims", () => {
       }),
     ).toEqual([]);
     expect(candidateFacts(candidate).map(([name]) => name)).toEqual([
-      "匹配金额",
+      "交易金额",
       "支付宝交易时间",
       "金额占用时间",
     ]);

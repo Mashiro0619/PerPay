@@ -9,10 +9,10 @@ test("template seconds drafts survive tabs, reject excess precision and save exa
     await page.route("**/*", route => new URL(route.request().url()).origin === fixture.origin ? route.continue() : route.abort("blockedbyclient"));
     await page.context().addCookies(fixture.cookies);
     await page.goto(fixture.origin + "/admin/sites/defaults");
-    await page.getByRole("tab", { name: "通知策略" }).click();
+    await page.getByRole("tab", { name: "通知设置" }).click();
     await expect(page.getByRole("button", { name: "高级设置" })).toHaveCount(0);
     const timeout = page.getByLabel("通知超时（秒）", { exact: true });
-    const save = page.getByRole("button", { name: "保存默认模板" });
+    const save = page.getByRole("button", { name: "保存默认设置" });
     await timeout.fill("5.0004");
     await expect(page.getByText("通知超时最多 3 位小数。", { exact: true })).toBeVisible();
     await expect(save).toBeDisabled();
@@ -21,7 +21,7 @@ test("template seconds drafts survive tabs, reject excess precision and save exa
     await page.getByRole("tab", { name: "订单设置" }).click();
     await expect(page.getByRole("alertdialog")).toHaveCount(0);
     await expect(save).toBeDisabled();
-    await page.getByRole("tab", { name: "通知策略" }).click();
+    await page.getByRole("tab", { name: "通知设置" }).click();
     await expect(timeout).toHaveValue("5.0004");
     await timeout.fill("5.123");
     expect(await timeout.evaluate((input: HTMLInputElement) => input.checkValidity())).toBe(true);
@@ -81,12 +81,12 @@ browserTest("site timeout keeps invalid input through a concurrent key conflict 
       if (request.method() === "PUT" && request.url() === siteUrl) formWrites.push(request.postDataJSON());
     });
 
-    await page.getByRole("button", { name: "轮换 API 密钥", exact: true }).click();
-    const rotation = page.getByRole("alertdialog", { name: "轮换 API 密钥？", exact: true });
+    await page.getByRole("button", { name: "更换 API 密钥", exact: true }).click();
+    const rotation = page.getByRole("alertdialog", { name: "更换 API 密钥？", exact: true });
     const rejectedRotation = page.waitForResponse(response => response.request().method() === "POST" && response.status() === 409);
-    await rotation.getByRole("button", { name: "确认轮换", exact: true }).click();
+    await rotation.getByRole("button", { name: "确认更换", exact: true }).click();
     expect((await (await rejectedRotation).json()).error.code).toBe("site_revision_conflict");
-    await expect(rotation.getByRole("button", { name: "确认轮换", exact: true })).toBeDisabled();
+    await expect(rotation.getByRole("button", { name: "确认更换", exact: true })).toBeDisabled();
     await rotation.getByRole("button", { name: "关闭", exact: true }).click();
     await page.getByRole("button", { name: "读取最新配置并核对", exact: true }).click();
     await expect(page.getByText("最新配置已合并，尚未保存", { exact: true })).toBeVisible();

@@ -236,7 +236,7 @@ test.describe("mobile overlay regression with synthetic visible viewport", () =>
     await rules.fill(Array.from({ length: 30 }, (_, index) => `192.0.2.${index + 1}`).join("\n"));
     const save = page.getByRole("button", { name: "保存白名单", exact: true });
     await save.click();
-    const dialog = page.getByRole("dialog", { name: "确认保存访问规则？", exact: true });
+    const dialog = page.getByRole("dialog", { name: "确认保存 IP 白名单？", exact: true });
     await expect(dialog).toBeVisible();
     const small = { ...panned, height: 220 };
     await visibleArea(page, small);
@@ -273,7 +273,7 @@ test.describe("mobile overlay regression with synthetic visible viewport", () =>
     await login(page, manifest);
     await page.goto(manifest.origin + "/admin/settings/display");
     await page.getByRole("link", { name: "编辑界面显示", exact: true }).click();
-    const name = page.getByRole("textbox", { name: "支付系统名称", exact: true });
+    const name = page.getByRole("textbox", { name: "系统名称", exact: true });
     await name.fill("保留的手机草稿");
     const address = page.url();
     await page.keyboard.press("Escape");

@@ -39,7 +39,7 @@ for (const width of [390, 1440]) test(`${width}: success notifications remain ac
   await page.getByRole("link", { name: "编辑界面显示", exact: true }).click();
   // Only this browser page permits the intercepted synthetic writes; the server stays read-only.
   await page.evaluate(() => delete document.documentElement.dataset.perpayDemo);
-  const name = page.getByRole("textbox", { name: "支付系统名称", exact: true });
+  const name = page.getByRole("textbox", { name: "系统名称", exact: true });
   const save = page.getByRole("button", { name: "保存", exact: true });
   const initialRevision = settings!.revision;
   await name.fill("通知验证一");
@@ -86,13 +86,13 @@ for (const width of [390, 1440]) test(`${width}: success notifications remain ac
   await page.goto(manifest.origin + "/admin" + sitePath + "/settings/integration");
   await page.getByRole("link", { name: "编辑接入与通知", exact: true }).click();
   await page.evaluate(() => delete document.documentElement.dataset.perpayDemo);
-  const trigger = page.getByRole("button", { name: "轮换 API 密钥", exact: true });
+  const trigger = page.getByRole("button", { name: "更换 API 密钥", exact: true });
   await trigger.click();
-  await page.getByRole("button", { name: "确认轮换", exact: true }).click();
+  await page.getByRole("button", { name: "确认更换", exact: true }).click();
   const keyDialog = page.getByRole("dialog", { name: "API 密钥", exact: true });
   const keyContent = keyDialog.getByRole("textbox", { name: "API 密钥", exact: true });
   await expect(keyContent).toHaveValue(secret);
-  const notification = page.getByRole("dialog", { name: "密钥已生成或轮换，请更新业务网站配置。", exact: true });
+  const notification = page.getByRole("dialog", { name: "密钥已更新，请同步更新业务网站配置。", exact: true });
   await expect(notification).toBeVisible();
   await expect(notification).toHaveAttribute("aria-modal", "false");
   // Visibility can precede the entrance animation's final position.

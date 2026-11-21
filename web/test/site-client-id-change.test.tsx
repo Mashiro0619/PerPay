@@ -16,7 +16,7 @@ const initial: Site = { secrets: { api_secret: true, webhook_secret: true }, cli
       display: { checkout_name: "网站收银台", checkout_help_url: null, checkout_show_product_name: true },
       notification_delivery: { timeout_milliseconds: 5000, maximum_attempts: 3, retry_base_seconds: 5, retry_maximum_seconds: 60 },
     } }, created_at: "2026-11-06T00:00:00Z", updated_at: "2026-11-06T00:00:00Z", deleted_at: null };
-function rejected(code = "site_client_id_conflict", fields: Record<string, string> = { client_id: "该客户端 ID 已被使用，请换一个。" }) {
+function rejected(code = "site_client_id_conflict", fields: Record<string, string> = { client_id: "该网站 ID 已被使用，请换一个。" }) {
   return json({ error: { code, message: code === "site_revision_conflict" ? "网站配置已变化，请刷新。" : fields.client_id, fields } }, 409);
 }
 function mountSite(options: {
@@ -46,15 +46,15 @@ function mountSite(options: {
   return { ...view, commands, remote: () => site, setRemote: (value: Site) => { site = value; } };
 }
 async function openChange(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(await screen.findByRole("button", { name: "更换客户端 ID" }));
-  return screen.findByRole("dialog", { name: "更换客户端 ID" });
+  await user.click(await screen.findByRole("button", { name: "更换网站 ID" }));
+  return screen.findByRole("dialog", { name: "更换网站 ID" });
 }
 async function propose(user: ReturnType<typeof userEvent.setup>, dialog: HTMLElement, value: string) {
-  const input = within(dialog).getByRole("textbox", { name: "新客户端 ID" });
+  const input = within(dialog).getByRole("textbox", { name: "新网站 ID" });
   await user.clear(input);
   await user.type(input, value);
   await user.click(within(dialog).getByRole("button", { name: "继续核对" }));
-  return screen.findByRole("alertdialog", { name: "确认更换客户端 ID？" });
+  return screen.findByRole("alertdialog", { name: "确认更换网站 ID？" });
 }
 
 describe("public client ID changes with stable website ownership", () => {
@@ -62,7 +62,7 @@ describe("public client ID changes with stable website ownership", () => {
     "copies the public ID from %s", async path => {
       mountSite({ path });
       const user = userEvent.setup();
-      const copy = await screen.findByRole("button", { name: "复制客户端 ID" });
+      const copy = await screen.findByRole("button", { name: "复制网站 ID" });
       await user.click(copy);
       expect(await navigator.clipboard.readText()).toBe("Public.Shop");
     });
@@ -70,7 +70,7 @@ describe("public client ID changes with stable website ownership", () => {
   it("uses the stable ID for legacy snapshots without a public ID", async () => {
     mountSite({ legacy: true });
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "复制客户端 ID" }));
+    await user.click(await screen.findByRole("button", { name: "复制网站 ID" }));
     expect(await navigator.clipboard.readText()).toBe(stableId);
   });
 
@@ -81,20 +81,20 @@ describe("public client ID changes with stable website ownership", () => {
     const confirmation = await propose(user, dialog, " New.Shop ");
     expect(within(confirmation).getByText("Public.Shop", { exact: true })).toBeVisible();
     expect(within(confirmation).getByText("New.Shop", { exact: true })).toBeVisible();
-    expect(confirmation).toHaveTextContent("旧 ID 将停止用于接入并继续保留占用");
+    expect(confirmation).toHaveTextContent("原网站 ID 将停止用于接入并继续保留占用");
     expect(view.commands).toHaveLength(0);
     await user.click(within(confirmation).getByRole("button", { name: "返回修改" }));
-    expect(await within(dialog).findByRole("textbox", { name: "新客户端 ID" })).toHaveValue(" New.Shop ");
+    expect(await within(dialog).findByRole("textbox", { name: "新网站 ID" })).toHaveValue(" New.Shop ");
     await user.click(within(dialog).getByRole("button", { name: "继续核对" }));
     await user.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "确认更换" }));
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "更换客户端 ID" })).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "更换网站 ID" })).not.toBeInTheDocument());
     expect(view.commands).toHaveLength(1);
     expect(view.commands[0]).toEqual({ path: `/api/admin/v1/sites/${stableId}/actions/change-client-id`,
       body: { client_id: "New.Shop", revision: 2, operation_id: expect.any(String) } });
     expect(new URLSearchParams(view.router.state.location.search).get("overlay")).toBe(`/sites/${stableId}/edit?section=integration`);
     expect(queryClient.getQueryData<{ data: Site }>(["workspace-site", stableId])?.data.api_client_id).toBe("New.Shop");
     expect(queryClient.getQueryData<{ site: Site }>(["site-editor", stableId])?.site.api_client_id).toBe("New.Shop");
-    await user.click(screen.getByRole("button", { name: "复制客户端 ID" }));
+    await user.click(screen.getByRole("button", { name: "复制网站 ID" }));
     expect(await navigator.clipboard.readText()).toBe("New.Shop");
     expect(view.writes().every(request => request.method === "POST")).toBe(true);
   });
@@ -107,8 +107,8 @@ describe("public client ID changes with stable website ownership", () => {
     await user.clear(name);
     await user.type(name, "尚未保存的网站名称");
     await user.click(screen.getByRole("tab", { name: "接入与通知" }));
-    expect(screen.getByRole("button", { name: "更换客户端 ID" })).toBeDisabled();
-    expect(screen.getByText("请先保存或撤销当前配置修改，再更换客户端 ID。")).toBeVisible();
+    expect(screen.getByRole("button", { name: "更换网站 ID" })).toBeDisabled();
+    expect(screen.getByText("请先保存或撤销当前配置修改，再更换网站 ID。")).toBeVisible();
     await user.click(screen.getByRole("tab", { name: "基本信息" }));
     expect(screen.getByRole("textbox", { name: "业务网站名称" })).toHaveValue("尚未保存的网站名称");
     expect(view.writes()).toHaveLength(0);
@@ -120,9 +120,9 @@ describe("public client ID changes with stable website ownership", () => {
     const dialog = await openChange(user);
     const confirmation = await propose(user, dialog, "taken");
     await user.click(within(confirmation).getByRole("button", { name: "确认更换" }));
-    const input = await within(dialog).findByRole("textbox", { name: "新客户端 ID" });
+    const input = await within(dialog).findByRole("textbox", { name: "新网站 ID" });
     await waitFor(() => expect(input).toHaveFocus());
-    expect(screen.getAllByText("该客户端 ID 已被使用，请换一个。", { exact: true })).toHaveLength(1);
+    expect(screen.getAllByText("该网站 ID 已被使用，请换一个。", { exact: true })).toHaveLength(1);
     expect(input).toBeEnabled();
     const retry = await propose(user, dialog, "available");
     await user.click(within(retry).getByRole("button", { name: "确认更换" }));
@@ -145,14 +145,14 @@ describe("public client ID changes with stable website ownership", () => {
     const confirmation = await propose(user, dialog, "Requested.Shop");
     await user.click(within(confirmation).getByRole("button", { name: "确认更换" }));
     await screen.findByText("更换结果待确认");
-    const input = await within(dialog).findByRole("textbox", { name: "新客户端 ID" });
+    const input = await within(dialog).findByRole("textbox", { name: "新网站 ID" });
     expect(input).toBeDisabled();
     fireEvent.change(input, { target: { value: "other" } });
     expect(input).toHaveValue("Requested.Shop");
     await user.click(await within(dialog).findByRole("button", { name: "重试上一次操作" }));
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "更换客户端 ID" })).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "更换网站 ID" })).not.toBeInTheDocument());
     expect(view.commands[1]).toEqual(view.commands[0]);
-    await user.click(screen.getByRole("button", { name: "复制客户端 ID" }));
+    await user.click(screen.getByRole("button", { name: "复制网站 ID" }));
     expect(await navigator.clipboard.readText()).toBe(currentId);
   });
 
@@ -165,7 +165,7 @@ describe("public client ID changes with stable website ownership", () => {
     await screen.findByText("更换结果待确认");
     await user.click(await within(dialog).findByRole("button", { name: "重试上一次操作" }));
     await screen.findByText("服务返回冲突，请关闭并刷新，核对原操作是否生效。");
-    expect(within(dialog).getByRole("textbox", { name: "新客户端 ID" })).toBeDisabled();
+    expect(within(dialog).getByRole("textbox", { name: "新网站 ID" })).toBeDisabled();
     expect(within(dialog).getByRole("button", { name: "重试上一次操作" })).toBeDisabled();
     expect(view.commands[1]).toEqual(view.commands[0]);
   });
@@ -174,7 +174,7 @@ describe("public client ID changes with stable website ownership", () => {
     const view = mountSite();
     const user = userEvent.setup();
     const dialog = await openChange(user);
-    const input = within(dialog).getByRole("textbox", { name: "新客户端 ID" });
+    const input = within(dialog).getByRole("textbox", { name: "新网站 ID" });
     await user.clear(input); await user.type(input, "Draft.Shop");
     await user.click(within(dialog).getByRole("button", { name: "取消" }));
     const guard = await screen.findByRole("alertdialog", { name: "放弃未保存的修改？" });
@@ -187,7 +187,7 @@ describe("public client ID changes with stable website ownership", () => {
     const view = mountSite();
     const user = userEvent.setup();
     const dialog = await openChange(user);
-    const input = within(dialog).getByRole("textbox", { name: "新客户端 ID" });
+    const input = within(dialog).getByRole("textbox", { name: "新网站 ID" });
     await user.clear(input); await user.type(input, "invalid/id");
     await user.click(within(dialog).getByRole("button", { name: "继续核对" }));
     expect(input).toHaveAttribute("aria-invalid", "true");
@@ -206,11 +206,11 @@ describe("public client ID changes with stable website ownership", () => {
     await user.click(within(confirmation).getByRole("button", { name: "确认更换" }));
     await within(dialog).findByRole("button", { name: "正在更换…" });
     await user.keyboard("{Escape}");
-    expect(await screen.findByRole("dialog", { name: "更换客户端 ID" })).toBeVisible();
-    expect(within(dialog).getByRole("textbox", { name: "新客户端 ID" })).toBeDisabled();
+    expect(await screen.findByRole("dialog", { name: "更换网站 ID" })).toBeVisible();
+    expect(within(dialog).getByRole("textbox", { name: "新网站 ID" })).toBeDisabled();
     expect(view.commands).toHaveLength(1);
     await act(async () => { release(json({ data: { ...view.remote(), api_client_id: "Pending.Shop", revision: 3 } })); });
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "更换客户端 ID" })).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "更换网站 ID" })).not.toBeInTheDocument());
     expect(queryClient.getQueryData<{ site: Site }>(["site-editor", stableId])?.site.api_client_id).toBe("Pending.Shop");
   });
 
@@ -225,10 +225,10 @@ describe("public client ID changes with stable website ownership", () => {
     const confirmation = await propose(user, dialog, "Desired.Shop");
     await user.click(within(confirmation).getByRole("button", { name: "确认更换" }));
     const close = await within(dialog).findByRole("button", { name: "关闭并刷新" });
-    expect(within(dialog).getByRole("textbox", { name: "新客户端 ID" })).toBeDisabled();
+    expect(within(dialog).getByRole("textbox", { name: "新网站 ID" })).toBeDisabled();
     await user.click(close);
     await waitFor(() => expect(queryClient.getQueryData<{ site: Site }>(["site-editor", stableId])?.site.api_client_id).toBe("Remote.Shop"));
-    await user.click(await screen.findByRole("button", { name: "复制客户端 ID" }));
+    await user.click(await screen.findByRole("button", { name: "复制网站 ID" }));
     expect(await navigator.clipboard.readText()).toBe("Remote.Shop");
     const reopened = await openChange(user);
     const nextConfirmation = await propose(user, reopened, "Desired.Shop");
@@ -241,7 +241,7 @@ describe("public client ID changes with stable website ownership", () => {
   });
 
   it("labels the public change in the audit UI", () => {
-    expect(auditActionLabel("site.client_id_changed")).toBe("更换客户端 ID");
-    expect(auditFieldLabel("api_client_id")).toBe("客户端 ID");
+    expect(auditActionLabel("site.client_id_changed")).toBe("更换网站 ID");
+    expect(auditFieldLabel("api_client_id")).toBe("网站 ID");
   });
 });

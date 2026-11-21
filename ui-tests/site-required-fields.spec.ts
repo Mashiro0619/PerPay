@@ -18,10 +18,10 @@ test("website required fields show custom feedback, suppress native bubbles and 
     for (const width of [1440, 390]) {
       await page.setViewportSize({ width, height: 900 });
       for (const form of [
-        { path: "/sites/new", label: "业务网站名称", button: "创建业务网站" },
+        { path: "/sites/new", label: "业务网站名称", button: "添加网站" },
         { path: "/sites/default/edit?section=basic", label: "业务网站名称", button: "保存业务网站" },
         { path: "/sites/default/edit?section=display", label: "收银台名称", button: "保存业务网站" },
-        { path: "/sites/defaults", label: "收银台名称", button: "保存默认模板", tab: "收银台展示" },
+        { path: "/sites/defaults", label: "收银台名称", button: "保存默认设置", tab: "收银台展示" },
       ]) {
         await page.goto(fixture.origin + "/admin" + form.path);
         if (form.tab) await selectSettingsSection(page, page, "模板分组", form.tab);

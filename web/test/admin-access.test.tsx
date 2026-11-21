@@ -63,7 +63,7 @@ describe("admin access settings", () => {
     await user.click(screen.getByRole("switch", { name: "启用 IP 白名单" }));
     await user.click(screen.getByRole("button", { name: "保存白名单" }));
     expect(requests.filter((r) => r.method === "PUT")).toHaveLength(0);
-    const confirmation = screen.getByRole("dialog", { name: "确认保存访问规则？" });
+    const confirmation = screen.getByRole("dialog", { name: "确认保存 IP 白名单？" });
     const explanation = within(confirmation).getByText(/保存立即生效/);
     expect(explanation.closest("[data-admin-dialog-body]")).not.toBeNull();
     expect(confirmation).toHaveAccessibleDescription(explanation.textContent ?? "");
@@ -189,7 +189,7 @@ describe("admin access settings", () => {
     await user.click(screen.getByRole("button", { name: "保存白名单" }));
     await user.click(screen.getByRole("button", { name: "确认保存" }));
     await user.click(await screen.findByRole("button", { name: "重新读取配置" }));
-    await screen.findByText("访问规则存在不同修改");
+    await screen.findByText("IP 白名单存在不同修改");
     expect(screen.getByRole("button", { name: "保存白名单" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "应用核对结果" })).toBeDisabled();
     await user.click(screen.getByRole("button", { name: choice }));

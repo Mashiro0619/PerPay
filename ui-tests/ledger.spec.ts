@@ -245,7 +245,7 @@ test("closed ledger conflicts remain history while only open conflicts require a
   }];
   // Present known statuses through a synthetic read response; no financial write.
   await page.route(manifest.origin + apiPath, route => route.fulfill({ status: 200, json: { data: entry } }));
-  for (const [status, visibleStatus] of [["RESOLVED", "已处理"], ["IGNORED", "已确认隔离"], ["OPEN", "待处理"]] as const) {
+  for (const [status, visibleStatus] of [["RESOLVED", "已处理"], ["IGNORED", "已隔离"], ["OPEN", "待处理"]] as const) {
     entry.conflicts[0]!.status = status;
     entry.conflicts[0]!.resolved_at = status === "OPEN" ? null : new Date(manifest.epoch + 60_000).toISOString();
     await page.goto(manifest.origin + "/admin" + path);

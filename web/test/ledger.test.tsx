@@ -100,8 +100,8 @@ describe("administrator ledger pages", () => {
     expect(table.querySelector('thead [data-column-id="memo"]')).toBeNull();
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "列表显示" }));
-    await user.click(await screen.findByRole("checkbox", { name: "备注" }));
-    expect(within(table).getByRole("columnheader", { name: "备注" })).toBeVisible();
+    await user.click(await screen.findByRole("checkbox", { name: "支付宝备注" }));
+    expect(within(table).getByRole("columnheader", { name: "支付宝备注" })).toBeVisible();
     await user.keyboard("{Escape}");
     act(() => { width = 600; window.dispatchEvent(new Event("resize")); });
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
@@ -347,8 +347,8 @@ describe("administrator ledger pages", () => {
     await screen.findByRole("heading", { name: "支付宝收款", level: 1 });
     const facts = section("transaction")!;
     // No source states them, and a version that is not listed here still may: neither "disputed" nor "not provided".
-    expect(within(facts).getAllByRole("term").map(term => term.textContent)).toEqual(["对方", "支付宝流水号", "支付宝订单号"]);
-    for (const title of ["对方", "支付宝订单号"]) expect(within(facts).getByText(title).nextElementSibling).toHaveTextContent(/^—$/);
+    expect(within(facts).getAllByRole("term").map(term => term.textContent)).toEqual(["交易对方", "支付宝流水号", "支付宝订单号"]);
+    for (const title of ["交易对方", "支付宝订单号"]) expect(within(facts).getByText(title).nextElementSibling).toHaveTextContent(/^—$/);
     expect(facts).not.toHaveTextContent(/有争议|未提供/);
     expect(screen.getByRole("group", { name: "流水概况" })).toHaveTextContent("金额有争议");
     expect(screen.getByText("账单信息存在不同版本", { exact: true })).toBeVisible();

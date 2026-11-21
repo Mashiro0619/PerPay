@@ -193,9 +193,9 @@ for (const layout of layouts) {
         if (layout.font === 100) {
           await page.goto(fixture.origin + "/admin/sites/default/settings/integration");
           await page.getByRole("link", { name: "编辑接入与通知", exact: true }).click();
-          await dialog.getByRole("button", { name: "更换客户端 ID", exact: true }).click();
-          const step = page.getByRole("dialog", { name: "更换客户端 ID", exact: true });
-          await checkControl(page, dialog, step.getByRole("textbox", { name: "新客户端 ID", exact: true }), "client-id-step-input", info);
+          await dialog.getByRole("button", { name: "更换网站 ID", exact: true }).click();
+          const step = page.getByRole("dialog", { name: "更换网站 ID", exact: true });
+          await checkControl(page, dialog, step.getByRole("textbox", { name: "新网站 ID", exact: true }), "client-id-step-input", info);
           await step.getByRole("button", { name: "取消", exact: true }).click();
           await expect(step).toHaveCount(0);
           await dialog.getByRole("button", { name: "关闭对话框", exact: true }).click();

@@ -60,7 +60,7 @@ for (const width of [390, 320]) {
         page.on("request", request => { if (!["GET", "HEAD"].includes(request.method())) writes.push(request.method() + " " + new URL(request.url()).pathname); });
         await page.context().addCookies(fixture.cookies);
         await page.goto(fixture.origin + "/admin/sites");
-        await page.getByRole("link", { name: "创建业务网站", exact: true }).click();
+        await page.getByRole("link", { name: "添加网站", exact: true }).click();
         const overlay = page.locator("[data-overlay-content]"), selector = overlay.getByRole("combobox", { name: "支付宝账号", exact: true });
         await selector.click();
         const measurements = [];

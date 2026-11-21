@@ -92,16 +92,16 @@ function sourceTerms(entry: AdminLedgerDetail, source: AdminLedgerDetail["source
 /** A notification's attempts section: the latest ten in view, or one line when nothing was attempted. */
 async function expectAttempts(page: Page, count: number) {
   const section = detailSection(page, "attempts");
-  await expect(section.getByRole("heading", { level: 2 })).toHaveText(/^投递尝试/);
+  await expect(section.getByRole("heading", { level: 2 })).toHaveText(/^发送记录/);
   if (!count) {
     await expect(section).toHaveAttribute("data-section-empty", "true");
-    await expect(section.getByText("尚未开始投递", { exact: true })).toBeVisible();
+    await expect(section.getByText("尚未开始发送", { exact: true })).toBeVisible();
     await expect(section.getByRole("list")).toHaveCount(0);
     return section;
   }
   // The section's name carries the count, so the list does not repeat it.
-  await expect(section).toHaveAccessibleName(new RegExp(`^投递尝试\\s*，共\\s*${count}\\s*项$`));
-  const list = section.getByRole("list", { name: "投递尝试", exact: true });
+  await expect(section).toHaveAccessibleName(new RegExp(`^发送记录\\s*，共\\s*${count}\\s*项$`));
+  const list = section.getByRole("list", { name: "发送记录", exact: true });
   await expect(list.getByRole("listitem")).toHaveCount(Math.min(count, 10));
   return list;
 }
@@ -277,12 +277,12 @@ test("detail overlays separate facts into readable business sections", async ({ 
     await expect(foreground(page).getByRole("tab")).toHaveCount(0);
     if (scenario.kind === "notification") {
       // One heading per section, in reading order; the related order is a record of its own inside the last one.
-      await expect(detailBody(page).getByRole("heading", { level: 2 })).toHaveText(["投递信息", /^投递尝试/, "关联订单"]);
+      await expect(detailBody(page).getByRole("heading", { level: 2 })).toHaveText(["通知信息", /^发送记录/, "关联订单"]);
       await expect(detailSection(page, "order").locator("article[data-sub-record]").getByRole("link", { name: "查看订单", exact: true })).toBeVisible();
       await expect(foreground(page).locator("[data-overlay-footer]").getByRole("button", { name: scenario.tools, exact: true })).toBeVisible();
-      await readDetailSection(page, /^投递尝试/);
+      await readDetailSection(page, /^发送记录/);
       await expectAttempts(page, 1);
-      await readDetailSection(page, "投递信息");
+      await readDetailSection(page, "通知信息");
     } else if (scenario.kind === "match") {
       await expect(detailBody(page).getByRole("heading", { level: 2 })).toHaveText(["关联订单", "支付宝流水", "匹配依据", "处理记录"]);
       await expect(detailSection(page, "order").locator("article[data-sub-record]").getByRole("link", { name: "查看订单", exact: true })).toBeVisible();
@@ -386,9 +386,9 @@ test.describe("detail reading width matrix", () => {
             // The summary states when the next attempt is due, so the facts do not repeat it.
             await expect(foreground(page).getByRole("group", { name: "通知状态", exact: true }).locator("[data-record-summary-meta]")).toContainText(/已尝试 1 次 · 下次重试 /);
             await expect(detailSection(page, "order").locator("article[data-sub-record]")).toBeVisible();
-            await readDetailSection(page, /^投递尝试/);
+            await readDetailSection(page, /^发送记录/);
             await expect((await expectAttempts(page, 1)).getByText(/通知域名解析失败/)).toBeVisible();
-            await readDetailSection(page, "投递信息");
+            await readDetailSection(page, "通知信息");
           } else if (scenario.kind === "match") {
             await expect(detailSection(page, "order").locator("article[data-sub-record]")).toBeVisible();
             await readDetailSection(page, "支付宝流水");
@@ -497,17 +497,17 @@ test("named notification scenarios retain delivery facts and safe resend recover
     await expect(overview.getByText(detail.target.target_url, { exact: true })).toBeVisible();
     // The summary states how often delivery was attempted and when the next attempt is due, so the facts repeat neither.
     await expect(summary.locator("[data-record-summary-meta]")).toContainText(`已尝试 ${detail.delivery.attempt_count} 次`);
-    await expect(overview.locator("dt").filter({ hasText: /^(尝试次数|下次重试|计划投递)$/ })).toHaveCount(0);
+    await expect(overview.locator("dt").filter({ hasText: /^(尝试次数|下次重试|计划发送)$/ })).toHaveCount(0);
     if (key === "notificationSite") {
       const order = detailSection(page, "order").getByRole("link", { name: "查看订单", exact: true });
       expect(targetUrl(page, (await order.getAttribute("href"))!).pathname).toBe("/sites/" + detail.target.api_client_id + "/orders/" + detail.event.order_id);
     }
-    await readDetailSection(page, /^投递尝试/);
+    await readDetailSection(page, /^发送记录/);
     const attempts = await expectAttempts(page, detail.delivery.attempt_count);
     if (key === "notificationPending") expect(detail.delivery.attempt_count).toBe(0);
     if (key === "notificationDns" || key === "notificationSite") await expect(attempts.getByText(/通知域名解析失败/)).toBeVisible();
     if (key === "notificationHttp") await expect(attempts.getByText(/HTTP 503/)).toBeVisible();
-    await readDetailSection(page, "投递信息");
+    await readDetailSection(page, "通知信息");
     if (key === "notificationHistory") {
       expect(detail.is_latest).toBe(false);
       await expect(summary.getByText("历史投递", { exact: true })).toBeVisible();
@@ -582,7 +582,7 @@ test("notification history loads after its delivery succeeds and does not reload
   } finally { release(); }
 
   async function revealHistory() {
-    await readDetailSection(page, /^投递尝试/);
+    await readDetailSection(page, /^发送记录/);
     await expect(foreground(page).getByRole("tab")).toHaveCount(0);
     await page.clock.runFor(100);
   }
@@ -608,19 +608,19 @@ test("a clearly synthetic 21-attempt response keeps the latest ten in view and f
   await page.route(manifest.origin + path, route => route.fulfill({ status: 200, json: { data: attempts } }));
   await openDetail(page, manifest, "notificationHttp");
   await expect(foreground(page).getByRole("group", { name: "通知状态", exact: true }).locator("[data-record-summary-meta]")).toContainText("已尝试 21 次");
-  await readDetailSection(page, /^投递尝试/);
+  await readDetailSection(page, /^发送记录/);
   const section = detailSection(page, "attempts");
   const numbers = async (list: Locator) => (await list.getByRole("listitem").allTextContents()).map(value => Number(/第 (\d+) 次/.exec(value)![1]));
   const latest = await expectAttempts(page, 21);
   const seen = await numbers(latest);
   expect(seen).toEqual(Array.from({ length: 10 }, (_, index) => 21 - index));
-  const earlier = section.getByRole("button", { name: /^更早的尝试/ });
+  const earlier = section.getByRole("button", { name: /^更早的记录/ });
   await expect(earlier).toHaveAttribute("aria-expanded", "false");
   await expect(earlier).toContainText("11");
   await expect(section.getByRole("list")).toHaveCount(1);
   await earlier.click();
   await expect(earlier).toHaveAttribute("aria-expanded", "true");
-  const folded = section.getByRole("list", { name: "更早的尝试", exact: true });
+  const folded = section.getByRole("list", { name: "更早的记录", exact: true });
   await expect(folded.getByRole("listitem")).toHaveCount(11);
   seen.push(...await numbers(folded));
   expect(seen).toEqual(Array.from({ length: 21 }, (_, index) => 21 - index));
@@ -644,20 +644,20 @@ test("failed attempt reads retain an accurate unknown history and recover on exp
   await page.route(manifest.origin + path, route => {
     reads++;
     return unavailable
-      ? route.fulfill({ status: 503, json: { error: { code: "synthetic_attempts_unavailable", message: "合成的投递尝试读取失败" } } })
+      ? route.fulfill({ status: 503, json: { error: { code: "synthetic_attempts_unavailable", message: "合成的发送记录读取失败" } } })
       : route.fulfill({ status: 200, json: { data: original } });
   });
   await openDetail(page, manifest, "notificationHttp");
-  await readDetailSection(page, /^投递尝试/);
+  await readDetailSection(page, /^发送记录/);
   const main = detailBody(page), section = detailSection(page, "attempts");
-  const unread = section.getByText("投递尝试读取失败，请刷新重试。", { exact: true });
+  const unread = section.getByText("发送记录读取失败，请刷新重试。", { exact: true });
   // The drawer's notice reports the failure; the section says which part is missing, without calling it empty.
   await expect(unread).toBeVisible();
   await expect(section).not.toHaveAttribute("data-section-empty", "true");
-  await expect(section.getByText("尚未开始投递", { exact: true })).toHaveCount(0);
+  await expect(section.getByText("尚未开始发送", { exact: true })).toHaveCount(0);
   await expect(section.getByRole("list")).toHaveCount(0);
   const alert = main.getByRole("alert", { name: "服务连接提示", exact: true });
-  await expect(alert).toContainText("合成的投递尝试读取失败");
+  await expect(alert).toContainText("合成的发送记录读取失败");
   // The header's refresh is the retry the section points to.
   const beforeRefresh = reads;
   await foreground(page).getByRole("button", { name: "刷新", exact: true }).click();
@@ -872,7 +872,7 @@ test("technical record identifiers remain copyable without crowding the business
   // A transaction keeps every technical entry in its footer's menu. Its only source's identifiers stand with
   // its own; several sources each have an entry.
   const cases: Array<{ key: string; tools: string; item?: string; values: Array<[string, string | null]> }> = [
-    { key: "notificationDns", tools: "更多操作，通知记录操作", values: [["投递编号", notification.delivery.delivery_id], ["事件编号", notification.event.event_id]] },
+    { key: "notificationDns", tools: "更多操作，通知记录操作", values: [["通知编号", notification.delivery.delivery_id], ["事件编号", notification.event.event_id]] },
     { key: "matchInferred", tools: "更多操作，流水操作", item: "收款关联技术信息", values: [["关联编号", match.payment_match_id], ["内部流水编号", match.ledger_entry_id]] },
     { key: "ledgerAssociated", tools: "更多操作，流水操作", values: [["内部流水编号", ledger.ledger_entry_id], ["支付宝 App ID", source.app_id], ["采集来源标识", source.provider_account_key]] },
     { key: "ledgerIdentical", tools: "更多操作，流水操作", item: "采集记录 2 技术信息", values: [["内部流水编号", copy.ledger_entry_id], ["支付宝 App ID", copy.app_id], ["采集来源标识", copy.provider_account_key]] },

@@ -128,8 +128,8 @@ describe("overview work item context", () => {
   });
 
   it.each([
-    ["PENDING", "等待投递", "secondary", true],
-    ["LEASED", "投递中", "warning", false],
+    ["PENDING", "待发送", "secondary", true],
+    ["LEASED", "发送中", "warning", false],
     ["RETRY_WAIT", "等待重试", "warning", true],
     ["DEAD_LETTER", "已停止重试", "destructive", false],
   ] as const)("shows actual %s progress and only meaningful retry times", (status, text, tone, scheduled) => {
@@ -138,7 +138,7 @@ describe("overview work item context", () => {
     expect(screen.getByText("请求超时")).toBeVisible();
     expect(Boolean(screen.queryByTitle("2026/10/11 12:00（北京时间）"))).toBe(scheduled);
     if (scheduled) {
-      expect(screen.getByTitle("2026/10/11 12:00（北京时间）").parentElement).toHaveTextContent(status === "RETRY_WAIT" ? "下次重试" : "计划投递");
+      expect(screen.getByTitle("2026/10/11 12:00（北京时间）").parentElement).toHaveTextContent(status === "RETRY_WAIT" ? "下次重试" : "计划发送");
     }
     expect(screen.queryByText("需人工关注")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: /^查看通知/ })).toHaveAttribute("href", "/notifications/00000000-0000-4000-8000-000000000002");
@@ -157,7 +157,7 @@ describe("overview work item context", () => {
     expect(screen.queryByText("账本冲突")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: /^核对异常/ })).toHaveAttribute("href", "/reconciliation/exceptions/" + exception.resource_id);
     expect(screen.getByRole("link", { name: /^核对冲突/ })).toHaveAttribute("href", "/reconciliation/conflicts/" + conflict.resource_id);
-    expect(screen.queryByText("开放中")).not.toBeInTheDocument();
+    expect(screen.queryByText("收款中")).not.toBeInTheDocument();
   });
 
   it.each([

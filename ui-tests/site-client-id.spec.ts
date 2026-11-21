@@ -6,7 +6,7 @@ async function submitSite(page: Page, expectedStatus: number) {
   const responseReady = page.waitForResponse(response =>
     new URL(response.url()).pathname === "/api/admin/v1/sites" && response.request().method() === "POST",
   );
-  await page.locator("[data-overlay-content]").getByRole("button", { name: "创建业务网站", exact: true }).click();
+  await page.locator("[data-overlay-content]").getByRole("button", { name: "添加网站", exact: true }).click();
   const response = await responseReady;
   expect(response.status()).toBe(expectedStatus);
   return response;
@@ -24,18 +24,18 @@ for (const width of [1440, 390]) {
         await page.context().addCookies(fixture.cookies);
         await page.goto(fixture.origin + "/admin/sites");
         const dialog = page.locator("[data-overlay-content]");
-        const clientId = dialog.getByRole("textbox", { name: /客户端 ID/ });
+        const clientId = dialog.getByRole("textbox", { name: /网站 ID/ });
         const siteName = dialog.getByRole("textbox", { name: "业务网站名称", exact: true });
 
         async function openCreation(name: string) {
-          await page.getByRole("link", { name: "创建业务网站", exact: true }).click();
+          await page.getByRole("link", { name: "添加网站", exact: true }).click();
           await siteName.fill(name);
         }
 
         async function verifyCreated(site: Site, expectedId: string, expectedName: string) {
           expect(site.client_id).toBe(expectedId);
           await expect.poll(() => new URL(page.url()).searchParams.get("overlay")).toBe(`/sites/${expectedId}/edit?section=integration`);
-          await expect(dialog.getByRole("textbox", { name: /客户端 ID/ })).toHaveCount(0);
+          await expect(dialog.getByRole("textbox", { name: /网站 ID/ })).toHaveCount(0);
           const stored = await page.request.get(`${fixture.origin}/api/admin/v1/sites/${expectedId}`);
           expect(stored.status()).toBe(200);
           expect((await stored.json()).data).toMatchObject({ client_id: expectedId, configuration: { name: expectedName } });
@@ -68,7 +68,7 @@ for (const width of [1440, 390]) {
         expect((await conflict.json()).error.code).toBe("site_client_id_conflict");
         await expect(clientId).toHaveAttribute("aria-invalid", "true");
         await expect(clientId).toBeFocused();
-        await expect(dialog.getByText("该客户端 ID 已被使用，请换一个。", { exact: true })).toHaveCount(1);
+        await expect(dialog.getByText("该网站 ID 已被使用，请换一个。", { exact: true })).toHaveCount(1);
         await expect(siteName).toHaveValue(secondName);
         await expect(dialog.getByText("创建结果待确认", { exact: true })).toHaveCount(0);
         await page.screenshot({ path: info.outputPath("duplicate-client-id.png") });
@@ -100,9 +100,9 @@ for (const width of [1440, 390]) {
         await page.goto(fixture.origin + "/admin/sites");
         const dialog = page.locator("[data-overlay-content]");
         for (const id of ["shop", "site_shop"]) {
-          await page.getByRole("link", { name: "创建业务网站", exact: true }).click();
+          await page.getByRole("link", { name: "添加网站", exact: true }).click();
           await dialog.getByRole("textbox", { name: "业务网站名称", exact: true }).fill("同名测试网站");
-          await dialog.getByRole("textbox", { name: /客户端 ID/ }).fill(id);
+          await dialog.getByRole("textbox", { name: /网站 ID/ }).fill(id);
           const response = await submitSite(page, 201);
           expect((await response.json()).data.client_id).toBe(id);
           await expect.poll(() => new URL(page.url()).searchParams.get("overlay")).toBe(`/sites/${id}/edit?section=integration`);
@@ -137,14 +137,14 @@ for (const width of [1440, 390]) {
         await page.context().addCookies(fixture.cookies);
         await page.goto(fixture.origin + "/admin/sites/default/settings/integration");
         await page.getByRole("link", { name: "编辑接入与通知", exact: true }).click();
-        await page.getByRole("button", { name: "更换客户端 ID", exact: true }).click();
+        await page.getByRole("button", { name: "更换网站 ID", exact: true }).click();
         const newId = `Billing.${width}_Shop`;
-        const input = page.getByRole("textbox", { name: "新客户端 ID", exact: true });
+        const input = page.getByRole("textbox", { name: "新网站 ID", exact: true });
         await expect(input).toHaveValue("default");
         await input.fill(newId);
         await page.screenshot({ path: info.outputPath("change-client-id-form.png") });
         await page.getByRole("button", { name: "继续核对", exact: true }).click();
-        const confirmation = page.getByRole("alertdialog", { name: "确认更换客户端 ID？", exact: true });
+        const confirmation = page.getByRole("alertdialog", { name: "确认更换网站 ID？", exact: true });
         await expect(confirmation).toBeVisible();
         await expect(confirmation.getByText(newId, { exact: true })).toBeVisible();
         await page.screenshot({ path: info.outputPath("change-client-id-confirmation.png") });
@@ -155,7 +155,7 @@ for (const width of [1440, 390]) {
         const response = await responseReady;
         expect(response.status()).toBe(200);
         expect((await response.json()).data).toMatchObject({ client_id: "default", api_client_id: newId });
-        await expect(page.getByRole("textbox", { name: "新客户端 ID", exact: true })).toHaveCount(0);
+        await expect(page.getByRole("textbox", { name: "新网站 ID", exact: true })).toHaveCount(0);
         await expect(page.locator("[data-overlay-content]").getByText(newId, { exact: true })).toBeVisible();
         const stored = await page.request.get(fixture.origin + "/api/admin/v1/sites/default");
         expect((await stored.json()).data).toMatchObject({ client_id: "default", api_client_id: newId });

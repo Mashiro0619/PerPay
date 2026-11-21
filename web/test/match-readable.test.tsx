@@ -66,11 +66,11 @@ describe("readable payment match detail", () => {
       const orderSection = section("order");
       expect(within(orderSection).getByRole("heading", { level: 3 })).toHaveTextContent(paymentMatch.order.product_name);
       expect(within(orderSection).getByRole("link", { name: /^查看订单/ })).toHaveAttribute("href", scope + "/orders/" + orderId);
-      expect(terms(orderSection)).toEqual(["商户订单号", "业务网站", "应付金额", "实收金额", "创建时间", "收银台到期"]);
+      expect(terms(orderSection)).toEqual(["商户订单号", "业务网站", "应付金额", "实收金额", "创建时间", "收银台有效期至"]);
 
       const ledgerSection = section("ledger");
       expect(within(ledgerSection).getByRole("link", { name: /^查看流水/ })).toHaveAttribute("href", scope + "/reconciliation/ledger/" + paymentMatch.ledger_entry_id);
-      expect(terms(ledgerSection)).toEqual(["交易金额", "交易时间", "对方", "支付宝备注", "支付宝流水号", "支付宝订单号", "内部流水编号"]);
+      expect(terms(ledgerSection)).toEqual(["交易金额", "交易时间", "交易对方", "支付宝备注", "支付宝流水号", "支付宝订单号", "内部流水编号"]);
 
       expect(terms(section("evidence"))).toEqual(["金额占用时间"]);
       expect(within(section("history")).getAllByRole("listitem").map(item => item.querySelector("span:nth-of-type(2)")!.textContent)).toEqual(["按金额和付款时间推断"]);
@@ -83,7 +83,7 @@ describe("readable payment match detail", () => {
       expect(await navigator.clipboard.readText()).toBe(matchId);
       await user.click(within(technical).getByRole("button", { name: "复制内部订单编号" }));
       expect(await navigator.clipboard.readText()).toBe(paymentMatch.order.order_id);
-      await user.click(within(technical).getByRole("button", { name: "复制网站编号" }));
+      await user.click(within(technical).getByRole("button", { name: "复制网站 ID" }));
       expect(await navigator.clipboard.readText()).toBe(paymentMatch.order.api_client_id);
       expect(fetchMock.mock.calls.every(([request]) => request.method === "GET")).toBe(true);
       expect(fetchMock).toHaveBeenCalledTimes(scope ? 2 : 1);
@@ -121,7 +121,7 @@ describe("readable payment match detail", () => {
     };
     mount(<MatchRecord match={match} />);
     const summary = screen.getByRole("group", { name: "关联概况" });
-    expect(summary.querySelector("[data-record-compare]")).toHaveTextContent("流水 ¥1.02（多 ¥0.01）");
+    expect(summary.querySelector("[data-record-compare]")).toHaveTextContent("流水 ¥1.02（多收 ¥0.01）");
     expect(screen.getByText(match.ledger_entry.provider_order_no!)).toBeVisible();
     expect(screen.getByText(match.ledger_entry.merchant_order_no!)).toBeVisible();
     expect(screen.getByText("支付宝备注", { selector: "dt" }).nextElementSibling?.textContent).toBe(match.ledger_entry.memo);

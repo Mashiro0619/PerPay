@@ -33,7 +33,7 @@ isolatedTest("IP 白名单在真实版本冲突后保留草稿并可继续保存
     const submitted: { status: number; revision: number; enabled: boolean; cidrs: string[] }[] = [];
     async function submit(status: number, revision: number) {
       await save.click();
-      const dialog = page.getByRole("dialog", { name: "确认保存访问规则？", exact: true });
+      const dialog = page.getByRole("dialog", { name: "确认保存 IP 白名单？", exact: true });
       const pending = page.waitForResponse(response => response.url() === endpoint && response.request().method() === "PUT");
       await dialog.getByRole("button", { name: "确认保存", exact: true }).click();
       const response = await pending;
@@ -69,7 +69,7 @@ isolatedTest("IP 白名单在真实版本冲突后保留草稿并可继续保存
     await submit(409, firstSaved.revision);
     await expect(rules).toHaveValue(secondDraft);
     await editor.getByRole("button", { name: "重新读取配置", exact: true }).click();
-    const conflict = editor.getByRole("alert").filter({ hasText: "访问规则存在不同修改" });
+    const conflict = editor.getByRole("alert").filter({ hasText: "IP 白名单存在不同修改" });
     await expect(conflict).toBeVisible();
     await expect(conflict).toContainText("203.0.113.12");
     await expect(conflict).toContainText("198.51.100.11");
@@ -196,7 +196,7 @@ test("settings use guarded category selection on phones and scrolling tabs on de
   await page.goto(manifest.origin + "/admin/settings/display");
   await page.getByRole("link", { name: "编辑界面显示", exact: true }).click();
   const editor = page.getByRole("dialog", { name: "编辑界面显示", exact: true });
-  const name = page.getByRole("textbox", { name: "支付系统名称" });
+  const name = page.getByRole("textbox", { name: "系统名称" });
   await name.fill("手机草稿保留");
   await editor.locator("[data-overlay-actions]").getByRole("button", { name: "关闭", exact: true }).click();
   const guard = page.getByRole("alertdialog", { name: "放弃未保存的修改？" });

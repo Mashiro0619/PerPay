@@ -24,7 +24,7 @@ test("audit reads actual saved events, opens a detail, and exports the matching 
   await expect(page.locator("[data-audit-retention]")).toHaveCount(0);
   await page.locator("[data-audit-status-trigger]").click();
   const status = page.locator("[data-overlay-content]");
-  await expect(page.getByRole("heading", { level: 1, name: "审计采集状态" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "日志记录状态" })).toBeVisible();
   await expect(status.locator("[data-audit-retention]")).toContainText("活动记录保留 30 天");
   await expect(status).toContainText("列表读取时间");
   await status.locator('[data-slot="dialog-close"]').click();

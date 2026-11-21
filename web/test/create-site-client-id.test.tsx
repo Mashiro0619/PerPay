@@ -15,7 +15,7 @@ const policy: SitePolicy = {
   notification_delivery: { timeout_milliseconds: 5000, maximum_attempts: 3, retry_base_seconds: 5, retry_maximum_seconds: 60 },
 };
 type CreateCommand = { operation_id: string; client_id?: string; configuration: SiteConfiguration };
-const conflictMessage = "该客户端 ID 已被使用，请换一个。";
+const conflictMessage = "该网站 ID 已被使用，请换一个。";
 function clientIdRejected(status = 409, code = "site_client_id_conflict", message = conflictMessage) {
   return json({ error: { code, message, fields: { client_id: message } } }, status);
 }
@@ -46,7 +46,7 @@ function mountCreate(reject?: (input: CreateCommand, attempt: number) => Respons
 }
 async function fillName(user: ReturnType<typeof userEvent.setup>) {
   await user.type(await screen.findByRole("textbox", { name: "业务网站名称" }), "我的网站");
-  return screen.getByRole("textbox", { name: "客户端 ID（可选）" });
+  return screen.getByRole("textbox", { name: "网站 ID（client_id，可选）" });
 }
 
 describe("optional website client ID", () => {
@@ -58,7 +58,7 @@ describe("optional website client ID", () => {
     expect(input).toHaveAccessibleDescription(expect.stringContaining("留空自动生成"));
     expect(input).toHaveAccessibleDescription(expect.stringContaining("区分大小写"));
     await user.type(input, value);
-    await user.click(screen.getByRole("button", { name: "创建业务网站" }));
+    await user.click(screen.getByRole("button", { name: "添加网站" }));
     await waitFor(() => expect(view.created).toHaveBeenCalledWith(value.trim()));
     expect(view.writes).toHaveLength(1);
     expect(view.writes[0]).toMatchObject({ client_id: value.trim(), operation_id: expect.any(String), configuration: { name: "我的网站", policy } });
@@ -69,7 +69,7 @@ describe("optional website client ID", () => {
     const user = userEvent.setup();
     const input = await fillName(user);
     if (value) await user.type(input, value);
-    await user.click(screen.getByRole("button", { name: "创建业务网站" }));
+    await user.click(screen.getByRole("button", { name: "添加网站" }));
     await waitFor(() => expect(view.created).toHaveBeenCalledWith("site_generated"));
     expect(view.writes[0]).not.toHaveProperty("client_id");
   });
@@ -79,10 +79,10 @@ describe("optional website client ID", () => {
     const user = userEvent.setup();
     const input = await fillName(user);
     fireEvent.change(input, { target: { value } });
-    await user.click(screen.getByRole("button", { name: "创建业务网站" }));
+    await user.click(screen.getByRole("button", { name: "添加网站" }));
     expect(input).toHaveAttribute("aria-invalid", "true");
     expect(input).toHaveFocus();
-    expect(input).toHaveAccessibleDescription(expect.stringContaining("请填写 3–64 位客户端 ID"));
+    expect(input).toHaveAccessibleDescription(expect.stringContaining("请填写 3–64 位网站 ID"));
     expect(view.writes).toHaveLength(0);
   });
 
@@ -91,7 +91,7 @@ describe("optional website client ID", () => {
     const user = userEvent.setup();
     const input = await fillName(user);
     await user.type(input, "taken");
-    await user.click(screen.getByRole("button", { name: "创建业务网站" }));
+    await user.click(screen.getByRole("button", { name: "添加网站" }));
     await waitFor(() => expect(input).toHaveAccessibleDescription(expect.stringContaining(conflictMessage)));
     expect(screen.getAllByText(conflictMessage, { exact: true })).toHaveLength(1);
     expect(input).toBeEnabled();
@@ -99,7 +99,7 @@ describe("optional website client ID", () => {
     expect(screen.queryByText("创建结果待确认")).not.toBeInTheDocument();
     await user.clear(input);
     await user.type(input, "available");
-    await user.click(screen.getByRole("button", { name: "创建业务网站" }));
+    await user.click(screen.getByRole("button", { name: "添加网站" }));
     await waitFor(() => expect(view.created).toHaveBeenCalledWith("available"));
     expect(view.writes[0]!.configuration).toEqual(view.writes[1]!.configuration);
     expect(view.writes.map(command => command.client_id)).toEqual(["taken", "available"]);
@@ -108,17 +108,17 @@ describe("optional website client ID", () => {
 
   it("keeps normalized payloads on the same operation after a definite field rejection", async () => {
     const view = mountCreate((_input, attempt) => attempt === 1
-      ? clientIdRejected(422, "settings_validation_failed", "此客户端 ID 已保留，请换一个。") : undefined);
+      ? clientIdRejected(422, "settings_validation_failed", "此网站 ID 已保留，请换一个。") : undefined);
     const user = userEvent.setup();
     const input = await fillName(user);
     await user.type(input, " shop ");
-    await user.click(screen.getByRole("button", { name: "创建业务网站" }));
+    await user.click(screen.getByRole("button", { name: "添加网站" }));
     await waitFor(() => expect(input).toHaveAttribute("aria-invalid", "true"));
-    expect(screen.getAllByText("此客户端 ID 已保留，请换一个。", { exact: true })).toHaveLength(1);
+    expect(screen.getAllByText("此网站 ID 已保留，请换一个。", { exact: true })).toHaveLength(1);
     expect(input).toHaveFocus();
     await user.clear(input);
     await user.type(input, "shop");
-    await user.click(screen.getByRole("button", { name: "创建业务网站" }));
+    await user.click(screen.getByRole("button", { name: "添加网站" }));
     await waitFor(() => expect(view.created).toHaveBeenCalledWith("shop"));
     expect(view.writes[1]).toEqual(view.writes[0]);
   });
@@ -128,7 +128,7 @@ describe("optional website client ID", () => {
     const user = userEvent.setup();
     const input = await fillName(user);
     await user.type(input, " Shop ");
-    await user.click(screen.getByRole("button", { name: "创建业务网站" }));
+    await user.click(screen.getByRole("button", { name: "添加网站" }));
     await screen.findByText("创建结果待确认");
     expect(input).toBeDisabled();
     fireEvent.change(input, { target: { value: "changed" } });
@@ -147,7 +147,7 @@ describe("optional website client ID", () => {
     const user = userEvent.setup();
     const input = await fillName(user);
     await user.type(input, "original");
-    await user.click(screen.getByRole("button", { name: "创建业务网站" }));
+    await user.click(screen.getByRole("button", { name: "添加网站" }));
     await screen.findByText("创建结果待确认");
     await user.click(screen.getByRole("button", { name: "重试上一次操作" }));
     await screen.findByText("服务返回冲突，请关闭并刷新，核对原操作是否生效。");
@@ -166,9 +166,9 @@ describe("optional website client ID", () => {
       return undefined;
     } });
     const user = userEvent.setup();
-    const input = await screen.findByRole("textbox", { name: "客户端 ID（可选）" });
+    const input = await screen.findByRole("textbox", { name: "网站 ID（client_id，可选）" });
     await user.type(input, "draft-shop");
-    await user.click(within(screen.getByRole("dialog", { name: "添加业务网站" })).getByRole("button", { name: "取消" }));
+    await user.click(within(screen.getByRole("dialog", { name: "添加网站" })).getByRole("button", { name: "取消" }));
     const confirmation = await screen.findByRole("alertdialog", { name: "放弃未保存的修改？" });
     await user.click(within(confirmation).getByRole("button", { name: "继续编辑" }));
     expect(input).toHaveValue("draft-shop");

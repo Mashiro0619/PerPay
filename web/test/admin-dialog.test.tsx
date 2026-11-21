@@ -39,9 +39,9 @@ describe("administrator dialog presentation", () => {
   it.each(["default", "explicit"] as const)("starts a long confirmation at its explanation with %s cancellation focus", async (focus) => {
     stubConfirmationViewport(true);
     const cancel = createRef<HTMLButtonElement>();
-    render(<AlertDialog open><AlertDialogContent initialFocus={focus === "explicit" ? cancel : undefined}><AlertDialogHeader><AlertDialogTitle>确认保存访问规则？</AlertDialogTitle></AlertDialogHeader><DialogBody><AlertDialogDescription>{"保存后立即生效，请确认允许当前客户端，并保留服务器离线恢复权限。".repeat(12)}</AlertDialogDescription></DialogBody><AlertDialogFooter><AlertDialogCancel ref={cancel}>取消</AlertDialogCancel><AlertDialogAction>确认保存</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>);
+    render(<AlertDialog open><AlertDialogContent initialFocus={focus === "explicit" ? cancel : undefined}><AlertDialogHeader><AlertDialogTitle>确认保存 IP 白名单？</AlertDialogTitle></AlertDialogHeader><DialogBody><AlertDialogDescription>{"保存后立即生效，请确认允许当前客户端，并保留服务器离线恢复权限。".repeat(12)}</AlertDialogDescription></DialogBody><AlertDialogFooter><AlertDialogCancel ref={cancel}>取消</AlertDialogCancel><AlertDialogAction>确认保存</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>);
 
-    const dialog = screen.getByRole("alertdialog", { name: "确认保存访问规则？" });
+    const dialog = screen.getByRole("alertdialog", { name: "确认保存 IP 白名单？" });
     const scroll = dialog.querySelector<HTMLElement>("[data-admin-dialog-scroll]")!;
     await waitFor(() => expect(scroll).toHaveFocus());
     expect(scroll).toHaveAttribute("tabindex", "0");

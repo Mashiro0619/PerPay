@@ -124,11 +124,11 @@ describe("order detail work surface", () => {
     ]);
     mount();
     await screen.findByRole("heading", { name: "订单信息" });
-    expect(await screen.findByText(/尚未开始投递/)).toBeVisible();
+    expect(await screen.findByText(/尚未开始发送/)).toBeVisible();
     expect(within(section("notifications")).queryByRole("list")).not.toBeInTheDocument();
-    expect(within(section("notifications")).getAllByText("等待投递")).toHaveLength(1);
+    expect(within(section("notifications")).getAllByText("待发送")).toHaveLength(1);
     expect(
-      screen.queryByRole("button", { name: /投递尝试/ }),
+      screen.queryByRole("button", { name: /发送记录/ }),
     ).not.toBeInTheDocument();
     const timeline = within(section("history")).getByRole("list", { name: "订单动态" });
     expect(within(timeline).getByText("订单已创建")).toBeVisible();
@@ -167,7 +167,7 @@ describe("order detail work surface", () => {
     expect(screen.getByText("测试交易备注")).toBeVisible();
     // The facts used to check the payment are in view; the remaining evidence is one step away.
     const fields = (root: Element) => Array.from(root.querySelectorAll("[data-detail-fields] > dl > div")).filter(shown).map(row => row.querySelector("dt")!.textContent);
-    expect(fields(document.getElementById("match-" + matchId)!)).toEqual(["支付宝交易金额", "支付宝交易时间", "支付宝交易对方", "支付宝订单号", "支付宝交易备注"]);
+    expect(fields(document.getElementById("match-" + matchId)!)).toEqual(["支付宝交易金额", "支付宝交易时间", "交易对方", "支付宝订单号", "支付宝备注"]);
     expect(screen.getByText("金额占用时间")).not.toBeVisible();
     await userEvent.setup().click(screen.getByRole("button", { name: /^核对凭据/ }));
     expect(screen.getByText("金额占用时间")).toBeVisible();
@@ -196,7 +196,7 @@ describe("order detail work surface", () => {
     ).toBe(false);
     const user = userEvent.setup();
     expect(await screen.findByText(/HTTP 200 · 对方的确认回执无效/)).toBeVisible();
-    expect(within(screen.getByRole("list", { name: "投递尝试（1）" })).getAllByRole("listitem")).toHaveLength(1);
+    expect(within(screen.getByRole("list", { name: "发送记录（1）" })).getAllByRole("listitem")).toHaveLength(1);
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
     // The delivery states its result once, in its badge.
     expect(within(section("notifications")).getAllByText("等待重试")).toHaveLength(1);
@@ -460,15 +460,15 @@ describe("order detail work surface", () => {
     await user.click(screen.getByRole("button", { name: "响应详情" }));
     await screen.findByText(/服务处理失败/);
     await user.click(screen.getByRole("button", { name: "重试上一次操作" }));
-    expect(await screen.findByText(/已创建新投递，等待发送/)).toBeVisible();
+    expect(await screen.findByText(/已创建新通知，等待发送/)).toBeVisible();
     expect(bodies).toHaveLength(2);
     expect(bodies[1]).toEqual(bodies[0]);
     // The new delivery opens in its own detail, titled by the event it reports.
     expect(await screen.findByRole("group", { name: "通知状态" })).toBeVisible();
     expect(screen.getByRole("heading", { name: "收款已确认", level: 1 })).toBeVisible();
     expect(screen.getByLabelText("当前页面")).toHaveTextContent("/notifications/" + newDeliveryId);
-    expect(await screen.findByText("等待投递", { exact: true })).toBeVisible();
-    expect(screen.getByRole("link", { name: "查看原投递" })).toHaveAttribute("href", "/notifications/" + terminal.delivery.delivery_id);
+    expect(await screen.findByText("待发送", { exact: true })).toBeVisible();
+    expect(screen.getByRole("link", { name: "查看原通知" })).toHaveAttribute("href", "/notifications/" + terminal.delivery.delivery_id);
   });
 
   it("retries a waiting order delivery immediately without leaving the order", async () => {
@@ -489,7 +489,7 @@ describe("order detail work surface", () => {
     await waitFor(() => {
       expect(within(section("notifications")).queryByRole("button", { name: "立即重试" })).not.toBeInTheDocument();
     });
-    expect(within(section("notifications")).getByText("投递中")).toBeVisible();
+    expect(within(section("notifications")).getByText("发送中")).toBeVisible();
     expect(screen.getByLabelText("当前页面")).toHaveTextContent("/orders/" + orderId);
   });
 
@@ -506,7 +506,7 @@ describe("order detail work surface", () => {
       mount();
       await screen.findByRole("heading", { name: "订单信息" });
       // A delivery replaced by a resend is folded into the section's history.
-      await userEvent.setup().click(await within(section("notifications")).findByRole("button", { name: /^历史投递/ }));
+      await userEvent.setup().click(await within(section("notifications")).findByRole("button", { name: /^历史发送记录/ }));
       expect(await within(section("notifications")).findByRole("link", { name: "查看详情" })).toBeVisible();
       expect(within(section("notifications")).queryByRole("button", { name: "立即重试" })).not.toBeInTheDocument();
       expect(within(section("notifications")).queryByRole("button", { name: "重新发送" })).not.toBeInTheDocument();
@@ -623,7 +623,7 @@ describe("order detail work surface", () => {
     expect(requests).toHaveLength(2);
     await user.click(screen.getByRole("button", { name: "下一页" }));
     // A delivery replaced by a resend is history: collapsed, and never offered for another resend.
-    const superseded = await screen.findByRole("button", { name: /^历史投递/ });
+    const superseded = await screen.findByRole("button", { name: /^历史发送记录/ });
     expect(superseded).toHaveAttribute("aria-expanded", "false");
     await user.click(superseded);
     expect(await within(section("notifications")).findByRole("link", { name: "查看详情" })).toHaveAttribute("href", "/notifications/old-delivery");
@@ -752,8 +752,8 @@ describe("order record layout", () => {
 
   it.each([
     { name: "a confirmed order", data: paidOrder, value: "¥1.01", difference: null, actions: ["查看收银台结果"] },
-    { name: "an overpaid order", data: { ...paidOrder, received_amount_cents: 103 }, value: "¥1.03", difference: "+¥0.02", actions: ["查看收银台结果"] },
-    { name: "an underpaid order", data: { ...paidOrder, received_amount_cents: 99 }, value: "¥0.99", difference: "−¥0.02", actions: ["查看收银台结果"] },
+    { name: "an overpaid order", data: { ...paidOrder, received_amount_cents: 103 }, value: "¥1.03", difference: "多收 ¥0.02", actions: ["查看收银台结果"] },
+    { name: "an underpaid order", data: { ...paidOrder, received_amount_cents: 99 }, value: "¥0.99", difference: "少收 ¥0.02", actions: ["查看收银台结果"] },
     { name: "an unpaid order", data: order, value: "¥1.01", difference: null, actions: ["打开收银台", "人工关联收款"] },
   ])("leads the summary of $name with $value and keeps at most one filled action", async ({ data, value, difference, actions }) => {
     mockData(data, []);

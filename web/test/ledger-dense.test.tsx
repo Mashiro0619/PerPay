@@ -66,8 +66,8 @@ describe("unified transaction detail", () => {
     await screen.findByRole("heading", { name: "支付宝收款", level: 1 });
     // The amount, the time and the account stand in the summary; the section adds what identifies the transaction.
     const facts = section("transaction");
-    expect(terms(facts)).toEqual(["对方", "支付宝备注", "支付宝流水号", "支付宝订单号", "支付宝商户单号"]);
-    expect(value(facts, "对方")).toHaveTextContent(/^未提供$/);
+    expect(terms(facts)).toEqual(["交易对方", "支付宝备注", "支付宝流水号", "支付宝订单号", "支付宝商户单号"]);
+    expect(value(facts, "交易对方")).toHaveTextContent(/^未提供$/);
     for (const [name, text] of [["支付宝流水号", externalEventId], ["支付宝订单号", providerOrder], ["支付宝商户单号", merchantOrder]] as const) {
       expect(screen.getAllByText(text, { exact: true })).toHaveLength(1);
       await user.click(within(facts).getByRole("button", { name: "复制" + name }));
@@ -229,7 +229,7 @@ describe("unified transaction detail", () => {
     }
     // Each order is compared with the copy it is tied to.
     expect(value(record("match-" + first.payment_match_id), "应付金额")).toHaveTextContent(/^¥1\.01$/);
-    expect(value(record("match-" + second.payment_match_id), "应付金额")).toHaveTextContent("¥1.01（流水多 ¥0.01）");
+    expect(value(record("match-" + second.payment_match_id), "应付金额")).toHaveTextContent("¥1.01（多收 ¥0.01）");
     const conflict = record("conflict-conflict-id");
     expect(within(conflict).getByRole("link", { name: "查看冲突记录" })).toHaveAttribute("href", "/reconciliation/conflicts/conflict-id?selected_site=remembered-site");
     expect(value(conflict, "涉及的采集记录")).toHaveTextContent("采集记录 2");
@@ -294,7 +294,7 @@ describe("unified transaction detail", () => {
     await settle();
     const card = record("match-" + match.payment_match_id);
     expect(card).toHaveTextContent(evidence === "MANUAL" ? "管理员人工关联 · admin · " : "PerPay 按金额和付款时间推断 · ");
-    expect(card).not.toHaveTextContent(/支付宝交易金额|匹配金额|支付宝交易时间/);
+    expect(card).not.toHaveTextContent(/支付宝交易金额|交易金额|支付宝交易时间/);
     const basis = within(card).queryByRole("button", { name: /^匹配依据/ });
     if (evidence === "MANUAL") expect(basis).not.toBeInTheDocument();
     else {
@@ -347,7 +347,7 @@ describe("unified transaction detail", () => {
     await screen.findByRole("heading", { name: "支付宝收款", level: 1 });
     expect(within(section("conflicts")).getByRole("heading", { level: 2 })).toHaveTextContent(/^账本冲突，共 ?1 ?项$/);
     const card = record("conflict-conflict-id");
-    expect(within(card).getByText(status === "RESOLVED" ? "已处理" : "已确认隔离", { exact: true })).toBeVisible();
+    expect(within(card).getByText(status === "RESOLVED" ? "已处理" : "已隔离", { exact: true })).toBeVisible();
     if (existing === secondSourceId) {
       expect(terms(card)).toEqual(["发现时间", "处理时间", "涉及的采集记录"]);
       expect(within(card).getByRole("link", { name: "采集记录 2" }).getAttribute("href")).toContain("#source-" + secondSourceId);

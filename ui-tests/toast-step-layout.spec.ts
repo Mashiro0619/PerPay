@@ -90,7 +90,7 @@ for (const layout of [
         const returned = await dockGeometry(primary);
         await input.fill("192.0.2.12");
         await primary.getByRole("button", { name: "保存白名单", exact: true }).click({ timeout: 1000 });
-        await expect(page.getByRole("heading", { name: "确认保存访问规则？", exact: true })).toBeVisible();
+        await expect(page.getByRole("heading", { name: "确认保存 IP 白名单？", exact: true })).toBeVisible();
         const footer = page.locator('[data-overlay-step] [data-slot="dialog-footer"]');
         await expect(footer).toBeVisible();
         const before = await dockGeometry(footer);

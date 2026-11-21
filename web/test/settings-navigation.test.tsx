@@ -43,10 +43,10 @@ describe("responsive settings category navigation", () => {
     const category = await screen.findByRole("combobox", { name: "设置分类" });
     expect(category).toHaveTextContent("界面显示");
     expect(screen.queryByRole("tablist", { name: "设置分类" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("textbox", { name: "支付系统名称" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "系统名称" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("link", { name: "编辑界面显示" }));
     const dialog = await screen.findByRole("dialog", { name: "编辑界面显示" });
-    const name = within(dialog).getByRole("textbox", { name: "支付系统名称" });
+    const name = within(dialog).getByRole("textbox", { name: "系统名称" });
     fireEvent.change(name, { target: { value: "手机草稿" } });
     await user.click(closeEditor(dialog));
     const guard = await screen.findByRole("alertdialog", { name: "放弃未保存的修改？" });
@@ -70,12 +70,12 @@ describe("responsive settings category navigation", () => {
     const user = userEvent.setup();
     await user.click(await screen.findByRole("link", { name: "编辑界面显示" }));
     const dialog = await screen.findByRole("dialog", { name: "编辑界面显示" });
-    const name = within(dialog).getByRole("textbox", { name: "支付系统名称" });
+    const name = within(dialog).getByRole("textbox", { name: "系统名称" });
     fireEvent.change(name, { target: { value: "旋转后保留" } });
     resize(1024);
     expect(document.querySelector('[role="tablist"][aria-label="设置分类"]')).toBeInTheDocument();
     expect(document.querySelector('[role="combobox"][aria-label="设置分类"]')).toBeNull();
-    expect(screen.getByRole("textbox", { name: "支付系统名称" })).toBe(name);
+    expect(screen.getByRole("textbox", { name: "系统名称" })).toBe(name);
     resize(430);
     expect(document.querySelector('[role="combobox"][aria-label="设置分类"]')).toBeInTheDocument();
     expect(name).toHaveValue("旋转后保留");
@@ -96,7 +96,7 @@ describe("responsive settings category navigation", () => {
 
     await user.click(screen.getByRole("link", { name: "编辑界面显示" }));
     const dialog = await screen.findByRole("dialog", { name: "编辑界面显示" });
-    const name = within(dialog).getByRole("textbox", { name: "支付系统名称" });
+    const name = within(dialog).getByRole("textbox", { name: "系统名称" });
     fireEvent.change(name, { target: { value: "桌面草稿" } });
     await act(async () => { void view.router.navigate("/settings/collection-policy"); });
     const guard = await screen.findByRole("alertdialog", { name: "放弃未保存的修改？" });
@@ -106,7 +106,7 @@ describe("responsive settings category navigation", () => {
     await user.click(within(guard).getByRole("button", { name: "继续编辑" }));
     await waitFor(() => expect(guard).not.toBeInTheDocument());
     expect(view.router.state.location.pathname).toBe("/settings/display");
-    expect(screen.getByRole("textbox", { name: "支付系统名称" })).toBe(name);
+    expect(screen.getByRole("textbox", { name: "系统名称" })).toBe(name);
     expect(name).toHaveValue("桌面草稿");
     expect(display.querySelector("[data-selection-indicator]")).toBe(indicator);
     expect(tabs.querySelectorAll("[data-selection-indicator]")).toHaveLength(1);
@@ -118,6 +118,6 @@ describe("responsive settings category navigation", () => {
     await user.click(await screen.findByRole("combobox", { name: "设置分类" }));
     await screen.findByRole("listbox");
     expect(screen.queryByRole("option", { name: /^通知$/ })).not.toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "密钥与安全" })).toBeVisible();
+    expect(screen.getByRole("option", { name: "账户与安全" })).toBeVisible();
   });
 });

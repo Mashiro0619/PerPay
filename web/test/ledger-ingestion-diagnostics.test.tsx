@@ -23,21 +23,21 @@ describe("ingestion failure presentation", () => {
     expect(screen.getByText("pagination_invalid")).toBeVisible();
     expect(screen.getByText(/账单流水时间超出/)).toBeVisible();
     expect(screen.getByText(/^失败窗口：/)).toBeVisible();
-    expect(screen.getByText(/计划下次尝试：.*12:00:08/)).toBeVisible();
+    expect(screen.getByText(/计划下次重试：.*12:00:08/)).toBeVisible();
     expect(screen.getByRole("link", { name: "排查步骤" })).toHaveAttribute("rel", "noopener noreferrer");
     expect(screen.queryByRole("button", {name:/重试|恢复/})).not.toBeInTheDocument();
   });
   it("distinguishes compensation failures from the normal lane", () => {
     const data = diagnostic(); data.latest_failure!.scan_kind = "COMPENSATION_1H";
     render(<LedgerIngestionDiagnostics diagnostics={data} />);
-    expect(screen.getByText(/^历史查账：/)).toBeVisible();
-    expect(screen.queryByText(/^正常查账：/)).not.toBeInTheDocument();
+    expect(screen.getByText(/^历史补查：/)).toBeVisible();
+    expect(screen.queryByText(/^常规查账：/)).not.toBeInTheDocument();
   });
   it("does not show a scheduled time while running, or invent one when unknown", () => {
     const data = diagnostic(); data.in_flight = true;
     const { rerender } = render(<LedgerIngestionDiagnostics diagnostics={data} />);
     expect(screen.getByText("正在查账，请等待本轮结果。")).toBeVisible();
-    expect(screen.queryByText(/计划下次尝试/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/计划下次重试/)).not.toBeInTheDocument();
     rerender(<LedgerIngestionDiagnostics diagnostics={{ ...data, in_flight: false, next_retry_at: null }} />);
     expect(screen.getByText(/重试时间未定/)).toBeVisible();
   });

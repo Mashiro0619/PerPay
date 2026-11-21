@@ -121,7 +121,7 @@ describe("manual settlement selection instead of ID entry", () => {
     expect(await screen.findByRole("button", { name: "确认关联收款" })).toBeEnabled();
     const siteField = within(screen.getByText("业务网站", { selector: "dt" }).parentElement!);
     expect(siteField.getByText("网站 A")).toBeVisible();
-    expect(siteField.getByText("网站编号：site-a")).toBeVisible();
+    expect(siteField.getByText("网站 ID：site-a")).toBeVisible();
     expect(screen.queryByText(/site-b/)).not.toBeInTheDocument();
     expect(view.requests.every((request) => request.method === "GET")).toBe(true);
   });

@@ -86,8 +86,8 @@ describe("website integration assistant", () => {
     }
     expect(screen.getByRole("button", { name: "查看商户私钥" })).toBeVisible();
     expect(screen.getByRole("button", { name: "查看平台公钥" })).toBeVisible();
-    expect(screen.getByRole("button", { name: "轮换商户私钥" })).toBeVisible();
-    expect(screen.getByRole("button", { name: "轮换平台私钥" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "更换商户私钥" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "更换平台私钥" })).toBeVisible();
     expect(fixture.writes).toHaveLength(0);
   });
 
@@ -108,7 +108,7 @@ describe("website integration assistant", () => {
     await screen.findByText("网站接入助手");
     await userEvent.click(screen.getByRole("button", { name: "易支付 V1" }));
     expect(screen.getByRole("button", { name: "查看商户密钥" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "轮换商户密钥" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "更换商户密钥" })).toBeDisabled();
     expect(screen.getByRole("switch")).toHaveAttribute("aria-disabled", "true");
     expect(fixture.writes).toHaveLength(0);
   });
@@ -146,7 +146,7 @@ describe("website integration assistant", () => {
     await userEvent.click(screen.getByRole("button", { name: "易支付 V1" }));
     const group = screen.getByRole("group", { name: "商户密钥" });
     const view = within(group).getByRole("button", { name: "查看商户密钥" });
-    expect(within(group).getByRole("button", { name: "轮换商户密钥" })).toBeVisible();
+    expect(within(group).getByRole("button", { name: "更换商户密钥" })).toBeVisible();
     const release = fixture.deferSecret();
     await userEvent.click(view);
     const dialog = screen.getByRole("dialog", { name: "商户密钥" });
@@ -198,11 +198,11 @@ describe("website integration assistant", () => {
     const fixture = mount();
     await screen.findByText("网站接入助手");
     await userEvent.click(screen.getByRole("button", { name: "易支付 V1" }));
-    await userEvent.click(screen.getByRole("button", { name: "轮换商户密钥" }));
+    await userEvent.click(screen.getByRole("button", { name: "更换商户密钥" }));
     expect(fixture.writes).toHaveLength(0);
-    const confirmation = screen.getByRole("alertdialog", { name: "轮换商户密钥？" });
+    const confirmation = screen.getByRole("alertdialog", { name: "更换商户密钥？" });
     expect(confirmation).toHaveAccessibleDescription("旧商户密钥将立即失效。请同步更新业务网站的商户密钥。");
-    await userEvent.click(screen.getByRole("button", { name: "确认轮换" }));
+    await userEvent.click(screen.getByRole("button", { name: "确认更换" }));
     await waitFor(() => expect(queryClient.getQueryData<SiteEpayConfiguration>(siteEpayKey(site.client_id))?.revision).toBe(5));
     expect(fixture.writes[0]?.body).toEqual({ revision: 4 });
     const cache = JSON.stringify({ queries: queryClient.getQueryCache().getAll().map(query => query.state.data), mutations: queryClient.getMutationCache().getAll().map(mutation => mutation.state.data) });
@@ -243,9 +243,9 @@ describe("website integration assistant", () => {
     await userEvent.click(screen.getByRole("button", { name: "易支付 V1" }));
     let finish!: (response: Response) => void;
     fixture.fetchMock.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
-    await userEvent.click(screen.getByRole("button", { name: "轮换商户密钥" }));
-    const dialog = screen.getByRole("alertdialog", { name: "轮换商户密钥？" });
-    const confirm = within(dialog).getByRole("button", { name: "确认轮换" });
+    await userEvent.click(screen.getByRole("button", { name: "更换商户密钥" }));
+    const dialog = screen.getByRole("alertdialog", { name: "更换商户密钥？" });
+    const confirm = within(dialog).getByRole("button", { name: "确认更换" });
     await userEvent.click(confirm);
     expect(confirm).toBeDisabled();
     expect(within(dialog).getByRole("button", { name: "取消" })).toBeDisabled();
@@ -253,7 +253,7 @@ describe("website integration assistant", () => {
     expect(dialog).toBeVisible();
     await act(async () => finish(json({ error: { code: "internal_error", message: "轮换结果暂未确认" } }, 503)));
     expect(await within(dialog).findByText("轮换结果暂未确认")).toBeVisible();
-    expect(within(dialog).getByRole("button", { name: "确认轮换" })).toBeDisabled();
+    expect(within(dialog).getByRole("button", { name: "确认更换" })).toBeDisabled();
     await userEvent.click(within(dialog).getByRole("button", { name: "关闭" }));
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
     expect(fixture.fetchMock.mock.calls.filter(([request]) => new URL(request.url).pathname.endsWith("/actions/rotate"))).toHaveLength(1);

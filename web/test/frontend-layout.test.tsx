@@ -79,7 +79,7 @@ describe("official block composition", () => {
   );
 
   it.each([
-    ["display", "界面显示", "支付系统名称"],
+    ["display", "界面显示", "系统名称"],
   ] as const)(
     "groups %s fields in one official card with fieldsets and a form-wide save footer",
     (section, first, second) => {
@@ -104,7 +104,7 @@ describe("official block composition", () => {
       expect(secondCard).toBe(firstCard);
       if (section === "display") {
         const fields = screen.getByRole("group", { name: "界面显示" });
-        expect(fields).toContainElement(screen.getByRole("textbox", { name: "支付系统名称" }));
+        expect(fields).toContainElement(screen.getByRole("textbox", { name: "系统名称" }));
         expect(fields).toContainElement(screen.getByRole("group", { name: "收款趋势默认图形" }));
         expect(fields.querySelector("[data-slot=field-legend]")).toHaveClass("sr-only");
       }

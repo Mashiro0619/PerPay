@@ -204,15 +204,15 @@ describe("order browsing", () => {
     expect(
       await screen.findByRole("heading", { name: "没有符合条件的订单" }),
     ).toBeVisible();
-    expect(screen.getByLabelText("付款状态筛选")).toHaveTextContent("未付款");
+    expect(screen.getByLabelText("收款状态筛选")).toHaveTextContent("待付款");
     await user.click(screen.getByRole("button", { name: "高级筛选" }));
-    expect(screen.getByLabelText("收银台状态筛选")).toHaveTextContent("开放中");
+    expect(screen.getByLabelText("收银台状态筛选")).toHaveTextContent("收款中");
     await user.click(screen.getByRole("button", { name: "清除筛选" }));
     expect(
       await screen.findByRole("link", { name: order.product_name }),
     ).toBeVisible();
-    expect(screen.getByLabelText("付款状态筛选")).toHaveTextContent(
-      "全部付款状态",
+    expect(screen.getByLabelText("收款状态筛选")).toHaveTextContent(
+      "全部收款状态",
     );
     expect(screen.getByLabelText("收银台状态筛选")).toHaveTextContent(
       "全部收银台状态",
@@ -302,8 +302,8 @@ describe("order browsing", () => {
     expect(
       await screen.findByRole("link", { name: "后一页订单" }),
     ).toBeVisible();
-    await user.click(screen.getByLabelText("付款状态筛选"));
-    await user.click(await screen.findByRole("option", { name: "未付款" }));
+    await user.click(screen.getByLabelText("收款状态筛选"));
+    await user.click(await screen.findByRole("option", { name: "待付款" }));
     expect(
       await screen.findByRole("link", { name: order.product_name }),
     ).toBeVisible();
@@ -444,15 +444,15 @@ describe("responsive order semantics", () => {
       within(table).queryByRole("columnheader", { name: "操作" }),
     ).not.toBeInTheDocument();
     expect(
-      within(cells[0]!).queryByText("收银台开放中"),
+      within(cells[0]!).queryByText("收银台收款中"),
     ).not.toBeInTheDocument();
-    expect(within(cells[3]!).queryByText("收银台开放中")).not.toBeInTheDocument();
+    expect(within(cells[3]!).queryByText("收银台收款中")).not.toBeInTheDocument();
     media.resize(390);
     const mobileSummary = within(screen.getByRole("listitem"));
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
     expect(mobileSummary.getByText("待付款")).toBeInTheDocument();
     expect(
-      mobileSummary.queryByText("收银台开放中"),
+      mobileSummary.queryByText("收银台收款中"),
     ).not.toBeInTheDocument();
     expect(
       mobileSummary.getByTitle(dateTime(order.created_at) + "（北京时间）"),

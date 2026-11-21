@@ -98,9 +98,9 @@ for (const kind of ["conflict", "notification"] as const) {
       await expectOverlayTarget(page, "/notifications/" + newDeliveryId);
       // The new delivery's summary says that nothing was attempted yet and when delivery is due.
       const summary = recordDialog.getByRole("group", { name: "通知状态", exact: true });
-      await expect(summary.getByText("等待投递", { exact: true })).toBeVisible();
-      await expect(summary.locator("[data-record-summary-meta]")).toContainText("已尝试 0 次 · 计划投递 ");
-      await expect(recordDialog.getByRole("link", { name: "查看原投递", exact: true })).toHaveAttribute("href", new RegExp(encodeURIComponent("/notifications/" + id)));
+      await expect(summary.getByText("待发送", { exact: true })).toBeVisible();
+      await expect(summary.locator("[data-record-summary-meta]")).toContainText("已尝试 0 次 · 计划发送 ");
+      await expect(recordDialog.getByRole("link", { name: "查看原通知", exact: true })).toHaveAttribute("href", new RegExp(encodeURIComponent("/notifications/" + id)));
       await expect(recordDialog.locator("[data-overlay-heading]")).toBeFocused();
     }
     await expect(action).toHaveCount(0);

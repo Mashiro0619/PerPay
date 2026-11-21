@@ -134,7 +134,7 @@ describe("order and notification copy follows its actual source", () => {
     expect(await within(await screen.findByRole("region", { name: "关联订单" })).findByText("收款已确认", { exact: true })).toBeVisible();
     const summary = screen.getByRole("group", { name: "通知状态" });
     expect(within(summary).getByText("通知已确认", { exact: true })).toBeVisible();
-    expect(within(summary).getByText(latest ? "对方已返回有效确认回执" : "历史投递 · 对方已返回有效确认回执")).toBeVisible();
+    expect(within(summary).getByText(latest ? "对方已返回有效确认回执" : "历史发送 · 对方已返回有效确认回执")).toBeVisible();
     // The label stays short; whose clock the time comes from is said under the value.
     const acknowledged = screen.getByText("通知确认时间", { selector: "dt" }).nextElementSibling!;
     expect(acknowledged).toHaveTextContent("2026/10/21 18:10:00");
@@ -154,7 +154,7 @@ describe("order and notification copy follows its actual source", () => {
     expect(screen.getByRole("region", { name: "通知" })).toHaveAttribute("data-section-empty", "true");
   });
 
-  it.each([["PENDING", "计划投递", "下次重试"], ["RETRY_WAIT", "下次重试", "计划投递"]] as const)("names the next attempt of a %s delivery %s", async (status, name, other) => {
+  it.each([["PENDING", "计划发送", "下次重试"], ["RETRY_WAIT", "下次重试", "计划发送"]] as const)("names the next attempt of a %s delivery %s", async (status, name, other) => {
     const attempted = status === "RETRY_WAIT";
     vi.stubGlobal("fetch", vi.fn(async () => json({ data: [{ ...delivery, attempts: attempted ? delivery.attempts : [],
       delivery: { ...delivery.delivery, status, attempt_count: attempted ? 1 : 0, last_error_code: attempted ? delivery.delivery.last_error_code : null } }], page: { next_cursor: null } })));
@@ -195,12 +195,12 @@ describe("order and notification copy follows its actual source", () => {
       return json({ data: { ...delivery, delivery: { ...delivery.delivery, attempt_count: 0 } } });
     }));
     mount(<Routes><Route path="/notifications/:deliveryId" element={<NotificationDetail />} /></Routes>, "/notifications/" + delivery.delivery.delivery_id);
-    const attempts = await screen.findByRole("region", { name: "投递尝试" });
-    expect(within(attempts).getByRole("status")).toHaveTextContent("正在读取投递尝试…");
-    expect(within(attempts).queryByText("尚未开始投递")).not.toBeInTheDocument();
+    const attempts = await screen.findByRole("region", { name: "发送记录" });
+    expect(within(attempts).getByRole("status")).toHaveTextContent("正在读取发送记录…");
+    expect(within(attempts).queryByText("尚未开始发送")).not.toBeInTheDocument();
     expect(within(attempts).queryByRole("alert")).not.toBeInTheDocument();
     await act(async () => { complete(json({ data: [] })); });
-    expect(await within(attempts).findByText("尚未开始投递")).toBeVisible();
+    expect(await within(attempts).findByText("尚未开始发送")).toBeVisible();
     expect(within(attempts).queryByRole("status")).not.toBeInTheDocument();
   });
 });

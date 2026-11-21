@@ -61,7 +61,7 @@ test.describe("dialog motion", () => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.emulateMedia({ reducedMotion: "no-preference" });
     await login(page, manifest);
-    const overlay = await openOverlay(page, manifest.origin + "/admin/sites", page.getByRole("link", { name: "创建业务网站", exact: true }), "form");
+    const overlay = await openOverlay(page, manifest.origin + "/admin/sites", page.getByRole("link", { name: "添加网站", exact: true }), "form");
     const opening = (await recorded(page)).opening;
     const first = opening[0]!;
     const last = opening.at(-1)!;

@@ -30,7 +30,7 @@ describe("adaptive ledger scan settings", () => {
     const active = screen.getByLabelText("活跃查账间隔（秒）");
     expect(normal).toHaveValue(60);
     expect(active).toHaveValue(8);
-    expect(screen.getByLabelText("查账最小间隔（秒）")).toHaveValue(8);
+    expect(screen.getByLabelText("最小查账间隔（秒）")).toHaveValue(8);
     expect(screen.getByLabelText("查账有效时限（秒）")).toHaveValue(120);
     expect(active).toHaveAttribute("min", "5");
     expect(active).toHaveAttribute("max", "3600");
@@ -52,7 +52,7 @@ describe("adaptive ledger scan settings", () => {
     settings.collection_policy!.timeout_milliseconds = 8123;
     renderEditor(settings, onSaved);
     await userEvent.setup().click(screen.getByRole("button", { name: "采用推荐值" }));
-    expect(screen.queryByLabelText("应用 ID（App ID）")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("App ID")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("支付宝公钥")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "高级设置" })).not.toBeInTheDocument();
     expect(screen.getByLabelText("常规查账间隔（秒）")).toBeVisible();
@@ -99,7 +99,7 @@ describe("adaptive ledger scan settings", () => {
     fireEvent.change(screen.getByLabelText("活跃查账间隔（秒）"), {
       target: { value: "5" },
     });
-    fireEvent.change(screen.getByLabelText("查账最小间隔（秒）"), {target:{value:"5"}});
+    fireEvent.change(screen.getByLabelText("最小查账间隔（秒）"), {target:{value:"5"}});
     await userEvent.setup().click(screen.getByRole("button", { name: "保存" }));
     await waitFor(() => expect(onSaved).toHaveBeenCalled());
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -152,7 +152,7 @@ describe("adaptive ledger scan settings", () => {
     fireEvent.change(screen.getByLabelText("活跃查账间隔（秒）"), {
       target: { value: "5" },
     });
-    fireEvent.change(screen.getByLabelText("查账最小间隔（秒）"), {target:{value:"5"}});
+    fireEvent.change(screen.getByLabelText("最小查账间隔（秒）"), {target:{value:"5"}});
     await userEvent.setup().click(screen.getByRole("button", { name: "保存" }));
     const freshness = screen.getByLabelText("查账有效时限（秒）");
     await waitFor(() => expect(freshness).toHaveFocus());

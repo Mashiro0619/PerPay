@@ -56,7 +56,7 @@ describe("minimal website workflows", () => {
     vi.stubGlobal("fetch", fetch);
     createPage();
     expect(await screen.findByRole("link", { name: "配置收款账号" })).toHaveAttribute("href", "/settings/accounts");
-    expect(screen.queryByRole("button", { name: "创建业务网站" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "添加网站" })).not.toBeInTheDocument();
     expect(fetch.mock.calls.every(([request]) => (request as Request).method === "GET")).toBe(true);
   });
   it("does not create with missing template or fall back to hardcoded defaults", async () => {
@@ -72,7 +72,7 @@ describe("minimal website workflows", () => {
     createPage();
     await screen.findByText("模板读取失败");
     expect(
-      screen.queryByRole("button", { name: "创建业务网站" }),
+      screen.queryByRole("button", { name: "添加网站" }),
     ).not.toBeInTheDocument();
     expect(screen.queryByLabelText("业务网站名称")).not.toBeInTheDocument();
   });
@@ -90,7 +90,7 @@ describe("minimal website workflows", () => {
     createPage();
     const user = userEvent.setup();
     await user.type(await screen.findByLabelText("业务网站名称"), "我的网站");
-    await user.click(screen.getByRole("button", { name: "创建业务网站" }));
+    await user.click(screen.getByRole("button", { name: "添加网站" }));
     await screen.findByText("创建结果待确认");
     expect(screen.getByLabelText("业务网站名称")).toBeDisabled();
     await user.click(screen.getByRole("button", { name: "重试上一次操作" }));

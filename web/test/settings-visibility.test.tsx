@@ -11,7 +11,7 @@ import { configuredThrough } from "./onboarding-fixture";
 import { OverlayContext } from "../src/lib/overlay-context";
 
 const sections = [
-  { section: "collection-policy", fields: ["请求超时（秒）", "常规查账间隔（秒）", "活跃查账间隔（秒）", "查账最小间隔（秒）", "查账延迟（秒）", "查账有效时限（秒）"] },
+  { section: "collection-policy", fields: ["请求超时（秒）", "常规查账间隔（秒）", "活跃查账间隔（秒）", "最小查账间隔（秒）", "查账延迟（秒）", "查账有效时限（秒）"] },
   {
     section: "advanced",
     fields: ["收银台链接密钥轮换周期（天）", "结束后可查询时长（秒）"],
@@ -97,7 +97,7 @@ describe("exact duration drafts", () => {
     render(<QueryClientProvider client={queryClient}><MemoryRouter><SettingsEditor section="collection-policy" settings={settings} onSaved={onSaved} /></MemoryRouter></QueryClientProvider>);
     const user = userEvent.setup();
     expect(screen.getByLabelText("请求超时（秒）")).toHaveValue(8.123);
-    fireEvent.change(screen.getByLabelText("查账最小间隔（秒）"), { target: { value: "9" } });
+    fireEvent.change(screen.getByLabelText("最小查账间隔（秒）"), { target: { value: "9" } });
     await user.click(screen.getByRole("button", { name: "保存" }));
     await waitFor(() => expect(onSaved).toHaveBeenCalled());
     expect(await new Request(...fetchMock.mock.calls[0] as [RequestInfo, RequestInit]).json()).toMatchObject({timeout_milliseconds:8123,scan_interval_seconds:61});

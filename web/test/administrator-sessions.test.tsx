@@ -84,7 +84,7 @@ function sessionRows(element: HTMLElement) {
 
 async function allConfirmation(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole("button", { name: "会话操作" }));
-  await user.click(await screen.findByRole("menuitem", { name: "注销全部会话" }));
+  await user.click(await screen.findByRole("menuitem", { name: "退出全部设备" }));
 }
 
 describe("administrator login sessions", () => {
@@ -97,9 +97,9 @@ describe("administrator login sessions", () => {
     try {
       act(() => onlineManager.setOnline(false));
       if (kind === "all") await allConfirmation(user);
-      else await user.click(within(element).getByRole("button", { name: kind === "single" ? "撤销 Chrome · Android 会话" : kind === "logout" ? "退出登录" : "退出其他会话" }));
+      else await user.click(within(element).getByRole("button", { name: kind === "single" ? "强制下线 Chrome · Android" : kind === "logout" ? "退出当前登录" : "退出其他设备" }));
       const dialog = await screen.findByRole("alertdialog");
-      const submit = within(dialog).getByRole("button", { name: kind === "single" ? "撤销" : kind === "all" ? "注销全部会话" : kind === "logout" ? "退出登录" : "退出其他会话" });
+      const submit = within(dialog).getByRole("button", { name: kind === "single" ? "强制下线" : kind === "all" ? "退出全部设备" : kind === "logout" ? "退出当前登录" : "退出其他设备" });
       await user.click(submit);
       expect(await within(dialog).findByText("网络已断开，会话操作未提交。恢复连接后请重新确认。")).toBeVisible();
       expect(within(dialog).getByRole("button", { name: "取消" })).toBeEnabled();
@@ -126,9 +126,9 @@ describe("administrator login sessions", () => {
     vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
     expect(onlineManager.isOnline()).toBe(true);
     const user = userEvent.setup();
-    await user.click(within(element).getByRole("button", { name: "退出其他会话" }));
+    await user.click(within(element).getByRole("button", { name: "退出其他设备" }));
     const dialog = await screen.findByRole("alertdialog");
-    await user.click(within(dialog).getByRole("button", { name: "退出其他会话" }));
+    await user.click(within(dialog).getByRole("button", { name: "退出其他设备" }));
     expect(await within(dialog).findByText(/会话操作未提交/)).toBeVisible();
     expect(view.writes()).toHaveLength(0);
   });
@@ -141,7 +141,7 @@ describe("administrator login sessions", () => {
     const list = within(element).getByRole("table", { name: "登录会话列表" });
     expect(within(list).queryAllByRole("separator")).toHaveLength(0);
     expect(within(items[0]!).getByText("当前")).toBeVisible();
-    expect(within(items[0]!).getByRole("button", { name: "退出登录" })).toBeVisible();
+    expect(within(items[0]!).getByRole("button", { name: "退出当前登录" })).toBeVisible();
     expect(items[1]).toHaveTextContent(ipv6);
     expect(items[1]).toHaveTextContent("Chrome · Android");
     expect(items[2]).toHaveTextContent("未知浏览器 · 未知系统");
@@ -152,9 +152,9 @@ describe("administrator login sessions", () => {
     const view = mount();
     const user = userEvent.setup();
     const element = await card();
-    const trigger = within(element).getByRole("button", { name: "撤销 Chrome · Android 会话" });
+    const trigger = within(element).getByRole("button", { name: "强制下线 Chrome · Android" });
     await user.click(trigger);
-    const dialog = await screen.findByRole("alertdialog", { name: "撤销此会话？" });
+    const dialog = await screen.findByRole("alertdialog", { name: "强制下线此设备？" });
     expect(dialog).toHaveTextContent(ipv6);
     await user.click(within(dialog).getByRole("button", { name: "取消" }));
     await waitFor(() => expect(trigger).toHaveFocus());
@@ -168,9 +168,9 @@ describe("administrator login sessions", () => {
     const element = await card();
     const password = screen.getByLabelText("新密码");
     fireEvent.change(password, { target: { value: "unsaved-password" } });
-    await user.click(within(element).getByRole("button", { name: "撤销 Chrome · Android 会话" }));
-    const dialog = await screen.findByRole("alertdialog", { name: "撤销此会话？" });
-    await user.click(within(dialog).getByRole("button", { name: "撤销" }));
+    await user.click(within(element).getByRole("button", { name: "强制下线 Chrome · Android" }));
+    const dialog = await screen.findByRole("alertdialog", { name: "强制下线此设备？" });
+    await user.click(within(dialog).getByRole("button", { name: "强制下线" }));
     await waitFor(() => expect(sessionRows(element)).toHaveLength(2));
     expect(screen.getByLabelText("新密码")).toBe(password);
     expect(password).toHaveValue("unsaved-password");
@@ -185,11 +185,11 @@ describe("administrator login sessions", () => {
     const view = mount();
     const user = userEvent.setup();
     const element = await card();
-    await user.click(within(element).getByRole("button", { name: "退出其他会话" }));
-    const dialog = await screen.findByRole("alertdialog", { name: "退出其他会话？" });
-    await user.click(within(dialog).getByRole("button", { name: "退出其他会话" }));
+    await user.click(within(element).getByRole("button", { name: "退出其他设备" }));
+    const dialog = await screen.findByRole("alertdialog", { name: "退出其他设备？" });
+    await user.click(within(dialog).getByRole("button", { name: "退出其他设备" }));
     await waitFor(() => expect(sessionRows(element)).toHaveLength(1));
-    expect(within(element).getByRole("button", { name: "退出其他会话" })).toBeDisabled();
+    expect(within(element).getByRole("button", { name: "退出其他设备" })).toBeDisabled();
     expect(within(element).getByText("当前")).toBeVisible();
     expect(queryClient.getQueryData(sessionKey)).not.toBeNull();
     expect(view.writes()).toHaveLength(1);
@@ -218,13 +218,13 @@ describe("administrator login sessions", () => {
     const view = mount({ failMutation: true });
     const user = userEvent.setup();
     const element = await card();
-    await user.click(within(element).getByRole("button", { name: "撤销 Chrome · Android 会话" }));
-    const dialog = await screen.findByRole("alertdialog", { name: "撤销此会话？" });
-    await user.click(within(dialog).getByRole("button", { name: "撤销" }));
+    await user.click(within(element).getByRole("button", { name: "强制下线 Chrome · Android" }));
+    const dialog = await screen.findByRole("alertdialog", { name: "强制下线此设备？" });
+    await user.click(within(dialog).getByRole("button", { name: "强制下线" }));
     expect(await within(dialog).findByText("会话撤销暂时不可用")).toBeVisible();
     expect(sessionRows(element)).toHaveLength(3);
     view.state.failMutation = false;
-    await user.click(within(dialog).getByRole("button", { name: "撤销" }));
+    await user.click(within(dialog).getByRole("button", { name: "强制下线" }));
     await waitFor(() => expect(sessionRows(element)).toHaveLength(2));
     expect(view.writes()).toHaveLength(2);
   });
@@ -236,7 +236,7 @@ describe("administrator login sessions", () => {
     const password = screen.getByLabelText("新密码");
     fireEvent.change(password, { target: { value: "keep-until-confirmed" } });
     const open = async () => kind === "current"
-      ? user.click(within(element).getByRole("button", { name: "退出登录" }))
+      ? user.click(within(element).getByRole("button", { name: "退出当前登录" }))
       : allConfirmation(user);
     await open();
     const draft = await screen.findByRole("alertdialog", { name: "放弃未保存的修改？" });
@@ -246,15 +246,15 @@ describe("administrator login sessions", () => {
     await open();
     const draftAgain = await screen.findByRole("alertdialog", { name: "放弃未保存的修改？" });
     await user.click(within(draftAgain).getByRole("button", { name: "放弃修改并继续" }));
-    const dialog = await screen.findByRole("alertdialog", { name: kind === "current" ? "退出当前会话？" : "注销全部会话？" });
+    const dialog = await screen.findByRole("alertdialog", { name: kind === "current" ? "退出当前登录？" : "退出全部设备？" });
     await user.click(within(dialog).getByRole("button", { name: "取消" }));
     expect(password).toHaveValue("keep-until-confirmed");
     expect(view.writes()).toHaveLength(0);
     await open();
     const draftLast = await screen.findByRole("alertdialog", { name: "放弃未保存的修改？" });
     await user.click(within(draftLast).getByRole("button", { name: "放弃修改并继续" }));
-    const confirmed = await screen.findByRole("alertdialog", { name: kind === "current" ? "退出当前会话？" : "注销全部会话？" });
-    await user.click(within(confirmed).getByRole("button", { name: kind === "current" ? "退出登录" : "注销全部会话" }));
+    const confirmed = await screen.findByRole("alertdialog", { name: kind === "current" ? "退出当前登录？" : "退出全部设备？" });
+    await user.click(within(confirmed).getByRole("button", { name: kind === "current" ? "退出当前登录" : "退出全部设备" }));
     expect(await screen.findByRole("heading", { name: "登录管理后台" })).toBeVisible();
     expect(queryClient.getQueryData(administratorSessionsKey)).toBeUndefined();
     expect(queryClient.getQueryData(["settings"])).toBeUndefined();

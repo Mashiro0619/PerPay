@@ -354,7 +354,7 @@ describe("business websites in the sidebar", () => {
     expect(view.router.state.location).toBe(location);
     await user.click(manage);
     await waitFor(() => expect(view.router.state.location.pathname).toBe("/sites"));
-    await screen.findByRole("link", { name: "创建业务网站" });
+    await screen.findByRole("link", { name: "添加网站" });
     expect(toggle).toHaveAttribute("aria-expanded", "true");
     expect(await within(nav).findByRole("link", { name: "网站 B" })).toBeVisible();
   });

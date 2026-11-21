@@ -397,7 +397,7 @@ test("recent order headers and tables switch at the same measured container boun
     expect(geometry.clipped, JSON.stringify(geometry)).toBe(false);
     for (const row of geometry.rows) {
       if (target >= 640) {
-        expect(row.sourceLabel).toBe("网站订单号");
+        expect(row.sourceLabel).toBe("商户订单号");
         expect(row.numberComplete && row.numberPainted, JSON.stringify(row)).toBe(true);
         expect(row.referenceBorder).toBe("0px");
         expect(row.metaBorder).toBe("0px");

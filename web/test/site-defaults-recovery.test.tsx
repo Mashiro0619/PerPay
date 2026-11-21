@@ -60,7 +60,7 @@ function mountDefaults() {
           "policy.notification_delivery.retry_maximum_seconds": "最大重试间隔不能小于首次重试间隔。",
         } } }, 422);
       if (body.revision !== saved.revision)
-        return json({ error: { code: "site_revision_conflict", message: "网站默认模板已变更，请刷新后重试。" } }, 409);
+        return json({ error: { code: "site_revision_conflict", message: "网站默认设置已变更，请刷新后重试。" } }, 409);
       saved = { revision: saved.revision + 1, policy: structuredClone(body.policy) };
       return json({ data: structuredClone(saved) });
     }
@@ -122,13 +122,13 @@ function mountDefaults() {
   };
 }
 
-async function group(user: User, name: "订单设置" | "收银台展示" | "通知策略") {
+async function group(user: User, name: "订单设置" | "收银台展示" | "通知设置") {
   await user.click(await screen.findByRole("tab", { name }));
 }
 function edit(label: string, value: string) {
   fireEvent.change(screen.getByLabelText(label), { target: { value } });
 }
-const save = () => screen.getByRole("button", { name: "保存默认模板" });
+const save = () => screen.getByRole("button", { name: "保存默认设置" });
 const reload = () => screen.findByRole("button", { name: "读取最新模板并核对" });
 async function mergeLatest(user: User) {
   await user.click(await reload());
@@ -146,7 +146,7 @@ async function network(value: boolean) {
 describe("website default template conflict recovery", () => {
   it("preserves invalid timeout through an automatic merge of another group", async () => {
     const view = mountDefaults(), user = userEvent.setup();
-    await group(user, "通知策略");
+    await group(user, "通知设置");
     edit("通知超时（秒）", "5.123");
     edit("通知超时（秒）", "5.1234");
     view.changeRemote(policy => { policy.display.checkout_name = "服务器收银台"; });
@@ -163,7 +163,7 @@ describe("website default template conflict recovery", () => {
     await group(user, "收银台展示");
     expect(screen.getByLabelText("收银台名称")).toHaveValue("服务器收银台");
     expect(save()).toBeDisabled();
-    await group(user, "通知策略");
+    await group(user, "通知设置");
     expect(screen.getByLabelText("通知超时（秒）")).toHaveValue(5.1234);
     edit("通知超时（秒）", "5.124");
     await user.click(save());
@@ -178,7 +178,7 @@ describe("website default template conflict recovery", () => {
     const view = mountDefaults(), user = userEvent.setup();
     await screen.findByLabelText("收银台有效期（秒）");
     edit("收银台有效期（秒）", "600");
-    await group(user, "通知策略");
+    await group(user, "通知设置");
     edit("通知超时（秒）", "5.123");
     edit("通知超时（秒）", "5.1234");
     view.changeRemote(policy => { policy.orders.order_ttl_seconds = 900; });
@@ -203,7 +203,7 @@ describe("website default template conflict recovery", () => {
     { choice: "采用服务器值", seconds: 7.555, milliseconds: 7555 },
   ])("resolves an invalid timeout draft only after choosing its conflict value: $choice", async ({ choice, seconds, milliseconds }) => {
     const view = mountDefaults(), user = userEvent.setup();
-    await group(user, "通知策略");
+    await group(user, "通知设置");
     const timeout = screen.getByRole("spinbutton", { name: "通知超时（秒）" });
     edit("通知超时（秒）", "5.123");
     edit("通知超时（秒）", "5.1234");
@@ -228,7 +228,7 @@ describe("website default template conflict recovery", () => {
 
   it("retains invalid seconds across tabs and unrelated edits, blocks submission and protects leaving", async () => {
     const view = mountDefaults(), user = userEvent.setup();
-    await group(user, "通知策略");
+    await group(user, "通知设置");
     edit("通知超时（秒）", "5.0004");
     expect(screen.getByText("通知超时最多 3 位小数。")).toBeVisible();
     expect(save()).toBeDisabled();
@@ -239,7 +239,7 @@ describe("website default template conflict recovery", () => {
     expect(save()).toBeDisabled();
     fireEvent.submit(save().closest("form")!);
     expect(view.puts).toHaveLength(0);
-    await group(user, "通知策略");
+    await group(user, "通知设置");
     expect(screen.getByLabelText("通知超时（秒）")).toHaveValue(5.0004);
     await act(async () => { void view.router.navigate("/sites"); });
     expect(await screen.findByRole("alertdialog")).toBeVisible();
@@ -247,7 +247,7 @@ describe("website default template conflict recovery", () => {
   });
   it("saves exact milliseconds and formats timeout conflicts in seconds before adopting the server value", async () => {
     const view = mountDefaults(), user = userEvent.setup();
-    await group(user, "通知策略");
+    await group(user, "通知设置");
     edit("通知超时（秒）", "5.123");
     await user.click(save());
     await waitFor(() => expect(view.puts).toHaveLength(1));
@@ -272,7 +272,7 @@ describe("website default template conflict recovery", () => {
     edit("收银台有效期（秒）", "600");
     await group(user, "收银台展示");
     edit("收银台名称", "我的模板");
-    await group(user, "通知策略");
+    await group(user, "通知设置");
     edit("最多发送次数", "15");
     view.changeRemote(policy => {
       policy.orders.amount_reuse_cooldown_seconds = 1200;
@@ -306,7 +306,7 @@ describe("website default template conflict recovery", () => {
     expect(view.snapshot()).toEqual({ revision: 2, policy: expected });
     await act(async () => { await view.router.navigate("/sites/new"); });
     await user.type(await screen.findByLabelText("业务网站名称"), "使用恢复后模板的网站");
-    await user.click(screen.getByRole("button", { name: "创建业务网站" }));
+    await user.click(screen.getByRole("button", { name: "添加网站" }));
     await screen.findByText("新网站已创建");
     expect(view.router.state.location.pathname).toBe("/sites/site_created/settings/integration");
     expect(view.creations).toHaveLength(1);
@@ -320,7 +320,7 @@ describe("website default template conflict recovery", () => {
     const view = mountDefaults(), user = userEvent.setup();
     await screen.findByLabelText("收银台有效期（秒）");
     edit("收银台有效期（秒）", "600");
-    await group(user, "通知策略");
+    await group(user, "通知设置");
     edit("最多发送次数", "15");
     view.changeRemote(policy => {
       policy.orders.order_ttl_seconds = 900;
@@ -590,7 +590,7 @@ describe("website default template conflict recovery", () => {
 
   it("opens and focuses the failing group when a merged policy violates a cross-field constraint", async () => {
     const view = mountDefaults(), user = userEvent.setup();
-    await group(user, "通知策略");
+    await group(user, "通知设置");
     edit("首次重试间隔（秒）", "600");
     await group(user, "收银台展示");
     edit("收银台名称", "校验失败也保留");
@@ -600,7 +600,7 @@ describe("website default template conflict recovery", () => {
     expect(screen.getByRole("tab", { name: "收银台展示" })).toHaveAttribute("aria-selected", "true");
     await user.click(save());
     await screen.findByText("最大重试间隔不能小于首次重试间隔。");
-    expect(screen.getByRole("tab", { name: "通知策略" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "通知设置" })).toHaveAttribute("aria-selected", "true");
     const maximum = screen.getByLabelText("最大重试间隔（秒）");
     expect(maximum).toBeVisible();
     expect(maximum).toHaveAttribute("aria-invalid", "true");

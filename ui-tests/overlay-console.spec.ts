@@ -63,7 +63,7 @@ test("200% text and a reduced visual viewport keep the focused form and footer r
   await page.emulateMedia({ reducedMotion: "reduce" });
   await login(page, manifest);
   await page.goto(manifest.origin + "/admin/settings/display/edit");
-  const field = page.getByLabel("支付系统名称", { exact: true });
+  const field = page.getByLabel("系统名称", { exact: true });
   await expect(field).toBeVisible();
   await field.fill("软键盘下保留的设置草稿");
   await field.focus();

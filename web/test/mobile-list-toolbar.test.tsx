@@ -20,7 +20,7 @@ const sorts = [
   { value: "payable_amount_cents", label: "应付金额" },
 ];
 const options = [
-  { value: "", label: "全部付款状态" },
+  { value: "", label: "全部收款状态" },
   { value: "UNPAID", label: "未付款" },
 ];
 function Harness({
@@ -174,7 +174,7 @@ describe("mobile list query hierarchy", () => {
     await user.click(screen.getByRole("button", { name: "筛选与排序" }));
     expect(
       screen.getByLabelText("付款状态", { exact: true }),
-    ).toHaveTextContent("全部付款状态");
+    ).toHaveTextContent("全部收款状态");
     await user.click(screen.getByRole("button", { name: "应用" }));
     expect(updated).not.toHaveBeenCalled();
     expect(address().get("page")).toBe("3");

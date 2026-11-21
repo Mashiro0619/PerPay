@@ -486,7 +486,7 @@ describe("record action bar", () => {
     expect(screen.getByRole("button", { name: "不可跳转" })).toBeDisabled();
 
     view.rerender(<MemoryRouter initialEntries={["/record"]}><ActionBar menuLabel="更多操作，记录操作"
-      primary={{ label: "撤销此会话", danger: true, onSelect: select }} /></MemoryRouter>);
-    expect(screen.getByRole("button", { name: "撤销此会话" })).toHaveAttribute("data-danger", "true");
+      primary={{ label: "强制下线", danger: true, onSelect: select }} /></MemoryRouter>);
+    expect(screen.getByRole("button", { name: "强制下线" })).toHaveAttribute("data-danger", "true");
   });
 });

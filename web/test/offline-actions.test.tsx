@@ -21,7 +21,7 @@ async function network(value: boolean) {
   });
 }
 async function editName() {
-  const input = await screen.findByRole("textbox", { name: "支付系统名称" });
+  const input = await screen.findByRole("textbox", { name: "系统名称" });
   fireEvent.change(input, { target: { value: "明确保存的设置" } });
   return input;
 }
@@ -116,9 +116,9 @@ describe("settings saves never wait in an offline queue", () => {
     awaitFreshRead = true;
     await act(async () => { await view.router.navigate("/settings/display/edit"); });
     await waitFor(() => expect(finishRead).toBeTypeOf("function"));
-    expect(screen.queryByRole("textbox", { name: "支付系统名称" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "系统名称" })).not.toBeInTheDocument();
     await act(async () => { finishRead(); });
-    await waitFor(() => expect(screen.getByRole("textbox", { name: "支付系统名称" })).toHaveValue("明确保存的设置"));
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "系统名称" })).toHaveValue("明确保存的设置"));
     expect(writes).toBe(1);
   });
 });

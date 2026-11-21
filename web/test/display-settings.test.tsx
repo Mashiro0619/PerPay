@@ -27,7 +27,7 @@ function mount(currentSettings: RuntimeSettings = settings) {
 describe("instance display settings", () => {
   it("keeps the display fields together and exposes the same chart default as the settings summary", () => {
     mount();
-    const name = screen.getByRole("textbox", { name: "支付系统名称" });
+    const name = screen.getByRole("textbox", { name: "系统名称" });
     expect(name).toHaveAttribute("required");
     expect(name).toHaveAttribute("maxlength", "40");
     expect(name).not.toHaveAttribute("aria-describedby");
@@ -52,7 +52,7 @@ describe("instance display settings", () => {
     expect(chart).toHaveAccessibleDescription("用于未设置个人图形偏好的浏览器。");
     expect(form.querySelector('[data-slot="card-header"]')).toHaveClass("sr-only");
     expect(form.querySelector('[data-slot="field-legend"]')).toHaveClass("sr-only");
-    expect(screen.queryByText("系统名称", { exact: true })).not.toBeInTheDocument();
+    expect(screen.getByLabelText("系统名称")).toBeVisible();
     expect(screen.queryByText("收银台", { exact: true })).not.toBeInTheDocument();
     expect(screen.queryByText("收款概览", { exact: true })).not.toBeInTheDocument();
   });
@@ -86,7 +86,7 @@ describe("instance display settings", () => {
     const { onSaved, updateSettings } = mount(initial);
     const user = userEvent.setup();
     expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
-    const name = screen.getByRole("textbox", { name: "支付系统名称" });
+    const name = screen.getByRole("textbox", { name: "系统名称" });
     await user.clear(name);
     await user.type(name, "测试支付");
     expect(requests).toHaveLength(0);
@@ -154,7 +154,7 @@ describe("instance display settings", () => {
     await user.click(screen.getByRole("button", { name: "柱状图" }));
     expect(screen.getByText("未保存")).toBeVisible();
     await user.click(screen.getByRole("button", { name: "面积图" }));
-    const name = screen.getByRole("textbox", { name: "支付系统名称" });
+    const name = screen.getByRole("textbox", { name: "系统名称" });
     await user.clear(name);
     await user.type(name, "新的支付");
     expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
@@ -173,7 +173,7 @@ describe("instance display settings", () => {
     );
     const { onSaved } = mount();
     const user = userEvent.setup();
-    const name = screen.getByRole("textbox", { name: "支付系统名称" });
+    const name = screen.getByRole("textbox", { name: "系统名称" });
     await user.clear(name);
     await user.type(name, "尚未保存的名称");
     await user.click(screen.getByRole("button", { name: "柱状图" }));

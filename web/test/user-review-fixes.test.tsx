@@ -194,10 +194,10 @@ describe("list navigation continuity", () => {
         await screen.findByRole("link", { name: "第二页订单" }),
       ).toBeVisible();
       expect(screen.getByText("第 2 页 · 本页 1 条")).toBeVisible();
-      expect(screen.getByLabelText("付款状态筛选")).toHaveTextContent("未付款");
+      expect(screen.getByLabelText("收款状态筛选")).toHaveTextContent("待付款");
       await user.click(screen.getByRole("button", { name: "高级筛选" }));
       expect(screen.getByLabelText("收银台状态筛选")).toHaveTextContent(
-        "开放中",
+        "收款中",
       );
       await user.click(screen.getByRole("button", { name: "上一页" }));
       expect(
@@ -221,6 +221,6 @@ describe("list navigation continuity", () => {
     expect(
       await screen.findByRole("link", { name: "第一页订单" }),
     ).toBeVisible();
-    expect(screen.getByLabelText("付款状态筛选")).toHaveTextContent("未付款");
+    expect(screen.getByLabelText("收款状态筛选")).toHaveTextContent("待付款");
   });
 });

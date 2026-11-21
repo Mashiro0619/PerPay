@@ -133,7 +133,7 @@ test("session rows fill their own card across themes and narrow or wide content"
     await detail.getByRole("button", { name: "设备信息", exact: true }).click();
     await expect(agent).toBeVisible();
     // Only the session's own action is left in the footer; the drawer closes from its header.
-    await expect(detail.locator("[data-overlay-footer]").getByRole("button")).toHaveText(["撤销此会话"]);
+    await expect(detail.locator("[data-overlay-footer]").getByRole("button")).toHaveText(["强制下线"]);
     await detail.locator('[data-slot="dialog-close"]').click();
     await expect(detail).toBeHidden();
   }
@@ -148,9 +148,9 @@ test("session confirmations cancel with restored focus and no session writes", a
   const card = page.locator(cardSelector);
   await expect(card.locator("[data-business-row]")).toHaveCount(3);
   for (const [trigger, title] of [
-    [card.getByRole("button", { name: "退出登录", exact: true }), "退出当前会话？"],
-    [card.locator(`[data-business-row="${mobileId}"]`).getByRole("button", { name: /^撤销/ }), "撤销此会话？"],
-    [card.getByRole("button", { name: "退出其他会话", exact: true }), "退出其他会话？"],
+    [card.getByRole("button", { name: "退出当前登录", exact: true }), "退出当前登录？"],
+    [card.locator(`[data-business-row="${mobileId}"]`).getByRole("button", { name: /^强制下线/ }), "强制下线此设备？"],
+    [card.getByRole("button", { name: "退出其他设备", exact: true }), "退出其他设备？"],
   ] as const) {
     await trigger.click();
     const dialog = page.getByRole("alertdialog", { name: title, exact: true });
@@ -161,8 +161,8 @@ test("session confirmations cancel with restored focus and no session writes", a
   }
   const menuTrigger = card.getByRole("button", { name: "会话操作", exact: true });
   await menuTrigger.click();
-  await page.getByRole("menuitem", { name: "注销全部会话", exact: true }).click();
-  const dialog = page.getByRole("alertdialog", { name: "注销全部会话？", exact: true });
+  await page.getByRole("menuitem", { name: "退出全部设备", exact: true }).click();
+  const dialog = page.getByRole("alertdialog", { name: "退出全部设备？", exact: true });
   await dialog.getByRole("button", { name: "取消", exact: true }).click();
   await expect(dialog).toHaveCount(0);
   await expect(menuTrigger).toBeFocused();
@@ -177,20 +177,20 @@ test("session revocation refreshes its rows and a later background refetch retai
   const card = page.locator(cardSelector);
   await expect(card.locator("[data-business-row]")).toHaveCount(3);
   const reads = state.reads;
-  await card.locator(`[data-business-row="${mobileId}"]`).getByRole("button", { name: /^撤销/ }).click();
-  const revoke = page.getByRole("alertdialog", { name: "撤销此会话？", exact: true });
+  await card.locator(`[data-business-row="${mobileId}"]`).getByRole("button", { name: /^强制下线/ }).click();
+  const revoke = page.getByRole("alertdialog", { name: "强制下线此设备？", exact: true });
   await expect(revoke).toContainText(ipv6);
-  await revoke.getByRole("button", { name: "撤销", exact: true }).click();
+  await revoke.getByRole("button", { name: "强制下线", exact: true }).click();
   await expect(revoke).toHaveCount(0);
   await expect(card.locator("[data-business-row]")).toHaveCount(2);
   await expect.poll(() => state.reads).toBeGreaterThan(reads);
-  await card.getByRole("button", { name: "退出其他会话", exact: true }).click();
-  const others = page.getByRole("alertdialog", { name: "退出其他会话？", exact: true });
-  await others.getByRole("button", { name: "退出其他会话", exact: true }).click();
+  await card.getByRole("button", { name: "退出其他设备", exact: true }).click();
+  const others = page.getByRole("alertdialog", { name: "退出其他设备？", exact: true });
+  await others.getByRole("button", { name: "退出其他设备", exact: true }).click();
   await expect(others).toHaveCount(0);
   await expect(card.locator("[data-business-row]")).toHaveCount(1);
   await expect(card.locator(`[data-business-row="${currentId}"]`)).toBeVisible();
-  await expect(card.getByRole("button", { name: "退出其他会话", exact: true })).toBeDisabled();
+  await expect(card.getByRole("button", { name: "退出其他设备", exact: true })).toBeDisabled();
   await page.getByRole("link", { name: "修改登录密码", exact: true }).click();
   const password = page.getByLabel("新密码", { exact: true });
   await password.fill("synthetic-unsubmitted-password");
@@ -230,13 +230,13 @@ test("session failures remain scoped and retry without replacing an active passw
   await expect(page.locator('[data-overlay-content]')).toBeHidden();
   await expect(failure).toHaveCount(0);
   state.failMutation = true;
-  await card.locator(`[data-business-row="${mobileId}"]`).getByRole("button", { name: /^撤销/ }).click();
-  const dialog = page.getByRole("alertdialog", { name: "撤销此会话？", exact: true });
-  await dialog.getByRole("button", { name: "撤销", exact: true }).click();
+  await card.locator(`[data-business-row="${mobileId}"]`).getByRole("button", { name: /^强制下线/ }).click();
+  const dialog = page.getByRole("alertdialog", { name: "强制下线此设备？", exact: true });
+  await dialog.getByRole("button", { name: "强制下线", exact: true }).click();
   await expect(dialog.getByRole("alert")).toContainText("合成会话撤销暂不可用");
   await expect(card.locator("[data-business-row]")).toHaveCount(3);
   state.failMutation = false;
-  await dialog.getByRole("button", { name: "撤销", exact: true }).click();
+  await dialog.getByRole("button", { name: "强制下线", exact: true }).click();
   await expect(dialog).toHaveCount(0);
   await expect(card.locator("[data-business-row]")).toHaveCount(2);
   state.failedReads = 2;
@@ -256,9 +256,9 @@ test("read-only demo rejects new session revocation in both browser and server g
   await openSecurity(page, manifest);
   const card = page.locator(cardSelector);
   await expect(card.locator("[data-business-row]")).toHaveCount(3);
-  await card.getByRole("button", { name: "退出其他会话", exact: true }).click();
-  const dialog = page.getByRole("alertdialog", { name: "退出其他会话？", exact: true });
-  await dialog.getByRole("button", { name: "退出其他会话", exact: true }).click();
+  await card.getByRole("button", { name: "退出其他设备", exact: true }).click();
+  const dialog = page.getByRole("alertdialog", { name: "退出其他设备？", exact: true });
+  await dialog.getByRole("button", { name: "退出其他设备", exact: true }).click();
   await expect(dialog.getByRole("alert")).toContainText("当前操作不可用。");
   expect(state.writes).toEqual([]);
   const csrf = manifest.sessionCookies.find(cookie => cookie.name.includes("csrf"));

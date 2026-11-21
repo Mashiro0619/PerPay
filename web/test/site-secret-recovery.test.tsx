@@ -13,7 +13,7 @@ type Purpose = "api_secret" | "webhook_secret";
 type SecretAction = "view" | "rotate";
 const editorKey = ["site-editor", "site_secret_recovery"];
 const viewLabel = (purpose: Purpose) => purpose === "api_secret" ? "查看 API 密钥" : "查看通知签名密钥";
-const rotateLabel = (purpose: Purpose) => purpose === "api_secret" ? "轮换 API 密钥" : "轮换通知签名密钥";
+const rotateLabel = (purpose: Purpose) => purpose === "api_secret" ? "更换 API 密钥" : "更换通知签名密钥";
 
 function mount() {
   let site: Site = { secrets: { api_secret: true, webhook_secret: true },
@@ -91,7 +91,7 @@ async function refreshSnapshot() {
   await act(async () => { await queryClient.invalidateQueries({ queryKey: editorKey }); });
 }
 async function confirm(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: /^(确认|确认轮换)$/ }));
+  await user.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: /^(确认|确认更换)$/ }));
 }
 async function closeSecret(user: ReturnType<typeof userEvent.setup>) {
   await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "关闭" }));

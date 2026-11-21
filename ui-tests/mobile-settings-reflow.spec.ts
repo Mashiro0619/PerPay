@@ -115,7 +115,7 @@ test.describe("narrow settings and overview controls remain usable", () => {
     await expect(disclosure).toHaveAttribute("aria-expanded", "false");
     await selectSettingsSection(page, page, "支付宝账号配置分组", "基本信息", "tap");
     const name = page.getByRole("textbox", { name: "账号名称", exact: true });
-    const appId = page.getByRole("textbox", { name: "应用 ID（App ID）", exact: true });
+    const appId = page.getByRole("textbox", { name: "App ID", exact: true });
     await name.fill("主收款账号");
     await selectSettingsSection(page, page, "支付宝账号配置分组", "应用信息", "tap");
     await appId.fill("202610300001");

@@ -75,7 +75,7 @@ async function createAccount(page: Page, fixture: BusinessFixture, info: TestInf
   await discard.getByRole("button", { name: "继续编辑", exact: true }).click();
   await expect(overlay.getByRole("textbox", { name: "账号名称", exact: true })).toHaveValue(name);
   await selectSettingsSection(page, overlay, "支付宝账号配置分组", "应用信息");
-  await overlay.getByRole("textbox", { name: "应用 ID（App ID）", exact: true }).fill(fixture.appId);
+  await overlay.getByRole("textbox", { name: "App ID", exact: true }).fill(fixture.appId);
   const createdResponse = page.waitForResponse(response => new URL(response.url()).pathname === "/api/admin/v1/alipay-accounts" && response.request().method() === "POST");
   await overlay.getByRole("button", { name: "创建账号并继续", exact: true }).click();
   const created = await createdResponse;
@@ -123,14 +123,14 @@ async function createAccount(page: Page, fixture: BusinessFixture, info: TestInf
 
 async function createSite(page: Page, fixture: BusinessFixture, info: TestInfo, account: AlipayAccount, width: number) {
   await navigateSidebar(page, "网站管理");
-  await page.getByRole("link", { name: "创建业务网站", exact: true }).click();
+  await page.getByRole("link", { name: "添加网站", exact: true }).click();
   const overlay = page.locator("[data-overlay-content]");
   const name = `连续验收网站 ${width}`;
   await overlay.getByRole("textbox", { name: "业务网站名称", exact: true }).fill(name);
   await overlay.getByRole("combobox", { name: "支付宝账号", exact: true }).click();
   await page.getByRole("option", { name: account.name, exact: true }).click();
   const createdResponse = page.waitForResponse(response => new URL(response.url()).pathname === "/api/admin/v1/sites" && response.request().method() === "POST");
-  await overlay.getByRole("button", { name: "创建业务网站", exact: true }).click();
+  await overlay.getByRole("button", { name: "添加网站", exact: true }).click();
   const created = await createdResponse;
   expect(created.status()).toBe(201);
   const site = (await created.json()).data as Site;

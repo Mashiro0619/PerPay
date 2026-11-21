@@ -235,7 +235,7 @@ describe("shared page request notices", () => {
         ...(status === 422 ? { fields: { system_name: "名称不符合要求" } } : {}),
       } }, status)
       : undefined);
-    const name = await screen.findByRole("textbox", { name: "支付系统名称" });
+    const name = await screen.findByRole("textbox", { name: "系统名称" });
     const form = name.closest("form")!;
     fireEvent.change(name, { target: { value: "需要保留的设置草稿" } });
     fireEvent.submit(form);

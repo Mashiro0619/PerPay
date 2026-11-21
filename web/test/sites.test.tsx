@@ -118,14 +118,14 @@ afterEach(() => onlineManager.setOnline(true));
 describe("business website management", () => {
   it("shows all default notification policy fields immediately when selecting its tab", async () => {
     const view = mount("/sites/defaults"), user = userEvent.setup();
-    await user.click(await screen.findByRole("tab", { name: "通知策略" }));
+    await user.click(await screen.findByRole("tab", { name: "通知设置" }));
     for (const label of ["通知超时（秒）", "最多发送次数", "首次重试间隔（秒）", "最大重试间隔（秒）"]) {
       expect(screen.getByLabelText(label)).toBeVisible();
     }
     expect(screen.queryByRole("button", { name: "高级设置" })).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("最多发送次数"), { target: { value: "15" } });
     await user.click(screen.getByRole("tab", { name: "订单设置" }));
-    await user.click(screen.getByRole("tab", { name: "通知策略" }));
+    await user.click(screen.getByRole("tab", { name: "通知设置" }));
     expect(screen.getByLabelText("最多发送次数")).toBeVisible();
     expect(screen.getByLabelText("最多发送次数")).toHaveValue(15);
     expect(view.writes).toHaveLength(0);
@@ -135,9 +135,9 @@ describe("business website management", () => {
     const apiKeys = await screen.findByRole("group", { name: "API 密钥" });
     const notificationKeys = screen.getByRole("group", { name: "通知签名密钥" });
     expect(within(apiKeys).getByRole("button", { name: "查看 API 密钥" })).toBeVisible();
-    expect(within(apiKeys).getByRole("button", { name: "轮换 API 密钥" })).toBeVisible();
+    expect(within(apiKeys).getByRole("button", { name: "更换 API 密钥" })).toBeVisible();
     expect(within(notificationKeys).getByRole("button", { name: "查看通知签名密钥" })).toBeVisible();
-    expect(within(notificationKeys).getByRole("button", { name: "轮换通知签名密钥" })).toBeVisible();
+    expect(within(notificationKeys).getByRole("button", { name: "更换通知签名密钥" })).toBeVisible();
     expect(view.writes).toHaveLength(0);
   });
   it("rejects a whitespace-only name before sending a website update", async () => {
@@ -150,10 +150,10 @@ describe("business website management", () => {
   });
 
   it.each([
-    { path: "/sites/new", label: "业务网站名称", button: "创建业务网站" },
+    { path: "/sites/new", label: "业务网站名称", button: "添加网站" },
     { path: "/sites/site_test/settings/basic", label: "业务网站名称", button: "保存业务网站" },
     { path: "/sites/site_test/settings/display", label: "收银台名称", button: "保存业务网站" },
-    { path: "/sites/defaults", label: "收银台名称", button: "保存默认模板", tab: "收银台展示" },
+    { path: "/sites/defaults", label: "收银台名称", button: "保存默认设置", tab: "收银台展示" },
   ])("uses custom required feedback for empty and whitespace-only $label at $path", async ({ path, label, button, tab }) => {
     const view = mount(path), user = userEvent.setup();
     if (tab) await user.click(await screen.findByRole("tab", { name: tab }));
@@ -185,7 +185,7 @@ describe("business website management", () => {
     const second = screen.getByLabelText("最大加价金额（分）");
     fireEvent.change(first, { target: { value: "" } });
     fireEvent.change(second, { target: { value: "" } });
-    await user.click(screen.getByRole("button", { name: path.endsWith("defaults") ? "保存默认模板" : "保存业务网站" }));
+    await user.click(screen.getByRole("button", { name: path.endsWith("defaults") ? "保存默认设置" : "保存业务网站" }));
     expect(await screen.findByText("请输入收银台有效期（秒）。")).toBeVisible();
     expect(second).toHaveAccessibleDescription("请输入最大加价金额（分）。");
     expect(first).toHaveFocus();
@@ -219,8 +219,8 @@ describe("business website management", () => {
     fireEvent.change(screen.getByLabelText("返回域名"), { target: { value: "https://shop.example.com" } });
     await user.click(screen.getByRole("button", { name: "保存业务网站" }));
     const confirmation = await screen.findByRole("alertdialog");
-    expect(confirmation).toHaveTextContent("后续通知按新前缀校验，旧地址可能无法发送。");
-    expect(confirmation).toHaveTextContent("新订单的返回地址将按新前缀校验。");
+    expect(confirmation).toHaveTextContent("修改后，后续通知将按新通知域名校验，旧地址可能无法发送。");
+    expect(confirmation).toHaveTextContent("修改后，新订单的返回地址将按新返回域名校验。");
     expect(view.writes).toHaveLength(0);
     await user.click(screen.getByRole("button", { name: "确认" }));
     await waitFor(() => expect(view.writes).toHaveLength(1));
@@ -250,9 +250,9 @@ describe("business website management", () => {
   });
   it("creates from the latest detached template using only a name, without credentials", async () => {
     const view=mount('/sites/defaults'),user=userEvent.setup();
-    fireEvent.change(await screen.findByLabelText('收银台有效期（秒）'),{target:{value:'600'}});await user.click(screen.getByRole('button',{name:'保存默认模板'}));await waitFor(()=>expect(view.writes).toHaveLength(1));
+    fireEvent.change(await screen.findByLabelText('收银台有效期（秒）'),{target:{value:'600'}});await user.click(screen.getByRole('button',{name:'保存默认设置'}));await waitFor(()=>expect(view.writes).toHaveLength(1));
     await act(async()=>{await view.router.navigate('/sites/new');});await user.type(await screen.findByLabelText('业务网站名称'),'新网站');expect(screen.queryByLabelText('收银台有效期（秒）')).not.toBeInTheDocument();expect(screen.queryByRole('switch')).not.toBeInTheDocument();
-    await user.click(screen.getByRole('button',{name:'创建业务网站'}));await waitFor(()=>expect(view.writes).toHaveLength(2));expect(view.writes[1]!.body).toMatchObject({operation_id:expect.any(String),configuration:{name:'新网站',accepting_orders:true,notifications_enabled:false,notification_origin:null,return_origin:null,policy:{...policy,orders:{...policy.orders,order_ttl_seconds:600}}}});
+    await user.click(screen.getByRole('button',{name:'添加网站'}));await waitFor(()=>expect(view.writes).toHaveLength(2));expect(view.writes[1]!.body).toMatchObject({operation_id:expect.any(String),configuration:{name:'新网站',accepting_orders:true,notifications_enabled:false,notification_origin:null,return_origin:null,policy:{...policy,orders:{...policy.orders,order_ttl_seconds:600}}}});
     expect(view.writes.every(w=>!w.path.includes('secrets'))).toBe(true);
   });
   it("keeps pause independent of notifications and saves the website revision", async () => {
@@ -278,8 +278,8 @@ describe("business website management", () => {
   it("rotates only the selected website key without replacing an unsaved configuration draft", async () => {
     const view = mount("/sites/site_test/settings/integration"); const user = userEvent.setup();
     const name = await screen.findByLabelText("返回域名"); await user.clear(name); await user.type(name, "https://draft.example.com");
-    await user.click(screen.getByRole("button", { name: "轮换 API 密钥" }));
-    await user.click(await screen.findByRole("button", { name: "确认轮换" }));
+    await user.click(screen.getByRole("button", { name: "更换 API 密钥" }));
+    await user.click(await screen.findByRole("button", { name: "确认更换" }));
     expect(await screen.findByDisplayValue("synthetic-site-key")).toBeVisible();
     await user.click(within(screen.getByRole("dialog", { name: /^(API 密钥|通知签名密钥)$/ })).getByRole("button", { name: "关闭" }));
     expect(name).toHaveValue("https://draft.example.com");
@@ -289,11 +289,11 @@ describe("business website management", () => {
   });
   it("edits only the creation template without modifying any existing website", async () => {
     const view = mount("/sites/defaults"); const user = userEvent.setup();
-    const save = await screen.findByRole<HTMLButtonElement>("button", { name: "保存默认模板" });
+    const save = await screen.findByRole<HTMLButtonElement>("button", { name: "保存默认设置" });
     const ttl = await screen.findByLabelText("收银台有效期（秒）"); fireEvent.change(ttl, { target: { value: "600" } });
     expect(save.form).toBe(ttl.closest("form"));
     expect(screen.queryByLabelText("通知域名")).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "保存默认模板" }));
+    await user.click(screen.getByRole("button", { name: "保存默认设置" }));
     await waitFor(() => expect(view.writes).toHaveLength(1));
     expect(view.writes[0]!.path).toBe("/api/admin/v1/settings/site-defaults");
     expect(view.writes[0]!.body).toMatchObject({ revision: 0, policy: { orders: { order_ttl_seconds: 600 } } });
@@ -321,8 +321,8 @@ describe("website configuration recovery", () => {
     fireEvent.change(timeout, { target: { value: "5.123" } });
     fireEvent.change(timeout, { target: { value: "5.1234" } });
     view.changeRemote(configuration => { configuration.policy.orders.order_ttl_seconds = 600; });
-    await user.click(screen.getByRole("button", { name: "轮换 API 密钥" }));
-    await user.click(await screen.findByRole("button", { name: "确认轮换" }));
+    await user.click(screen.getByRole("button", { name: "更换 API 密钥" }));
+    await user.click(await screen.findByRole("button", { name: "确认更换" }));
     await user.click(await screen.findByRole("button", { name: "关闭" }));
     await user.click(await screen.findByRole("button", { name: "读取最新配置并核对" }));
     await screen.findByText("最新配置已合并，尚未保存");
@@ -354,8 +354,8 @@ describe("website configuration recovery", () => {
     fireEvent.change(timeout, { target: { value: "5.1234" } });
     fireEvent.change(screen.getByLabelText("最多发送次数"), { target: { value: "15" } });
     view.changeRemote(configuration => { configuration.policy.notification_delivery.maximum_attempts = 18; });
-    await user.click(screen.getByRole("button", { name: "轮换 API 密钥" }));
-    await user.click(await screen.findByRole("button", { name: "确认轮换" }));
+    await user.click(screen.getByRole("button", { name: "更换 API 密钥" }));
+    await user.click(await screen.findByRole("button", { name: "确认更换" }));
     await user.click(await screen.findByRole("button", { name: "关闭" }));
     await user.click(await screen.findByRole("button", { name: "读取最新配置并核对" }));
     await screen.findByText("服务器值：18");
@@ -381,8 +381,8 @@ describe("website configuration recovery", () => {
     fireEvent.change(timeout, { target: { value: "5.123" } });
     fireEvent.change(timeout, { target: { value: "5.1234" } });
     view.changeRemote(configuration => { configuration.policy.notification_delivery.timeout_milliseconds = 7555; });
-    await user.click(screen.getByRole("button", { name: "轮换 API 密钥" }));
-    await user.click(await screen.findByRole("button", { name: "确认轮换" }));
+    await user.click(screen.getByRole("button", { name: "更换 API 密钥" }));
+    await user.click(await screen.findByRole("button", { name: "确认更换" }));
     await user.click(await screen.findByRole("button", { name: "关闭" }));
     await user.click(await screen.findByRole("button", { name: "读取最新配置并核对" }));
     expect(await screen.findByText("服务器值：7.555")).toBeVisible();
@@ -541,14 +541,14 @@ describe("website configuration recovery", () => {
       configuration.policy.orders.order_ttl_seconds = 600;
       configuration.policy.notification_delivery.timeout_milliseconds = 7000;
     });
-    await user.click(screen.getByRole("button", { name: "轮换通知签名密钥" }));
-    await user.click(await screen.findByRole("button", { name: "确认轮换" }));
+    await user.click(screen.getByRole("button", { name: "更换通知签名密钥" }));
+    await user.click(await screen.findByRole("button", { name: "确认更换" }));
     await user.click(await screen.findByRole("button", { name: "关闭" }));
     await user.click(await screen.findByRole("button", { name: "读取最新配置并核对" }));
     await screen.findByText("最新配置已合并，尚未保存");
     expect(view.writes).toHaveLength(1);
-    await user.click(screen.getByRole("button", { name: "轮换通知签名密钥" }));
-    await user.click(await screen.findByRole("button", { name: "确认轮换" }));
+    await user.click(screen.getByRole("button", { name: "更换通知签名密钥" }));
+    await user.click(await screen.findByRole("button", { name: "确认更换" }));
     await screen.findByDisplayValue("synthetic-site-key");
     await user.click(within(screen.getByRole("dialog", { name: /^(API 密钥|通知签名密钥)$/ })).getByRole("button", { name: "关闭" }));
     expect(screen.getByLabelText("返回域名")).toHaveValue("https://draft.example.com");
@@ -599,7 +599,7 @@ describe("website field feedback", () => {
     const fields = Object.fromEntries(cases[section]!.map(([label, field]) => [field, label + "错误"]));
     const view = mount(path, false, fields), user = userEvent.setup();
     for (const [label, , value] of cases[section]!) { if(section === "defaults") await user.click(await screen.findByRole("tab",{name:label === "收银台名称" ? "收银台展示" : "订单设置"})); fireEvent.change(await screen.findByLabelText(label), { target: { value } }); }
-    const submit = async () => { await user.click(screen.getByRole("button", { name: section === "defaults" ? "保存默认模板" : "保存业务网站" })); if (section === "integration") await user.click(await screen.findByRole("button", { name: "确认" })); };
+    const submit = async () => { await user.click(screen.getByRole("button", { name: section === "defaults" ? "保存默认设置" : "保存业务网站" })); if (section === "integration") await user.click(await screen.findByRole("button", { name: "确认" })); };
     await submit();
     for (const [label] of cases[section]!) { if(section === "defaults") await user.click(screen.getByRole("tab",{name:label === "收银台名称" ? "收银台展示" : "订单设置"})); await screen.findByText(label + "错误"); expect(screen.getByLabelText(label)).toHaveAttribute("aria-invalid", "true"); }
     expect(view.writes).toHaveLength(1);
@@ -619,8 +619,8 @@ describe("website field feedback", () => {
   });
   it("keeps key rotation revisions on reentry without caching the revealed secret", async () => {
     const view = mount("/sites/site_test/settings/integration"); const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "轮换 API 密钥" }));
-    await user.click(await screen.findByRole("button", { name: "确认轮换" }));
+    await user.click(await screen.findByRole("button", { name: "更换 API 密钥" }));
+    await user.click(await screen.findByRole("button", { name: "确认更换" }));
     await screen.findByDisplayValue("synthetic-site-key");
     expect(JSON.stringify(queryClient.getQueryData(["site-editor", "site_test"]))).not.toContain("synthetic-site-key");
     await act(async () => { await view.router.navigate("/sites"); });

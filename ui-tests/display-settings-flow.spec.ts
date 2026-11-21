@@ -41,7 +41,7 @@ for (const layout of [
         await summary.getByRole("link", { name: "编辑界面显示", exact: true }).click();
         const dialog = page.locator("[data-overlay-content]");
         const chart = dialog.getByRole("group", { name: "收款趋势默认图形", exact: true });
-        const name = dialog.getByRole("textbox", { name: "支付系统名称", exact: true });
+        const name = dialog.getByRole("textbox", { name: "系统名称", exact: true });
         await expect(name).toBeVisible();
         await expect(chart.getByRole("button", { name: "面积图", exact: true })).toHaveAttribute("aria-pressed", "true");
         await expect(dialog.getByRole("textbox", { name: "商家帮助链接", exact: true })).toHaveCount(0);
