@@ -140,6 +140,7 @@ export type WebhookStoreErrorCode =
   | "webhook_payment_confirmation_revoked"
   | "webhook_disabled"
   | "webhook_target_inactive"
+  | "webhook_unavailable"
   | "webhook_signing_key_rollback"
   | "webhook_signing_key_unavailable";
 

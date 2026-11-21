@@ -113,6 +113,8 @@ const disabledReconciliationHealth: RevisionedReconciliationHealth = Object.free
   continuationPending: false,
 });
 
+const MAX_IN_FLIGHT_MANUAL_WEBHOOK_RETRIES = 4;
+
 /** Owns every background worker that depends on mutable business settings. */
 export class RuntimeController {
   readonly #epay: EpayStore | undefined;
@@ -369,7 +371,10 @@ export class RuntimeController {
 
   retryWebhookDelivery(input: SiteRetryWebhookInput): WebhookDelivery {
     if (this.#stopped || this.#transitioning || !this.#webhookService || !this.#webhookRetryAbort) {
-      throw new WebhookStoreError("webhook_disabled", "通知投递服务未运行");
+      throw new WebhookStoreError("webhook_unavailable", "通知投递服务未运行");
+    }
+    if (this.#webhookRetries.size >= MAX_IN_FLIGHT_MANUAL_WEBHOOK_RETRIES) {
+      throw new WebhookStoreError("webhook_unavailable", "当前并发重试通知过多，请稍后重试");
     }
     const signal = this.#webhookRetryAbort.signal;
     const launch = (deliveryId: string, run: () => Promise<unknown>) => {

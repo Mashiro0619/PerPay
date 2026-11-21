@@ -1903,22 +1903,10 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
           remoteAddress(context, dependencies.config.trustedProxy),
         ),
       };
-      let delivery: WebhookDelivery;
-      if (dependencies.retryWebhookDelivery) {
-        delivery = dependencies.retryWebhookDelivery(retryInput);
-      } else {
-        const store = requireWebhookStore(dependencies);
-        const webhook = dependencies.sites ? undefined : dependencies.settings?.snapshot().webhook;
-        const claimed = store.claimDeliveryForRetry({
-          ...retryInput,
-          activeAllowedOrigin: webhook?.enabled === true ? webhook.allowedOrigin : null,
-          now: (dependencies.clock ?? Date.now)(),
-          leaseMilliseconds: 30_000,
-          maximumAttempts: webhook?.maximumAttempts ?? 12,
-        });
-        delivery = claimed.delivery;
-        notifyWebhookAvailable(dependencies, context);
+      if (!dependencies.retryWebhookDelivery) {
+        throw new HttpApiError(503, "webhook_unavailable", "通知投递服务未运行");
       }
+      const delivery = dependencies.retryWebhookDelivery(retryInput);
       return context.json(
         {
           data: {
@@ -3231,6 +3219,7 @@ function webhookStoreStatus(
     case "webhook_disabled":
     case "webhook_target_inactive":
       return 409;
+    case "webhook_unavailable":
     case "webhook_signing_key_rollback":
     case "webhook_signing_key_unavailable":
       return 503;
@@ -3253,6 +3242,8 @@ function webhookStoreMessage(code: WebhookStoreError["code"]): string {
       return "通知功能未启用";
     case "webhook_target_inactive":
       return "通知目标不再属于当前允许的 origin";
+    case "webhook_unavailable":
+      return "通知服务暂时繁忙或不可用，请稍后重试";
     case "webhook_signing_key_rollback":
     case "webhook_signing_key_unavailable":
       return "通知签名密钥不可用";

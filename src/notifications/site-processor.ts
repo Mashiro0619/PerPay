@@ -73,28 +73,29 @@ export class SiteWebhookProcessor {
     }
     const clientId = detail.target.apiClientId;
     const site = this.#sites.get(clientId);
-    if (!site || !site.configuration.notifications_enabled) {
-      throw new WebhookStoreError("webhook_disabled", "通知功能未启用");
-    }
-    const origin = site.configuration.notification_origin;
-    if (!origin) {
-      throw new WebhookStoreError("webhook_disabled", "通知功能未启用");
-    }
-    const secret = this.#sites.notificationSecret(clientId);
-    const epayCredentials = this.#epay?.credentialsForSite(clientId);
-    const policy = site.configuration.policy.notification_delivery;
-    const secretFingerprint = secret ? fingerprintSecret(secret, "webhook-signing-key") : undefined;
+    const origin = site?.configuration.notifications_enabled
+      ? site.configuration.notification_origin
+      : null;
+    const secret = site ? this.#sites.notificationSecret(clientId) : null;
+    const epayCredentials = site ? this.#epay?.credentialsForSite(clientId) : undefined;
+    const policy = site?.configuration.policy.notification_delivery;
+    const secretFingerprint = secret
+      ? fingerprintSecret(secret, "webhook-signing-key")
+      : "";
     const claimInput: ClaimDeliveryForRetryInput = {
       ...input,
       activeAllowedOrigin: origin,
       now,
       leaseMilliseconds: 30_000,
-      maximumAttempts: policy.maximum_attempts,
-      siteRevision: site.revision,
-      ...(secretFingerprint ? { secretFingerprint } : {}),
+      maximumAttempts: policy?.maximum_attempts ?? 1,
+      ...(site ? { siteRevision: site.revision } : {}),
+      secretFingerprint,
       ...(epayCredentials ? { epayCredentials } : {}),
     };
     const claimed = this.#webhooks.claimDeliveryForRetry(claimInput);
+    if (!site || !origin) {
+      throw new WebhookStoreError("webhook_disabled", "通知功能未启用");
+    }
     const service = this.#serviceForSite(site, origin, secret, epayCredentials);
     return {
       delivery: claimed.delivery,
