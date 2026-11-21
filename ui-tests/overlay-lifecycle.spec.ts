@@ -368,3 +368,62 @@ for (const [height, scroller] of [[680, "[data-overlay-detail]"], [520, "[data-o
     expect(await offsets()).toEqual([0, 0, 0]);
   });
 }
+
+test("drawer previous/next stepping crosses cursor pagination boundaries and stays on the landed page on close", async ({ page, fixture }) => {
+  fixture.seedOrders(23);
+  await page.setViewportSize({ width: 1440, height: 720 });
+  await page.goto(fixture.origin + "/admin/orders");
+  const rows = page.locator('[data-business-table="orders"] a[data-row-link]');
+  await expect(rows).toHaveCount(20);
+  const lastPage1Row = rows.nth(19);
+  const lastPage1Name = (await lastPage1Row.textContent())!.trim();
+  const lastPage1Target = new URL((await lastPage1Row.getAttribute("href"))!, fixture.origin).searchParams.get("overlay");
+
+  await lastPage1Row.click();
+  const overlay = page.locator("[data-overlay-content]");
+  const title = overlay.getByRole("heading", { level: 1 });
+  const prev = overlay.getByRole("button", { name: "上一条", exact: true });
+  const next = overlay.getByRole("button", { name: "下一条", exact: true });
+  await expect(title).toHaveText(lastPage1Name);
+  await expect(prev).toBeEnabled();
+  await expect(next).toBeEnabled();
+
+  // Stepping forward from the last row of page 1 loads page 2 and lands on its first row.
+  await next.click();
+  await expect(rows).toHaveCount(3);
+  await expect.poll(() => new URL(page.url()).searchParams.get("page")).toBe("2");
+  const firstPage2Name = (await rows.nth(0).textContent())!.trim();
+  const firstPage2Target = new URL((await rows.nth(0).getAttribute("href"))!, fixture.origin).searchParams.get("overlay");
+  await expect(title).toHaveText(firstPage2Name);
+  await expect(rows.nth(0)).toHaveAttribute("data-record-state", "open");
+  expect(new URL(page.url()).searchParams.get("overlay")).toBe(firstPage2Target);
+  await expect(next).toBeFocused();
+
+  // Stepping inside page 2 and then backwards across the boundary returns to page 1's last row.
+  await next.click();
+  await expect(rows.nth(1)).toHaveAttribute("data-record-state", "open");
+  await prev.click();
+  await expect(rows.nth(0)).toHaveAttribute("data-record-state", "open");
+  await prev.click();
+  await expect(rows).toHaveCount(20);
+  await expect.poll(() => new URL(page.url()).searchParams.get("page")).toBeNull();
+  await expect(title).toHaveText(lastPage1Name);
+  await expect(rows.nth(19)).toHaveAttribute("data-record-state", "open");
+  expect(new URL(page.url()).searchParams.get("overlay")).toBe(lastPage1Target);
+  await expect(prev).toBeFocused();
+
+  // Closing after crossing onto page 2 keeps page 2, focuses its landed row, and preserves "上一页".
+  await next.click();
+  await expect(rows).toHaveCount(3);
+  await expect(title).toHaveText(firstPage2Name);
+  await overlay.getByRole("button", { name: "关闭对话框", exact: true }).click();
+  await expect(overlay).toHaveCount(0);
+  expect(new URL(page.url()).searchParams.get("page")).toBe("2");
+  expect(new URL(page.url()).searchParams.get("overlay")).toBeNull();
+  await expect(rows.nth(0)).toHaveAttribute("data-record-state", "recent");
+  await expect(rows.nth(0)).toBeFocused();
+  await expect(rows.nth(0)).toBeInViewport();
+  await page.getByRole("button", { name: "上一页", exact: true }).click();
+  await expect(rows).toHaveCount(20);
+  expect(new URL(page.url()).searchParams.get("page")).toBeNull();
+});
