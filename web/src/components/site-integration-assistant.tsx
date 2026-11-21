@@ -288,6 +288,13 @@ function IntegrationContent({ site, siteDirty = false, disabled = false, showCli
 
   function credential(purpose: EpaySecret, publicOnly = false) {
     const label = publicOnly ? "平台公钥" : secretLabels[purpose];
+    const hint = publicOnly
+      ? "填写到业务网站的「平台公钥」栏，用于验证本系统返回与回调通知的签名。"
+      : purpose === "epay_v1"
+        ? "用于业务网站与本系统通信时的签名与验签。"
+        : purpose === "epay_merchant"
+          ? "填写到业务网站的「商户私钥」栏，用于发起下单请求签名。"
+          : "本系统服务端签名密钥；更换后需同步更新业务网站中配置的平台公钥。";
     const rotationLabel = (keyReady(purpose) ? "更换" : "生成") + label;
     const labelId = id + "-" + purpose + (publicOnly ? "-public" : "");
     return <Field key={labelId} aria-labelledby={labelId} className="min-w-0">
@@ -305,6 +312,7 @@ function IntegrationContent({ site, siteDirty = false, disabled = false, showCli
             }}>{keyReady(purpose) ? "更换" : "生成"}</Button>}
         </div>
       </div>
+      <FieldDescription>{hint}</FieldDescription>
     </Field>;
   }
   return <Card data-site-integration>
@@ -320,8 +328,8 @@ function IntegrationContent({ site, siteDirty = false, disabled = false, showCli
           {protocols.map(item => <ToggleGroupItem key={item.value} value={item.value} className="px-1.5">{item.label}</ToggleGroupItem>)}
         </ToggleGroup>
         {protocol !== "native" && <Field orientation="horizontal" className="w-auto gap-2">
-          <FieldLabel htmlFor={id + "-enabled"}>允许新订单</FieldLabel>
-          <Switch id={id + "-enabled"} aria-label={"允许" + selected.label + "新订单"}
+          <FieldLabel htmlFor={id + "-enabled"}>启用{selected.label}</FieldLabel>
+          <Switch id={id + "-enabled"} aria-label={"启用" + selected.label}
             checked={protocol === "epay_v1" ? values.v1_enabled : values.v2_enabled}
             disabled={busy || siteDirty} onCheckedChange={enabled => {
               const base = draft?.base ?? configuration;

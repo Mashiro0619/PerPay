@@ -53,6 +53,7 @@ import { Item, ItemContent, ItemDescription, ItemGroup, ItemTitle } from "@/comp
 import {
   Card,
   CardContent,
+  CardDescription,
   CardFooter,
   CardHeader,
   CardTitle,
@@ -96,15 +97,15 @@ function siteSummaryRows(site: Site, section: string): SettingsSummaryRow[] {
   if (section === "orders") return [
     ["收银台有效期", durationLabel(policy.orders.order_ttl_seconds)],
     ["最大加价金额", money(policy.orders.amount_offset_maximum_cents)],
-    ["应付金额复用等待", durationLabel(policy.orders.amount_reuse_cooldown_seconds)],
-    ["待付款订单上限", policy.orders.pending_order_limit === null ? "不限" : count(policy.orders.pending_order_limit)],
+    ["同金额冷却时长", durationLabel(policy.orders.amount_reuse_cooldown_seconds)],
+    ["待付款订单上限", policy.orders.pending_order_limit === null ? "不限" : count(policy.orders.pending_order_limit) + " 笔"],
   ];
   if (section === "integration") return [
     ["通知", value.notifications_enabled ? "开启" : "关闭"],
     ["通知域名", value.notification_origin || "未设置"],
     ["返回域名", value.return_origin || "未设置"],
     ["通知超时", siteTimeoutSeconds(policy.notification_delivery.timeout_milliseconds) + " 秒"],
-    ["最多发送次数", count(policy.notification_delivery.maximum_attempts)],
+    ["最多发送次数", count(policy.notification_delivery.maximum_attempts) + " 次"],
     ["首次 / 最大重试间隔", policy.notification_delivery.retry_base_seconds + " / " + policy.notification_delivery.retry_maximum_seconds + " 秒"],
   ];
   if (section === "display") return [
@@ -974,7 +975,8 @@ function SiteEditor({
       {saved && visible("basic") && (
         <Card>
           <CardHeader>
-            <CardTitle>删除空业务网站</CardTitle>
+            <CardTitle>删除网站</CardTitle>
+            <CardDescription>仅限无历史订单的网站。删除后不可恢复，原网站 ID 不可复用。</CardDescription>
           </CardHeader>
           <CardContent>
             <Button
@@ -982,7 +984,7 @@ function SiteEditor({
               disabled={busy || requiresReview || integrationWritePending}
               onClick={() => setConfirmation("delete")}
             >
-              删除空业务网站
+              删除网站
             </Button>
           </CardContent>
         </Card>

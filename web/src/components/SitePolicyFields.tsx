@@ -88,6 +88,7 @@ export function SitePolicyFields({
           />
           <NumberField
             label="最大加价金额（分）"
+            hint="同时存在多笔同金额订单时，系统自动微调加价以区分付款，单位为分（1～99 分）。"
             error={error("orders.amount_offset_maximum_cents")}
             value={value.orders.amount_offset_maximum_cents}
             min={1}
@@ -99,8 +100,8 @@ export function SitePolicyFields({
             }
           />
           <NumberField
-            label="应付金额复用等待（秒）"
-            hint="收银台关闭后等待此时长再复用同金额；过期按原到期时间起算，仅对新订单生效。"
+            label="同金额冷却时长（秒）"
+            hint="收银台关闭后，需等待此时长才允许新订单再次分配相同应付金额；过期订单从原到期时间起算，仅对新订单生效。"
             error={error("orders.amount_reuse_cooldown_seconds")}
             value={value.orders.amount_reuse_cooldown_seconds}
             min={60}
@@ -113,7 +114,7 @@ export function SitePolicyFields({
           />
 
           <Field data-invalid={!!error("orders.pending_order_limit")}>
-            <FieldLabel htmlFor={limitId}>待付款订单上限</FieldLabel>
+            <FieldLabel htmlFor={limitId}>待付款订单上限（笔）</FieldLabel>
             <Input
               id={limitId}
               aria-invalid={!!error("orders.pending_order_limit")}
@@ -122,7 +123,7 @@ export function SitePolicyFields({
                   ? limitId + "-error"
                   : undefined
               }
-              aria-label="待付款订单上限"
+              aria-label="待付款订单上限（笔）"
               type="number"
               min={1}
               step={1}
@@ -134,7 +135,7 @@ export function SitePolicyFields({
                 })
               }
             />
-            <FieldDescription>留空不限。</FieldDescription>
+            <FieldDescription>同时允许处于待付款状态的订单总数上限，留空表示不限。</FieldDescription>
             {error("orders.pending_order_limit") && (
               <FieldError id={limitId + "-error"}>
                 {error("orders.pending_order_limit")}
@@ -200,7 +201,7 @@ export function SitePolicyFields({
             <CollapsibleTrigger
               render={<Button type="button" variant="outline" />}
             >
-              高级设置
+              通知超时与重试设置
             </CollapsibleTrigger>
           )}
           <CollapsibleContent ref={content} keepMounted>
@@ -234,7 +235,8 @@ export function SitePolicyFields({
                 {timeoutError && <FieldError id={timeoutId + "-error"}>{timeoutError}</FieldError>}
               </Field>
               <NumberField
-                label="最多发送次数"
+                label="最多发送次数（次）"
+                hint="包含首次发送在内的最大尝试总次数；全部失败后将停止自动重试。"
                 error={error("notification_delivery.maximum_attempts")}
                 value={value.notification_delivery.maximum_attempts}
                 min={1}

@@ -267,18 +267,18 @@ export function attemptResult(attempt: WebhookAttempt | undefined): string {
     attempt.http_status === null
       ? "未收到 HTTP 响应"
       : "HTTP " + attempt.http_status;
-  if (attempt.outcome === "ACKNOWLEDGED") return http + " · 通知已确认（ACK）";
+  if (attempt.outcome === "ACKNOWLEDGED") return http + " · 通知已确认";
   if (attempt.outcome === "STARTED") return "发送进行中，尚未确认结果";
   const result = attempt.error_code ?? attempt.ack_code;
-  return (
-    http +
-    " · " +
-    (result
-      ? notificationErrorName(result)
-      : attempt.outcome === "OUTCOME_UNKNOWN"
-        ? "结果未知"
-        : "未收到对方的有效确认回执")
-  );
+  const reason =
+    result === "http_status_not_ack" && attempt.http_status !== null
+      ? "状态不符合确认要求"
+      : result
+        ? notificationErrorName(result)
+        : attempt.outcome === "OUTCOME_UNKNOWN"
+          ? "结果未知"
+          : "未收到对方的有效确认回执";
+  return http + " · " + reason;
 }
 
 export function notificationRecoveryHint(code: string | null): string {

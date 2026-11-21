@@ -122,7 +122,7 @@ export function AlipayAccountList({ onSelect }: { onSelect?: (id: string) => voi
     { id: "status", label: "状态", layout: "status", summaryDefault: true, cell: account => <Badge variant={account.enabled && account.configured ? "secondary" : "outline"}>{accountState(account)}</Badge> },
     { id: "health", label: "查账", layout: "status", summaryDefault: true, cell: account => accountHealth(account) },
     { id: "app", label: "App ID", cell: account => account.app_id || "未配置" },
-    { id: "sites", label: "用于网站", layout: "number", cell: account => account.sites.length ? <span title={account.sites.map(site => site.name).join("、")}>{account.sites.length} 个网站</span> : "未分配" },
+    { id: "sites", label: "关联网站", layout: "number", cell: account => account.sites.length ? <span title={account.sites.map(site => site.name).join("、")}>{account.sites.length} 个网站</span> : "未分配" },
     { id: "actions", label: "操作", layout: "actions", hideable: false, cell: account => onSelect
       ? <Button variant="outline" size="sm" onClick={() => onSelect(account.id)}>配置</Button>
       : <Link to={"/settings/accounts/" + encodeURIComponent(account.id)} className={buttonVariants({ variant: "outline", size: "sm" })} aria-label={"配置" + account.name}>配置</Link> },
@@ -259,7 +259,7 @@ function AccountSiteSettings() {
   return <Collapsible className="flex min-w-0 flex-col gap-3">
     <div className="flex flex-wrap gap-2">
       <CollapsibleTrigger render={<Button type="button" variant="outline" size="sm" />}>
-        网站设置
+        分配给已有网站
       </CollapsibleTrigger>
       <Link to="/sites/new" className={buttonVariants({ variant: "outline", size: "sm" })}>添加网站</Link>
     </div>
@@ -743,7 +743,7 @@ export function AlipayAccountEditor({
         </Button></OverlayActions>
       </>}
       {needsReload && !review && <Alert>
-        <AlertTitle>{needsReload === "unknown" ? "操作结果待核对" : "账号配置已在其他会话中更新"}</AlertTitle>
+        <AlertTitle>{needsReload === "unknown" ? "操作结果待核对" : "账号配置已在其他页面或设备中更新"}</AlertTitle>
         <AlertDescription>
           <p>{needsReload === "unknown" ? "你的输入已保留。请重新读取账号，核对操作是否完成后再继续。" : "你的修改已保留，重新读取后可继续操作。"}</p>
           <Button variant="outline" disabled={busy} onClick={() => reload.mutate()}>{reload.isPending ? "正在读取…" : "重新读取账号"}</Button>
@@ -1010,7 +1010,7 @@ export function AlipayAccountEditor({
                         aria-invalid={!!errors.private_key}
                       />
                       <FieldDescription>
-                        留空会保留当前密钥；没有密钥时，可点击上方“生成应用密钥”。保存后不会回显私钥。
+                        留空会保留当前密钥；没有密钥时，可点击上方“生成应用密钥”。出于安全考虑，保存后不再显示私钥明文。
                       </FieldDescription>
                       {errors.private_key && (
                         <FieldError>{errors.private_key}</FieldError>
@@ -1055,7 +1055,7 @@ export function AlipayAccountEditor({
               <OverlayActions className={tabbed ? "w-full" : undefined}>
               <Button form={formId} type="submit" className={tabbed ? "h-auto min-h-8 min-w-0 whitespace-normal py-1.5 max-sm:flex-1" : undefined} disabled={editingBlocked || decoding || historical || (!saved && creation.conflict)}>
                 {saving && <Spinner data-icon="inline-start" />}
-                <span className="min-w-0">{saving ? "正在保存…" : creating ? "创建账号并继续" : readyToCheck ? "保存并检查" : "保存配置"}</span>
+                <span className="min-w-0">{saving ? "正在保存…" : creating ? "创建账号并继续" : readyToCheck ? "保存并测试连接" : "保存配置"}</span>
               </Button>
               {tabbed ? <DropdownMenu onOpenChange={open => { if (open) invalidDraftField.current = null; }}>
                 <DropdownMenuTrigger render={<Button type="button" variant="outline" size="icon" aria-label="更多账号操作" disabled={editingBlocked || historical} />}>
@@ -1070,7 +1070,7 @@ export function AlipayAccountEditor({
                       保存草稿
                     </DropdownMenuItem>
                     {saved && <DropdownMenuItem disabled={editingBlocked || dirty || historical} onClick={() => check.mutate(saved.id)}>
-                      <RefreshCw aria-hidden="true" />重新检查
+                      <RefreshCw aria-hidden="true" />重新测试连接
                     </DropdownMenuItem>}
                   </DropdownMenuGroup>
                 </DropdownMenuContent>
@@ -1091,7 +1091,7 @@ export function AlipayAccountEditor({
                   onClick={() => check.mutate(saved.id)}
                 >
                   <RefreshCw data-icon="inline-start" />
-                  重新检查
+                  重新测试连接
                 </Button>
               )}
               </>}
@@ -1133,7 +1133,7 @@ export function AlipayAccountEditor({
             </div>}
             {dirty && <p className="text-sm text-muted-foreground">以上为已保存的配置，当前修改尚未保存。</p>}
             <div className="flex min-w-0 flex-col gap-2">
-            <p className="text-sm text-muted-foreground">用于网站 · {saved.sites.length} 个</p>
+            <p className="text-sm text-muted-foreground">关联网站 · {saved.sites.length} 个</p>
             {saved.sites.length ? (
               <div className="flex flex-wrap gap-2">
                 {saved.sites.map((site) => (
