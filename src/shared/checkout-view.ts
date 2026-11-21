@@ -73,7 +73,7 @@ export const checkoutCopy: Record<
   CLOSED: {
     badge: "已关闭",
     heading: "订单已关闭",
-    detail: "该订单已关闭，请勿向此二维码付款。",
+    detail: "该订单已关闭，请勿继续付款。",
   },
   EXPIRED: {
     badge: "已过期",

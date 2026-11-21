@@ -104,13 +104,13 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
   const amountIntegerDigits = Math.floor(cents / 100).toString().length;
   const amountLabel = order?.payment_instructions
     ? "应付金额"
-    : order && order.payment.status !== "UNPAID"
+    : order?.payment.received_amount_cents != null
       ? "实付金额"
       : "订单金额";
-  const hasAmountAdjustment =
-    !!order?.payment_instructions &&
-    order.payment_instructions.payable_amount_cents !==
-      order.requested_amount_cents;
+  const adjustmentCents = order?.payment_instructions
+    ? order.payment_instructions.payable_amount_cents -
+      order.requested_amount_cents
+    : 0;
   const remaining = order
     ? Math.max(
         0,
@@ -315,7 +315,7 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                   {awaitingStartup
                     ? "页面正在准备中，请稍候；如长时间未显示二维码，请刷新页面或更换浏览器打开。"
                     : state.suspended
-                      ? "付款时间已到，请暂勿付款，正在为您确认订单状态。"
+                      ? "付款时间已到，正在为您确认订单状态。"
                       : copy.detail}
                 </CardDescription>
               )}
@@ -386,12 +386,12 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                           />
                         </div>
                         <p className="text-center text-sm text-muted-foreground" data-checkout-payment-instructions>
-                          <span className="sm:hidden">请保存二维码或截图，在支付宝“扫一扫”相册识别，严格按 {formattedAmount} 付款，切勿修改金额。</span>
+                          <span className="sm:hidden">保存或截图后用支付宝扫码，严格按 {formattedAmount} 付款，勿改金额。</span>
                           <span className="hidden sm:inline">请打开支付宝“扫一扫”，严格按 {formattedAmount} 付款，切勿修改金额。</span>
                         </p>
-                        {hasAmountAdjustment && (
-                          <p className="text-center text-xs text-muted-foreground" data-checkout-amount-hint>
-                            为自动确认收款，金额已加价微调，请务必按 {formattedAmount} 付款。
+                        {adjustmentCents > 0 && (
+                          <p className="hidden text-center text-xs text-muted-foreground sm:block" data-checkout-amount-hint>
+                            为自动核对付款，金额已微调 +{checkoutMoney(adjustmentCents)}，无需改回原价。
                           </p>
                         )}
                         <div className="flex flex-wrap justify-center gap-2">
@@ -505,6 +505,11 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                       </dd>
                     </div>
                   </dl>
+                  {canPay && adjustmentCents > 0 && (
+                    <p className="text-xs text-muted-foreground sm:hidden" data-checkout-amount-hint-mobile>
+                      金额说明：原价 {checkoutMoney(order.requested_amount_cents)}，已微调 +{checkoutMoney(adjustmentCents)} 用于自动核对付款，无需改回原价。
+                    </p>
+                  )}
                   {order.refund.status !== "NONE" && (
                     <Alert>
                       <AlertCircle />

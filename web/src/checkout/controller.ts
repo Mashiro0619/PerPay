@@ -232,11 +232,14 @@ export function createCheckoutController(initial: CheckoutInitial) {
       if (!current()) return;
       if (!response.ok) {
         if (state.busy || manualTracking) {
+          const hasOrder = !!state.order;
           manualTracking = false;
           manualDeadline = 0;
           emit({
             busy: false,
-            feedback: "本次查询未完成，页面会自动继续刷新，请勿重复付款。",
+            feedback: hasOrder
+              ? "本次查询未完成，页面会继续自动刷新，请勿重复付款。"
+              : "暂时无法获取订单，页面会继续自动刷新。",
           });
         }
         if (response.status === 404) {
@@ -348,11 +351,14 @@ export function createCheckoutController(initial: CheckoutInitial) {
         return;
       failures++;
       if (state.busy || manualTracking) {
+        const hasOrder = !!state.order;
         manualTracking = false;
         manualDeadline = 0;
         emit({
           busy: false,
-          feedback: "查询暂时失败，页面会自动继续刷新，请勿重复付款。",
+          feedback: hasOrder
+            ? "查询暂时失败，页面会继续自动刷新，请勿重复付款。"
+            : "暂时无法获取订单，页面会继续自动刷新。",
         });
       }
       emit({
