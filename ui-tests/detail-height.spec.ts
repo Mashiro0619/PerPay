@@ -242,3 +242,36 @@ test("short content keeps its natural height instead of filling the desktop limi
   await expect(dialog).toHaveCount(0);
   await info.attach("geometry", { body: Buffer.from(JSON.stringify(geometry, null, 2)), contentType: "application/json" });
 });
+
+test("a short step inside a tall drawer pins its flush transparent footer to the bottom edge", async ({ page, fixture }, info) => {
+  await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
+  await page.addInitScript(() => localStorage.setItem("perpay:theme", "dark"));
+  for (const size of [{ width: 1440, height: 900 }, { width: 390, height: 844 }] as const) {
+    await page.setViewportSize(size);
+    await page.goto(fixture.origin + "/admin/orders/" + fixture.orderId);
+    const drawer = page.locator('[data-overlay-content][data-overlay-presentation="drawer"]');
+    await drawer.locator("[data-overlay-footer] [data-record-primary-actions]").getByRole("button", { name: "人工关联收款", exact: true }).click();
+    const manual = page.getByRole("dialog", { name: "人工关联收款", exact: true });
+    await expect(manual.getByRole("button", { name: "取消", exact: true })).toBeVisible();
+    const geometry = await drawer.evaluate(shell => {
+      const footer = shell.querySelector<HTMLElement>('[data-overlay-step] [data-slot="dialog-footer"]')!;
+      const shellBox = shell.getBoundingClientRect();
+      const footerBox = footer.getBoundingClientRect();
+      const style = getComputedStyle(footer);
+      return {
+        shell: { left: shellBox.left, right: shellBox.right, bottom: shellBox.bottom, height: shellBox.height },
+        footer: { left: footerBox.left, right: footerBox.right, bottom: footerBox.bottom, height: footerBox.height },
+        background: style.backgroundColor,
+        radius: style.borderBottomLeftRadius,
+      };
+    });
+    expect(Math.abs(geometry.footer.bottom - geometry.shell.bottom), "step footer sits flush at the drawer bottom").toBeLessThanOrEqual(1);
+    expect(Math.abs(geometry.footer.left - geometry.shell.left), "step footer spans to the drawer left edge").toBeLessThanOrEqual(1);
+    expect(Math.abs(geometry.footer.right - geometry.shell.right), "step footer spans to the drawer right edge").toBeLessThanOrEqual(1);
+    expect(geometry.radius, "step footer has no floating rounded corners").toBe("0px");
+    expect(geometry.background, "step footer blends transparently with the drawer").toBe("rgba(0, 0, 0, 0)");
+    await screenshot(page, info, `manual-step-drawer-footer-${size.width}`);
+    await manual.getByRole("button", { name: "取消", exact: true }).click();
+    await expect(manual).toHaveCount(0);
+  }
+});
