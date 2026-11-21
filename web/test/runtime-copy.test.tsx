@@ -31,7 +31,7 @@ describe("runtime failure explanations", () => {
   });
 
   it.each([
-    [{ recovery_required: true }, "上次备份中断，等待任务恢复"],
+    [{ recovery_required: true }, "检测到上次备份或维护意外中断"],
     [{ clock_moved_backwards: true }, "系统时钟发生回退"],
     [{ instance_matches: false }, "备份与当前实例不匹配"],
     [{ backup_required: true }, "当前数据需要重新备份"],

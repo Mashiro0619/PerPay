@@ -128,9 +128,9 @@ describe("reminder restore list continuity", () => {
     expect(view.writes).toHaveLength(1);
     expect(first.signal.aborted).toBe(true);
     expect(
-      within(row(1)).getByRole("button", { name: "恢复提醒" }),
+      within(row(1)).getByRole("button", { name: "重试恢复" }),
     ).toBeEnabled();
-    fireEvent.click(within(row(1)).getByRole("button", { name: "恢复提醒" }));
+    fireEvent.click(within(row(1)).getByRole("button", { name: "重试恢复" }));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(100);
     });
@@ -309,16 +309,16 @@ describe("reminder restore list continuity", () => {
     await screen.findByText("流水-3");
     await user.click(within(row(2)).getByRole("button", { name: "恢复提醒" }));
     await within(row(2)).findByRole("button", { name: "错误说明" });
-    expect(within(row(2)).getByRole("button", { name: "恢复提醒" })).toBeEnabled();
+    expect(within(row(2)).getByRole("button", { name: "重试恢复" })).toBeEnabled();
     await user.click(within(row(1)).getByRole("button", { name: "恢复提醒" }));
     await waitFor(() =>
       expect(screen.queryByText("流水-1")).not.toBeInTheDocument(),
     );
     expect(
-      within(row(2)).getByRole("button", { name: "恢复提醒" }),
+      within(row(2)).getByRole("button", { name: "重试恢复" }),
     ).toBeEnabled();
     removed.add(makeItem(2).resource_id);
-    await user.click(within(row(2)).getByRole("button", { name: "恢复提醒" }));
+    await user.click(within(row(2)).getByRole("button", { name: "重试恢复" }));
     await waitFor(() =>
       expect(screen.queryByText("流水-2")).not.toBeInTheDocument(),
     );
@@ -682,11 +682,11 @@ describe("reminder restore list continuity", () => {
     await screen.findByText("流水-1");
     await user.click(within(row(1)).getByRole("button", { name: "恢复提醒" }));
     await within(row(1)).findByRole("button", { name: "错误说明" });
-    expect(within(row(1)).getByRole("button", { name: "恢复提醒" })).toBeEnabled();
+    expect(within(row(1)).getByRole("button", { name: "重试恢复" })).toBeEnabled();
     const unload = new Event("beforeunload", { cancelable: true });
     window.dispatchEvent(unload);
     expect(unload.defaultPrevented).toBe(false);
-    await user.click(within(row(1)).getByRole("button", { name: "恢复提醒" }));
+    await user.click(within(row(1)).getByRole("button", { name: "重试恢复" }));
     await screen.findByText("本次提醒恢复已完成。");
     expect(await view.writes[1]!.json()).toEqual(await view.writes[0]!.json());
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
@@ -697,7 +697,7 @@ describe("reminder restore list continuity", () => {
     await screen.findByText("流水-1");
     await user.click(within(row(1)).getByRole("button", { name: "恢复提醒" }));
     await within(row(1)).findByRole("button", { name: "错误说明" });
-    expect(within(row(1)).getByRole("button", { name: "恢复提醒" })).toBeEnabled();
+    expect(within(row(1)).getByRole("button", { name: "重试恢复" })).toBeEnabled();
     expect(screen.queryByText("本次提醒恢复已完成。")).not.toBeInTheDocument();
     expect(view.writes).toHaveLength(1);
   });
@@ -718,7 +718,7 @@ describe("reminder restore list continuity", () => {
         within(row(1)).getByRole("button", { name: "恢复提醒" }),
       );
       await within(row(1)).findByRole("button", { name: "错误说明" });
-    expect(within(row(1)).getByRole("button", { name: "恢复提醒" })).toBeEnabled();
+    expect(within(row(1)).getByRole("button", { name: "重试恢复" })).toBeEnabled();
       expect(view.writes).toHaveLength(1);
       await act(async () => {
         onlineManager.setOnline(true);
@@ -843,7 +843,7 @@ describe("reminder restore list continuity", () => {
     await screen.findByText("本次提醒恢复已完成。");
     await user.click(within(row(2)).getByRole("button", { name: "恢复提醒" }));
     await within(row(2)).findByRole("button", { name: "错误说明" });
-    expect(within(row(2)).getByRole("button", { name: "恢复提醒" })).toBeEnabled();
+    expect(within(row(2)).getByRole("button", { name: "重试恢复" })).toBeEnabled();
     expect(screen.queryByText("本次提醒恢复已完成。")).not.toBeInTheDocument();
     expect(view.writes).toHaveLength(2);
   });
@@ -857,7 +857,7 @@ describe("reminder restore list continuity", () => {
     await screen.findByText("流水-1");
     await user.click(within(row(1)).getByRole("button", { name: "恢复提醒" }));
     await within(row(1)).findByRole("button", { name: "错误说明" });
-    expect(within(row(1)).getByRole("button", { name: "恢复提醒" })).toBeEnabled();
+    expect(within(row(1)).getByRole("button", { name: "重试恢复" })).toBeEnabled();
     expect(within(row(1)).queryByRole("alert")).not.toBeInTheDocument();
     const details = within(row(1)).getByRole("button", { name: "错误说明" });
     await user.click(details);

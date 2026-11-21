@@ -265,8 +265,8 @@ describe("shared runtime presentation", () => {
     expect(presentSystemStatus(data).runtimeWarning).toBe(true);
   });
   it.each([
-    ["recovery_required", /实例需要恢复/],
-    ["configuration_mismatch", /备份配置与运行状态不一致/],
+    ["recovery_required", /检测到上次备份或维护意外中断/],
+    ["configuration_mismatch", /已保存的备份策略与当前运行配置不一致/],
     ["clock_moved_backwards", /系统时钟发生回退/],
   ] as const)("shows %s directly even when scheduled backups are disabled", async (flag, message) => {
     const data = ready();

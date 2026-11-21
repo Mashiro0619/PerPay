@@ -518,7 +518,12 @@ describe("operation dialog layout", () => {
         "overflow-hidden",
         "max-h-[calc(100dvh-2rem)]",
       );
-      expect(body).toHaveClass("min-h-0", "w-auto", "overflow-y-auto", "pb-1");
+      expect(body).toHaveClass(
+        "min-h-0",
+        "w-auto",
+        "overflow-y-auto",
+        kind === "financial" ? "pb-4" : "pb-1",
+      );
       expect(body).toContainElement(evidence);
       const reason = screen.getByLabelText(
         kind === "financial" ? "操作理由（可选）" : "操作理由",

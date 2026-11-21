@@ -80,7 +80,7 @@ it.each([
 it("labels the unfiltered maximum as a success from any account", async () => {
   const view = mount("/reconciliation");
   await waitFor(() => expect(view.freshness().querySelector("time")).toHaveAttribute("datetime", freshTime));
-  expect(view.freshness()).toHaveTextContent("（任一账号）");
+  expect(view.freshness()).toHaveTextContent("（多账号取最新）");
 });
 
 it("takes the detail record account even when its URL carries another account filter", async () => {
