@@ -7,6 +7,7 @@ import { siteChoiceLabel } from "@/lib/site-choice-label";
 import { Link } from "@/navigation";
 import { BusinessTable, type BusinessColumn } from "@/components/business-table";
 import { ListIdentity, ListSummary, ListSummaryField } from "@/components/list-primitives";
+import { OverlayRecordList } from "@/components/overlay-record-list";
 import { ErrorNotice } from "@/components/request-state";
 import { Empty, EmptyHeader, EmptyTitle } from "@/components/admin-empty";
 import { Badge } from "@/components/ui/badge";
@@ -62,6 +63,14 @@ export function SiteManagementCards() {
           <Link to="/sites/new" className={buttonVariants({ size: "sm" })}>创建业务网站</Link>
         </div>
       </div>
+      <OverlayRecordList
+        items={sites.map(site => "/sites/" + encodeURIComponent(site.client_id) + "/summary?range=" + range)}
+        hasNext={query.hasNextPage}
+        pending={pending || query.isFetchingNextPage}
+        failed={query.isFetchNextPageError}
+        pageKey={String(sites.length)}
+        onNextPage={loadMore}
+      >
       {pending ? <div role="status" aria-label="正在读取网站经营概况…" className="flex flex-col gap-3">
         {[0, 1, 2].map(row => <Skeleton key={row} className="h-10 w-full" />)}
       </div> : query.data === undefined ? <ErrorNotice scope="page" error={query.error} retry={refresh} /> : <>
@@ -79,6 +88,7 @@ export function SiteManagementCards() {
           {query.isFetchingNextPage && <Spinner data-icon="inline-start" aria-hidden="true" />}{query.isFetchingNextPage ? "正在加载更多网站…" : "加载更多网站"}
         </Button>}
       </>}
+      </OverlayRecordList>
     </section>
   );
 }

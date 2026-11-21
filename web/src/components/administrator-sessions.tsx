@@ -5,6 +5,7 @@ import { LogOut, MoreHorizontal } from "lucide-react";
 import { Link } from "@/navigation";
 import { BusinessTable, type BusinessColumn } from "@/components/business-table";
 import { OverlaySummary } from "@/components/overlay-actions";
+import { OverlayRecordList } from "@/components/overlay-record-list";
 import { useOverlayCloseGuard } from "@/lib/overlay-context";
 import { api, result, type AdminLoginSession } from "@/api/client";
 import { useSession } from "@/auth";
@@ -200,7 +201,9 @@ export function AdministratorSessions({ detailSessionId }: { detailSessionId?: s
           <ErrorNotice scope="page" error={sessions.error} retry={() => { void sessions.refetch(); }} />
           {sessions.isPending ? <Loading label="正在读取登录会话…" /> : sessions.data && (
             rows.length ? (
-              <BusinessTable id="administrator-sessions" items={rows} columns={columns} rowId={row => row.session_id} density="compact" columnsMenu={false} aria-label="登录会话列表" />
+              <OverlayRecordList items={rows.map(row => "/settings/security/sessions/" + encodeURIComponent(row.session_id))}>
+                <BusinessTable id="administrator-sessions" items={rows} columns={columns} rowId={row => row.session_id} density="compact" columnsMenu={false} aria-label="登录会话列表" />
+              </OverlayRecordList>
             ) : (
               <Empty><EmptyHeader><EmptyTitle>没有可显示的登录会话</EmptyTitle><EmptyDescription>刷新后查看当前有效的登录会话。</EmptyDescription></EmptyHeader></Empty>
             )

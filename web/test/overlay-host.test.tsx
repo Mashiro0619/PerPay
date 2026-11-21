@@ -14,6 +14,7 @@ import { RequestNoticeProvider } from "../src/lib/request-notices";
 import { RequestNoticeBanner } from "../src/components/request-notice-banner";
 import { ErrorNotice } from "../src/components/request-state";
 import { LegacyOverlayRedirect, OverlayHost, OverlayProvider } from "../src/components/overlay-host";
+import { OverlayRecordList } from "../src/components/overlay-record-list";
 import { OverlayActions, OverlaySummary } from "../src/components/overlay-actions";
 import { PageHeading } from "../src/components/page-heading";
 import { PageHeaderActions, PageHeaderActionsProvider, PageHeaderActionsSlot } from "../src/components/page-header-actions";
@@ -38,11 +39,13 @@ function ListPage() {
     <input aria-label="父页面草稿" value={draft} onChange={event => setDraft(event.target.value)} />
     <output data-testid="parent-location">{location.pathname + location.search}</output>
     <output data-testid="parent-page">{pagination.page}</output>
-    <div role="list">
-      <Link id="open-record" data-row-link to="/orders/order-1">打开记录</Link>
-      <Link id="open-second-record" data-row-link to="/orders/order-2">打开另一条记录</Link>
-      <Link id="open-third-record" data-row-link to="/orders/order-3">打开第三条记录</Link>
-    </div>
+    <OverlayRecordList items={["/orders/order-1", "/orders/order-2", "/orders/order-3"]}>
+      <div role="list">
+        <Link id="open-record" data-row-link to="/orders/order-1">打开记录</Link>
+        <Link id="open-second-record" data-row-link to="/orders/order-2">打开另一条记录</Link>
+        <Link id="open-third-record" data-row-link to="/orders/order-3">打开第三条记录</Link>
+      </div>
+    </OverlayRecordList>
     <Link replace to="/orders/order-1">替换打开记录</Link>
     <Link to="/orders/order-1" target="_blank">新标签查看记录</Link>
     <Link to="/sites/shop/orders/order-1">查看本站记录</Link>
@@ -697,5 +700,156 @@ describe("one routed detail surface", () => {
     await user.click(within(dialog).getByRole("button", { name: "返回上一步" }));
     await screen.findByRole("dialog", { name: "记录 order-2" });
     expect(offsets()).toEqual([0, 0, 0]);
+  });
+
+  it("steps across paginated list pages, preserves pagination on close, and guards drafts before turning the page", async () => {
+    const pages: Record<string, { items: string[]; next: string | null }> = {
+      "": { items: ["order-1", "order-2"], next: "c2" },
+      c2: { items: ["order-3"], next: null },
+    };
+    let holdNextPage: (() => void) | null = null;
+    let shouldHold = false;
+    function PagedOrders() {
+      const pagination = useCursor();
+      const cursor = pagination.cursor ?? "";
+      const [loadedCursor, setLoadedCursor] = useState(cursor);
+      const pending = loadedCursor !== cursor;
+      useEffect(() => {
+        if (!pending) return;
+        if (shouldHold) {
+          holdNextPage = () => { holdNextPage = null; setLoadedCursor(cursor); };
+          return;
+        }
+        setLoadedCursor(cursor);
+      }, [cursor, pending]);
+      const data = pending ? undefined : pages[loadedCursor];
+      const items = data?.items ?? [];
+      return <main id="main-content" tabIndex={-1}>
+        <output data-testid="paged-page">{pagination.page}</output>
+        <output data-testid="paged-prev-label">{pagination.previousLabel}</output>
+        <button type="button" disabled={pagination.page <= 1} onClick={pagination.previous}>列表上一页</button>
+        <OverlayRecordList
+          items={items.map(id => "/orders/" + id)}
+          hasPrevious={pagination.canStepPrevious}
+          hasNext={!!data?.next}
+          pending={pending}
+          pageKey={pagination.pageKey}
+          onPreviousPage={pagination.replacePrevious}
+          onNextPage={() => pagination.replaceNext(data?.next)}
+        >
+          {pending ? <div role="status">加载中…</div> : <div role="list">
+            {items.map(id => <Link key={id} id={"row-" + id} data-row-link to={"/orders/" + id}>{"订单 " + id}</Link>)}
+          </div>}
+        </OverlayRecordList>
+      </main>;
+    }
+    const router = createMemoryRouter([{ element: <RequestNoticeProvider><PageHeaderActionsProvider><DraftProvider><OverlayProvider><Outlet /><OverlayHost routes={detailRoutes} /></OverlayProvider></DraftProvider></PageHeaderActionsProvider></RequestNoticeProvider>, children: [
+      { path: "/orders", element: <PagedOrders /> },
+    ] }], { initialEntries: ["/orders"] });
+    render(<QueryClientProvider client={queryClient}><RouterProvider router={router} /></QueryClientProvider>);
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole("link", { name: "订单 order-2" }));
+    const dialog = await screen.findByRole("dialog", { name: "记录 order-2" });
+    const prev = () => within(dialog).getByRole("button", { name: "上一条" });
+    const next = () => within(dialog).getByRole("button", { name: "下一条" });
+    expect(prev()).toBeEnabled();
+    expect(next()).toBeEnabled();
+
+    // A dirty draft cancels cross-page stepping before the background page turns.
+    await user.type(within(dialog).getByLabelText("详情草稿"), "草稿");
+    await user.click(next());
+    const confirm = await screen.findByRole("alertdialog", { name: "放弃未保存的修改？" });
+    await user.click(within(confirm).getByRole("button", { name: "继续编辑" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+    expect(screen.getByTestId("paged-page")).toHaveTextContent("1");
+    expect(screen.getByRole("dialog", { name: "记录 order-2" })).toBeVisible();
+
+    // Proceeding turns the page once without prompting a second time, waits while page 2 loads,
+    // then lands on page 2's only item with "上一条" enabled and "下一条" disabled.
+    shouldHold = true;
+    await user.click(next());
+    const discard = await screen.findByRole("alertdialog", { name: "放弃未保存的修改？" });
+    await user.click(within(discard).getByRole("button", { name: "放弃修改并继续" }));
+    await waitFor(() => expect(screen.getByTestId("paged-page")).toHaveTextContent("2"));
+    expect(prev()).toBeDisabled();
+    expect(next()).toBeDisabled();
+    expect(holdNextPage).not.toBeNull();
+    act(() => { holdNextPage?.(); });
+    shouldHold = false;
+    await screen.findByRole("dialog", { name: "记录 order-3" });
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "订单 order-3", hidden: true })).toHaveAttribute("data-record-state", "open");
+    await waitFor(() => expect(next()).toBeDisabled());
+    expect(prev()).toBeEnabled();
+    expect(dialog.querySelector("[data-overlay-heading]")).toHaveFocus();
+
+    // Stepping back crosses from page 2's first item to page 1's last item.
+    await user.click(prev());
+    await screen.findByRole("dialog", { name: "记录 order-2" });
+    expect(screen.getByTestId("paged-page")).toHaveTextContent("1");
+    expect(screen.getByRole("link", { name: "订单 order-2", hidden: true })).toHaveAttribute("data-record-state", "open");
+    expect(prev()).toHaveFocus();
+
+    // Cross forward to page 2 again and close: stays on page 2, focuses landed row, and preserves "上一页".
+    await user.click(next());
+    await screen.findByRole("dialog", { name: "记录 order-3" });
+    await user.click(within(dialog).getByRole("button", { name: "完成查看" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(screen.getByTestId("paged-page")).toHaveTextContent("2");
+    expect(screen.getByTestId("paged-prev-label")).toHaveTextContent("上一页");
+    const row3 = screen.getByRole("link", { name: "订单 order-3" });
+    expect(row3).toHaveAttribute("data-record-state", "recent");
+    await waitFor(() => expect(row3).toHaveFocus());
+    await user.click(screen.getByRole("button", { name: "列表上一页" }));
+    expect(screen.getByTestId("paged-page")).toHaveTextContent("1");
+  });
+
+  it("recovers cleanly when the next page fails to load and respects which list opened a shared record", async () => {
+    function DualAndFailingPage() {
+      const pagination = useCursor();
+      const failed = pagination.cursor === "bad";
+      const items = failed ? [] : ["order-1", "order-shared"];
+      return <main id="main-content" tabIndex={-1}>
+        <OverlayRecordList
+          items={items.map(id => "/orders/" + id)}
+          hasNext={!failed}
+          failed={failed}
+          pageKey={pagination.pageKey}
+          onNextPage={() => pagination.replaceNext("bad")}
+        >
+          <section aria-label="列表一">
+            {items.map(id => <Link key={"a-" + id} data-row-link to={"/orders/" + id}>{"列表一 " + id}</Link>)}
+          </section>
+        </OverlayRecordList>
+        <OverlayRecordList items={["/orders/order-shared", "/orders/order-9"]}>
+          <section aria-label="列表二">
+            <Link data-row-link to="/orders/order-shared">列表二 order-shared</Link>
+            <Link data-row-link to="/orders/order-9">列表二 order-9</Link>
+          </section>
+        </OverlayRecordList>
+      </main>;
+    }
+    const router = createMemoryRouter([{ element: <RequestNoticeProvider><PageHeaderActionsProvider><DraftProvider><OverlayProvider><Outlet /><OverlayHost routes={detailRoutes} /></OverlayProvider></DraftProvider></PageHeaderActionsProvider></RequestNoticeProvider>, children: [
+      { path: "/orders", element: <DualAndFailingPage /> },
+    ] }], { initialEntries: ["/orders"] });
+    render(<QueryClientProvider client={queryClient}><RouterProvider router={router} /></QueryClientProvider>);
+    const user = userEvent.setup();
+
+    // Opening the shared record from list 2 steps through list 2 (to order-9), not list 1.
+    await user.click(screen.getByRole("link", { name: "列表二 order-shared" }));
+    const dialog = await screen.findByRole("dialog", { name: "记录 order-shared" });
+    expect(within(dialog).getByRole("button", { name: "上一条" })).toBeDisabled();
+    await user.click(within(dialog).getByRole("button", { name: "下一条" }));
+    await screen.findByRole("dialog", { name: "记录 order-9" });
+    await user.click(within(dialog).getByRole("button", { name: "完成查看" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+
+    // Opening the shared record from list 1 and stepping into a failed next page cancels pending state cleanly.
+    await user.click(screen.getByRole("link", { name: "列表一 order-shared" }));
+    const dialog2 = await screen.findByRole("dialog", { name: "记录 order-shared" });
+    await user.click(within(dialog2).getByRole("button", { name: "下一条" }));
+    await waitFor(() => expect(within(dialog2).queryByRole("button", { name: "下一条" })).not.toBeInTheDocument());
+    expect(screen.getByRole("dialog", { name: "记录 order-shared" })).toBeVisible();
   });
 });

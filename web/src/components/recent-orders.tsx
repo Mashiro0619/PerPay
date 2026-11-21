@@ -4,6 +4,7 @@ import { useWorkspace } from "@/workspace";
 import { useListSize } from "@/hooks/use-list-size";
 import { BusinessTable, type BusinessColumn } from "@/components/business-table";
 import { OrderStatusBadge, StatusBadge } from "@/components/business-status";
+import { OverlayRecordList } from "@/components/overlay-record-list";
 import {
   ListDateTime,
   ListIdentity,
@@ -212,18 +213,20 @@ export function RecentOrders({ orders }: { orders: readonly AdminOrderSummary[] 
 
   return (
     <div ref={ref} className="overview-orders">
-      <BusinessTable
-        id="overview-recent-orders"
-        aria-label="最近订单"
-        items={[...orders]}
-        columns={columns}
-        rowId={(order) => order.order_id}
-        density="compact"
-        embedded
-        columnsMenu={false}
-        tableClassName="overview-orders-table"
-        renderSummary={order => <RecentOrderSummary order={order} showSite={!clientId} />}
-      />
+      <OverlayRecordList items={orders.map(order => "/orders/" + order.order_id)}>
+        <BusinessTable
+          id="overview-recent-orders"
+          aria-label="最近订单"
+          items={[...orders]}
+          columns={columns}
+          rowId={(order) => order.order_id}
+          density="compact"
+          embedded
+          columnsMenu={false}
+          tableClassName="overview-orders-table"
+          renderSummary={order => <RecentOrderSummary order={order} showSite={!clientId} />}
+        />
+      </OverlayRecordList>
     </div>
   );
 }

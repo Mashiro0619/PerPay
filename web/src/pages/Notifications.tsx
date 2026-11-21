@@ -32,6 +32,7 @@ import { StatusBadge } from "@/components/business-status";
 import { QueryView } from "@/components/request-state";
 import { notificationStatus, notificationsQuery } from "@/api/workspace-queries";
 import { CursorPagination } from "@/components/cursor-pagination";
+import { OverlayRecordList } from "@/components/overlay-record-list";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Select,
@@ -315,6 +316,16 @@ function DeliveryPage({
         ]}
       />
       </ListToolbarPart>
+      <OverlayRecordList
+        items={(deliveries.data?.data ?? []).map((delivery) => "/notifications/" + delivery.delivery_id)}
+        hasPrevious={pagination.canStepPrevious}
+        hasNext={!!deliveries.data?.page.next_cursor}
+        pending={deliveries.isPending || deliveries.isPlaceholderData}
+        failed={!deliveries.isPending && deliveries.data === undefined && !!deliveries.error}
+        pageKey={pagination.pageKey}
+        onPreviousPage={pagination.replacePrevious}
+        onNextPage={() => pagination.replaceNext(deliveries.data?.page.next_cursor)}
+      >
       <QueryView query={deliveries}>
         {(page) => (
           <>
@@ -378,6 +389,7 @@ function DeliveryPage({
           </>
         )}
       </QueryView>
+      </OverlayRecordList>
     </ListLayout>
     </ListColumnsProvider>
   );

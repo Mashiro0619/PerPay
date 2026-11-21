@@ -4,7 +4,7 @@ import { createContext, createElement, useCallback, useContext, useLayoutEffect,
 import { Link as RouterLink, NavLink as RouterNavLink, parsePath, useLocation, useNavigate as useRouterNavigate, type LinkProps, type NavLinkProps, type NavigateFunction, type NavigateOptions, type To } from "react-router";
 
 import { useReducedMotion } from "./lib/motion";
-import { useOptionalOverlayNavigation } from "./lib/overlay-context";
+import { OverlayRecordListScopeContext, useOptionalOverlayNavigation, type OverlayRecordListScope } from "./lib/overlay-context";
 import { parseOverlayTarget, withOverlayTarget } from "./lib/overlay-navigation";
 
 export const NavigationContext = createContext<(() => void) | null>(null);
@@ -53,8 +53,9 @@ function detailDestination(to: To, location: ReturnType<typeof useLocation>) {
     : parseOverlayTarget(to);
 }
 
-export function Link({ viewTransition = true, global = false, preserveSelectedSite = true, ...props }: LinkProps & NavigationOptions & { ref?: Ref<HTMLAnchorElement> }) {
+export function Link({ viewTransition = true, global = false, preserveSelectedSite = true, ref: forwardedRef, ...props }: LinkProps & NavigationOptions & { ref?: Ref<HTMLAnchorElement> }) {
   const overlay = useOptionalOverlayNavigation();
+  const recordList = useContext(OverlayRecordListScopeContext);
   const enabled = useRouteMotion();
   const location = useLocation();
   const navigate = useRouterNavigate();
@@ -67,14 +68,43 @@ export function Link({ viewTransition = true, global = false, preserveSelectedSi
   const href = overlay && detailTarget ? withOverlayTarget(overlay.background, detailTarget) : to;
   const motion = viewTransition && enabled && destinationAllowsMotion(props.to) && !selectionOnlyNavigation(to, location);
   const record = detailTarget && overlay?.record?.pathname === detailTarget.pathname ? overlay.record.open ? "open" : "recent" : undefined;
-  return createElement(RouterLink, { ...props, ...navigationFeedback(to), ...(record ? { "data-record-state": record } : null), to: href,
+  const isRowLink = "data-row-link" in props && props["data-row-link"] !== false && props["data-row-link"] !== undefined;
+  const targetPathname = isRowLink && detailTarget ? detailTarget.pathname : null;
+  const registered = useRef<{ list: OverlayRecordListScope; pathname: string; element: HTMLAnchorElement } | null>(null);
+  const anchorNode = useRef<HTMLAnchorElement | null>(null);
+  const bindRef = useCallback((node: HTMLAnchorElement | null) => {
+    anchorNode.current = node;
+    if (registered.current) {
+      registered.current.list.registerRowElement(registered.current.pathname, null, registered.current.element);
+      registered.current = null;
+    }
+    if (node && recordList && targetPathname) {
+      recordList.registerRowElement(targetPathname, node);
+      registered.current = { list: recordList, pathname: targetPathname, element: node };
+    }
+    if (typeof forwardedRef === "function") forwardedRef(node);
+    else if (forwardedRef) forwardedRef.current = node;
+  }, [forwardedRef, recordList, targetPathname]);
+  useLayoutEffect(() => {
+    const node = anchorNode.current;
+    if (registered.current && (registered.current.list !== recordList || registered.current.pathname !== targetPathname)) {
+      registered.current.list.registerRowElement(registered.current.pathname, null, registered.current.element);
+      registered.current = null;
+    }
+    if (node && recordList && targetPathname && !registered.current) {
+      recordList.registerRowElement(targetPathname, node);
+      registered.current = { list: recordList, pathname: targetPathname, element: node };
+    }
+  }, [recordList, targetPathname]);
+  return createElement(RouterLink, { ...props, ref: bindRef, ...navigationFeedback(to), ...(record ? { "data-record-state": record } : null), to: href,
     state: props.state !== undefined ? props.state : detailNavigationState(to, location), viewTransition: motion,
     onClick(event) {
       props.onClick?.(event);
       if (overlay && detailTarget && !event.defaultPrevented && event.button === 0 && !event.metaKey && !event.altKey && !event.ctrlKey && !event.shiftKey &&
         !props.reloadDocument && !props.download && (!props.target || props.target === "_self")) {
         event.preventDefault();
-        overlay.open(detailTarget, { trigger: event.currentTarget, ...(props.replace !== undefined ? { replace: props.replace } : {}),
+        overlay.open(detailTarget, { trigger: event.currentTarget, ...(isRowLink && recordList ? { listId: recordList.listId } : {}),
+          ...(props.replace !== undefined ? { replace: props.replace } : {}),
           state: props.state !== undefined ? props.state : detailNavigationState(to, location, true) });
         return;
       }

@@ -23,9 +23,11 @@ import {
 } from "@/lib/reminder-restore-requests";
 import { restoreMessages, type RestoreOutcome } from "@/lib/reminder-restore";
 import { useCursor } from "@/lib/cursor";
+import { workItemHref } from "@/lib/labels";
 import { WorkItemsTable } from "@/components/work-items-table";
 import { ErrorNotice, QueryView } from "@/components/request-state";
 import { CursorPagination } from "@/components/cursor-pagination";
+import { OverlayRecordList } from "@/components/overlay-record-list";
 import { useSuccessToast } from "@/components/Feedback";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -531,6 +533,16 @@ function WorkItemPage({
           {restores.pendingCount} 条提醒正在恢复…
         </p>
       )}
+      <OverlayRecordList
+        items={(work.data?.data ?? []).map(workItemHref)}
+        hasPrevious={pagination.canStepPrevious}
+        hasNext={!!work.data?.page.next_cursor}
+        pending={work.isPending || work.isPlaceholderData || busy}
+        failed={!work.isPending && work.data === undefined && !!work.error}
+        pageKey={pagination.pageKey}
+        onPreviousPage={pagination.replacePrevious}
+        onNextPage={() => pagination.replaceNext(work.data?.page.next_cursor)}
+      >
       <QueryView query={work}>
         {(page) => (
           <>
@@ -580,6 +592,7 @@ function WorkItemPage({
           </>
         )}
       </QueryView>
+      </OverlayRecordList>
     </div>
     </ListColumnsProvider>
   );

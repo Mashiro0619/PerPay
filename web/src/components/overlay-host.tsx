@@ -1,11 +1,13 @@
 import { Component, Suspense, createContext, lazy, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Navigate, Route, Routes, UNSAFE_NavigationContext, UNSAFE_RouteContext, createPath, useLocation, useNavigate, useParams, type Location, type NavigateOptions, type Navigator, type Path, type To } from "react-router";
 import { ArrowLeft, ChevronDown, ChevronUp, XIcon } from "lucide-react";
-import { OverlayActionsContext, OverlayCloseGuardContext, OverlayContext, OverlayNavigationContext, OverlayNestedModalContext, OverlayStepsContext, OverlaySummaryContext, type OverlayNavigation, type OverlaySize } from "@/lib/overlay-context";
-import { OVERLAY_HISTORY_KEY, OVERLAY_PARAMETER, isRecordDetailRoute, legacyOverlayLocation, overlayBackground, overlayRoute, overlayRouteDefinitions, parseOverlayTarget, readOverlayHistory, readOverlayTarget, stateRecord, withOverlayTarget, type OverlayHistory, type OverlayRouteKind } from "@/lib/overlay-navigation";
+import { OverlayActionsContext, OverlayCloseGuardContext, OverlayContext, OverlayNavigationContext, OverlayNestedModalContext, OverlayRecordListRegistryContext, OverlayStepsContext, OverlaySummaryContext, type OverlayNavigation, type OverlayRecordListEntry, type OverlayRecordListRegistry, type OverlaySize } from "@/lib/overlay-context";
+import { OVERLAY_HISTORY_KEY, OVERLAY_PARAMETER, isRecordDetailRoute, legacyOverlayLocation, overlayBackground, overlayOwner, overlayRoute, overlayRouteDefinitions, parseOverlayTarget, readOverlayHistory, readOverlayTarget, stateRecord, withOverlayTarget, type OverlayHistory, type OverlayRouteKind } from "@/lib/overlay-navigation";
+import { actualPageAddress } from "@/lib/navigation-selection";
 import { workspaceScope } from "@/lib/workspace-scope";
 import { ResourceWorkspaceProvider } from "@/workspace";
 import { useSession } from "@/auth";
+import { useDraftGuard } from "@/drafts";
 import { PageHeadingProvider, PageHeadingSlot, usePageHeading } from "@/components/page-heading";
 import { InlinePageHeaderActions, PageHeaderActionsProvider, PageHeaderActionsSlot } from "@/components/page-header-actions";
 import { Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle } from "@/components/admin-dialog";
@@ -18,60 +20,32 @@ import { cn } from "@/lib/utils";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { useToastFooterDock } from "@/lib/toast-layout";
 
-type RootPosition = { trigger: HTMLElement | null; triggerId: string | null; y: number; canReturn: boolean; stepped?: boolean };
-type RecordNeighbor = { to: Path; element: HTMLAnchorElement };
-type RecordNeighbors = { previous: RecordNeighbor | null; next: RecordNeighbor | null };
+type RootPosition = { trigger: HTMLElement | null; triggerId: string | null; y: number; canReturn: boolean; background: Path; stepped?: boolean };
+type PendingPageStep = { listId: string; direction: "previous" | "next"; fromPageKey: string; fromPathname: string };
 type InternalNavigation = OverlayNavigation & {
   readonly hasOverlay: boolean;
   readonly canGoBack: boolean;
+  readonly listVersion: number;
   navigateTarget(to: To, options?: NavigateOptions): void;
-  step(to: Path, trigger: HTMLAnchorElement | null): boolean;
+  step(to: Path, trigger: HTMLAnchorElement | null, listId?: string): boolean;
+  findRecordList(pathname: string): { id: string; list: OverlayRecordListEntry } | null;
+  getRecordList(id: string): OverlayRecordListEntry | null;
   blocked(): boolean;
   registerCloseGuard(id: string, check: (() => boolean) | null): void;
   restoreFocus(): HTMLElement | null;
 };
 const InternalOverlayContext = createContext<InternalNavigation | null>(null);
 
-function recordTargetFromLink(anchor: HTMLAnchorElement): Path | null {
-  const href = anchor.getAttribute("href");
-  if (!href) return null;
-  let url: URL;
-  try { url = new URL(href, window.location.origin); }
-  catch { return null; }
-  const target = readOverlayTarget(url.search) ?? parseOverlayTarget(url.pathname + url.search + url.hash);
-  if (!target || !isRecordDetailRoute(overlayRoute(target.pathname))) return null;
-  return target;
-}
-
-/** Finds the previous and next records in the background list that owns the open drawer. */
-function findRecordNeighbors(targetPathname: string): RecordNeighbors | null {
-  const root = document.querySelector("[data-admin-console]") ?? document;
-  const active = [...root.querySelectorAll<HTMLAnchorElement>('a[data-row-link][data-record-state="open"]')]
-    .find(anchor => !anchor.closest("[data-overlay-content]"));
-  if (!active) return null;
-  const container = active.closest('[data-business-table], [role="list"], table, section, main') ?? root;
-  const items: RecordNeighbor[] = [];
-  const seen = new Set<string>();
-  for (const anchor of container.querySelectorAll<HTMLAnchorElement>("a[data-row-link]")) {
-    if (anchor.closest("[data-overlay-content]") || anchor.closest("[hidden]")) continue;
-    const target = recordTargetFromLink(anchor);
-    if (!target || seen.has(target.pathname)) continue;
-    seen.add(target.pathname);
-    items.push({ to: target, element: anchor });
+function sameRecordListEntry(left: OverlayRecordListEntry | undefined, right: OverlayRecordListEntry | null) {
+  if (!left || !right) return !left && !right;
+  if (left.hasPrevious !== right.hasPrevious || left.hasNext !== right.hasNext ||
+    left.pending !== right.pending || left.failed !== right.failed ||
+    left.pageKey !== right.pageKey || left.items.length !== right.items.length) return false;
+  for (let index = 0; index < left.items.length; index++) {
+    const a = left.items[index]!, b = right.items[index]!;
+    if (a.pathname !== b.pathname || a.search !== b.search || a.hash !== b.hash) return false;
   }
-  const index = items.findIndex(item => item.to.pathname === targetPathname);
-  if (index < 0 || items.length < 2) return null;
-  return {
-    previous: index > 0 ? items[index - 1]! : null,
-    next: index < items.length - 1 ? items[index + 1]! : null,
-  };
-}
-
-function sameNeighbors(left: RecordNeighbors | null, right: RecordNeighbors | null) {
-  return left?.previous?.to.pathname === right?.previous?.to.pathname &&
-    left?.next?.to.pathname === right?.next?.to.pathname &&
-    left?.previous?.element === right?.previous?.element &&
-    left?.next?.element === right?.next?.element;
+  return true;
 }
 
 function sameBackground(left: Path, right: Path) {
@@ -92,6 +66,29 @@ export function OverlayProvider({ children }: { children: ReactNode }) {
   const history = readOverlayHistory(location.state);
   const lastOverlay = useRef<{ history: OverlayHistory | null; background: Path } | null>(null);
   if (hasOverlay) lastOverlay.current = { history, background };
+  const lists = useRef(new Map<string, OverlayRecordListEntry>());
+  const [listVersion, setListVersion] = useState(0);
+  const activeListId = useRef<string | null>(null);
+  const registerList = useCallback<OverlayRecordListRegistry["registerList"]>((id, entry) => {
+    const previous = lists.current.get(id);
+    if (entry) lists.current.set(id, entry);
+    else lists.current.delete(id);
+    if (!sameRecordListEntry(previous, entry)) setListVersion(version => version + 1);
+  }, []);
+  const findRecordList = useCallback((pathname: string) => {
+    if (activeListId.current) {
+      const preferred = lists.current.get(activeListId.current);
+      return preferred && preferred.items.some(item => item.pathname === pathname)
+        ? { id: activeListId.current, list: preferred }
+        : null;
+    }
+    for (const [id, list] of lists.current) {
+      if (list.items.some(item => item.pathname === pathname)) return { id, list };
+    }
+    return null;
+  }, []);
+  const getRecordList = useCallback((id: string) => lists.current.get(id) ?? null, []);
+  const registry = useMemo<OverlayRecordListRegistry>(() => ({ registerList }), [registerList]);
   // A list keeps showing which record it opened last, so the place is not lost between records.
   const lastRecord = useRef<{ page: string; pathname: string } | null>(null);
   // Stepping between sibling rows moves the list mark only after navigation commits (e.g. after draft guards).
@@ -109,16 +106,22 @@ export function OverlayProvider({ children }: { children: ReactNode }) {
   useLayoutEffect(() => {
     lastRecord.current = nextRecord;
     recordWasOpen.current = !!target;
-    if (!target) { pendingStep.current = null; return; }
+    if (!target) {
+      pendingStep.current = null;
+      activeListId.current = null;
+      return;
+    }
     if (!committedStep) return;
     pendingStep.current = null;
     const trigger = committedStep.trigger;
-    if (history && trigger?.isConnected) {
-      trigger.scrollIntoView?.({ block: "nearest" });
+    if (history) {
+      if (trigger?.isConnected) trigger.scrollIntoView?.({ block: "nearest" });
       const saved = positions.current.get(history.rootKey);
-      if (saved) positions.current.set(history.rootKey, { ...saved, trigger, triggerId: trigger.id || null, stepped: true });
+      positions.current.set(history.rootKey, saved
+        ? { ...saved, trigger: trigger ?? null, triggerId: trigger?.id || null, background, stepped: true }
+        : { trigger: trigger ?? null, triggerId: trigger?.id || null, y: history.scrollY, canReturn: false, background, stepped: true });
     }
-  }, [location.pathname, target?.pathname, history?.rootKey]);
+  }, [location.pathname, location.search, target?.pathname, history?.rootKey]);
   const closeGuards = useRef(new Map<string, () => boolean>());
   const pendingTrigger = useRef<HTMLElement | null>(null);
   const registerCloseGuard = useCallback((id: string, check: (() => boolean) | null) => {
@@ -140,7 +143,7 @@ export function OverlayProvider({ children }: { children: ReactNode }) {
         detailState: options.state !== undefined ? options.state : previous.detailState };
     } else {
       const trigger = pendingTrigger.current ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
-      const position = { trigger, triggerId: trigger?.id || null, y: Math.max(0, window.scrollY), canReturn: !options.replace };
+      const position = { trigger, triggerId: trigger?.id || null, y: Math.max(0, window.scrollY), canReturn: !options.replace, background };
       const rootKey = alreadyOpen ? "direct:" + location.key : location.key;
       if (!alreadyOpen) {
         positions.current.set(rootKey, position);
@@ -159,12 +162,14 @@ export function OverlayProvider({ children }: { children: ReactNode }) {
   const open = useCallback<OverlayNavigation["open"]>((to, options = {}) => {
     pendingStep.current = null;
     pendingTrigger.current = options.trigger ?? null;
+    if (!hasOverlay || options.listId !== undefined) activeListId.current = options.listId ?? null;
     navigateTarget(to, { ...(options.replace !== undefined ? { replace: options.replace } : {}),
       ...(options.state !== undefined ? { state: options.state } : {}) });
-  }, [navigateTarget]);
+  }, [hasOverlay, navigateTarget]);
 
-  const step = useCallback((to: Path, trigger: HTMLAnchorElement | null) => {
+  const step = useCallback((to: Path, trigger: HTMLAnchorElement | null, listId?: string) => {
     if (blocked()) return false;
+    if (listId !== undefined) activeListId.current = listId;
     pendingStep.current = { pathname: to.pathname, trigger };
     navigateTarget(to, { replace: true });
     return true;
@@ -175,10 +180,11 @@ export function OverlayProvider({ children }: { children: ReactNode }) {
     const history = readOverlayHistory(location.state);
     const background = overlayBackground(location);
     const root = history ? new URL(history.rootUrl, "https://perpay.invalid") : null;
-    if (history && positions.current.get(history.rootKey)?.canReturn && root && sameBackground(background, root)) {
+    const sameRoot = !!(root && sameBackground(background, root));
+    if (history && positions.current.get(history.rootKey)?.canReturn && sameRoot) {
       void navigate(-history.depth);
     } else {
-      const state = { ...stateRecord(history?.rootState ?? location.state) };
+      const state = { ...stateRecord(sameRoot ? (history?.rootState ?? location.state) : location.state) };
       delete state[OVERLAY_HISTORY_KEY];
       void navigate(background, { replace: true, state, preventScrollReset: true, viewTransition: false });
     }
@@ -194,9 +200,12 @@ export function OverlayProvider({ children }: { children: ReactNode }) {
     const active = lastOverlay.current;
     const history = active?.history;
     const root = history ? new URL(history.rootUrl, "https://perpay.invalid") : active?.background;
-    const saved = root && sameBackground(background, root) && history
-      ? positions.current.get(history.rootKey) ?? { trigger: null, triggerId: null, y: history.scrollY, stepped: false }
-      : null;
+    const stored = history ? positions.current.get(history.rootKey) : undefined;
+    const saved = stored && sameBackground(background, stored.background)
+      ? stored
+      : root && sameBackground(background, root) && history
+        ? { trigger: null, triggerId: null, y: history.scrollY, stepped: false }
+        : null;
     const trigger = saved?.trigger?.isConnected
       ? saved.trigger
       : saved?.triggerId ? document.getElementById(saved.triggerId) : null;
@@ -213,10 +222,10 @@ export function OverlayProvider({ children }: { children: ReactNode }) {
     key: location.key, mask: undefined } : null;
   const first = history ? firstKnownDepth.current.get(history.rootKey) : undefined;
   const canGoBack = !!history && first !== undefined && history.depth > Math.max(1, first);
-  const value = useMemo<InternalNavigation>(() => ({ open, close, back, background, target: virtualLocation, hasOverlay, canGoBack, navigateTarget, step, blocked, registerCloseGuard, restoreFocus,
+  const value = useMemo<InternalNavigation>(() => ({ open, close, back, background, target: virtualLocation, hasOverlay, canGoBack, listVersion, navigateTarget, step, findRecordList, getRecordList, blocked, registerCloseGuard, restoreFocus,
     record: recordPath === null ? null : { pathname: recordPath, open: recordOpen } }),
-    [open, close, back, background, recordPath, recordOpen, target?.pathname, target?.search, target?.hash, location.key, location.state, hasOverlay, canGoBack, navigateTarget, step, blocked, registerCloseGuard, restoreFocus]);
-  return <OverlayNavigationContext value={value}><InternalOverlayContext value={value}>{children}</InternalOverlayContext></OverlayNavigationContext>;
+    [open, close, back, background, recordPath, recordOpen, target?.pathname, target?.search, target?.hash, location.key, location.state, hasOverlay, canGoBack, listVersion, navigateTarget, step, findRecordList, getRecordList, blocked, registerCloseGuard, restoreFocus]);
+  return <OverlayNavigationContext value={value}><InternalOverlayContext value={value}><OverlayRecordListRegistryContext value={registry}>{children}</OverlayRecordListRegistryContext></InternalOverlayContext></OverlayNavigationContext>;
 }
 
 const views = {
@@ -293,6 +302,7 @@ function OverlayEyebrow({ type }: { type: string }) {
 /** Optional routes make the complete navigation contract testable without domain fixtures. */
 export function OverlayHost({ routes }: { routes?: ReactNode }) {
   const session = useSession();
+  const drafts = useDraftGuard();
   const overlay = useContext(InternalOverlayContext);
   const overlayActive = useRef(overlay?.hasOverlay ?? false);
   overlayActive.current = overlay?.hasOverlay ?? false;
@@ -310,7 +320,7 @@ export function OverlayHost({ routes }: { routes?: ReactNode }) {
   const prevButton = useRef<HTMLButtonElement>(null);
   const nextButton = useRef<HTMLButtonElement>(null);
   const pendingPagerFocus = useRef<{ direction: "previous" | "next"; pathname: string } | null>(null);
-  const [neighbors, setNeighbors] = useState<RecordNeighbors | null>(null);
+  const [pendingPageStep, setPendingPageStep] = useState<PendingPageStep | null>(null);
   const nestedModals = useRef(new Set<string>());
   const registerNestedModal = useCallback((id: string, open: boolean) => {
     if (open) nestedModals.current.add(id);
@@ -364,6 +374,29 @@ export function OverlayHost({ routes }: { routes?: ReactNode }) {
   // through their steps. Editors stay centred and follow the step's size.
   const drawer = isRecordDetailRoute(definition);
   const pagerActive = !!(drawer && overlay?.hasOverlay && target && !overlay.canGoBack);
+  const pager = useMemo(() => {
+    if (!pagerActive || !overlay || !target) return null;
+    if (pendingPageStep) {
+      return { listId: pendingPageStep.listId, previous: null, next: null, busy: true };
+    }
+    const active = overlay.findRecordList(target.pathname);
+    if (!active) return null;
+    const { id, list } = active;
+    const index = list.items.findIndex(item => item.pathname === target.pathname);
+    if (index < 0) return null;
+    const previous = index > 0
+      ? { kind: "item" as const, to: list.items[index - 1]! }
+      : list.hasPrevious && list.onPreviousPage
+        ? { kind: "page" as const }
+        : null;
+    const next = index < list.items.length - 1
+      ? { kind: "item" as const, to: list.items[index + 1]! }
+      : list.hasNext && list.onNextPage
+        ? { kind: "page" as const }
+        : null;
+    if (!previous && !next) return null;
+    return { listId: id, previous, next, busy: !!list.pending };
+  }, [pagerActive, overlay, target?.pathname, overlay?.listVersion, pendingPageStep]);
   // A different record is read from its top. One that is already in memory replaces the previous
   // content at full height in one commit, so the box that scrolls would keep the offset the last
   // record was left at. Which box that is depends on the drawer's height, so all three start over.
@@ -373,40 +406,94 @@ export function OverlayHost({ routes }: { routes?: ReactNode }) {
     for (const box of shell?.querySelectorAll<HTMLElement>("[data-overlay-primary], [data-overlay-body], [data-overlay-detail]") ?? []) box.scrollTop = 0;
   }, [target?.pathname]);
   useLayoutEffect(() => {
-    const next = pagerActive ? findRecordNeighbors(target.pathname) : null;
-    setNeighbors(previous => sameNeighbors(previous, next) ? previous : next);
+    if (!pendingPageStep) return;
+    if (!pagerActive || !overlay?.hasOverlay || target?.pathname !== pendingPageStep.fromPathname) {
+      setPendingPageStep(null);
+      return;
+    }
+    const list = overlay.getRecordList(pendingPageStep.listId);
+    if (!list || list.failed) {
+      setPendingPageStep(null);
+      return;
+    }
+    if (list.pending) return;
+    const currentIndex = list.items.findIndex(item => item.pathname === pendingPageStep.fromPathname);
+    let nextTarget: Path | null = null;
+    if (currentIndex >= 0) {
+      // Infinite-append lists keep the current record and append more rows after it.
+      if (pendingPageStep.direction === "next" && currentIndex < list.items.length - 1) {
+        nextTarget = list.items[currentIndex + 1]!;
+      } else if (pendingPageStep.direction === "previous" && currentIndex > 0) {
+        nextTarget = list.items[currentIndex - 1]!;
+      } else if ((list.pageKey ?? "") !== pendingPageStep.fromPageKey) {
+        setPendingPageStep(null);
+        return;
+      } else {
+        return;
+      }
+    } else if ((list.pageKey ?? "") !== pendingPageStep.fromPageKey) {
+      // Cursor-paginated lists replace the page's rows.
+      nextTarget = list.items.length > 0
+        ? (pendingPageStep.direction === "next" ? list.items[0]! : list.items[list.items.length - 1]!)
+        : null;
+    } else {
+      return;
+    }
+    setPendingPageStep(null);
+    if (!nextTarget) {
+      const shell = title.current?.closest("[data-overlay-content]");
+      if (title.current && shell && !shell.contains(document.activeElement)) {
+        title.current.focus({ preventScroll: true });
+      }
+      return;
+    }
+    if (overlay.step(nextTarget, list.getElement(nextTarget.pathname), pendingPageStep.listId)) {
+      pendingPagerFocus.current = { direction: pendingPageStep.direction, pathname: nextTarget.pathname };
+    }
+  }, [pendingPageStep, pagerActive, overlay, overlay?.hasOverlay, overlay?.listVersion, target?.pathname]);
+  useLayoutEffect(() => {
     if (!overlay?.hasOverlay || activeStep || nestedModals.current.size) return;
     const pending = pendingPagerFocus.current;
     pendingPagerFocus.current = null;
     if (pending && pending.pathname === target?.pathname) {
       const targetButton = pending.direction === "previous"
-        ? (next?.previous ? prevButton.current : null)
-        : (next?.next ? nextButton.current : null);
+        ? (pager?.previous && !pager.busy ? prevButton.current : null)
+        : (pager?.next && !pager.busy ? nextButton.current : null);
       if (targetButton) { targetButton.focus({ preventScroll: true }); return; }
     }
     title.current?.focus({ preventScroll: true });
   }, [target?.pathname, overlay?.hasOverlay, pagerActive]);
-  useEffect(() => {
-    if (!pagerActive || !target) return;
-    const sync = () => {
-      const next = findRecordNeighbors(target.pathname);
-      setNeighbors(previous => sameNeighbors(previous, next) ? previous : next);
-    };
-    sync();
-    const observed = document.querySelector("[data-admin-console]") ?? document.body;
-    const observer = new MutationObserver(sync);
-    observer.observe(observed, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-record-state"] });
-    return () => observer.disconnect();
-  }, [pagerActive, target?.pathname]);
   if (!overlay) return null;
   const presentation = target && definition ? { target, resourceScope, size: definition.size, requestClose: overlay.close } : null;
   const size = drawer ? definition!.size : activeStep?.size ?? definition?.size ?? "md";
   const stepNeighbor = (direction: "previous" | "next") => {
-    const neighbor = direction === "previous" ? neighbors?.previous : neighbors?.next;
-    if (!neighbor) return;
-    if (overlay.step(neighbor.to, neighbor.element)) {
-      pendingPagerFocus.current = { direction, pathname: neighbor.to.pathname };
+    if (!pager || pager.busy || !target || overlay.blocked()) return;
+    const action = direction === "previous" ? pager.previous : pager.next;
+    if (!action) return;
+    const list = overlay.getRecordList(pager.listId);
+    if (!list) return;
+    if (action.kind === "item") {
+      if (overlay.step(action.to, list.getElement(action.to.pathname), pager.listId)) {
+        pendingPagerFocus.current = { direction, pathname: action.to.pathname };
+      }
+      return;
     }
+    const turnPage = direction === "previous" ? list.onPreviousPage : list.onNextPage;
+    if (!turnPage) return;
+    const owners = [overlayOwner(target), "page:" + actualPageAddress(overlay.background)];
+    drafts.requestLeaveOwners(owners, () => {
+      if (overlay.blocked()) return;
+      const latest = overlay.getRecordList(pager.listId);
+      const go = direction === "previous" ? latest?.onPreviousPage : latest?.onNextPage;
+      if (!latest || !go) return;
+      setPendingPageStep({
+        listId: pager.listId,
+        direction,
+        fromPageKey: latest.pageKey ?? "",
+        fromPathname: target.pathname,
+      });
+      go();
+    });
   };
   return <Dialog open={overlay.hasOverlay} onOpenChange={(open, event) => { if (!open) { event.cancel(); overlay.close(); } }}>
     <DialogContent kind="detail" size={size} data-overlay-content data-overlay-size={size}
@@ -429,13 +516,13 @@ export function OverlayHost({ routes }: { routes?: ReactNode }) {
                   </div>}
                   <DialogTitle className="min-w-0" render={<div ref={title} tabIndex={-1} data-overlay-heading />}><PageHeadingSlot title={definition?.title ?? "无法打开详情"} /></DialogTitle>
                   <div className="col-start-2 flex items-center justify-end gap-1">
-                    {pagerActive && neighbors && <div data-overlay-record-pager className="flex items-center gap-0.5" role="group" aria-label="切换记录">
+                    {pagerActive && pager && <div data-overlay-record-pager aria-busy={pager.busy || undefined} className="flex items-center gap-0.5" role="group" aria-label="切换记录">
                       <Tooltip>
-                        <TooltipTrigger render={<Button ref={prevButton} variant="ghost" size="icon" disabled={!neighbors.previous} aria-label="上一条" onClick={() => stepNeighbor("previous")} />}><ChevronUp /></TooltipTrigger>
+                        <TooltipTrigger render={<Button ref={prevButton} variant="ghost" size="icon" disabled={!pager.previous || pager.busy} aria-label="上一条" onClick={() => stepNeighbor("previous")} />}><ChevronUp /></TooltipTrigger>
                         <TooltipContent>上一条</TooltipContent>
                       </Tooltip>
                       <Tooltip>
-                        <TooltipTrigger render={<Button ref={nextButton} variant="ghost" size="icon" disabled={!neighbors.next} aria-label="下一条" onClick={() => stepNeighbor("next")} />}><ChevronDown /></TooltipTrigger>
+                        <TooltipTrigger render={<Button ref={nextButton} variant="ghost" size="icon" disabled={!pager.next || pager.busy} aria-label="下一条" onClick={() => stepNeighbor("next")} />}><ChevronDown /></TooltipTrigger>
                         <TooltipContent>下一条</TooltipContent>
                       </Tooltip>
                     </div>}

@@ -4,7 +4,7 @@ import type { WorkspaceScope } from "./workspace-scope";
 import { overlayOwner } from "./overlay-navigation";
 
 export type OverlaySize = "md" | "lg" | "xl";
-export type OverlayOpenOptions = { trigger?: HTMLElement; replace?: boolean; state?: unknown };
+export type OverlayOpenOptions = { trigger?: HTMLElement; replace?: boolean; state?: unknown; listId?: string };
 export interface OverlayNavigation {
   open(target: To, options?: OverlayOpenOptions): void;
   close(): void;
@@ -14,6 +14,33 @@ export interface OverlayNavigation {
   /** The record this page opened last: still open, or closed while the page stayed. */
   readonly record?: { readonly pathname: string; readonly open: boolean } | null;
 }
+export type OverlayRecordListEntry = {
+  /** Ordered record targets currently visible on this page of the list. */
+  readonly items: readonly Path[];
+  /** Whether an immediate previous page can be stepped into before items[0]. */
+  readonly hasPrevious?: boolean;
+  /** Whether a next page can be stepped into after items[items.length - 1]. */
+  readonly hasNext?: boolean;
+  /** True while a page load or sort refresh is in flight (or showing placeholder data). */
+  readonly pending?: boolean;
+  /** True when loading failed without usable data, cancelling any pending cross-page step. */
+  readonly failed?: boolean;
+  /** Identifies the current page so cross-page stepping knows when the next/previous page arrived. */
+  readonly pageKey?: string;
+  /** Loads the previous page in place without pushing browser history. */
+  readonly onPreviousPage?: () => void;
+  /** Loads the next page in place without pushing browser history. */
+  readonly onNextPage?: () => void;
+  /** Looks up the mounted row link registered by `<Link data-row-link>` inside this list. */
+  getElement(pathname: string): HTMLAnchorElement | null;
+};
+export interface OverlayRecordListRegistry {
+  registerList(id: string, entry: OverlayRecordListEntry | null): void;
+}
+export interface OverlayRecordListScope {
+  readonly listId: string;
+  registerRowElement(pathname: string, element: HTMLAnchorElement | null, previous?: HTMLAnchorElement | null): void;
+}
 export interface OverlayPresentation {
   readonly target: Location;
   readonly resourceScope: WorkspaceScope;
@@ -22,6 +49,8 @@ export interface OverlayPresentation {
 }
 
 export const OverlayNavigationContext = createContext<OverlayNavigation | null>(null);
+export const OverlayRecordListRegistryContext = createContext<OverlayRecordListRegistry | null>(null);
+export const OverlayRecordListScopeContext = createContext<OverlayRecordListScope | null>(null);
 export const OverlayContext = createContext<OverlayPresentation | null>(null);
 export const OverlayCloseGuardContext = createContext<((id: string, check: (() => boolean) | null) => void) | null>(null);
 export const OverlayNavigationGuardContext = createContext<((id: string, check: (() => boolean) | null, owner: string) => void) | null>(null);

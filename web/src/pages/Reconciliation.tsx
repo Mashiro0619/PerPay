@@ -33,6 +33,7 @@ import { QueryView } from "@/components/request-state";
 import { retainListData } from "@/lib/list-placeholder";
 import { migrateMatchListSearch } from "@/lib/ledger-filters";
 import { CursorPagination } from "@/components/cursor-pagination";
+import { OverlayRecordList } from "@/components/overlay-record-list";
 import { useSuccessToast } from "@/components/Feedback";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -628,6 +629,16 @@ function ReconciliationList({
         sorts={fields.map((value) => ({ value, label: sortNames[value]! }))}
       />
       </ListToolbarPart>
+      <OverlayRecordList
+        items={(query.data?.items ?? []).map((item) => "/reconciliation/" + section + "/" + item.id)}
+        hasPrevious={pagination.canStepPrevious}
+        hasNext={!!query.data?.page.next_cursor}
+        pending={query.isPending || query.isPlaceholderData}
+        failed={!query.isPending && query.data === undefined && !!query.error}
+        pageKey={pagination.pageKey}
+        onPreviousPage={pagination.replacePrevious}
+        onNextPage={() => pagination.replaceNext(query.data?.page.next_cursor)}
+      >
       <QueryView query={query}>
         {(page) => (
           <>
@@ -676,6 +687,7 @@ function ReconciliationList({
           </>
         )}
       </QueryView>
+      </OverlayRecordList>
     </div>
     </ListColumnsProvider>
   );

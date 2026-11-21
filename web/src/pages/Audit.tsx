@@ -14,6 +14,7 @@ import { ListQueryToolbar } from "@/components/list-query-toolbar";
 import { ListColumnsProvider } from "@/components/list-columns";
 import { BusinessTable, type BusinessColumn } from "@/components/business-table";
 import { CursorPagination } from "@/components/cursor-pagination";
+import { OverlayRecordList } from "@/components/overlay-record-list";
 import { AuditAddressFilter, AuditDesktopFilters, AuditFilterSelect, auditFilterOptions } from "@/components/audit-filters";
 import { AuditActions, AuditExportButton, useAuditExport } from "@/components/audit-export";
 import { AuditActor, AuditCaptureNotice, AuditResult, AuditSite, AuditTime } from "@/components/audit-record";
@@ -182,6 +183,17 @@ export default function Audit() {
             {exporting.generated && <p role="status" aria-live="polite" className="w-full text-sm text-muted-foreground" data-list-menu-feedback>文件已生成</p>}
           </ListQueryToolbar>
         </ListToolbarPart>
+        <OverlayRecordList
+          global
+          items={(events.data?.data ?? []).map(auditEventHref)}
+          hasPrevious={pagination.canStepPrevious}
+          hasNext={!!events.data?.page.next_cursor}
+          pending={events.isPending || events.isPlaceholderData}
+          failed={!events.isPending && events.data === undefined && !!events.error}
+          pageKey={pagination.pageKey}
+          onPreviousPage={pagination.replacePrevious}
+          onNextPage={() => pagination.replaceNext(events.data?.page.next_cursor)}
+        >
         <QueryView query={events}>
           {page => <>
             <div className="min-w-0" aria-busy={events.isFetching}>
@@ -197,6 +209,7 @@ export default function Audit() {
               onPrevious={pagination.previous} onNext={() => pagination.next(page.page.next_cursor)} />
           </>}
         </QueryView>
+        </OverlayRecordList>
       </ListLayout>
     </ListColumnsProvider>
   </div>;

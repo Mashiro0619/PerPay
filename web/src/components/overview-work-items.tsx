@@ -4,6 +4,7 @@ import { useWorkspace } from "@/workspace";
 import { notificationErrorName } from "@/lib/detail-summary";
 import { workItemHref, workItemTitle } from "@/lib/labels";
 import { LinkedSummaryRow } from "@/components/LinkedTableRow";
+import { OverlayRecordList } from "@/components/overlay-record-list";
 import { StatusBadge } from "@/components/business-status";
 import { ListDateTime, ListMoney } from "@/components/list-primitives";
 import { SiteIdentity } from "@/components/site-identity";
@@ -53,6 +54,7 @@ export function OverviewWorkItems({ items }: { items: readonly AdminWorkItem[] }
     );
   }
   return (
+    <OverlayRecordList items={items.map(workItemHref)}>
     <ItemGroup className="overview-work-list" aria-label="概览待处理" data-density="compact">
       {items.map((item) => {
         const order = item.order_summary;
@@ -151,5 +153,6 @@ export function OverviewWorkItems({ items }: { items: readonly AdminWorkItem[] }
         );
       })}
     </ItemGroup>
+    </OverlayRecordList>
   );
 }

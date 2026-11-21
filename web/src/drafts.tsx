@@ -27,6 +27,7 @@ import {
 const DraftContext = createContext({
   setDirty: (_id: string, _dirty: boolean, _owner?: string, _submitting?: () => boolean) => undefined as void,
   requestDiscard: (action: () => void) => action(),
+  requestLeaveOwners: (_owners: readonly string[], action: () => void) => action(),
   setDialogFinalFocus: (_element: HTMLElement | null) => undefined as void,
 });
 type NavigationCheck = () => boolean;
@@ -52,17 +53,18 @@ const OperationNavigationContext = createContext({
 });
 export function DraftProvider({ children }: { children: ReactNode }) {
   const drafts = useRef(new Map<string, { owner: string; submitting?: () => boolean }>());
+  const approvedLeaveOwners = useRef(new Set<string>());
   const protections = useRef(new Map<string, { check: NavigationCheck; owner: string }>());
   const dismissalGuards = useRef(new Map<string, { check: NavigationCheck; owner: string }>());
   const operationWasBlocked = useRef(false);
   const dismissalWasBlocked = useRef(false);
   const [protectionVersion, setProtectionVersion] = useState(0);
   const [dirty, setHasDrafts] = useState(false);
-  const [action, setAction] = useState<(() => void) | null>(null);
+  const [action, setAction] = useState<{ run: () => void; submitting: boolean } | null>(null);
   const dialogFinalFocus = useRef<HTMLElement | null>(null);
   const hasLeavingDrafts = (next: Location) => {
     const retained = retainedOwners(next);
-    return [...drafts.current.values()].some(draft => !retained.has(draft.owner));
+    return [...drafts.current.values()].some(draft => !retained.has(draft.owner) && !approvedLeaveOwners.current.has(draft.owner));
   };
   const protectedOperation = (next: Location) => {
     const retained = retainedOwners(next);
@@ -82,7 +84,9 @@ export function DraftProvider({ children }: { children: ReactNode }) {
   const blockedId = blocker.state === "blocked" && !dismissalWasBlocked.current ? protectedOperation(blocker.location) : null;
   const leavingDrafts = blocker.state === "blocked" && hasLeavingDrafts(blocker.location);
   const retainedDraftOwners = blocker.state === "blocked" ? retainedOwners(blocker.location) : new Set<string>();
-  const leavingSubmission = [...drafts.current.values()].some(draft => !retainedDraftOwners.has(draft.owner) && draft.submitting?.());
+  const leavingSubmission = action !== null
+    ? action.submitting
+    : [...drafts.current.values()].some(draft => !retainedDraftOwners.has(draft.owner) && !approvedLeaveOwners.current.has(draft.owner) && draft.submitting?.());
   const setProtection = useCallback(
     (id: string, check: NavigationCheck | null, owner = "*") => {
       if (check) protections.current.set(id, { check, owner });
@@ -92,8 +96,16 @@ export function DraftProvider({ children }: { children: ReactNode }) {
     [],
   );
   const setDirty = useCallback((id: string, value: boolean, owner = "*", submitting?: () => boolean) => {
-    if (value) drafts.current.set(id, { owner, ...(submitting ? { submitting } : {}) });
-    else drafts.current.delete(id);
+    const previous = drafts.current.get(id);
+    if (value) {
+      approvedLeaveOwners.current.delete(owner);
+      drafts.current.set(id, { owner, ...(submitting ? { submitting } : {}) });
+    } else {
+      drafts.current.delete(id);
+      if (previous && ![...drafts.current.values()].some(draft => draft.owner === previous.owner)) {
+        approvedLeaveOwners.current.delete(previous.owner);
+      }
+    }
     setHasDrafts(drafts.current.size > 0);
     setProtectionVersion(version => version + 1);
   }, []);
@@ -101,10 +113,32 @@ export function DraftProvider({ children }: { children: ReactNode }) {
     if (check) dismissalGuards.current.set(id, { check, owner });
     else dismissalGuards.current.delete(id);
   }, []);
-  const requestDiscard = (pendingAction: () => void) => {
-    if (drafts.current.size > 0) setAction(() => pendingAction);
-    else pendingAction();
-  };
+  const requestDiscard = useCallback((pendingAction: () => void) => {
+    if (drafts.current.size > 0) {
+      const submitting = [...drafts.current.values()].some(draft => draft.submitting?.());
+      setAction({ run: pendingAction, submitting });
+    } else {
+      pendingAction();
+    }
+  }, []);
+  const requestLeaveOwners = useCallback((owners: readonly string[], pendingAction: () => void) => {
+    const leaving = new Set(owners);
+    if ([...dismissalGuards.current.values()].some(guard => leaving.has(guard.owner) && guard.check())) return;
+    if ([...protections.current.values()].some(protection => leaving.has(protection.owner) && protection.check())) return;
+    const affected = [...drafts.current.values()].filter(draft => leaving.has(draft.owner) && !approvedLeaveOwners.current.has(draft.owner));
+    if (!affected.length) {
+      pendingAction();
+      return;
+    }
+    const submitting = affected.some(draft => draft.submitting?.());
+    setAction({
+      submitting,
+      run: () => {
+        for (const owner of leaving) approvedLeaveOwners.current.add(owner);
+        pendingAction();
+      },
+    });
+  }, []);
   const setDialogFinalFocus = useCallback((element: HTMLElement | null) => {
     dialogFinalFocus.current = element;
   }, []);
@@ -157,7 +191,7 @@ export function DraftProvider({ children }: { children: ReactNode }) {
     blocker.proceed();
   }
   return (
-    <DraftContext value={{ setDirty, requestDiscard, setDialogFinalFocus }}>
+    <DraftContext value={{ setDirty, requestDiscard, requestLeaveOwners, setDialogFinalFocus }}>
       <OperationNavigationContext
         value={{
           setProtection,
@@ -206,7 +240,7 @@ export function DraftProvider({ children }: { children: ReactNode }) {
                 setAction(null);
                 clearDialogFinalFocus();
                 if (blocker.state === "blocked") blocker.proceed();
-                else pendingAction?.();
+                else pendingAction?.run();
               }}
             >
               放弃修改并继续

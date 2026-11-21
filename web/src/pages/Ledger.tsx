@@ -23,6 +23,7 @@ import { LedgerAmountFilter } from "@/components/ledger-amount-filter";
 import { AccountLedgerFreshness } from "@/components/ledger-freshness";
 import { LedgerActiveOrder, LedgerOrderLink, LedgerAssociationStatus, LedgerDirection, LedgerMoney, LedgerStates, ledgerFact } from "@/components/ledger-record";
 import { CursorPagination } from "@/components/cursor-pagination";
+import { OverlayRecordList } from "@/components/overlay-record-list";
 import { QueryView, ErrorNotice } from "@/components/request-state";
 import { RefreshButton } from "@/components/refresh-button";
 import { Button } from "@/components/ui/button";
@@ -142,7 +143,17 @@ export function LedgerList({ onManual }: { onManual?: (trigger: HTMLButtonElemen
         <div className="basis-full"><AccountLedgerFreshness accountId={filters?.alipay_account_id} /></div>
       </ListQueryToolbar>
     </ListToolbarPart>
-    {filterError ? <ErrorNotice error={filterError} /> : <QueryView query={query}>{page => <>
+    {filterError ? <ErrorNotice error={filterError} /> : <OverlayRecordList
+      global
+      items={(query.data?.data ?? []).map(entry => "/reconciliation/transactions/" + entry.ledger_entry_id)}
+      hasPrevious={pagination.canStepPrevious}
+      hasNext={!!query.data?.page.next_cursor}
+      pending={query.isPending || query.isPlaceholderData}
+      failed={!query.isPending && query.data === undefined && !!query.error}
+      pageKey={pagination.pageKey}
+      onPreviousPage={pagination.replacePrevious}
+      onNextPage={() => pagination.replaceNext(query.data?.page.next_cursor)}
+    ><QueryView query={query}>{page => <>
       <div className="min-w-0" aria-busy={query.isFetching || query.isPlaceholderData}>
         {page.data.length ? <BusinessTable id="administrator-ledger" aria-label="支付宝流水" tableClassName="ledger-table" items={page.data} columns={columns} rowId={entry => entry.ledger_entry_id} control={control}
           renderSummary={entry => <ListSummary
@@ -163,6 +174,6 @@ export function LedgerList({ onManual }: { onManual?: (trigger: HTMLButtonElemen
           />} /> : <Empty kind={activeFilters ? "filtered" : "page"}><EmptyHeader><EmptyTitle role="heading" aria-level={2}>{activeFilters ? "暂无符合条件的流水" : "暂无支付宝流水"}</EmptyTitle>{activeFilters && <EmptyDescription>调整筛选条件后重试。</EmptyDescription>}</EmptyHeader></Empty>}
       </div>
       <CursorPagination page={pagination.page} count={page.data.length} hasNext={!!page.page.next_cursor} pending={query.isFetching || query.isPlaceholderData} previousLabel={pagination.previousLabel} onPrevious={pagination.previous} onNext={() => pagination.next(page.page.next_cursor)} />
-    </>}</QueryView>}
+    </>}</QueryView></OverlayRecordList>}
   </div></ListColumnsProvider>;
 }
