@@ -411,7 +411,7 @@ describe("manual settlement selection instead of ID entry", () => {
     const note = await screen.findByLabelText("操作理由（可选）");
     fireEvent.change(note, { target: { value: "第一行\n第二行" } });
     await userEvent.setup().click(screen.getByRole("button", { name: "确认关联收款" }));
-    expect(await screen.findByText(/不能包含换行或控制字符/)).toBeVisible();
+    expect(await screen.findByText(/不能包含换行或不支持的隐藏字符/)).toBeVisible();
     expect(note).toHaveFocus();
     expect(note).toHaveValue("第一行\n第二行");
     expect(view.requests.filter(r => r.method === "POST")).toHaveLength(0);

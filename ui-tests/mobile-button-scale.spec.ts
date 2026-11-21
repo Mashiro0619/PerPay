@@ -190,7 +190,7 @@ test.describe("compact mobile button visuals and separate touch targets", () => 
 
       await page.goto(manifest.origin + manifest.checkouts.open!);
       await expect(page.locator("[data-qr-image]")).toBeVisible();
-      const query = page.getByRole("button", { name: "查询付款状态", exact: true });
+      const query = page.getByRole("button", { name: "我已付款，查询状态", exact: true });
       const enlarge = page.getByRole("button", { name: "放大二维码", exact: true });
       const save = page.getByRole("button", { name: "保存二维码", exact: true });
       const queryGeometry = await expectTouchSlot(query);

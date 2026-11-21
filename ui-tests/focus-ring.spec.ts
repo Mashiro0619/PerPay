@@ -218,7 +218,7 @@ for (const layout of layouts) {
         }
         if (layout.width === 1440 && layout.font === 100 && layout.theme === "dark") {
           await page.goto(fixture.origin + "/admin/sites/defaults");
-          await selectSettingsSection(page, dialog, "模板分组", "收银台展示");
+          await selectSettingsSection(page, dialog, "默认设置分组", "收银台展示");
           const help = dialog.getByRole("textbox", { name: "帮助链接", exact: true });
           await expect(help).toBeVisible();
           const shortForm = await editorGeometry(dialog);

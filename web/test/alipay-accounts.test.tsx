@@ -101,7 +101,7 @@ describe("支付宝账号设置", () => {
     const user = userEvent.setup();
     expect(screen.getByText("待补充：收款码")).toBeVisible();
     await user.click(screen.getByRole("tab", { name: "使用情况" }));
-    const lastCheck = screen.getByText("最近连接检查").closest("dl")!;
+    const lastCheck = screen.getByText("最近连接测试").closest("dl")!;
     expect(within(lastCheck).getByText("通过")).toBeVisible();
     expect(lastCheck.querySelector("time")).toHaveAttribute("datetime", first.created_at);
     expect(screen.getByText("查账连接正常")).toBeVisible();
@@ -290,15 +290,15 @@ describe("支付宝账号设置", () => {
     await user.clear(screen.getByLabelText("账号名称"));
     await user.type(screen.getByLabelText("账号名称"), "主账号（更新）");
     await user.click(screen.getByRole("button", { name: "保存并测试连接" }));
-    expect(await screen.findByText("连接检查未通过")).toBeVisible();
+    expect(await screen.findByText("连接测试未通过")).toBeVisible();
     expect(screen.getByLabelText("账号名称")).toHaveValue("主账号（更新）");
     expect(screen.getByText("账号已保存")).toBeVisible();
     await user.click(screen.getByRole("button", { name: "重新测试连接" }));
-    const lastCheck = screen.getByText("最近连接检查").closest("dl")!;
+    const lastCheck = screen.getByText("最近连接测试").closest("dl")!;
     expect(await within(lastCheck).findByText("通过")).toBeVisible();
     expect(lastCheck.querySelector("time")).toHaveAttribute("datetime", "2026-10-29T00:02:00Z");
     expect(screen.getByText("查账连接正常")).toBeVisible();
-    expect(screen.queryByText("连接检查未通过")).not.toBeInTheDocument();
+    expect(screen.queryByText("连接测试未通过")).not.toBeInTheDocument();
     expect(writes.map((write) => write.path)).toEqual([
       "/api/admin/v1/alipay-accounts/" + first.id,
       "/api/admin/v1/alipay-accounts/" + first.id + "/check",

@@ -129,7 +129,7 @@ describe("readable financial exception detail", () => {
     { type: "UNMATCHED_DEBIT", status: "OPEN", ignored: false, state: "历史记录", associate: false },
     { type: "UNLINKED_REFUND", status: "OPEN", ignored: false, state: "历史记录", associate: false },
     { type: "AMOUNT_MISMATCH", status: "RESOLVED", ignored: false, state: "已处理", associate: false },
-    { type: "AMOUNT_MISMATCH", status: "OPEN", ignored: true, state: "未处理 · 已忽略", associate: true },
+    { type: "AMOUNT_MISMATCH", status: "OPEN", ignored: true, state: "未处理 · 提醒已忽略", associate: true },
   ] as const)("preserves $type/$status/reminderIgnored=$ignored semantics", async ({ type, status, ignored, state, associate }) => {
     const resolved = status === "RESOLVED";
     mockPage({ exception: { ...financialException, exception_type: type, status, reminder_ignored: ignored,

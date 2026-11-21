@@ -191,7 +191,7 @@ describe("administrator ledger pages", () => {
     expect(summary).toHaveTextContent("+¥1.01");
     expect(within(summary).getByText("已关联", { exact: true })).toBeVisible();
     expect(summary).not.toHaveTextContent("real-order");
-    expect(screen.getAllByRole("heading", { level: 2 }).map(heading => heading.textContent)).toEqual(["交易信息", "对应订单，共 1 项", "采集记录，共 2 项"]);
+    expect(screen.getAllByRole("heading", { level: 2 }).map(heading => heading.textContent)).toEqual(["交易信息", "对应订单，共 1 项", "查账记录，共 2 项"]);
     expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
     for (const id of [ledgerId, secondSourceId]) expect(record("source-" + id)).toBeVisible();
     expect(screen.queryByRole("button", { name: /人工关联收款|确认收款/ })).not.toBeInTheDocument();
@@ -210,7 +210,7 @@ describe("administrator ledger pages", () => {
       expect(within(card).getByRole("heading", { name: "实际关联商品", level: 3 })).toBeVisible();
       expect(within(card).getByRole("link", { name: "查看订单" })).toHaveAttribute("href", "/orders/" + orderId);
       expect(within(card).getByText("real-order", { exact: true })).toBeVisible();
-      expect(within(card).getByRole("link", { name: "采集记录 2" }).getAttribute("href")).toMatch(new RegExp("#source-" + secondSourceId + "$"));
+      expect(within(card).getByRole("link", { name: "查账记录 2" }).getAttribute("href")).toMatch(new RegExp("#source-" + secondSourceId + "$"));
     }
     const reads = fetchMock.mock.calls.map(([request]) => new URL(request.url).pathname);
     expect(reads).toHaveLength(5);
@@ -232,7 +232,7 @@ describe("administrator ledger pages", () => {
     await waitFor(() => expect(associated).toHaveFocus());
     expect(scroll.mock.contexts).toEqual([associated]);
     expect(router.state.location.hash).toBe("#" + anchor);
-    const link = within(associated).getByRole("link", { name: "采集记录 2" });
+    const link = within(associated).getByRole("link", { name: "查账记录 2" });
     await user.click(link);
     await waitFor(() => expect(router.state.location.hash).toBe("#source-" + secondSourceId));
     const used = record("source-" + secondSourceId);
@@ -334,7 +334,7 @@ describe("administrator ledger pages", () => {
     const conflict = record("conflict-66666666-6666-4666-8666-666666666666");
     expect(within(conflict).getByRole("heading", { name: "支付宝流水号重复", level: 3 })).toBeVisible();
     expect(within(conflict).getByText("待处理", { exact: true })).toBeVisible();
-    expect(within(conflict).getByRole("link", { name: "采集记录 2" })).toBeVisible();
+    expect(within(conflict).getByRole("link", { name: "查账记录 2" })).toBeVisible();
     expect(within(conflict).getByRole("link", { name: "查看冲突记录" })).toHaveAttribute("href", "/reconciliation/conflicts/66666666-6666-4666-8666-666666666666");
     expect(document.body).not.toHaveTextContent("¥0.00");
   });
@@ -352,7 +352,7 @@ describe("administrator ledger pages", () => {
     expect(facts).not.toHaveTextContent(/有争议|未提供/);
     expect(screen.getByRole("group", { name: "流水概况" })).toHaveTextContent("金额有争议");
     expect(screen.getByText("账单存在不同版本，金额不可相加", { exact: true })).toBeVisible();
-    expect(screen.getByText("以下各份采集记录内容存在差异。")).toBeVisible();
+    expect(screen.getByText("以下各份查账记录内容存在差异。")).toBeVisible();
     for (const [id, amount] of [[ledgerId, "¥1.01"], [secondSourceId, "¥1.02"]] as const) {
       expect(within(record("source-" + id)).getByText("交易金额").nextElementSibling).toHaveTextContent(amount);
     }
@@ -360,5 +360,25 @@ describe("administrator ledger pages", () => {
     expect(section("conflicts")).toBeNull();
     expect(screen.queryByRole("link", { name: "查看冲突记录" })).not.toBeInTheDocument();
     expect(screen.queryByText(/账本冲突待处理/)).not.toBeInTheDocument();
+  });
+
+  it("keeps 需要核查 visible when the association column is hidden without duplicating it when visible", async () => {
+    const anomalous: AdminLedgerSummary = { ...entry, has_conflicts: true, content_consistent: false };
+    vi.stubGlobal("fetch", vi.fn(async (request: Request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/api/admin/v1/ledger/entries") return json({ data: [anomalous], environment: "PRODUCTION", page: { next_cursor: null } });
+      return detailResponse(request, detail);
+    }));
+    mount();
+    const row = (await screen.findByRole("link", { name: anomalous.external_event_id })).closest("tr")!;
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "列表显示" }));
+    const stateBox = await screen.findByRole("checkbox", { name: "PerPay 处理状态" });
+    if (!(stateBox as HTMLInputElement).checked) await user.click(stateBox);
+    await waitFor(() => expect(screen.getByRole("columnheader", { name: "PerPay 处理状态" })).toBeVisible());
+    expect(within(row).getAllByText("需要核查")).toHaveLength(1);
+    await user.click(await screen.findByRole("checkbox", { name: "关联状态" }));
+    await waitFor(() => expect(screen.queryByRole("columnheader", { name: "关联状态" })).not.toBeInTheDocument());
+    expect(within(row).getAllByText("需要核查")).toHaveLength(1);
   });
 });

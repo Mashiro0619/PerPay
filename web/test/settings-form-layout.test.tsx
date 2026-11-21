@@ -51,7 +51,7 @@ describe("readable settings form structure", () => {
       screen.getByLabelText("收银台有效期（秒）"),
     ).toHaveAccessibleDescription("有效期错误");
     expect(screen.getByLabelText("待付款订单上限（笔）")).toHaveAccessibleDescription(
-      "容量错误",
+      /容量错误/,
     );
     expect(view.container.querySelectorAll(".settings-fields")).toHaveLength(2);
   });

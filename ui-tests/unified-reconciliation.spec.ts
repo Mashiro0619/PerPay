@@ -279,7 +279,7 @@ test("source anchors preserve the originating page and scroll across overlay clo
   await revealDetailSection(page, "payments");
   const matchCard = overlay.locator('article[id="match-' + current.payment_match_id + '"]');
   // The association names the stored copy it uses; the link leads to that copy inside the same record.
-  const sourceLink = matchCard.getByRole("link", { name: /^采集记录 \d+$/ });
+  const sourceLink = matchCard.getByRole("link", { name: /^查账记录 \d+$/ });
   const sourceHref = await sourceLink.getAttribute("href");
   const sourceTarget = new URL(new URL(sourceHref!, manifest.origin).searchParams.get("overlay")!, manifest.origin);
   expect(sourceTarget.pathname).toBe(detailPath(sourceId));

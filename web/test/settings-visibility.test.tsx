@@ -14,11 +14,11 @@ const sections = [
   { section: "collection-policy", fields: ["请求超时（秒）", "常规查账间隔（秒）", "活跃查账间隔（秒）", "最小查账间隔（秒）", "查账延迟（秒）", "查账有效时限（秒）"] },
   {
     section: "advanced",
-    fields: ["收银台链接密钥轮换周期（天）", "订单结束后收银台可查时长（秒）"],
+    fields: ["收银台链接密钥更换周期（天）", "订单结束后收银台可查时长（秒）"],
   },
   {
     section: "backup",
-    fields: ["备份间隔", "保留备份数量"],
+    fields: ["备份间隔", "保留备份数量（份）"],
   },
 ] as const;
 

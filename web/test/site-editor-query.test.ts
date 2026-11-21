@@ -10,7 +10,7 @@ describe("site editor identity", () => {
   ])("rejects a mismatched or deleted editor response: %j", async data => {
     vi.stubGlobal("fetch", vi.fn(async () => json({ data })));
     await expect(queryClient.fetchQuery(siteEditorQueryOptions("a")))
-      .rejects.toThrow("网站身份不匹配");
+      .rejects.toThrow("网站 ID 不匹配");
     expect(queryClient.getQueryData(siteEditorKey("a"))).toBeUndefined();
   });
 });

@@ -60,6 +60,22 @@ describe("checkout presents payment results without internal confirmation explan
     expect(html).not.toContain("款项已");
     expect(html).not.toContain("refund_mark");
   });
+  it("uses 订单金额 rather than 实付金额 when a disputed order has no received amount", () => {
+    const initial: CheckoutInitial = {
+      systemName: "PerPay", serverTime: Date.UTC(2026, 9, 21), initialError: null,
+      apiUrl: "/api/public/v1/checkouts/synthetic-disputed-unreceived", qrUrl: "/synthetic-qr.svg", qrAvailable: false,
+      checkout: {
+        merchant_order_no: "merchant-disputed-null", product_name: "争议订单核对", currency: "CNY",
+        requested_amount_cents: 1000, return_url: null, payment_instructions: null,
+        checkout: { status: "CLOSED", expires_at: "2026-10-21T00:00:00Z", closed_at: "2026-10-21T00:00:00Z" },
+        payment: { status: "DISPUTED", basis: "NONE", received_amount_cents: null }, refund: { status: "NONE" },
+      },
+    };
+    const html = renderToString(<CheckoutApp initial={initial} />);
+    expect(html).toContain("订单金额");
+    expect(html).not.toContain("实付金额");
+    expect(html).toContain("¥10.00");
+  });
   it("escapes the configured system name in the checkout identity", () => {
     const html = markup("INFERRED", "CONFIRMED", "NONE", "<script>example</script>");
     expect(html).toContain("&lt;script&gt;example&lt;/script&gt;");

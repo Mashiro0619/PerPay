@@ -145,7 +145,7 @@ describe("administrator login sessions", () => {
     expect(items[1]).toHaveTextContent(ipv6);
     expect(items[1]).toHaveTextContent("Chrome · Android");
     expect(items[2]).toHaveTextContent("未知浏览器 · 未知系统");
-    expect(items[2]!.querySelector('[data-column-id="ip"]')).toHaveTextContent(/^未知$/);
+    expect(items[2]!.querySelector('[data-column-id="ip"]')).toHaveTextContent(/^未记录$/);
   });
 
   it("cancels a targeted revocation without a write and restores its trigger focus", async () => {

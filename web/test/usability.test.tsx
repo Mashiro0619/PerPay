@@ -278,7 +278,7 @@ describe("short feedback and safe settings", () => {
     expect(save).toBeDisabled();
     fireEvent.submit(save.closest("form")!);
     expect(fetchMock).not.toHaveBeenCalled();
-    const keep = screen.getByLabelText("保留备份数量");
+    const keep = screen.getByLabelText("保留备份数量（份）");
     fireEvent.change(keep, { target: { value: "8" } });
     expect(save).toBeEnabled();
     fireEvent.change(keep, { target: { value: "7" } });
@@ -390,7 +390,7 @@ describe("short feedback and safe settings", () => {
     const reconciliation = within(runtime.getByRole("rowheader", { name: "自动确认收款" }).closest("tr")!);
     const notifications = within(runtime.getByRole("rowheader", { name: "通知" }).closest("tr")!);
     expect(reconciliation.getByRole("cell", { name: "待核对订单 5" })).toBeVisible();
-    expect(notifications.getByRole("cell", { name: "待投递 2" })).toBeVisible();
+    expect(notifications.getByRole("cell", { name: "待发送 2" })).toBeVisible();
     expect(reconciliation.queryByText(/异常提醒|未处理异常/)).not.toBeInTheDocument();
     expect(notifications.queryByText(/失败提醒/)).not.toBeInTheDocument();
     expect(screen.queryByText("有业务提醒待处理")).not.toBeInTheDocument();

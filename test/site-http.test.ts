@@ -70,7 +70,7 @@ describe("business website HTTP boundaries", () => {
       const rejectedIndex = responses.findIndex(response => response.status === 409);
       const conflict = await responses[rejectedIndex]!.json() as { error: { code: string; fields: Record<string, string> } };
       assert.equal(conflict.error.code, "site_client_id_conflict");
-      assert.equal(conflict.error.fields.client_id, "该客户端 ID 已被使用，请换一个。");
+      assert.equal(conflict.error.fields.client_id, "该网站 ID 已被使用，请换一个。");
       assert.equal(f.database.read(connection => connection.prepare("SELECT count(*) AS total FROM site_creation_requests WHERE client_id='Concurrent.Shop'").get()?.total), 1n);
       const removal = await f.app.request("/api/admin/v1/sites/Concurrent.Shop", { method: "DELETE", headers: f.headers,
         body: JSON.stringify({ revision: 0 }) });

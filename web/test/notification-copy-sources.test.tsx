@@ -149,7 +149,7 @@ describe("order and notification copy follows its actual source", () => {
       return json({ data: [], page: { next_cursor: null } });
     }));
     mount(<OrderNotifications orderId={paidOrder.order_id} notifyUrl={notifyUrl} />, "/sites/site_copy/orders/" + paidOrder.order_id, true);
-    expect(await screen.findByText(notifyUrl ? "此订单已设置通知地址，暂无发送记录" : "此订单未设置通知地址")).toBeVisible();
+    expect(await screen.findByText(notifyUrl ? "此订单已设置通知地址，暂无通知记录" : "此订单未设置通知地址")).toBeVisible();
     // An order without deliveries keeps the section to its title and this one line.
     expect(screen.getByRole("region", { name: "通知" })).toHaveAttribute("data-section-empty", "true");
   });

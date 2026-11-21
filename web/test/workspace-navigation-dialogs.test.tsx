@@ -51,7 +51,7 @@ describe("business dialogs during workspace navigation", () => {
     await waitFor(() => expect(screen.getByLabelText("业务网站名称")).toHaveValue("网站 A"));
     await user.type(screen.getByLabelText("业务网站名称"), "（保留草稿）");
     await user.click(screen.getByRole("button", { name: "删除网站" }));
-    const dialog = await screen.findByRole("alertdialog", { name: "确认删除业务网站？" });
+    const dialog = await screen.findByRole("alertdialog", { name: "确认删除网站？" });
     expect(dialog.closest("main")).toBeNull();
 
     delayDestination = true;
@@ -67,7 +67,7 @@ describe("business dialogs during workspace navigation", () => {
     expect(currentSite).toBeVisible();
     await user.click(currentSite);
     await waitFor(() => expect(view.router.state.navigation.state).toBe("idle"));
-    expect(await screen.findByRole("alertdialog", { name: "确认删除业务网站？" })).toBe(dialog);
+    expect(await screen.findByRole("alertdialog", { name: "确认删除网站？" })).toBe(dialog);
     expect(dialog).toBeVisible();
     expect(dialog).toHaveAccessibleDescription("仅限无历史订单的网站。删除后不可恢复，原网站 ID 不可复用。");
     await waitFor(() => expect(within(dialog).getByRole("button", { name: "取消" })).toHaveFocus());

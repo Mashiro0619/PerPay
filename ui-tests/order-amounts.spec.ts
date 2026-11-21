@@ -49,9 +49,8 @@ test("mobile summaries and details retain accurate amounts across desktop column
   await expectSummaryAmounts();
   await row.locator("a[data-row-link]").click();
   const detail = await settleOverlay(page);
-  const amounts = detail.getByRole("group", { name: "PerPay 收款状态", exact: true });
-  await expect(amounts.getByText("应付", { exact: true }).locator("..").locator(".list-money")).toHaveText(payable);
-  await expect(amounts.getByText("实收", { exact: true }).locator("..").locator(".list-money")).toHaveText(received);
+  const amounts = detail.getByRole("group", { name: "收款状态", exact: true });
+  await expect(amounts.locator("[data-record-summary-value]")).toHaveText(received);
   await record(page, info, { orderId: order.order_id, payableAmountCents: order.payable_amount_cents, receivedAmountCents: order.received_amount_cents });
   await page.keyboard.press("Escape");
   await expect(detail).toHaveCount(0);

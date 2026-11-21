@@ -107,7 +107,7 @@ describe("local QR image decoding", () => {
 
   it("enforces the UTF-8 byte limit rather than JavaScript string length", async () => {
     mockImage("界".repeat(780));
-    await expect(decodeQrImage(imageFile(), new AbortController().signal)).rejects.toThrow("2331 个 UTF-8 字节");
+    await expect(decodeQrImage(imageFile(), new AbortController().signal)).rejects.toThrow("收款码链接过长");
   });
 
   it("does not start a cancelled request", async () => {

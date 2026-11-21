@@ -82,7 +82,7 @@ function sourceTerms(entry: AdminLedgerDetail, source: AdminLedgerDetail["source
   return [
     ...(entry.sources.length === 1 ? ["PerPay 记录状态"] : []),
     ...(entry.amount_cents === null ? ["交易金额"] : []), ...(entry.direction === null ? ["收支方向"] : []), ...(entry.occurred_at === null ? ["交易时间"] : []),
-    ...(entry.other_account === null && source.other_account ? ["对方"] : []), ...(entry.memo === null && source.memo ? ["支付宝备注"] : []),
+    ...(entry.other_account === null && source.other_account ? ["交易对方"] : []), ...(entry.memo === null && source.memo ? ["支付宝备注"] : []),
     ...(entry.provider_order_no === null && source.provider_order_no ? ["支付宝订单号"] : []),
     ...(entry.merchant_order_no === null && source.merchant_order_no ? ["支付宝商户单号"] : []),
     "内部流水编号", "保存时间",
@@ -291,13 +291,13 @@ test("detail overlays separate facts into readable business sections", async ({ 
       await expect(foreground(page).locator("[data-overlay-footer]").getByRole("button", { name: scenario.tools, exact: true })).toBeVisible();
     } else {
       // What the summary states (the amount, the direction, the time and the account) is not repeated among the facts.
-      await expect(detailBody(page).getByRole("heading", { level: 2 })).toHaveText(["交易信息", /^对应订单/, /^采集记录/]);
+      await expect(detailBody(page).getByRole("heading", { level: 2 })).toHaveText(["交易信息", /^对应订单/, /^查账记录/]);
       await expect(foreground(page).getByRole("group", { name: "流水概况", exact: true }).locator("[data-record-summary-value]")).toHaveText(/^\+¥/);
-      await expect(detailSection(page, "transaction").locator("dt")).toHaveText(["对方", "支付宝备注", "支付宝流水号", "支付宝订单号"]);
+      await expect(detailSection(page, "transaction").locator("dt")).toHaveText(["交易对方", "支付宝备注", "支付宝流水号", "支付宝订单号"]);
       await expect(detailBody(page).locator("dt").filter({ hasText: /^(支付宝 App ID|交易金额|收款账号|收支方向|交易时间)$/ })).toHaveCount(0);
       await readDetailSection(page, /^对应订单/);
       await expect(detailSection(page, "payments").locator("article[data-sub-record]").first()).toBeVisible();
-      await readDetailSection(page, /^采集记录/);
+      await readDetailSection(page, /^查账记录/);
       await expect(detailSection(page, "sources").locator("[data-record-fields]").first()).toBeVisible();
       await expect(detailSection(page, "conflicts")).toHaveCount(0);
       await readDetailSection(page, "交易信息");
@@ -392,7 +392,7 @@ test.describe("detail reading width matrix", () => {
           } else if (scenario.kind === "match") {
             await expect(detailSection(page, "order").locator("article[data-sub-record]")).toBeVisible();
             await readDetailSection(page, "支付宝流水");
-            await fields(detailSection(page, "ledger"), ["交易金额", "交易时间", "对方", "支付宝流水号", "支付宝订单号", "支付宝备注", "内部流水编号"]);
+            await fields(detailSection(page, "ledger"), ["交易金额", "交易时间", "交易对方", "支付宝流水号", "支付宝订单号", "支付宝备注", "内部流水编号"]);
             await readDetailSection(page, "匹配依据");
             await fields(detailSection(page, "evidence"), ["金额占用时间"]);
             await expect(detailSection(page, "evidence").getByRole("heading", { name: "匹配依据", exact: true })).toBeVisible();
@@ -400,11 +400,11 @@ test.describe("detail reading width matrix", () => {
             await readDetailSection(page, "关联订单");
           } else {
             await readDetailSection(page, "交易信息");
-            await fields(detailSection(page, "transaction"), ["对方", "支付宝流水号", "支付宝订单号"]);
+            await fields(detailSection(page, "transaction"), ["交易对方", "支付宝流水号", "支付宝订单号"]);
             // The amount, the direction and the time stand in the summary, above the facts.
             await expect(foreground(page).getByRole("group", { name: "流水概况", exact: true }).locator("[data-record-summary-value]")).toHaveText(/^\+¥/);
             await expect(detailBody(page).locator('dt').filter({ hasText: /^(支付宝 App ID|交易金额|收支方向|交易时间)$/ })).toHaveCount(0);
-            await readDetailSection(page, /^采集记录/);
+            await readDetailSection(page, /^查账记录/);
             await fields(detailSection(page, "sources"), ["内部流水编号"]);
             await readingFlowGeometry(page);
             await readDetailSection(page, /^对应订单/);
@@ -510,7 +510,7 @@ test("named notification scenarios retain delivery facts and safe resend recover
     await readDetailSection(page, "通知信息");
     if (key === "notificationHistory") {
       expect(detail.is_latest).toBe(false);
-      await expect(summary.getByText("历史投递", { exact: true })).toBeVisible();
+      await expect(summary.getByText("历史发送记录", { exact: true })).toBeVisible();
       await expect(overview.getByRole("link", { name: "已重新发送，查看最新结果", exact: true })).toBeVisible();
       // A delivery replaced by a resend offers none of its own; its technical information stays available.
       await expect(foreground(page).getByRole("button", { name: "重新发送", exact: true })).toHaveCount(0);
@@ -695,7 +695,7 @@ test("automatic, manual and reversed matches keep full evidence in unified and s
       await expect(card.getByText("支付宝交易金额", { exact: true })).toHaveCount(0);
       const entry = await data<AdminLedgerDetail>(page, manifest, "/api/admin/v1/ledger/entries/" + match.ledger_entry_id);
       // Only a transaction with several sources has to say which of them an association uses.
-      const sourceLink = card.getByRole("link", { name: /^采集记录 \d+$/ });
+      const sourceLink = card.getByRole("link", { name: /^查账记录 \d+$/ });
       await expect(sourceLink).toHaveCount(entry.sources.length > 1 ? 1 : 0);
       if (entry.sources.length > 1) expect(targetUrl(page, (await sourceLink.getAttribute("href"))!).hash).toBe("#source-" + match.ledger_entry_id);
       await readDetailSection(page, "交易信息");
@@ -791,12 +791,12 @@ test("all genuine ledger versions and synthetic simultaneous associations remain
       await readDetailSection(page, /^账本冲突/);
       await expect(detailSection(page, "conflicts").locator('article[id^="conflict-"]')).toHaveCount(entry.conflicts.length);
     } else await expect(detailSection(page, "conflicts")).toHaveCount(0);
-    const sources = await readDetailSection(page, /^采集记录/);
+    const sources = await readDetailSection(page, /^查账记录/);
     // A single source is the record itself; several are told apart as records of their own.
     await expect(sources.locator('article[id^="source-"]')).toHaveCount(several ? entry.sources.length : 0);
     for (const [index, source] of entry.sources.entries()) {
       const owner = several ? sources.locator(`article[id="source-${source.ledger_entry_id}"]`) : sources;
-      if (several) await expect(owner.getByRole("heading", { level: 3 })).toHaveText("采集记录 " + (index + 1));
+      if (several) await expect(owner.getByRole("heading", { level: 3 })).toHaveText("查账记录 " + (index + 1));
       await expect(owner.getByText(source.ledger_entry_id, { exact: true })).toBeVisible();
       await expect(owner.locator("dt")).toHaveText(sourceTerms(entry, source));
       await expect(owner.getByRole("link", { name: "查看记录与处理", exact: true })).toHaveCount(0);
@@ -874,8 +874,8 @@ test("technical record identifiers remain copyable without crowding the business
   const cases: Array<{ key: string; tools: string; item?: string; values: Array<[string, string | null]> }> = [
     { key: "notificationDns", tools: "更多操作，通知记录操作", values: [["通知编号", notification.delivery.delivery_id], ["事件编号", notification.event.event_id]] },
     { key: "matchInferred", tools: "更多操作，流水操作", item: "收款关联技术信息", values: [["关联编号", match.payment_match_id], ["内部流水编号", match.ledger_entry_id]] },
-    { key: "ledgerAssociated", tools: "更多操作，流水操作", values: [["内部流水编号", ledger.ledger_entry_id], ["支付宝 App ID", source.app_id], ["采集来源标识", source.provider_account_key]] },
-    { key: "ledgerIdentical", tools: "更多操作，流水操作", item: "采集记录 2 技术信息", values: [["内部流水编号", copy.ledger_entry_id], ["支付宝 App ID", copy.app_id], ["采集来源标识", copy.provider_account_key]] },
+    { key: "ledgerAssociated", tools: "更多操作，流水操作", values: [["内部流水编号", ledger.ledger_entry_id], ["支付宝 App ID", source.app_id], ["查账来源标识", source.provider_account_key]] },
+    { key: "ledgerIdentical", tools: "更多操作，流水操作", item: "查账记录 2 技术信息", values: [["内部流水编号", copy.ledger_entry_id], ["支付宝 App ID", copy.app_id], ["查账来源标识", copy.provider_account_key]] },
   ];
   for (const scenario of cases) {
     await openDetail(page, manifest, scenario.key);
@@ -991,7 +991,7 @@ test("long products, complete identifiers and multiline details wrap without cli
           }
         }
       }
-      const longFacts = scenario.kind === "notification" ? [["业务网站", siteName]] : scenario.kind === "match" ? [["业务网站", siteName], ["对方", counterparty]] : [["对方", counterparty]];
+      const longFacts = scenario.kind === "notification" ? [["业务网站", siteName]] : scenario.kind === "match" ? [["业务网站", siteName], ["交易对方", counterparty]] : [["交易对方", counterparty]];
       const wrappedFacts = [];
       for (const [name, value] of longFacts) {
         const fieldOwner = name === "业务网站" && scenario.kind === "match" ? orderOwner : factsOwner;

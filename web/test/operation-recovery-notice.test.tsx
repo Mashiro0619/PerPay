@@ -54,6 +54,6 @@ describe("operation recovery attention", () => {
     rerender(content(new Error("state conflict"), true));
     const title = screen.getByText("操作结果待确认", { exact: true });
     await waitFor(() => expect(title).toHaveFocus());
-    expect(title).toHaveAccessibleDescription(/请关闭窗口并刷新页面/);
+    expect(title).toHaveAccessibleDescription(/请离开页面或关闭窗口并刷新/);
   });
 });

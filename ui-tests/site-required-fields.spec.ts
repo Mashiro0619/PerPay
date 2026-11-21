@@ -24,7 +24,7 @@ test("website required fields show custom feedback, suppress native bubbles and 
         { path: "/sites/defaults", label: "收银台名称", button: "保存默认设置", tab: "收银台展示" },
       ]) {
         await page.goto(fixture.origin + "/admin" + form.path);
-        if (form.tab) await selectSettingsSection(page, page, "模板分组", form.tab);
+        if (form.tab) await selectSettingsSection(page, page, "默认设置分组", form.tab);
         const input = page.getByLabel(form.label, { exact: true });
         const original = await input.inputValue();
         await input.evaluate((element: HTMLInputElement) => {

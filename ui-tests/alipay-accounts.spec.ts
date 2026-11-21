@@ -108,7 +108,7 @@ for (const width of [390, 1440]) {
         .getByRole("button", { name: "保存并测试连接", exact: true })
         .click();
       await selectSettingsSection(page, page.locator("[data-overlay-content]"), "支付宝账号配置分组", "使用情况");
-      const latestCheck = page.getByText("最近连接检查", { exact: true }).locator("..");
+      const latestCheck = page.getByText("最近连接测试", { exact: true }).locator("..");
       await expect(latestCheck.locator("dd").first()).toHaveText("通过");
       await page.screenshot({
         path: info.outputPath(`account-configured-${width}.png`),
@@ -127,7 +127,7 @@ for (const width of [390, 1440]) {
       await expect(
         page.getByRole("combobox", { name: "支付宝账号", exact: true }),
       ).toContainText("请选择收款账号");
-      await page.getByRole("button", { name: "按权重", exact: true }).click();
+      await page.getByRole("button", { name: "按权重分配", exact: true }).click();
       const accountsResponse = await page.request.get(
         fixture.origin + "/api/admin/v1/alipay-accounts",
       );

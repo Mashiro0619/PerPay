@@ -76,12 +76,12 @@ describe("unified transaction detail", () => {
     expect(screen.getAllByText(memo, { normalizer: text => text })).toHaveLength(1);
 
     const sources = section("sources");
-    expect(within(sources).getByRole("heading", { level: 2 })).toHaveTextContent(/^采集记录，共 ?2 ?项$/);
-    expect(within(sources).getByText("多份采集记录对应同一笔交易。")).toBeVisible();
+    expect(within(sources).getByRole("heading", { level: 2 })).toHaveTextContent(/^查账记录，共 ?2 ?项$/);
+    expect(within(sources).getByText("多份查账记录对应同一笔交易。")).toBeVisible();
     for (const [index, id] of [ledgerId, secondSourceId].entries()) {
       const card = record("source-" + id);
       expect(sources).toContainElement(card);
-      expect(within(card).getByRole("heading", { name: "采集记录 " + (index + 1), level: 3 })).toBeVisible();
+      expect(within(card).getByRole("heading", { name: "查账记录 " + (index + 1), level: 3 })).toBeVisible();
       expect(within(card).getByText("未分配", { exact: true })).toBeVisible();
       // Identical sources repeat none of the transaction's facts.
       expect(terms(card)).toEqual(["内部流水编号", "保存时间"]);
@@ -113,7 +113,7 @@ describe("unified transaction detail", () => {
     const writeText = vi.spyOn(navigator.clipboard, "writeText");
     await screen.findByRole("heading", { name: "支付宝收款", level: 1 });
     const sources = section("sources");
-    expect(within(sources).getByRole("heading", { level: 2 })).toHaveTextContent(/^采集记录，共 ?1 ?项$/);
+    expect(within(sources).getByRole("heading", { level: 2 })).toHaveTextContent(/^查账记录，共 ?1 ?项$/);
     // The only source is the record itself: there is nothing to tell apart, and nothing for a bookmark to single out.
     expect(sources.querySelector("[data-sub-record]")).toBeNull();
     expect(document.getElementById("source-" + ledgerId)).toBeNull();
@@ -159,14 +159,14 @@ describe("unified transaction detail", () => {
     const trigger = screen.getByRole("button", { name: "更多操作，流水操作" });
     trigger.focus();
     await user.keyboard("{Enter}");
-    expect((await screen.findAllByRole("menuitem")).map(item => item.textContent)).toEqual(["流水技术信息", "采集记录 1 技术信息", "采集记录 2 技术信息"]);
-    await user.click(screen.getByRole("menuitem", { name: "采集记录 2 技术信息" }));
-    const dialog = await screen.findByRole("dialog", { name: "采集记录 2 技术信息" });
-    for (const [name, text] of [["内部流水编号", secondSourceId], ["原始事件编号", "raw-" + secondSourceId], ["支付宝 App ID", "2026000000000001"], ["采集来源标识", "historical-account"], ["语义指纹", ledger.semantic_fingerprint]] as const) {
+    expect((await screen.findAllByRole("menuitem")).map(item => item.textContent)).toEqual(["流水技术信息", "查账记录 1 技术信息", "查账记录 2 技术信息"]);
+    await user.click(screen.getByRole("menuitem", { name: "查账记录 2 技术信息" }));
+    const dialog = await screen.findByRole("dialog", { name: "查账记录 2 技术信息" });
+    for (const [name, text] of [["内部流水编号", secondSourceId], ["原始事件编号", "raw-" + secondSourceId], ["支付宝 App ID", "2026000000000001"], ["查账来源标识", "historical-account"], ["交易内容标识", ledger.semantic_fingerprint]] as const) {
       await user.click(within(dialog).getByRole("button", { name: "复制" + name }));
       expect(writeText).toHaveBeenLastCalledWith(text);
     }
-    await user.click(within(dialog).getByRole("button", { name: "关闭采集记录 2 技术信息" }));
+    await user.click(within(dialog).getByRole("button", { name: "关闭查账记录 2 技术信息" }));
     await waitFor(() => expect(trigger).toHaveFocus());
     expect(fetchMock.mock.calls.every(([request]) => request.method === "GET")).toBe(true);
   });
@@ -189,7 +189,7 @@ describe("unified transaction detail", () => {
     expect((await screen.findAllByRole("menuitem")).map(item => item.textContent)).toEqual(["流水技术信息", "收款关联技术信息"]);
     await user.click(screen.getByRole("menuitem", { name: "流水技术信息" }));
     const dialog = await screen.findByRole("dialog", { name: "流水技术信息" });
-    for (const name of ["内部流水编号", "支付宝流水号", "原始事件编号", "支付宝 App ID", "采集来源标识", "语义指纹"]) {
+    for (const name of ["内部流水编号", "支付宝流水号", "原始事件编号", "支付宝 App ID", "查账来源标识", "交易内容标识"]) {
       expect(within(dialog).getByRole("button", { name: "复制" + name })).toBeVisible();
     }
     expect(fetchMock.mock.calls.every(([request]) => request.method === "GET")).toBe(true);
@@ -218,7 +218,7 @@ describe("unified transaction detail", () => {
       expect(within(card).getByRole("heading", { name: match.product_name, level: 3 })).toBeVisible();
       expect(value(card, "商户订单号")).toHaveTextContent(match.merchant_order_no);
       expect(value(card, "关联理由")).toHaveTextContent("已核对收款凭据");
-      expect(within(card).getByRole("link", { name: "采集记录 " + (match.ledger_entry_id === ledgerId ? 1 : 2) }).getAttribute("href")).toContain("#source-" + match.ledger_entry_id);
+      expect(within(card).getByRole("link", { name: "查账记录 " + (match.ledger_entry_id === ledgerId ? 1 : 2) }).getAttribute("href")).toContain("#source-" + match.ledger_entry_id);
       expect(within(card).queryByRole("link", { name: "查看收款关联" })).not.toBeInTheDocument();
       expect(within(card).queryByText("支付宝交易金额")).not.toBeInTheDocument();
       if (match.status === "REVERSED") {
@@ -232,7 +232,7 @@ describe("unified transaction detail", () => {
     expect(value(record("match-" + second.payment_match_id), "应付金额")).toHaveTextContent("¥1.01（多收 ¥0.01）");
     const conflict = record("conflict-conflict-id");
     expect(within(conflict).getByRole("link", { name: "查看冲突记录" })).toHaveAttribute("href", "/reconciliation/conflicts/conflict-id?selected_site=remembered-site");
-    expect(value(conflict, "涉及的采集记录")).toHaveTextContent("采集记录 2");
+    expect(value(conflict, "涉及的查账记录")).toHaveTextContent("查账记录 2");
     for (const [id, amount] of [[ledgerId, "¥1.01"], [secondSourceId, "¥1.02"]] as const) {
       expect(value(record("source-" + id), "交易金额")).toHaveTextContent(amount);
     }
@@ -248,7 +248,7 @@ describe("unified transaction detail", () => {
     };
     const first = mount(view(false));
     await screen.findByRole("heading", { name: "支付宝收款", level: 1 });
-    await waitFor(() => expect(section("payments")).toHaveTextContent("尚未关联收款订单，可在要采用的采集记录上人工关联。"));
+    await waitFor(() => expect(section("payments")).toHaveTextContent("尚未关联收款订单，可在要采用的查账记录上人工关联。"));
     for (const id of [ledgerId, secondSourceId]) expect(within(record("source-" + id)).getByRole("button", { name: "用这份记录关联" })).toBeVisible();
     // Nothing says which of the differing copies is right, so the record as a whole offers none.
     expect(screen.queryByRole("button", { name: "人工关联收款" })).not.toBeInTheDocument();
@@ -262,7 +262,7 @@ describe("unified transaction detail", () => {
     await settle();
     const suggestion = record("candidate-" + eligible.candidate_id);
     expect(within(suggestion).getByText("订单或流水当前不可人工关联。")).toBeVisible();
-    expect(within(suggestion).getByRole("link", { name: "采集记录 2" })).toBeVisible();
+    expect(within(suggestion).getByRole("link", { name: "查账记录 2" })).toBeVisible();
     expect(screen.queryByRole("button", { name: /人工关联收款|用这份记录关联|关联到此订单/ })).not.toBeInTheDocument();
   });
 
@@ -349,8 +349,8 @@ describe("unified transaction detail", () => {
     const card = record("conflict-conflict-id");
     expect(within(card).getByText(status === "RESOLVED" ? "已处理" : "已隔离", { exact: true })).toBeVisible();
     if (existing === secondSourceId) {
-      expect(terms(card)).toEqual(["发现时间", "处理时间", "涉及的采集记录"]);
-      expect(within(card).getByRole("link", { name: "采集记录 2" }).getAttribute("href")).toContain("#source-" + secondSourceId);
+      expect(terms(card)).toEqual(["发现时间", "处理时间", "涉及的查账记录"]);
+      expect(within(card).getByRole("link", { name: "查账记录 2" }).getAttribute("href")).toContain("#source-" + secondSourceId);
     } else {
       // An entry that is not one of this transaction's copies can only be named.
       expect(terms(card)).toEqual(["发现时间", "处理时间", "关联内部流水编号"]);

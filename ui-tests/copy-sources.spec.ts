@@ -135,7 +135,7 @@ test("ledger credentials keep genuine Alipay, website and PerPay identities dist
         const orderHref = await card.getByRole("link", { name: "查看订单", exact: true }).getAttribute("href");
         expect(new URL(orderHref!, manifest.origin).searchParams.get("overlay")).toBe("/orders/" + match.order_id);
         // Only a transaction with several stored copies has to say which of them an association uses.
-        const sourceLink = card.getByRole("link", { name: /^采集记录 \d+$/ });
+        const sourceLink = card.getByRole("link", { name: /^查账记录 \d+$/ });
         await expect(sourceLink).toHaveCount(several ? 1 : 0);
         if (several) {
           const sourceTarget = new URL((await sourceLink.getAttribute("href"))!, manifest.origin).searchParams.get("overlay")!;
@@ -296,7 +296,7 @@ test("public checkout shows payment results and historical refunds without inter
   const serverDocument = await page.request.get(manifest.origin + confirmedPath);
   expect(serverDocument.status()).toBe(200);
   const serverMarkup = await serverDocument.text();
-  expect(serverMarkup).toContain("收款已确认");
+  expect(serverMarkup).toContain("付款成功");
   expect(serverMarkup).toContain("data-payable-amount");
   expect(serverMarkup).not.toContain(automaticCheckoutCopy);
   expect(serverMarkup).not.toContain(manualCheckoutCopy);
@@ -313,7 +313,7 @@ test("public checkout shows payment results and historical refunds without inter
     await presentation(page, width, theme);
     await page.goto(manifest.origin + confirmedPath);
     const payment = page.locator("[data-checkout-payment]");
-    await expect(payment.getByRole("heading", { name: "收款已确认", exact: true })).toBeVisible();
+    await expect(payment.getByRole("heading", { name: "付款成功", exact: true })).toBeVisible();
     await expect(payment.locator("[data-payable-amount]")).toBeVisible();
     await expect(payment.getByText(automaticCheckoutCopy)).toHaveCount(0);
     await expect(payment.getByText(manualCheckoutCopy, { exact: true })).toHaveCount(0);
@@ -335,12 +335,12 @@ test("public checkout shows payment results and historical refunds without inter
       try {
         await page.goto(manifest.origin + openPath);
         await page.clock.runFor(1600);
-        await expect(page.getByRole("heading", { name: "收款已确认", exact: true })).toBeVisible();
+        await expect(page.getByRole("heading", { name: "付款成功", exact: true })).toBeVisible();
         await expect(payment.getByText(automaticCheckoutCopy)).toHaveCount(0);
         await expect(payment.getByText(manualCheckoutCopy, { exact: true })).toHaveCount(0);
         const refund = page.getByRole("region", { name: "订单信息", exact: true }).getByRole("alert");
-        await expect(refund).toContainText("历史退款记录：" + scenario.refundLabel);
-        await expect(refund.getByText("此为历史退款记录，具体金额请联系商家。", { exact: true })).toBeVisible();
+        await expect(refund).toContainText("订单已有" + scenario.refundLabel + "退款记录");
+        await expect(refund.getByText("具体退款金额与到账进度请联系商家确认。", { exact: true })).toBeVisible();
         await expect(page.locator("[data-qr-image]")).toHaveCount(0);
         await record(page, info, { feature: "copy-source-checkout", evidence: "synthetic-public-get-response-only-no-financial-writes", width, theme, basis: scenario.basis, legacyRefund: scenario.refund });
         if (scenario.basis === "MANUAL") await screenshot(page, info, "copy-source-checkout-manual-" + width + "-" + theme);

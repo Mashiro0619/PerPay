@@ -142,7 +142,7 @@ test("unified transactions render both themes and width modes at 320, 390, 1440 
       if (path === transactions) await expect(page.locator("[data-business-row]")).toHaveCount(20);
       else {
         await settleOverlay(page);
-        await expect((await revealDetailSection(page, "sources")).getByRole("heading", { level: 2 })).toContainText("采集记录");
+        await expect((await revealDetailSection(page, "sources")).getByRole("heading", { level: 2 })).toContainText("查账记录");
       }
       await record(page, info, { width, theme, mode, source: "local-synthetic-unified-transactions" });
       await screenshot(page, info, `transactions-${width}-${theme}-${mode}-${path.split("/").at(-1)}`);

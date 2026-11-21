@@ -42,7 +42,7 @@ test("a settled transaction states Alipay's numbers without unfolding and leads 
   await page.keyboard.press("Enter");
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(entry.external_event_id);
   // The stored copy is one section away, reached from the navigation that stays above the content.
-  const sourcesLink = overlay.getByRole("navigation", { name: "分区导航", exact: true }).getByRole("button", { name: /^采集记录\s*，共\s*1\s*项$/ });
+  const sourcesLink = overlay.getByRole("navigation", { name: "分区导航", exact: true }).getByRole("button", { name: /^查账记录\s*，共\s*1\s*项$/ });
   await sourcesLink.focus();
   await page.keyboard.press("Enter");
   const sources = detailSection(page, "sources");

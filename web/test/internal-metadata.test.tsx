@@ -94,7 +94,7 @@ describe("ordinary administrator views", () => {
       await within(orders).findByRole("heading", { name: order.product_name, level: 3 }),
     ).toBeVisible();
     expect(new URLSearchParams(view.router.state.location.search).get("overlay")).toContain("/reconciliation/transactions/" + ledgerId);
-    const sources = screen.getByRole("region", { name: /^采集记录/ });
+    const sources = screen.getByRole("region", { name: /^查账记录/ });
     expect(within(sources).getByText("PerPay 记录状态")).toBeVisible();
     expect(within(sources).getByText("未分配", { exact: true })).toBeVisible();
     expect(screen.queryByText(/规则版本/)).not.toBeInTheDocument();

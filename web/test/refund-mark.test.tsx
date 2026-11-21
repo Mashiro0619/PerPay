@@ -471,7 +471,7 @@ describe("administrator-only refund marks", () => {
       </QueryClientProvider>,
     );
     expect(await screen.findByText("支出")).toBeVisible();
-    const sources = await screen.findByRole("region", { name: /^采集记录/ });
+    const sources = await screen.findByRole("region", { name: /^查账记录/ });
     expect(within(sources).getByText("PerPay 记录状态")).toBeVisible();
     expect(screen.getByText("支出流水不关联收款订单。")).toBeVisible();
     expect(screen.queryByText(/支出仅作流水留存/)).not.toBeInTheDocument();

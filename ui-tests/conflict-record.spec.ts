@@ -27,7 +27,7 @@ const primaryScenarios = [
   {
     key: "conflictIsolated",
     title: "支付宝交易金额无法解析",
-    statusLabel: "未处理 · 已忽略",
+    statusLabel: "未处理 · 提醒已忽略",
     explanation: "交易金额格式无效，已隔离，不计入收款。",
     actionLabel: "确认隔离并关闭冲突",
     twoSided: false,
@@ -45,7 +45,7 @@ const secondaryScenarios = [
   },
   {
     key: "conflictRawPage",
-    title: "账单原始页发生变化",
+    title: "查账结果发生变动",
     statusLabel: "待处理",
     explanation: "同一查账窗口返回了不同内容。",
     sections: ["collection", "history"],

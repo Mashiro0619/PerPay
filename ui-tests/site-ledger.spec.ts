@@ -94,7 +94,7 @@ for (const layout of layouts) for (const scenario of scenarios) {
 
     // Alipay's facts stand alone: the website's and PerPay's own numbers are not among them.
     const transaction = await revealDetailSection(page, "transaction");
-    await expect(transaction.locator("dt")).toHaveText(["对方", ...(entry.memo ? ["支付宝备注"] : []), "支付宝流水号", "支付宝订单号",
+    await expect(transaction.locator("dt")).toHaveText(["交易对方", ...(entry.memo ? ["支付宝备注"] : []), "支付宝流水号", "支付宝订单号",
       ...(entry.merchant_order_no ? ["支付宝商户单号"] : [])]);
     await expect(transaction.getByText(entry.external_event_id, { exact: true })).toBeVisible();
     await expect(transaction.getByRole("button", { name: "复制支付宝流水号", exact: true })).toBeVisible();

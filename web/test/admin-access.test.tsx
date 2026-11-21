@@ -69,7 +69,7 @@ describe("admin access settings", () => {
     expect(confirmation).toHaveAccessibleDescription(explanation.textContent ?? "");
     await user.click(screen.getByRole("button", { name: "确认保存" }));
     await waitFor(() =>
-      expect(onSaved).toHaveBeenCalledWith(saved, "管理员 IP 白名单已保存"),
+      expect(onSaved).toHaveBeenCalledWith(saved, "IP 白名单已保存"),
     );
     expect(await requests.find((r) => r.method === "PUT")!.json()).toEqual({
       revision: 3,

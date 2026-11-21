@@ -80,7 +80,7 @@ for (const layout of [
         await primary.getByRole("button", { name: "保存白名单", exact: true }).click();
         await page.getByRole("button", { name: "确认保存", exact: true }).click();
         const toast = page.locator('[data-slot="toast"]');
-        await expect(toast.locator('[data-slot="toast-title"]')).toHaveText("管理员 IP 白名单已保存");
+        await expect(toast.locator('[data-slot="toast-title"]')).toHaveText("IP 白名单已保存");
         await expect(page.locator("[data-overlay-step]")).toHaveCount(0);
         await expect(primary).toBeVisible();
         await expect.poll(async () => {

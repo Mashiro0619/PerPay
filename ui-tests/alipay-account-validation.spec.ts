@@ -75,16 +75,16 @@ for (const layout of [{ width: 1440, height: 900, font: 100 }, { width: 390, hei
           await selectSettingsSection(page, dialog, "支付宝账号配置分组", "基本信息");
           await dialog.getByRole("button", { name: "更多账号操作", exact: true }).click();
           await page.getByRole("menuitem", { name: "重新测试连接", exact: true }).click();
-          await expect(dialog.getByText("连接检查未通过", { exact: true })).toBeVisible();
+          await expect(dialog.getByText("连接测试未通过", { exact: true })).toBeVisible();
           await selectSettingsSection(page, dialog, "支付宝账号配置分组", "使用情况");
-          await expect(dialog.getByText("最近连接检查", { exact: true }).locator("..").locator("dd").first()).toHaveText("未通过");
+          await expect(dialog.getByText("最近连接测试", { exact: true }).locator("..").locator("dd").first()).toHaveText("未通过");
           await selectSettingsSection(page, dialog, "支付宝账号配置分组", "应用信息");
         }
         await failOldCheck();
         await dialog.getByRole("button", { name: "更换应用密钥", exact: true }).click();
         await page.getByRole("alertdialog", { name: "生成新的应用密钥？", exact: true }).getByRole("button", { name: "确认", exact: true }).click();
         await expect(dialog.getByRole("textbox", { name: "待启用应用公钥", exact: true })).toBeVisible();
-        await expect(dialog.getByText("连接检查未通过", { exact: true })).toHaveCount(0);
+        await expect(dialog.getByText("连接测试未通过", { exact: true })).toHaveCount(0);
         const pending = (await read()).pending_application_key!;
         expect((await read()).application_public_key).toBe(account.application_public_key);
         await failOldCheck();
@@ -109,7 +109,7 @@ for (const layout of [{ width: 1440, height: 900, font: 100 }, { width: 390, hei
         await expect(platformError).toHaveCount(0);
         await dialog.getByRole("button", { name: "验证并启用", exact: true }).click();
         await expect(dialog.getByText("新应用密钥已启用", { exact: true })).toBeVisible();
-        await expect(dialog.getByText("连接检查未通过", { exact: true })).toHaveCount(0);
+        await expect(dialog.getByText("连接测试未通过", { exact: true })).toHaveCount(0);
         await expect(dialog.getByRole("textbox", { name: "应用公钥", exact: true })).toHaveValue(pending.public_key);
         const activated = await read();
         expect(activated.pending_application_key).toBeNull();

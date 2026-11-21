@@ -38,7 +38,7 @@ test("order and ledger sources remain distinct at desktop and 320 pixels", async
     } else {
       await expect(websiteOrder.getByText("加价金额", { exact: true })).toHaveCount(0);
     }
-    const payment = orderOverlay.getByRole("group", { name: "PerPay 收款状态", exact: true });
+    const payment = orderOverlay.getByRole("group", { name: "收款状态", exact: true });
     await expect(payment.locator("[data-record-summary-value]")).toHaveText(currency(order.received_amount_cents ?? order.payable_amount_cents));
     await expect(websiteOrder.getByText("商户订单号", { exact: true }).locator("..")).toContainText(order.merchant_order_no);
     await expect(websiteOrder.getByText("收银台有效期至", { exact: true }).locator("..").locator("dd")).toHaveText(timestamp(order.checkout.expires_at));
@@ -77,7 +77,7 @@ test("order and ledger sources remain distinct at desktop and 320 pixels", async
     await expect(summary.locator("[data-record-summary-value]")).toHaveText("+" + currency(grouped.amount_cents));
     await expect(summary.locator("time")).toHaveText(timestamp(grouped.occurred_at!));
     const transaction = await revealDetailSection(page, "transaction");
-    for (const label of ["对方", "支付宝流水号", "支付宝订单号"]) {
+    for (const label of ["交易对方", "支付宝流水号", "支付宝订单号"]) {
       await expect(transaction.getByText(label, { exact: true })).toBeVisible();
     }
     await expect(transaction).toContainText(grouped.external_event_id);
@@ -88,7 +88,7 @@ test("order and ledger sources remain distinct at desktop and 320 pixels", async
     await transaction.screenshot({ path: ledgerPath });
     await info.attach(`ledger-sources-${width}`, { path: ledgerPath, contentType: "image/png" });
     const sources = await revealDetailSection(page, "sources");
-    await expect(sources.getByRole("heading", { level: 2 })).toContainText("采集记录");
+    await expect(sources.getByRole("heading", { level: 2 })).toContainText("查账记录");
     // A single stored copy is the record itself; several are told apart, and the address names the one the order uses.
     const several = grouped.sources.length > 1;
     await expect(sources.locator('article[id^="source-"]')).toHaveCount(several ? grouped.sources.length : 0);

@@ -303,7 +303,7 @@ describe("order detail work surface", () => {
     expect(
       await screen.findByRole("heading", { name: "实收金额不符" }),
     ).toBeVisible();
-    expect(screen.getByText("未处理 · 已忽略")).toBeVisible();
+    expect(screen.getByText("未处理 · 提醒已忽略")).toBeVisible();
     expect(screen.queryByText(/异常尚未解决/)).not.toBeInTheDocument();
     expect(
       screen.queryByRole("heading", { name: "账务异常 · 1" }),
@@ -506,7 +506,7 @@ describe("order detail work surface", () => {
       mount();
       await screen.findByRole("heading", { name: "订单信息" });
       // A delivery replaced by a resend is folded into the section's history.
-      await userEvent.setup().click(await within(section("notifications")).findByRole("button", { name: /^历史发送记录/ }));
+      await userEvent.setup().click(await within(section("notifications")).findByRole("button", { name: /^历史通知/ }));
       expect(await within(section("notifications")).findByRole("link", { name: "查看详情" })).toBeVisible();
       expect(within(section("notifications")).queryByRole("button", { name: "立即重试" })).not.toBeInTheDocument();
       expect(within(section("notifications")).queryByRole("button", { name: "重新发送" })).not.toBeInTheDocument();
@@ -623,7 +623,7 @@ describe("order detail work surface", () => {
     expect(requests).toHaveLength(2);
     await user.click(screen.getByRole("button", { name: "下一页" }));
     // A delivery replaced by a resend is history: collapsed, and never offered for another resend.
-    const superseded = await screen.findByRole("button", { name: /^历史发送记录/ });
+    const superseded = await screen.findByRole("button", { name: /^历史通知/ });
     expect(superseded).toHaveAttribute("aria-expanded", "false");
     await user.click(superseded);
     expect(await within(section("notifications")).findByRole("link", { name: "查看详情" })).toHaveAttribute("href", "/notifications/old-delivery");
@@ -682,7 +682,7 @@ describe("order detail work surface", () => {
     );
     const refund = await screen.findByRole("region", { name: "管理员退款标记" });
     expect(within(refund).getByText("已标记退款")).toBeVisible();
-    expect(within(screen.getByRole("group", { name: "PerPay 收款状态" })).getByText("已标记退款")).toBeVisible();
+    expect(within(screen.getByRole("group", { name: "收款状态" })).getByText("已标记退款")).toBeVisible();
     expect(await recordAction("撤销退款标记")).toBeVisible();
     expect(state.order.payment).toEqual(paidOrder.payment);
     expect(state.order.received_amount_cents).toBe(
@@ -759,10 +759,11 @@ describe("order record layout", () => {
     mockData(data, []);
     mount();
     await screen.findByRole("heading", { name: "订单信息" });
-    const summary = screen.getByRole("group", { name: "PerPay 收款状态" });
+    const summary = screen.getByRole("group", { name: "收款状态" });
     expect(summary.querySelector("[data-record-summary-value]")).toHaveTextContent(value);
     if (difference) {
-      expect(within(summary).getByText("实收 · 应付").parentElement).toHaveTextContent("实收 · 应付¥1.01（" + difference + "）");
+      expect(within(summary).getByText("实收金额")).toBeVisible();
+      expect(within(summary).getByText(/应付/).parentElement).toHaveTextContent("应付 ¥1.01（" + difference + "）");
     } else if (data.received_amount_cents) {
       expect(within(summary).queryByText("应付")).not.toBeInTheDocument();
       expect(within(summary).queryByText("实收")).not.toBeInTheDocument();
@@ -883,7 +884,7 @@ describe("payment provenance", () => {
     mount();
     await screen.findByRole("heading", { name: "订单信息" });
     await screen.findByRole("button", { name: "更多操作，订单操作" });
-    const currentPayment = within(screen.getByRole("group", { name: "PerPay 收款状态" }));
+    const currentPayment = within(screen.getByRole("group", { name: "收款状态" }));
     const inferred = currentPayment.queryAllByText(/PerPay 按金额和付款时间推断/);
     const manual = currentPayment.queryAllByText(/管理员人工关联/);
     expect(inferred.length > 0).toBe(basis === "INFERRED");

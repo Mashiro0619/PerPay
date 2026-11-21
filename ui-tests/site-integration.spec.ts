@@ -57,7 +57,7 @@ for (const width of [1440, 390, 320]) {
         await expect(assistant.getByRole("textbox", { name: "Demo 通知地址", exact: true })).toHaveCount(0);
         await expect(assistant.getByRole("textbox", { name: "可复制内容", exact: true })).toHaveCount(0);
         if (label !== "原生 API") {
-          await expect(assistant.getByRole("button", { name: "轮换" + (label === "易支付 V1" ? "商户密钥" : "商户私钥"), exact: true })).toBeVisible();
+          await expect(assistant.getByRole("button", { name: "更换" + (label === "易支付 V1" ? "商户密钥" : "商户私钥"), exact: true })).toBeVisible();
         }
         for (const colorScheme of ["light", "dark"] as const) {
           await page.emulateMedia({ colorScheme, reducedMotion: "reduce" });
@@ -102,7 +102,7 @@ for (const width of [1440, 390, 320]) {
         expect(initial.v1_key_version).toBeGreaterThanOrEqual(1);
         expect(initial.merchant_key_version).toBeGreaterThanOrEqual(1);
         expect(initial.platform_key_version).toBeGreaterThanOrEqual(1);
-        const accepting = assistant.getByRole("switch", { name: "允许" + label + "新订单", exact: true });
+        const accepting = assistant.getByRole("switch", { name: "启用" + label, exact: true });
         await expect(accepting).toBeChecked();
         await accepting.click();
         const saving = page.waitForResponse(response => new URL(response.url()).pathname === apiPath + "/epay" && response.request().method() === "PUT");
@@ -147,9 +147,9 @@ for (const width of [1440, 390, 320]) {
         await page.evaluate(() => { document.documentElement.style.fontSize = ""; });
         await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
         await closeKey(view);
-        const rotate = assistant.getByRole("button", { name: "轮换" + keyLabel, exact: true });
+        const rotate = assistant.getByRole("button", { name: "更换" + keyLabel, exact: true });
         await rotate.click();
-        const warning = page.getByRole("alertdialog", { name: "轮换" + keyLabel + "？", exact: true });
+        const warning = page.getByRole("alertdialog", { name: "更换" + keyLabel + "？", exact: true });
         await expect(warning).toBeVisible();
         await warning.getByRole("button", { name: "取消", exact: true }).click();
         await expect(rotate).toBeFocused();

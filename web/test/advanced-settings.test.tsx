@@ -28,7 +28,7 @@ describe("advanced checkout settings clarity", () => {
     expect(screen.getByRole("heading", { name: "高级设置" })).toBeVisible();
     const fields = screen.getByRole("group", { name: "高级设置" });
     expect(within(fields).getByText("高级设置")).toHaveClass("sr-only");
-    const rotation = screen.getByLabelText("收银台链接密钥轮换周期（天）");
+    const rotation = screen.getByLabelText("收银台链接密钥更换周期（天）");
     expect(rotation).toHaveValue(90);
     expect(rotation).toHaveAccessibleDescription(
       "不影响已有订单链接，通常无需修改。",
@@ -56,7 +56,7 @@ describe("advanced checkout settings clarity", () => {
     }));
     const onSaved = mount();
     const user = userEvent.setup();
-    const rotation = screen.getByLabelText("收银台链接密钥轮换周期（天）");
+    const rotation = screen.getByLabelText("收银台链接密钥更换周期（天）");
     await user.clear(rotation);
     await user.type(rotation, "120");
     expect(requests).toHaveLength(0);

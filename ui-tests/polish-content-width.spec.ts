@@ -259,7 +259,7 @@ test("notification columns stay readable across compact desktop widths", async (
     const table = page.locator('[data-business-table="notifications"]');
     await expect(table.getByRole("columnheader", { name: "网站", exact: true })).toHaveCount(measured >= 48 * 16 ? 1 : 0);
     await expect(table.getByRole("columnheader", { name: /创建时间/ })).toHaveCount(measured >= 68 * 16 ? 1 : 0);
-    await expect(table.getByRole("columnheader", { name: /下次重试/ })).toHaveCount(measured >= 56 * 16 ? 1 : 0);
+    await expect(table.getByRole("columnheader", { name: /下次发送/ })).toHaveCount(measured >= 56 * 16 ? 1 : 0);
     expect(await table.locator('td[data-column-id="identity"]').first().evaluate(cell => cell.getBoundingClientRect().width)).toBeGreaterThanOrEqual(160);
   }
 });

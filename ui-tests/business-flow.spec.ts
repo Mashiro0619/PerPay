@@ -104,7 +104,7 @@ async function createAccount(page: Page, fixture: BusinessFixture, info: TestInf
   await overlay.getByRole("button", { name: "保存并测试连接", exact: true }).click();
   expect((await applicationChecked).ok()).toBe(true);
   await selectSettingsSection(page, overlay, "支付宝账号配置分组", "使用情况");
-  await expect(overlay.getByText("最近连接检查", { exact: true }).locator("..").locator("dd").first()).toHaveText("通过");
+  await expect(overlay.getByText("最近连接测试", { exact: true }).locator("..").locator("dd").first()).toHaveText("通过");
   await expect(overlay.getByText("待补充：收款码", { exact: true })).toBeVisible();
   await overlay.getByRole("button", { name: "继续配置收款码", exact: true }).click();
   await expectSettingsSection(overlay, "支付宝账号配置分组", "收款码");
@@ -113,7 +113,7 @@ async function createAccount(page: Page, fixture: BusinessFixture, info: TestInf
   await overlay.getByRole("button", { name: "保存并测试连接", exact: true }).click();
   expect((await checked).ok()).toBe(true);
   await selectSettingsSection(page, overlay, "支付宝账号配置分组", "使用情况");
-  await expect(overlay.getByText("最近连接检查", { exact: true }).locator("..").locator("dd").first()).toHaveText("通过");
+  await expect(overlay.getByText("最近连接测试", { exact: true }).locator("..").locator("dd").first()).toHaveText("通过");
   const stored = await readData<AlipayAccount>(page, fixture.origin, "/api/admin/v1/alipay-accounts/" + account.id);
   expect(stored).toMatchObject({ name, app_id: fixture.appId, code_payload: fixture.collectionCode, configured: true });
   await screenshot(page, info, "02-account-ready");
@@ -143,7 +143,7 @@ async function createSite(page: Page, fixture: BusinessFixture, info: TestInfo, 
   await expect(protocols.getByRole("button", { name: "易支付 V1", exact: true })).toBeVisible();
   await expect(protocols.getByRole("button", { name: "易支付 V2", exact: true })).toBeVisible();
   for (const label of [" API 密钥", "通知签名密钥"]) {
-    await expect(overlay.getByRole("button", { name: "轮换" + label, exact: true })).toHaveCount(0);
+    await expect(overlay.getByRole("button", { name: "更换" + label, exact: true })).toHaveCount(0);
     await expect(overlay.getByRole("button", { name: "查看" + label, exact: true })).toHaveCount(0);
   }
   for (const name of ["API 密钥", "通知签名密钥"]) {
@@ -159,7 +159,7 @@ async function createSite(page: Page, fixture: BusinessFixture, info: TestInfo, 
     await key.getByRole("button", { name: "关闭", exact: true }).click();
     await expect(key).toHaveCount(0);
     await expect(overlay.getByRole("button", { name: "查看" + label, exact: true })).toBeEnabled();
-    await expect(overlay.getByRole("button", { name: "轮换" + label, exact: true })).toBeEnabled();
+    await expect(overlay.getByRole("button", { name: "更换" + label, exact: true })).toBeEnabled();
   }
   await overlay.getByRole("textbox", { name: "通知域名", exact: true }).fill(fixture.notificationOrigin);
   await overlay.getByRole("switch", { name: "开启通知", exact: true }).check();
@@ -204,7 +204,7 @@ async function createAndPayTestOrder(page: Page, fixture: BusinessFixture, info:
   expect(await checkout.locator("[data-qr-image]").evaluate(image => (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
   await screenshot(checkout, info, "04-test-order-checkout");
   await fixture.settleOrder(order.order_id);
-  await expect(checkout.getByRole("heading", { name: "收款已确认", exact: true })).toBeVisible({ timeout: 20_000 });
+  await expect(checkout.getByRole("heading", { name: "付款成功", exact: true })).toBeVisible({ timeout: 20_000 });
   await expect(checkout.locator("[data-qr-image]")).toHaveCount(0);
   await screenshot(checkout, info, "05-test-order-payment-confirmed");
   await checkout.close();
@@ -250,7 +250,7 @@ async function notifyBusinessOrder(page: Page, fixture: BusinessFixture, info: T
   await page.locator(`a[data-row-link][href*="${orderId}"]`).click();
   const overlay = page.locator("[data-overlay-content]");
   await expect(overlay.getByText(merchantOrderNo, { exact: true })).toBeVisible();
-  await expect(overlay.getByText("此订单已设置通知地址，暂无发送记录", { exact: true })).toBeVisible();
+  await expect(overlay.getByText("此订单已设置通知地址，暂无通知记录", { exact: true })).toBeVisible();
   await fixture.settleOrder(orderId);
   fixture.setNotificationMode("retryable-failure");
   await fixture.dispatchNotification();
@@ -484,7 +484,7 @@ async function reconcileUnmatchedIncome(page: Page, fixture: BusinessFixture, in
   // A confirmed order has nothing left to review or refund.
   await expect(overlay.getByRole("button", { name: "重新核对并确认收款", exact: true })).toHaveCount(0);
   await expect(orderActions.getByRole("button", { name: "标记已退款", exact: true })).toHaveCount(0);
-  await expect(overlay.getByRole("group", { name: "PerPay 收款状态", exact: true }).getByText("收款已确认", { exact: true })).toBeVisible();
+  await expect(overlay.getByRole("group", { name: "收款状态", exact: true }).getByText("收款已确认", { exact: true })).toBeVisible();
   // 此前已投递一次，原确认、撤销与重新确认三个事件还剩两条；夹具每次只推进一条真实投递。
   for (let remaining = 2; remaining > 0; remaining--) {
     const dispatched = await fixture.dispatchNotification();

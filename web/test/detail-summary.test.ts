@@ -57,7 +57,7 @@ describe("readable evidence without stronger financial claims", () => {
   it("states both reminder visibility and financial status without a separate disclaimer", () => {
     expect(
       exceptionStateLabel({ ...financialException, reminder_ignored: true }),
-    ).toBe("未处理 · 已忽略");
+    ).toBe("未处理 · 提醒已忽略");
     expect(
       exceptionStateLabel({
         ...financialException,

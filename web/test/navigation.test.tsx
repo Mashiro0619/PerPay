@@ -412,7 +412,7 @@ describe("navigation and draft protection", () => {
       .setup()
       .click(screen.getByRole("button", { name: "统计口径" }));
     expect(
-      await screen.findByText(/待付款仅统计当前开放的待付款订单/),
+      await screen.findByText(/待付款仅统计当前收款中的待付款订单/),
     ).toBeVisible();
     expect(
       fetchMock.mock.calls.some(([request]) =>

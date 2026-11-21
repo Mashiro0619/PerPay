@@ -31,7 +31,8 @@ describe("runtime failure explanations", () => {
   });
 
   it.each([
-    [{ recovery_required: true }, "检测到上次备份或维护意外中断"],
+    [{ status: "unavailable", backup_available: false }, "备份状态暂不可用，请检查备份目录及权限"],
+    [{ recovery_required: true }, "检测到上次备份或维护异常中断或锁状态异常"],
     [{ clock_moved_backwards: true }, "系统时钟发生回退"],
     [{ instance_matches: false }, "备份与当前实例不匹配"],
     [{ backup_required: true }, "当前数据需要重新备份"],

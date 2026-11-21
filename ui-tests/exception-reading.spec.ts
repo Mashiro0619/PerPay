@@ -123,7 +123,7 @@ test("genuine ignored, resolved, candidate and unlinked exceptions keep their ev
     const card = await open(page, manifest, key);
     if (key === "exceptionIgnored") {
       expect(exception.reminder_ignored).toBe(true);
-      await expect(summary(page).getByText("未处理 · 已忽略", { exact: true })).toBeVisible();
+      await expect(summary(page).getByText("未处理 · 提醒已忽略", { exact: true })).toBeVisible();
     }
     if (key === "exceptionResolved") {
       expect(exception.status).toBe("RESOLVED");
@@ -341,7 +341,7 @@ test("exception long credentials, counterparties and multiline notes wrap comple
     await expect(section(page, "order").getByRole("heading", { level: 3 })).toHaveText(product);
     await expect(card.locator("dd").filter({ hasText: "第三行：备注末尾" })).toHaveText(memo);
     const wrapped = [];
-    for (const [name, value] of [["业务网站", site], ["对方", counterpart], ["支付宝订单号", number]]) {
+    for (const [name, value] of [["业务网站", site], ["交易对方", counterpart], ["支付宝订单号", number]]) {
       const field = card.locator("dt").filter({ hasText: new RegExp("^" + name + "$") }).locator("..");
       await expect(field.locator("dd")).toContainText(value!);
       const measured = await field.evaluate(completeFieldGeometry);

@@ -104,7 +104,7 @@ isolatedTest("IP 白名单在真实版本冲突后保留草稿并可继续保存
     expect(secondSaved.cidrs).toEqual(["127.0.0.1", "192.0.2.10", "198.51.100.11"]);
     await expect(save).toBeDisabled();
     const toast = page.locator('[data-slot="toast"]');
-    await expect(toast.locator('[data-slot="toast-title"]')).toHaveText("管理员 IP 白名单已保存");
+    await expect(toast.locator('[data-slot="toast-title"]')).toHaveText("IP 白名单已保存");
     await expect.poll(() => toast.evaluate(element => {
       const title = element.querySelector<HTMLElement>('[data-slot="toast-title"]')!;
       const content = element.querySelector<HTMLElement>('[data-slot="toast-content"]')!;

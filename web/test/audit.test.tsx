@@ -4,7 +4,8 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes, parsePath, useLocation, useNavigate } from "react-router";
 import { describe, expect, it, vi } from "vitest";
 import { queryClient } from "../src/api/client";
-import { auditActionLabel } from "../src/lib/audit";
+import { auditActionLabel, auditSubjectLabel } from "../src/lib/audit";
+import { auditFilterOptions } from "../src/components/audit-filters";
 import { switchWorkspaceHref } from "../src/lib/navigation-selection";
 import Audit from "../src/pages/Audit";
 import AuditDetail from "../src/pages/AuditDetail";
@@ -563,5 +564,22 @@ describe("audit records in the overlay", () => {
     expect(body.querySelectorAll("[data-detail-fields]")).toHaveLength(1);
     expect(within(body).getByRole("region", { name: "记录与导出规则" })).toBeVisible();
     expect(dialog.querySelector("[data-overlay-footer]")).toBeEmptyDOMElement();
+  });
+
+  it("maps backend audit subjects and actions without collisions in the filter options", () => {
+    expect(auditActionLabel("audit.export")).not.toBe(auditActionLabel("audit.export_generated"));
+    expect(auditActionLabel("api.authentication")).toBe("接口身份验证");
+    expect(auditActionLabel("webhook_manual_retry_failed")).toBe("手动重试通知失败");
+    expect(auditSubjectLabel("history_archive")).toBe("历史归档");
+    expect(auditSubjectLabel("ledger_conflict")).toBe("账本冲突");
+    const actionFilter = auditFilterOptions({}, {
+      ...auditMetadata,
+      actions: [
+        { action: "audit.export", category: "audit" },
+        { action: "audit.export_generated", category: "audit" },
+      ],
+    }).find(filter => filter.key === "action")!;
+    const labels = actionFilter.options.map(option => option.label);
+    expect(new Set(labels).size).toBe(labels.length);
   });
 });

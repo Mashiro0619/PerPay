@@ -16,5 +16,5 @@ test("live payment fixture renders a QR and terminal fixture renders confirmatio
   await expect(page.locator("[data-countdown]:visible")).toHaveCount(1);
   await record(page, info);
   await page.goto(manifest.origin + manifest.checkouts.fullEvidence!);
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("收款已确认");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("付款成功");
 });

@@ -430,12 +430,12 @@ describe("settings summaries and owned editing overlays", () => {
     await user.click(await within(dialog).findByRole("tab", { name: "基本信息" }));
     await user.click(footer(dialog).getByRole("button", { name: "更多账号操作" }));
     await user.click(await screen.findByRole("menuitem", { name: "重新测试连接" }));
-    expect(await within(dialog).findByText("连接检查未通过")).toBeVisible();
+    expect(await within(dialog).findByText("连接测试未通过")).toBeVisible();
     await user.click(within(dialog).getByRole("tab", { name: "应用信息" }));
     await user.type(within(dialog).getByLabelText("新的支付宝公钥"), "verified-platform-key");
     await user.click(within(dialog).getByRole("button", { name: "验证并启用" }));
     expect(await within(dialog).findByText("新应用密钥已启用")).toBeVisible();
-    expect(within(dialog).queryByText("连接检查未通过")).not.toBeInTheDocument();
+    expect(within(dialog).queryByText("连接测试未通过")).not.toBeInTheDocument();
     expect(within(dialog).queryByText("之前的密钥未通过检查")).not.toBeInTheDocument();
     expect(view.writes().map(request => new URL(request.url).pathname)).toEqual([
       "/api/admin/v1/alipay-accounts/" + account.id + "/check",
@@ -727,10 +727,10 @@ describe("settings summaries and owned editing overlays", () => {
     const body = dialog.querySelector<HTMLElement>("[data-overlay-detail]")!;
     const summary = within(dialog.querySelector<HTMLElement>("[data-overlay-summary]")!).getByRole("group", { name: "会话概况" });
     expect(await within(summary).findByText("其他设备", { exact: true })).toBeVisible();
-    expect(summary).toHaveTextContent(/最近活跃：2026\/10\/29 08:00:00 · 登录 IP：2001:db8::1/);
+    expect(summary).toHaveTextContent(/最近活跃：2026\/10\/29 08:00:00/);
     expect(within(summary).queryByText("当前会话")).not.toBeInTheDocument();
     expect(Array.from(body.querySelectorAll("[data-detail-fields] > dl > div")).map(row => [row.querySelector("dt")!.textContent, row.querySelector("dd")!.textContent])).toEqual([
-      ["登录方式", "密码"], ["到期时间", "2099/01/01 08:00:00"],
+      ["登录 IP", "2001:db8::1"], ["登录方式", "密码"], ["到期时间", "2099/01/01 08:00:00"],
     ]);
     const device = within(body).getByRole("button", { name: "设备信息" });
     expect(device).toHaveAttribute("aria-expanded", "false");
@@ -758,8 +758,8 @@ describe("settings summaries and owned editing overlays", () => {
       new URL(request.url).pathname === "/api/admin/v1/sessions" ? json({ data: [current] }) : undefined });
     const dialog = await screen.findByRole("dialog", { name: "未知浏览器 · 未知系统" });
     const summary = within(dialog.querySelector<HTMLElement>("[data-overlay-summary]")!).getByRole("group", { name: "会话概况" });
-    expect(within(summary).getByText("当前会话", { exact: true })).toBeVisible();
-    expect(summary.querySelector("[data-record-summary-meta]")).toHaveTextContent(/^最近活跃：2026\/10\/29 08:00:00 · 登录 IP：未记录$/);
+    expect(within(summary).getByText("当前设备", { exact: true })).toBeVisible();
+    expect(summary.querySelector("[data-record-summary-meta]")).toHaveTextContent(/^最近活跃：2026\/10\/29 08:00:00$/);
     const body = dialog.querySelector<HTMLElement>("[data-overlay-detail]")!;
     expect(within(body).queryByText("当前会话", { selector: "dt" })).not.toBeInTheDocument();
     // Without a recorded User-Agent there is nothing to disclose.

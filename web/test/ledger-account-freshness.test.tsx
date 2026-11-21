@@ -77,10 +77,15 @@ it.each([
   expect(view.freshness().querySelector("time")).toBeNull();
 });
 
-it("labels the unfiltered maximum as a success from any account", async () => {
-  const view = mount("/reconciliation");
-  await waitFor(() => expect(view.freshness().querySelector("time")).toHaveAttribute("datetime", freshTime));
-  expect(view.freshness()).toHaveTextContent("（多账号取最新）");
+it("labels the unfiltered maximum as a success from any account only when multiple accounts exist", async () => {
+  const multi = mount("/reconciliation");
+  await waitFor(() => expect(multi.freshness().querySelector("time")).toHaveAttribute("datetime", freshTime));
+  expect(multi.freshness()).toHaveTextContent("（多账号取最新）");
+  multi.unmount();
+  queryClient.clear();
+  const single = mount("/reconciliation", { accountMissing: true });
+  await waitFor(() => expect(single.freshness().querySelector("time")).toHaveAttribute("datetime", freshTime));
+  expect(single.freshness()).not.toHaveTextContent("（多账号取最新）");
 });
 
 it("takes the detail record account even when its URL carries another account filter", async () => {
