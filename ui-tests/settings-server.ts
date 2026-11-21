@@ -15,6 +15,8 @@ import { loopbackPort } from "./loopback-port";
 /** Writable temporary SQLite fixture; no provider or notification transport runs. */
 export async function createSettingsServer(epoch: number, options: {
   updateChecker?: AppDependencies["updateChecker"];
+  selfUpdate?: AppDependencies["selfUpdate"];
+  maintenance?: AppDependencies["maintenance"];
   demoMode?: boolean;
   clock?: () => number;
   runtime?: (services: Awaited<ReturnType<typeof createConfiguredHttpServices>>) => Partial<Pick<AppDependencies,
@@ -27,6 +29,8 @@ export async function createSettingsServer(epoch: number, options: {
     apiSecret: null, collectionCodePayload: "https://qr.alipay.com/isolated-settings-fixture", identityClock: () => epoch });
   const app = createApp({ ...services, ...options.runtime?.(services), clock: options.clock ?? (() => epoch), startedAt: new Date(epoch),
     updateChecker: options.updateChecker ?? { check: async () => { throw new UpdateCheckUnavailable(3600); } },
+    ...(options.selfUpdate ? { selfUpdate: options.selfUpdate } : {}),
+    ...(options.maintenance ? { maintenance: options.maintenance } : {}),
     demoMode: options.demoMode ?? false,
   });
   const server = serve({ fetch: app.fetch, hostname: "127.0.0.1", port });
