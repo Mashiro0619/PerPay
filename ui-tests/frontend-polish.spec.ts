@@ -117,7 +117,7 @@ async function checkpoint(page: Page, info: TestInfo, name: string, videoOffset:
       main: bounds(overlay ?? document.querySelector("[data-content-width]")),
       title: bounds(foreground.querySelector(overlay ? '[data-slot="dialog-title"]' : "[data-page-heading]")),
       cards: [...foreground.querySelectorAll('[data-slot="card"]')].map(card => ({ title: card.querySelector('[data-slot="card-title"]')?.textContent, bounds: bounds(card) })),
-      sections: [...foreground.querySelectorAll("section.detail-section")].map(section => ({ title: section.querySelector("h2")?.textContent, bounds: bounds(section) })),
+      sections: [...foreground.querySelectorAll("section[data-detail-section]")].map(section => ({ title: section.querySelector("h2")?.textContent, bounds: bounds(section) })),
       sidebar: document.querySelector('[data-slot="sidebar"][data-state]')?.getAttribute("data-state") ?? "mobile-drawer",
       fontStatus: document.fonts.status,
     };
