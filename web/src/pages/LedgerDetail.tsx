@@ -183,9 +183,9 @@ function LedgerRecord({ entry }: { entry: AdminLedgerDetail }) {
   const superseded = offered.filter(item => item.candidate.status === "SUPERSEDED");
   const unassociated = !entry.matches.length && !offered.length && candidateQueries.every(query => query.data !== undefined && !query.error);
 
-  const matchRecord = (match: AdminLedgerMatch) => <MatchRecord key={match.payment_match_id} match={match} query={matchQueries[entry.matches.indexOf(match)]!}
+  const matchRecord = (match: AdminLedgerMatch) => <LedgerMatchRecord key={match.payment_match_id} match={match} query={matchQueries[entry.matches.indexOf(match)]!}
     source={numberOf(match.ledger_entry_id)} multiple={multiple && match.status === "SETTLED"} />;
-  const candidateRecord = ({ candidate, source }: (typeof offered)[number]) => <CandidateRecord key={candidate.candidate_id} candidate={candidate} source={source} number={numberOf(source.ledger_entry_id)} settled={settled} />;
+  const candidateRecord = ({ candidate, source }: (typeof offered)[number]) => <LedgerCandidateRecord key={candidate.candidate_id} candidate={candidate} source={source} number={numberOf(source.ledger_entry_id)} settled={settled} />;
 
   return <>
     <OverlaySummary>
@@ -310,7 +310,7 @@ function SourceRecord({ source, entry, number, associable }: { source: AdminLedg
  * One association between this entry and an order. The order's name and the
  * state of the association are known with the entry; the rest is read on its own.
  */
-function MatchRecord({ match, query, source, multiple }: {
+function LedgerMatchRecord({ match, query, source, multiple }: {
   match: AdminLedgerMatch;
   query: UseQueryResult<PaymentMatchEnvelope, Error>;
   /** Number of the source the association uses, when the transaction has several. */
@@ -366,7 +366,7 @@ function MatchingEvidence({ candidate, ledger }: { candidate: MatchCandidate; le
 }
 
 /** An order PerPay found for this entry by amount and time, which nobody has confirmed. */
-function CandidateRecord({ candidate, source, number, settled }: {
+function LedgerCandidateRecord({ candidate, source, number, settled }: {
   candidate: MatchCandidate;
   source: AdminLedgerSource;
   /** Number of the source the suggestion was made for, when the transaction has several. */
