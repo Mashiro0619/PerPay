@@ -254,23 +254,49 @@ test("a short step inside a tall drawer pins its flush transparent footer to the
     const manual = page.getByRole("dialog", { name: "人工关联收款", exact: true });
     await expect(manual.getByRole("button", { name: "取消", exact: true })).toBeVisible();
     const geometry = await drawer.evaluate(shell => {
+      const header = shell.querySelector<HTMLElement>('[data-overlay-step] > [data-slot="dialog-header"]')!;
+      const body = shell.querySelector<HTMLElement>('[data-overlay-step] [data-overlay-step-scroll]')!;
+      const firstChild = body.firstElementChild as HTMLElement;
       const footer = shell.querySelector<HTMLElement>('[data-overlay-step] [data-slot="dialog-footer"]')!;
       const shellBox = shell.getBoundingClientRect();
+      const headerBox = header.getBoundingClientRect();
+      const firstBox = firstChild.getBoundingClientRect();
       const footerBox = footer.getBoundingClientRect();
+      const headerStyle = getComputedStyle(header);
       const style = getComputedStyle(footer);
       return {
         shell: { left: shellBox.left, right: shellBox.right, bottom: shellBox.bottom, height: shellBox.height },
+        header: { left: headerBox.left, right: headerBox.right, bottom: headerBox.bottom, borderBottom: headerStyle.borderBottomWidth },
+        firstTop: firstBox.top,
         footer: { left: footerBox.left, right: footerBox.right, bottom: footerBox.bottom, height: footerBox.height },
         background: style.backgroundColor,
         radius: style.borderBottomLeftRadius,
       };
     });
+    expect(Math.abs(geometry.header.left - geometry.shell.left), "step header divider spans to drawer left edge").toBeLessThanOrEqual(1);
+    expect(Math.abs(geometry.header.right - geometry.shell.right), "step header divider spans to drawer right edge").toBeLessThanOrEqual(1);
+    expect(geometry.header.borderBottom, "step header separates cleanly from scrolling body").toBe("1px");
+    expect(geometry.firstTop - geometry.header.bottom, "body content has clear breathing room below header").toBeGreaterThanOrEqual(12);
     expect(Math.abs(geometry.footer.bottom - geometry.shell.bottom), "step footer sits flush at the drawer bottom").toBeLessThanOrEqual(1);
     expect(Math.abs(geometry.footer.left - geometry.shell.left), "step footer spans to the drawer left edge").toBeLessThanOrEqual(1);
     expect(Math.abs(geometry.footer.right - geometry.shell.right), "step footer spans to the drawer right edge").toBeLessThanOrEqual(1);
     expect(geometry.radius, "step footer has no floating rounded corners").toBe("0px");
     expect(geometry.background, "step footer blends transparently with the drawer").toBe("rgba(0, 0, 0, 0)");
     await screenshot(page, info, `manual-step-drawer-footer-${size.width}`);
+    if (size.width === 1440) {
+      await manual.getByRole("searchbox", { name: "搜索收入流水", exact: true }).fill("detail-height-income");
+      await manual.getByRole("button", { name: "搜索", exact: true }).click();
+      await manual.getByRole("button", { name: /^选择收入流水：/ }).click();
+      await expect(manual.getByText("订单收款账号", { exact: true })).toBeVisible();
+      const previewGap = await drawer.evaluate(shell => {
+        const header = shell.querySelector<HTMLElement>('[data-overlay-step] > [data-slot="dialog-header"]')!;
+        const body = shell.querySelector<HTMLElement>('[data-overlay-step] [data-overlay-step-scroll]')!;
+        const first = body.firstElementChild as HTMLElement;
+        return first.getBoundingClientRect().top - header.getBoundingClientRect().bottom;
+      });
+      expect(previewGap, "preview evidence starts cleanly below the fixed step header").toBeGreaterThanOrEqual(12);
+      await screenshot(page, info, "manual-step-drawer-preview-1440");
+    }
     await manual.getByRole("button", { name: "取消", exact: true }).click();
     await expect(manual).toHaveCount(0);
   }
