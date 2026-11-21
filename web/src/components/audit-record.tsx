@@ -25,7 +25,7 @@ export function AuditResult({ outcome, source_type, http_status, is_aggregate, a
 export function AuditRecordType({ event }: { event: AuditEventItem }) {
   return <div className="flex min-w-0 flex-wrap items-center gap-1.5">
     <Badge variant="outline">{AUDIT_RECORD_LABELS[event.source_type] ?? event.source_type}</Badge>
-    {event.is_aggregate && <Badge variant="secondary">活动汇总 · {event.event_count.toLocaleString("zh-CN")} 次</Badge>}
+    {event.is_aggregate && <Badge variant="secondary">同类合并 · {event.event_count.toLocaleString("zh-CN")} 次</Badge>}
   </div>;
 }
 
@@ -79,7 +79,7 @@ export function AuditCaptureNotice({ capture, compact = false }: Pick<AuditMetad
         {capture.spool_gap_count > 0 && <span>维护日志缺口：{capture.spool_gap_count.toLocaleString("zh-CN")} 处</span>}
         {capture.buffered_events > 0 && <span>等待写入：{capture.buffered_events.toLocaleString("zh-CN")} 条</span>}
       </div>
-      {capture.last_error_code === "activity_http_budget_exceeded" && <p>查询和匿名请求超过采集预算，部分活动未记录。该类请求每分钟最多接收 600 条待写入记录，重复请求会先合并。</p>}
+      {capture.last_error_code === "activity_http_budget_exceeded" && <p>高频查询与匿名请求超过每分钟记录上限，部分活动未记录。该类请求每分钟最多接收 600 条待写入记录，重复请求会先合并。</p>}
       {!compact && capture.last_dropped_at && <p>最近丢弃活动：<AuditTime value={capture.last_dropped_at} /></p>}
       {!compact && capture.last_flush_at && <p>最近成功写入：<AuditTime value={capture.last_flush_at} /></p>}
       {!compact && capture.spool_last_import_at && <p>最近维护日志导入：<AuditTime value={capture.spool_last_import_at} /></p>}
@@ -91,7 +91,7 @@ export function AuditCaptureNotice({ capture, compact = false }: Pick<AuditMetad
 /** Counts and timings of one aggregated activity group; a top-level section of the audit record. */
 export function AuditAggregation({ event }: { event: AuditEventItem }) {
   if (!event.is_aggregate) return null;
-  return <Section id="aggregate" title={`活动汇总 · ${event.event_count.toLocaleString("zh-CN")} 次`}>
+  return <Section id="aggregate" title={`同类合并 · ${event.event_count.toLocaleString("zh-CN")} 次`}>
     <p className="text-[0.8125rem] leading-5 text-muted-foreground">同类活动的次数、时间与耗时统计；不同结果和错误分别汇总。</p>
     <FieldList items={[
       { label: "首次发生", value: <RecordTime value={event.first_occurred_at} />, kind: "time" },

@@ -92,6 +92,7 @@ export function AppSidebar({
   }, [siteMenu]);
   const items = navigation.map(item => ({
     ...item,
+    title: item.section === "settings" ? (selection.clientId ? "网站设置" : "系统设置") : item.title,
     url: sidebarHref(item.section, selection),
     global: true,
     active: section === item.section,

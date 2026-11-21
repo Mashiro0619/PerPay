@@ -41,23 +41,23 @@ const fieldLabels: Readonly<Record<string, string>> = {
   name: "名称", enabled: "启用状态", deleted: "删除状态", accepting_orders: "接收新订单", notifications_enabled: "付款通知",
   notification_origin: "通知域名", return_origin: "返回域名", "collection.mode": "支付宝账号分配方式", "collection.accounts": "参与收款的账号",
   system_name: "系统名称", checkout_name: "收银台名称", checkout_help_url: "收银台帮助链接", checkout_show_product_name: "展示商品名称", dashboard_chart_type: "收款趋势默认图形",
-  order_ttl_seconds: "收银台有效期（秒）", amount_offset_maximum_cents: "最大加价（分）", amount_reuse_cooldown_seconds: "金额复用间隔（秒）", pending_order_limit: "待付款订单上限",
+  order_ttl_seconds: "收银台有效期（秒）", amount_offset_maximum_cents: "最大加价金额（分）", amount_reuse_cooldown_seconds: "同金额冷却时长（秒）", pending_order_limit: "待付款订单上限（笔）",
   app_id: "App ID", environment: "支付宝环境", code_payload: "收款码", collection_code_payload: "收款码",
   private_key: "应用私钥", provider_private_key: "应用私钥", public_key: "支付宝公钥", provider_public_key: "支付宝公钥", pending_private_key: "待启用应用私钥",
   api_secret: "API 密钥", webhook_secret: "通知签名密钥", cidrs: "管理员 IP 白名单", admin_access_enabled: "管理员 IP 白名单开关",
   v1_key: "易支付 V1 商户密钥", v2_merchant: "易支付 V2 商户私钥", v2_platform: "易支付 V2 平台私钥",
-  timeout_milliseconds: "请求超时（毫秒）", provider_timeout_milliseconds: "查账请求超时（毫秒）", maximum_attempts: "最多发送次数",
+  timeout_milliseconds: "请求超时（毫秒）", provider_timeout_milliseconds: "查账请求超时（毫秒）", maximum_attempts: "最多发送次数（次）",
   retry_base_seconds: "首次重试间隔（秒）", retry_maximum_seconds: "最大重试间隔（秒）",
   provider_scan_interval_milliseconds: "常规查账间隔（毫秒）", provider_active_scan_interval_milliseconds: "活跃查账间隔（毫秒）",
   provider_minimum_scan_interval_milliseconds: "最小查账间隔（毫秒）", provider_safety_lag_milliseconds: "查账延迟（毫秒）", provider_maximum_success_age_milliseconds: "查账有效时限（毫秒）",
   interval_seconds: "备份间隔（秒）", keep_count: "保留备份数量", backup_enabled: "自动备份开关", backup_interval_milliseconds: "备份间隔（毫秒）", backup_keep_count: "保留备份数量",
   backup_name: "备份名称", backup_sha256: "备份摘要（SHA-256）", backup_size_bytes: "备份大小（字节）",
-  database_bytes_before: "压实前大小（字节）", database_bytes_after: "压实后大小（字节）", reclaimed_bytes: "回收空间（字节）",
+  database_bytes_before: "压缩前大小（字节）", database_bytes_after: "压缩后大小（字节）", reclaimed_bytes: "回收空间（字节）",
   quarantine_name: "隔离文件名称", quarantine_sha256: "隔离文件摘要（SHA-256）", quarantine_size_bytes: "隔离文件大小（字节）",
   quarantined_database_name: "恢复前隔离文件", restore_completed: "恢复已完成", instance_id: "实例编号", schema_version: "数据库结构版本",
-  lock_kind: "锁类别", lock_fingerprint: "锁指纹", lock_created_at: "锁创建时间", lock_readable: "锁记录可读取",
-  force_abandon_lease: "强制放弃维护租约", finalize_interrupted_restore: "完成中断的恢复",
-  checkout_key_rotation_days: "收银台链接密钥轮换周期（天）", checkout_terminal_observation_seconds: "结束后可查询时长（秒）",
+  lock_kind: "锁类别", lock_fingerprint: "锁标识", lock_created_at: "锁创建时间", lock_readable: "锁记录可读取",
+  force_abandon_lease: "强制释放维护锁", finalize_interrupted_restore: "完成中断的恢复",
+  checkout_key_rotation_days: "收银台链接密钥轮换周期（天）", checkout_terminal_observation_seconds: "订单结束后收银台可查时长（秒）",
 };
 export function auditFieldLabel(field: string): string {
   return fieldLabels[field] ?? fieldLabels[field.split(".").at(-1)!] ?? field;
@@ -76,12 +76,12 @@ const actions: Readonly<Record<string, string>> = {
   "admin.password_changed": "修改管理员密码", "admin.password_recover": "恢复管理员密码",
   "admin.allowlist_disabled": "停用管理员 IP 白名单（离线恢复）", "admin.session_revoked": "强制下线登录设备",
   "admin.sessions_revoke_all": "退出全部设备", "admin.sessions_revoke_others": "退出其他设备",
-  "api_client.initialized": "初始化调用凭据", "api_client.rotated": "轮换调用凭据",
+  "api_client.initialized": "初始化调用凭据", "api_client.rotated": "更换调用凭据",
   "site.created": "创建业务网站", "site.updated": "更新业务网站", "site.deleted": "删除业务网站",
   "site.client_id_changed": "更换网站 ID",
-  "site.secret_rotated": "轮换网站密钥", "site.secret_viewed": "查看网站密钥", "site_defaults.updated": "更新网站默认设置",
+  "site.secret_rotated": "更换网站密钥", "site.secret_viewed": "查看网站密钥", "site_defaults.updated": "更新网站默认设置",
   "epay.configuration_updated": "更新易支付设置", "epay.secret_viewed": "查看易支付密钥",
-  "epay.configuration_exported": "导出网站接入配置", "epay.secret_rotated": "轮换易支付密钥",
+  "epay.configuration_exported": "导出网站接入配置", "epay.secret_rotated": "更换易支付密钥",
   "alipay_account.created": "添加支付宝账号", "alipay_account.updated": "更新支付宝账号", "alipay_account.deleted": "删除支付宝账号",
   "alipay_account.checked": "检查支付宝账号",
   "alipay_account.application_key_generated": "生成账号应用密钥", "alipay_account.application_key_regenerated": "重新生成账号应用密钥",
@@ -92,7 +92,7 @@ const actions: Readonly<Record<string, string>> = {
   "settings.collection_policy_updated": "更新查账策略", "settings.collection_updated": "更新收款设置",
   "settings.display_updated": "更新显示设置", "settings.notifications_updated": "更新通知设置",
   "settings.provider_updated": "更新支付宝配置", "settings.secret_revealed": "查看密钥",
-  "settings.webhook_secret_rotated": "轮换通知密钥", "settings.provider_application_key_generated": "生成应用密钥",
+  "settings.webhook_secret_rotated": "更换通知密钥", "settings.provider_application_key_generated": "生成应用密钥",
   "settings.provider_application_key_regenerated": "重新生成应用密钥", "settings.provider_application_key_prepared": "准备应用密钥",
   "settings.provider_application_key_activated": "启用应用密钥", "settings.provider_application_key_discarded": "放弃待用密钥",
   "orders.created": "创建订单", "orders.checkout_closed": "关闭收银台", "orders.checkout_expired": "收银台到期",
@@ -101,24 +101,24 @@ const actions: Readonly<Record<string, string>> = {
   "financial.reverse_settlement": "撤销收款关联", "financial.supersede_candidate": "更新待确认的收款关联",
   "work_items.ignore_all": "批量忽略提醒", "work_items.ignore": "忽略提醒", "work_items.restore": "恢复提醒",
   "webhook.delivery_redelivered": "重新发送通知", "webhook.delivery_retried": "立即重试通知", "webhook.signing_key_initialized": "初始化通知签名密钥",
-  "webhook.signing_key_rotated": "轮换通知签名密钥", "webhook.delivery": "投递通知", "webhook.dispatch": "通知调度",
+  "webhook.signing_key_rotated": "更换通知签名密钥", "webhook.delivery": "发送通知", "webhook.dispatch": "通知调度",
   "http.request": "接口请求", "http.read": "接口查询", "audit.export": "导出审计日志", "audit.export_generated": "导出审计日志",
   "ledger.scan": "自动查账", "reconciliation.sweep": "执行自动对账", "activity.capture_gap": "部分活动日志未记录",
   "backup.scheduler": "备份调度", "backup.run_once": "立即备份", "backup.health": "检查备份状态",
   "backup.restore": "恢复备份", "backup.delete": "删除备份", "backup.lock.clear": "清理备份锁",
   "backup.list": "查看备份列表", "backup.files.list": "查看备份文件", "backup.lock.inspect": "检查备份锁",
   "backup.command.invalid": "无效备份命令", "backup.cycle": "执行备份任务", "backup.retention": "清理过期备份",
-  "maintenance.publication_lock.clear": "清理发布锁", "maintenance.lock.clear": "清理维护锁",
+  "maintenance.publication_lock.clear": "清理状态发布锁", "maintenance.lock.clear": "清理维护锁",
   "maintenance.quarantine.delete": "删除隔离数据", "maintenance.quarantine.prune": "清理隔离数据",
   "maintenance.restore": "执行数据恢复", "maintenance.backups.list": "查看维护备份",
-  "maintenance.storage.inspect": "查看数据库空间", "maintenance.database.compact": "压实数据库",
+  "maintenance.storage.inspect": "查看数据库空间", "maintenance.database.compact": "整理压缩数据库",
   "maintenance.history.archive": "归档历史数据", "history.archive.created": "创建历史归档",
   "history.archive.deleted": "永久删除历史归档", "history.archive.download_requested": "下载历史归档",
   "maintenance.quarantine.list": "查看隔离列表", "maintenance.lock.inspect": "检查维护锁",
-  "maintenance.publication_lock.inspect": "检查发布锁", "maintenance.command.invalid": "无效维护命令",
+  "maintenance.publication_lock.inspect": "检查状态发布锁", "maintenance.command.invalid": "无效维护命令",
   "reconciliation_scheduler_startup_failed": "对账调度器启动失败", "webhook_scheduler_startup_failed": "通知调度器启动失败",
   "reconciliation_sweep_trigger_failed": "触发自动对账失败", "ledger_scheduler_failed": "查账任务调度失败",
-  "webhook_delivery_trigger_failed": "触发通知投递失败", "reconciliation_entry_failed": "流水对账失败",
+  "webhook_delivery_trigger_failed": "触发通知发送失败", "reconciliation_entry_failed": "流水对账失败",
   "reconciliation_order_failed": "订单对账失败", "webhook_scheduler_failed": "通知调度失败",
   "system.started": "系统启动", "system.stopping": "系统正在停止", "system.stopped": "系统停止",
   "system.start_failed": "系统启动失败", "system.failed": "系统运行异常",
@@ -136,7 +136,7 @@ export function auditDateTime(value: string | null): string {
 }
 export function auditDuration(value: number | null): string {
   if (value === null) return "未记录";
-  if (value < 1000) return `${Number(value.toFixed(2))} ms`;
+  if (value < 1000) return `${Number(value.toFixed(2))} 毫秒`;
   return `${Number((value / 1000).toFixed(3))} 秒`;
 }
 
@@ -160,7 +160,7 @@ export function auditValue(value: AuditJsonValue | undefined): string {
   if (value === undefined) return "未记录";
   if (value === null) return "未设置";
   if (typeof value === "boolean") return value ? "是" : "否";
-  return typeof value === "string" ? (value || "空字符串") : JSON.stringify(value, null, 2);
+  return typeof value === "string" ? (value || "（空）") : JSON.stringify(value, null, 2);
 }
 
 export function auditChangeValues(change: AuditChange): readonly [string, string] {

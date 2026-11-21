@@ -32,7 +32,7 @@ const rowId = (event: AuditEventItem) => `${event.source}:${event.event_id}`;
 function EventLink({ event }: { event: AuditEventItem }) {
   return <div className="audit-event-title">
     <Link global data-row-link className="list-primary-link" to={auditEventHref(event)} title={event.action}>{auditActionLabel(event.action)}</Link>
-    {event.is_aggregate && <span className="audit-aggregate-count" title="活动汇总">{event.event_count.toLocaleString("zh-CN")} 次</span>}
+    {event.is_aggregate && <span className="audit-aggregate-count" title="同类合并">{event.event_count.toLocaleString("zh-CN")} 次</span>}
   </div>;
 }
 

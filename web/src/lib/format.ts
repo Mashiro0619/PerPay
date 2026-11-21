@@ -69,9 +69,9 @@ export const MIN_ADMIN_PASSWORD_CHARACTERS = 6;
 
 export function validatePassword(password: string): string | null {
   if (Array.from(password).length < MIN_ADMIN_PASSWORD_CHARACTERS) return `密码至少需要 ${MIN_ADMIN_PASSWORD_CHARACTERS} 个字符。`;
-  if (new TextEncoder().encode(password).length > 1024) return "密码不能超过 1024 个 UTF-8 字节。";
+  if (new TextEncoder().encode(password).length > 1024) return "密码内容过长，请缩短后重试。";
   if (/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u.test(password)) {
-    return "密码包含无效的 Unicode 字符。";
+    return "密码包含不支持的特殊字符，请重新输入。";
   }
   return null;
 }

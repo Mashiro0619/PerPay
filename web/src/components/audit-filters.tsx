@@ -27,7 +27,7 @@ export function auditFilterOptions(filters: AuditFilters, metadata?: AuditMetada
     }))] },
     { key: "source", label: "日志类型", options: [{ value: "", label: "全部记录" }, { value: "core", label: "核心审计" }, { value: "activity", label: "活动记录" }] },
     { key: "actor_type", label: "执行者类型", options: [{ value: "", label: "全部执行者" }, ...AUDIT_ACTOR_TYPES.map(value => ({ value, label: AUDIT_ACTOR_LABELS[value] }))] },
-    { key: "action", label: "具体操作", options: [{ value: "", label: "全部操作" }, ...(metadata?.actions ?? []).map(({ action }) => ({ value: action, label: auditActionLabel(action) === action ? action : `${auditActionLabel(action)} · ${action}` }))] },
+    { key: "action", label: "具体操作", options: [{ value: "", label: "全部操作" }, ...(metadata?.actions ?? []).map(({ action }) => ({ value: action, label: auditActionLabel(action) }))] },
   ];
   return definitions.map(definition => ({
     ...definition,
@@ -73,7 +73,7 @@ export function AuditAddressFilter({ control, value, staged = false }: { control
       }} />
       {staged && <FieldDescription>匹配已记录的实际来源 IP。</FieldDescription>}
     </Field>
-    {!staged && <Button type="submit" variant="outline">应用来源</Button>}
+    {!staged && <Button type="submit" variant="outline">筛选</Button>}
   </FieldGroup>;
   return staged ? fields : <form className="min-w-0 flex-[0_1_22rem]" aria-label="来源 IP 筛选" onSubmit={event => {
     event.preventDefault();

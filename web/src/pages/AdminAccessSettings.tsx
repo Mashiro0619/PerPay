@@ -171,7 +171,7 @@ export function AdminAccessSettings({
       <CardContent>
         <FieldGroup>
           {needsReload && !review && <Alert>
-            <AlertTitle>{isOperationResultUnknown(save.error) ? "保存结果待确认" : "配置已在其他会话中更新"}</AlertTitle>
+            <AlertTitle>{isOperationResultUnknown(save.error) ? "保存结果待确认" : "配置已在其他页面或设备中更新"}</AlertTitle>
             <AlertDescription>
               <p>{isOperationResultUnknown(save.error)
                 ? "你的填写已保留。请重新读取并核对服务器规则，再继续保存。"
@@ -222,8 +222,7 @@ export function AdminAccessSettings({
               placeholder={"192.0.2.10\n2001:db8::/64"}
             />
             <FieldDescription id="admin-access-help">
-              每行一个 IPv4、IPv6 或 CIDR，最多 100 条、8 KiB，禁止
-              /0。启用时须包含当前 IP；关闭保留规则。
+              每行填写一个 IP 地址或网段（如 192.0.2.10 或 2001:db8::/64），最多 100 条（总大小不超过 8 KB），不支持放行全部地址（如 0.0.0.0/0）。启用时须包含当前 IP；关闭时保留已填规则。
             </FieldDescription>
             {fieldError && <FieldError>{fieldError}</FieldError>}
           </Field>

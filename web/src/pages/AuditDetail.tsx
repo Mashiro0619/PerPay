@@ -56,7 +56,7 @@ function AuditRecord({ event, siteDeleted }: { event: AuditEventDetail; siteDele
   const relatedCount = event.related_events.length > 0 ? { count: event.related_events.length } : {};
   const sections: SectionLink[] = [
     { id: "overview", label: "操作信息" },
-    ...(event.is_aggregate ? [{ id: "aggregate", label: "活动汇总" }] : []),
+    ...(event.is_aggregate ? [{ id: "aggregate", label: "同类合并" }] : []),
     ...(event.changes.length > 0 ? [{ id: "changes", label: "配置变更" }] : []),
     ...(related ? [{ id: "related", label: "关联日志", ...relatedCount }] : []),
   ];
@@ -75,7 +75,7 @@ function AuditRecord({ event, siteDeleted }: { event: AuditEventDetail; siteDele
     <Sections>
       <Section id="overview" title="操作信息">
         <FieldList items={[
-          { label: event.is_aggregate ? "排序时间" : "发生时间", value: <RecordTime value={event.occurred_at} />, kind: "time" },
+          { label: event.is_aggregate ? "汇总时间" : "发生时间", value: <RecordTime value={event.occurred_at} />, kind: "time" },
           { label: "执行者", value: <AuditActor event={event} /> },
           { label: "关联网站", value: <AuditSite event={event} deleted={siteDeleted} record /> },
           { label: "操作对象", value: event.subject_type === "alipay_account" && event.subject_id
@@ -114,7 +114,7 @@ function AuditRecord({ event, siteDeleted }: { event: AuditEventDetail; siteDele
         changes: event.changes.map(change => change.kind === "redacted_change" ? { field: change.field, kind: change.kind, configured_before: change.configured_before, configured_after: change.configured_after } : change) }}
       identifiers={[["日志编号", event.event_id], ["对象编号", event.subject_id], ["请求编号", event.request_id], [event.is_aggregate ? "汇总组编号" : "关联活动编号", event.activity_id], ["事件哈希", event.event_hash], ["前一事件哈希", event.previous_hash], ["请求上下文指纹", event.context_fingerprint], ["历史来源哈希", event.remote_address_hash]]}>
       <div className="flex flex-col gap-2 text-xs text-muted-foreground">
-        {event.is_aggregate && <p>活动汇总，不对应单次请求。</p>}
+        {event.is_aggregate && <p>同类合并记录，不对应单次请求。</p>}
         <p>客户端名称根据 User-Agent 识别，原文保留于下方请求信息。</p>
         {event.related_events.length > 0 && <p>同一请求可能产生不同类别的日志；关联记录不表示操作执行了多次。</p>}
       </div>

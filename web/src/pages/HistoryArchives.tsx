@@ -43,9 +43,47 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 const archivePath = (id: string) => "/settings/archives/" + encodeURIComponent(id);
 const sizeFormatter = new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 });
 function archiveSize(bytes: number): string {
-  const units = ["B", "KiB", "MiB", "GiB", "TiB"];
+  const units = ["B", "KB", "MB", "GB", "TB"];
   const unit = bytes < 1 ? 0 : Math.min(Math.floor(Math.log2(bytes) / 10), units.length - 1);
   return sizeFormatter.format(bytes / 1024 ** unit) + " " + units[unit];
+}
+
+const ARCHIVE_TABLE_LABELS: Readonly<Record<string, string>> = {
+  payment_orders: "订单",
+  checkout_sessions: "收银台记录",
+  amount_slots: "应付金额占用",
+  order_events: "订单动态",
+  financial_operations: "账务操作",
+  match_candidates: "匹配建议",
+  payment_matches: "收款关联",
+  payment_match_events: "关联变更事件",
+  ledger_transactions: "账务交易",
+  ledger_postings: "账务分录",
+  refund_records: "历史退款记录",
+  financial_exceptions: "账务异常",
+  outbox_events: "待发事件",
+  webhook_targets: "回调通知地址",
+  webhook_deliveries: "付款通知",
+  webhook_attempts: "通知发送记录",
+  epay_orders: "易支付订单",
+  admin_refund_mark_events: "退款标记历史",
+  admin_refund_marks: "管理员退款标记",
+  admin_operation_log: "管理员操作日志",
+  admin_work_item_operations: "待处理操作记录",
+  admin_work_item_states: "待处理状态",
+  ledger_entries: "支付宝流水",
+  provider_raw_events: "原始账单记录",
+  provider_raw_pages: "原始查账批次",
+  ingest_runs: "查账运行记录",
+  ingest_segments: "查账区间记录",
+  ingest_run_page_observations: "查账批次观测",
+  ingest_errors: "查账错误记录",
+  ledger_conflicts: "账本冲突",
+  ledger_conflict_operations: "冲突处理记录",
+  ledger_request_checkpoints: "查账请求检查点",
+};
+function archiveTableLabel(table: string): string {
+  return ARCHIVE_TABLE_LABELS[table] ?? table;
 }
 
 function archiveDateError(value: string): string {
@@ -312,8 +350,8 @@ function ArchiveContents({ archiveId, orderPage, pending }: { archiveId: string;
 
 const recordColumns: BusinessColumn<HistoryArchiveRecord>[] = [
   { id: "record", label: "记录", layout: "identity", hideable: false, cell: record => <span title={record.key}>{shortId(record.key)}</span> },
-  { id: "table", label: "数据表", layout: "text", hideable: false, summaryDefault: true, summaryLabel: true, cell: record => record.table },
-  { id: "detail", label: "内容", layout: "actions", hideable: false, cell: record => <TechnicalDetails title="查看记录" data={record.data} identifiers={[["数据表", record.table], ["记录键", record.key]]} /> },
+  { id: "table", label: "数据类型", layout: "text", hideable: false, summaryDefault: true, summaryLabel: true, cell: record => <span title={record.table}>{archiveTableLabel(record.table)}</span> },
+  { id: "detail", label: "内容", layout: "actions", hideable: false, cell: record => <TechnicalDetails title="查看记录" data={record.data} identifiers={[["数据类型", archiveTableLabel(record.table)], ["数据表", record.table], ["记录编号", record.key]]} /> },
 ];
 
 function ArchiveRecords({ archiveId }: { archiveId: string }) {
@@ -331,10 +369,10 @@ function ArchiveRecords({ archiveId }: { archiveId: string }) {
     <CardHeader><CardTitle role="heading" aria-level={2}>全部归档记录</CardTitle><CardDescription>查看订单、支付宝流水及相关业务记录的归档内容。</CardDescription></CardHeader>
     <CardContent className="min-w-0">
       {unavailable ? <ErrorNotice error={records.error} /> : <QueryView query={records}>{data => {
-        const choices = [{ value: "", label: "全部数据表 · " + count(data.tables.reduce((total, item) => total + item.count, 0)) + " 条" },
-          ...data.tables.map(item => ({ value: item.table, label: item.table + " · " + count(item.count) + " 条" }))];
+        const choices = [{ value: "", label: "全部类型 · " + count(data.tables.reduce((total, item) => total + item.count, 0)) + " 条" },
+          ...data.tables.map(item => ({ value: item.table, label: archiveTableLabel(item.table) + " · " + count(item.count) + " 条" }))];
         return <div className="flex min-w-0 flex-col gap-4">
-          <FieldGroup><Field className="max-w-sm"><FieldLabel htmlFor="archive-record-table">数据表</FieldLabel>
+          <FieldGroup><Field className="max-w-sm"><FieldLabel htmlFor="archive-record-table">数据类型</FieldLabel>
             <Select items={choices} value={table} onValueChange={value => {
               setSearch(current => {
                 const next = new URLSearchParams(current);

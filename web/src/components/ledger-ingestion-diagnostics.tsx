@@ -63,7 +63,7 @@ export function LedgerIngestionDiagnostics({
                 <CollapsibleContent keepMounted className="flex flex-col gap-2">
                   <p>原始错误码：<code className="wrap-anywhere">{latest.error_code}</code></p>
                   <p>
-                    失败窗口：{timestamp(latest.window_start)} 至{" "}
+                    查询账单区间：{timestamp(latest.window_start)} 至{" "}
                     {timestamp(latest.window_end)}
                   </p>
                   <p>最近失败：{timestamp(latest.occurred_at)}</p>

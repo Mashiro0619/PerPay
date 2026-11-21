@@ -390,7 +390,7 @@ export function SettingsEditor({
         }
         min={5}
         max={300}
-        hint="仅查询 N 秒前的账单，等待支付宝记录稳定。"
+        hint="只查询早于当前时间指定秒数的账单，等待支付宝记录稳定。"
       />
       <NumberField
         name="maximum_success_age_seconds"
@@ -513,7 +513,7 @@ export function SettingsEditor({
         <NumberField
           name="checkout_terminal_observation_seconds"
           error={fieldErrors.checkout_terminal_observation_seconds}
-          label="结束后可查询时长（秒）"
+          label="订单结束后收银台可查时长（秒）"
           value={initialSettings.advanced.checkout_terminal_observation_seconds}
           min={60}
           max={604800}

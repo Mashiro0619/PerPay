@@ -12,7 +12,7 @@ const messages: Record<string, string> = {
   csrf_invalid: "安全校验失败，请重新登录后再操作。",
   origin_not_allowed: "访问来源不匹配，请使用配置的系统地址并检查反向代理。",
   settings_revision_conflict:
-    "配置已在其他会话中更新。你的修改仍保留，请核对后重新读取配置。",
+    "配置已在其他页面或设备中更新。你的修改仍保留，请核对后重新读取配置。",
   settings_validation_failed:
     "配置未通过校验，请检查必填项、数值范围和密钥格式。",
   settings_unavailable: "无法读取系统配置，请查看运行状态后重试。",
@@ -50,9 +50,9 @@ const messages: Record<string, string> = {
   ledger_conflict_action_not_allowed:
     "当前冲突不允许此操作，请重新核对处理方式。",
   ledger_conflict_operation_conflict:
-    "操作编号已用于其他请求，请重新核对账本处理结果。",
-  operation_conflict: "操作编号与已执行请求不一致，请先核对已有处理结果。",
-  admin_operation_conflict: "操作编号已用于其他内容，请刷新后重新发起操作。",
+    "该操作编号已被其他操作使用，请刷新后核对账本处理结果。",
+  operation_conflict: "操作请求与已执行的记录不一致，请刷新页面核对已有处理结果。",
+  admin_operation_conflict: "操作请求已过期或与之前记录冲突，请刷新页面后重新操作。",
   work_item_not_found: "找不到提醒对应的记录，请刷新列表。",
   work_item_ended: "提醒已结束，无需恢复提醒。请刷新列表查看最新状态。",
   refund_mark_version_conflict:
@@ -60,13 +60,13 @@ const messages: Record<string, string> = {
   refund_mark_not_allowed: "只有存在实收金额的已确认或争议订单可以标记退款。",
   refund_recording_retired:
     "退款流水登记已停用，请在订单详情中使用管理员退款标记。PerPay 不执行或验证退款。",
-  idempotency_conflict: "该请求编号已用于不同内容，请先核对已有操作结果。",
+  idempotency_conflict: "该操作请求与之前提交的内容不一致，请先核对已有操作结果。",
   webhook_delivery_not_found: "找不到此通知记录，请刷新通知列表。",
   webhook_delivery_state_conflict:
     "通知状态已变化，请刷新后核对，避免重复发送。",
   webhook_payment_confirmation_revoked:
     "原付款确认已撤销，不能重新发送成功通知，请核对订单当前状态。",
-  webhook_operation_conflict: "通知操作与已有请求不一致，请先核对投递记录。",
+  webhook_operation_conflict: "通知操作与已有记录不一致，请先核对发送记录。",
   webhook_disabled: "通知尚未启用，请检查通知设置。",
   webhook_target_inactive: "通知目标已停用，请核对通知设置后再操作。",
   webhook_target_not_allowed: "通知地址不在该网站允许的通知域名内，请检查网站通知设置。",

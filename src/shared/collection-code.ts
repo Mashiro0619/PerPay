@@ -4,7 +4,7 @@ const COLLECTION_CODE_PATTERN = /^https?:\/\/qr\.alipay\.com\/([A-Za-z0-9_-]+)(?
 
 export function collectionCodeError(value: string): string | null {
   if (new TextEncoder().encode(value).length > MAX_COLLECTION_CODE_PAYLOAD_BYTES) {
-    return "收款码内容不能超过 2331 个 UTF-8 字节。";
+    return "收款码链接过长，请核对是否为正常的支付宝收款码。";
   }
   // Alipay's original QR links may use uppercase characters or HTTP. Preserve
   // the payload exactly; do not turn arbitrary URLs or app-launch links into codes.

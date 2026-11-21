@@ -19,7 +19,7 @@ const sizeFormatter = new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 
 
 function backupSize(bytes: number | null): string {
   if (bytes === null) return "无法读取";
-  const units = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"];
+  const units = ["B", "KB", "MB", "GB", "TB", "PB"];
   const unit = bytes < 1 ? 0 : Math.min(Math.floor(Math.log2(bytes) / 10), units.length - 1);
   return sizeFormatter.format(bytes / 1024 ** unit) + " " + units[unit];
 }

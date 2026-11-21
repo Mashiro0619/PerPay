@@ -5,10 +5,10 @@ import type {
 
 export function refundMarkNoteError(note: string): string | null {
   if (/[\uD800-\uDFFF]/u.test(note))
-    return "备注含有无效的 Unicode 字符，请删除后重新输入。";
+    return "备注包含不支持的特殊字符，请删除后重新输入。";
   if (Array.from(note).length > 500) return "备注最多 500 字。";
   if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/u.test(note))
-    return "备注含有不支持的控制字符；可以保留换行和制表符。";
+    return "备注包含不支持的隐藏字符，请删去后重试（允许保留换行和空格）。";
   return null;
 }
 
