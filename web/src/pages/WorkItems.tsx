@@ -225,7 +225,7 @@ export default function WorkItems() {
           <DialogBody><AlertDialogDescription>
               {batch?.clientId && <>
                 {batch.siteName ? <>仅限业务网站“{batch.siteName}”</> : <>仅限当前业务网站</>}。
-                网站编号（PerPay）：<span className="font-mono wrap-anywhere">{batch.clientId}</span>。
+                网站 ID：<span className="font-mono wrap-anywhere">{batch.clientId}</span>。
                 不含其他网站及未归属提醒。
               </>}
               {batch?.q ? (

@@ -21,11 +21,11 @@ function ledgerFields(entry: ReconciliationLedgerEntry): { primary: Field[]; ext
     primary: [
       { label: "支付宝交易金额", kind: "money", value: <span className="inline-flex flex-wrap items-center gap-2">{money(entry.amount_cents)}<StatusBadge value={entry.direction} /></span> },
       { label: "支付宝交易时间", kind: "time", value: <RecordTime value={entry.occurred_at} /> },
-      { label: "支付宝交易对方", value: entry.other_account ?? "未提供" },
+      { label: "交易对方", value: entry.other_account ?? "未提供" },
       entry.provider_order_no
         ? { label: "支付宝订单号", kind: "id", value: entry.provider_order_no, copy: entry.provider_order_no }
         : { label: "支付宝订单号", value: "未提供" },
-      ...(entry.memo ? [{ label: "支付宝交易备注", value: entry.memo }] : []),
+      ...(entry.memo ? [{ label: "支付宝备注", value: entry.memo }] : []),
     ],
     extra: [
       ...(entry.merchant_order_no ? [{ label: "支付宝商户单号", kind: "id" as const, value: entry.merchant_order_no, copy: entry.merchant_order_no }] : []),

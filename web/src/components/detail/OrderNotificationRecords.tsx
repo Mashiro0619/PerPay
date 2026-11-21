@@ -72,7 +72,7 @@ function OrderDeliveryRecord({ detail }: { detail: OrderWebhookDeliveryDetail })
     actionsLabel="更多操作，通知记录操作">
     {advice && <div className="text-[0.8125rem] leading-5 text-muted-foreground">{advice}</div>}
     <FieldList items={deliveryFields(detail, detail.attempts)} />
-    <Timeline label={"投递尝试（" + detail.attempts.length + "）"} entries={attemptEntries(detail.attempts)} initial={3} empty={attemptResult(undefined)} />
+    <Timeline label={"发送记录（" + detail.attempts.length + "）"} entries={attemptEntries(detail.attempts)} initial={3} empty={attemptResult(undefined)} />
     {redelivery.dialog}
   </SubRecord>;
 }
@@ -88,14 +88,14 @@ export function OrderNotificationsSection({ notifications, notifyUrl }: {
   const { query, pagination, deliveries, count } = notifications;
   const current = deliveries.filter(detail => detail.is_latest);
   const superseded = deliveries.filter(detail => !detail.is_latest);
-  const none = pagination.page > 1 ? "此页暂无投递记录" : notifyUrl ? "此订单已设置通知地址，暂无发送记录" : "此订单未设置通知地址";
+  const none = pagination.page > 1 ? "此页暂无发送记录" : notifyUrl ? "此订单已设置通知地址，暂无发送记录" : "此订单未设置通知地址";
   return <Section id="notifications" title="通知" {...(count ? { count } : {})} empty={count === 0 && !query.error ? none : undefined}>
     <ErrorNotice scope="page" error={query.error} retainedData={!!query.data} retry={() => { void query.refetch(); }}
       placeholder="通知结果读取失败，请刷新重试。" />
     {query.isPending ? <Loading label="正在读取通知结果…" /> : query.data && <>
       {current.map(detail => <OrderDeliveryRecord key={detail.delivery.delivery_id} detail={detail} />)}
       {!deliveries.length && <p className="text-[0.8125rem] leading-5 text-muted-foreground">{none}</p>}
-      {superseded.length > 0 && <Disclosure label="历史投递" count={superseded.length}>
+      {superseded.length > 0 && <Disclosure label="历史发送记录" count={superseded.length}>
         {superseded.map(detail => <OrderDeliveryRecord key={detail.delivery.delivery_id} detail={detail} />)}
       </Disclosure>}
       <CursorPagination
@@ -115,6 +115,6 @@ export function OrderNotificationsSection({ notifications, notifyUrl }: {
 export function notificationTechnical(deliveries: readonly OrderWebhookDeliveryDetail[]): DatedTechnicalEntry[] {
   return deliveries.map(detail => ({
     id: "delivery-" + detail.delivery.delivery_id, title: "通知技术信息", created: detail.delivery.created_at, data: detail,
-    identifiers: [["网站编号", detail.target.api_client_id], ["投递编号", detail.delivery.delivery_id], ["事件编号", detail.event.event_id]],
+    identifiers: [["网站 ID", detail.target.api_client_id], ["通知编号", detail.delivery.delivery_id], ["事件编号", detail.event.event_id]],
   }));
 }

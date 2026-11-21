@@ -56,7 +56,7 @@ export function SiteLedgerRecord({
     <Sections label="支付宝流水详情内容">
       <Section id="transaction" title="交易信息">
         <FieldList items={[
-          { label: "对方", value: entry.other_account ?? "未提供" },
+          { label: "交易对方", value: entry.other_account ?? "未提供" },
           !!entry.memo && { label: "支付宝备注", value: entry.memo },
           { label: "支付宝流水号", kind: "id", value: entry.external_event_id, copy: entry.external_event_id },
           entry.provider_order_no
@@ -129,7 +129,7 @@ function SiteLedgerCandidate({ candidate, entry }: { candidate: MatchCandidate; 
         { label: "商户订单号", kind: "id" as const, value: order.merchant_order_no, copy: order.merchant_order_no },
         { label: "应付金额", kind: "money" as const, value: <>
           {money(order.payable_amount_cents)}
-          {difference !== 0 && <span className="ml-1 font-normal text-destructive" data-amount-difference>（流水{difference > 0 ? "多" : "少"} {money(Math.abs(difference))}）</span>}
+          {difference !== 0 && <span className="ml-1 font-normal text-destructive" data-amount-difference>（{difference > 0 ? "多收" : "少收"} {money(Math.abs(difference))}）</span>}
         </> },
         order.received_amount_cents !== null && { label: "实收金额", kind: "money" as const, value: money(order.received_amount_cents) },
         { label: "订单收款状态", value: <OrderStatusBadge payment={orderPaymentStatus(order)} checkout={"checkout" in order ? order.checkout.status : order.checkout_status} refundMarked={"refund_mark" in order && order.refund_mark.marked} /> },

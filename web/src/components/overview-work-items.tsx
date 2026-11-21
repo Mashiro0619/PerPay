@@ -18,8 +18,8 @@ const workActions = {
   NOTIFICATION_FAILURE: "查看通知",
 } as const;
 const notificationTitles = {
-  PENDING: "通知等待投递",
-  LEASED: "通知正在投递",
+  PENDING: "通知待发送",
+  LEASED: "通知发送中",
   RETRY_WAIT: "通知等待重试",
   ACKNOWLEDGED: "通知已确认",
   DEAD_LETTER: "通知已停止重试",
@@ -144,7 +144,7 @@ export function OverviewWorkItems({ items }: { items: readonly AdminWorkItem[] }
               {item.type === "NOTIFICATION_FAILURE" && !item.ended &&
                 ["PENDING", "RETRY_WAIT"].includes(item.status) && item.next_attempt_at && (
                 <ItemDescription className="line-clamp-none wrap-anywhere">
-                  {item.status === "RETRY_WAIT" ? "下次重试" : "计划投递"}{" "}
+                  {item.status === "RETRY_WAIT" ? "下次重试" : "计划发送"}{" "}
                   <ListDateTime value={item.next_attempt_at} inline />
                 </ItemDescription>
               )}

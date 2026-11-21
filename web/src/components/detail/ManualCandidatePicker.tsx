@@ -89,7 +89,7 @@ export function ManualCandidatePicker({
           choices: response.data.map(({ order, recommendation }): Choice => ({
             id: order.order_id,
             title: order.product_name,
-            summary: {OPEN: "收银台开放中", CLOSED: "收银台已关闭", EXPIRED: "收银台已过期"}[order.checkout_status],
+            summary: {OPEN: "收银台收款中", CLOSED: "收银台已关闭", EXPIRED: "收银台已过期"}[order.checkout_status],
             amount: order.payable_amount_cents,
             occurredAt: order.created_at,
             identifiers: [["商户订单号", order.merchant_order_no]],
@@ -112,7 +112,7 @@ export function ManualCandidatePicker({
             id: entry.ledger_entry_id,
             title:
               money(entry.amount_cents) + " · " + dateTime(entry.occurred_at),
-            summary: entry.other_account || "未提供支付宝交易对方",
+            summary: entry.other_account || "未提供交易对方",
             amount: entry.amount_cents,
             occurredAt: entry.occurred_at,
             identifiers: [
@@ -159,7 +159,7 @@ export function ManualCandidatePicker({
                 placeholder={
                   kind === "orders"
                     ? "商品名、商户订单号或金额"
-                    : "支付宝流水号、支付宝交易对方或金额"
+                    : "支付宝流水号、交易对方或金额"
                 }
                 value={draft}
                 disabled={disabled}

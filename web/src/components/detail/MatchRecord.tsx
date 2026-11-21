@@ -61,7 +61,7 @@ export function MatchRecord({ match }: { match: PaymentMatchDetail }) {
           label: "金额",
           differs: true,
           left: <>应付 {money(match.order.payable_amount_cents)}</>,
-          right: <>流水 {money(match.ledger_entry.amount_cents)}<span data-amount-difference>（{difference > 0 ? "多" : "少"} {money(Math.abs(difference))}）</span></>,
+          right: <>流水 {money(match.ledger_entry.amount_cents)}<span data-amount-difference>（{difference > 0 ? "多收" : "少收"} {money(Math.abs(difference))}）</span></>,
         }] : []}
         nav={[
           { id: "order", label: "关联订单" },
@@ -93,7 +93,7 @@ export function MatchRecord({ match }: { match: PaymentMatchDetail }) {
         ["内部流水编号", match.ledger_entry_id],
         ["可能匹配记录编号", match.candidate_id],
         ["内部订单编号", match.order.order_id],
-        ["网站编号", match.order.api_client_id],
+        ["网站 ID", match.order.api_client_id],
       ] }]} />
     {reverse.dialog}
   </>;

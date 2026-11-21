@@ -40,14 +40,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 const paymentOptions = [
-  { value: "", label: "全部付款状态" },
-  { value: "UNPAID", label: "未付款" },
-  { value: "CONFIRMED", label: "已确认" },
-  { value: "DISPUTED", label: "有争议" },
+  { value: "", label: "全部收款状态" },
+  { value: "UNPAID", label: "待付款" },
+  { value: "CONFIRMED", label: "收款已确认" },
+  { value: "DISPUTED", label: "收款有争议" },
 ];
 const checkoutOptions = [
   { value: "", label: "全部收银台状态" },
-  { value: "OPEN", label: "开放中" },
+  { value: "OPEN", label: "收款中" },
   { value: "CLOSED", label: "已关闭" },
   { value: "EXPIRED", label: "已过期" },
 ];
@@ -99,7 +99,7 @@ export default function Orders() {
               value={payment ?? ""}
               onValueChange={(value) => filter("payment", value)}
             >
-              <SelectTrigger aria-label="付款状态筛选">
+              <SelectTrigger aria-label="收款状态筛选">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -277,7 +277,7 @@ function OrderPage({
           { key: "alipay_account_id", label: "收款账号", value: accountId ?? "", options: accountOptions },
           {
             key: "payment",
-            label: "付款状态",
+            label: "收款状态",
             value: payment ?? "",
             options: paymentOptions,
           },

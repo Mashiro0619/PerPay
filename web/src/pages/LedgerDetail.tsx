@@ -81,7 +81,7 @@ function transactionFields(entry: AdminLedgerDetail): Array<Field | false> {
   // While the versions differ, a text none of the sources states is left open: a version not listed here may hold it.
   const absent = (fact: TextFact) => disputes(entry, fact) ? disputed : entry.content_consistent ? "未提供" : "—";
   return [
-    { label: "对方", value: entry.other_account ?? absent("other_account") },
+    { label: "交易对方", value: entry.other_account ?? absent("other_account") },
     entry.memo ? { label: "支付宝备注", value: entry.memo } : disputes(entry, "memo") && { label: "支付宝备注", value: disputed },
     { label: "支付宝流水号", kind: "id", value: entry.external_event_id, copy: entry.external_event_id },
     entry.provider_order_no
@@ -100,7 +100,7 @@ function sourceFields(source: AdminLedgerSource, entry: AdminLedgerDetail, state
     entry.amount_cents === null && { label: "交易金额", kind: "money", value: money(source.amount_cents) },
     entry.direction === null && { label: "收支方向", value: <StatusBadge value={source.direction} /> },
     entry.occurred_at === null && { label: "交易时间", kind: "time", value: <RecordTime value={source.occurred_at} /> },
-    entry.other_account === null && !!source.other_account && { label: "对方", value: source.other_account },
+    entry.other_account === null && !!source.other_account && { label: "交易对方", value: source.other_account },
     entry.memo === null && !!source.memo && { label: "支付宝备注", value: source.memo },
     entry.provider_order_no === null && !!source.provider_order_no && { label: "支付宝订单号", kind: "id", value: source.provider_order_no, copy: source.provider_order_no },
     entry.merchant_order_no === null && !!source.merchant_order_no && { label: "支付宝商户单号", kind: "id", value: source.merchant_order_no, copy: source.merchant_order_no },
@@ -121,7 +121,7 @@ function orderFields(order: ReconciliationOrder | AdminOrderDetail, amount: numb
   return [
     { label: "应付金额", kind: "money", value: <>
       {money(order.payable_amount_cents)}
-      {difference !== 0 && <span className="ml-1 font-normal text-destructive" data-amount-difference>（流水{difference > 0 ? "多" : "少"} {money(Math.abs(difference))}）</span>}
+      {difference !== 0 && <span className="ml-1 font-normal text-destructive" data-amount-difference>（{difference > 0 ? "多收" : "少收"} {money(Math.abs(difference))}）</span>}
     </> },
     order.received_amount_cents !== null && { label: "实收金额", kind: "money", value: money(order.received_amount_cents) },
     { label: "订单收款状态", value: <span className="inline-flex flex-wrap items-center gap-1.5">
@@ -250,7 +250,7 @@ function LedgerRecord({ entry }: { entry: AdminLedgerDetail }) {
           const existing = conflict.existing_ledger_entry_id;
           const number = numberOf(existing);
           return <SubRecord key={conflict.conflict_id} id={"conflict-" + conflict.conflict_id} title={label(conflict.conflict_type)}
-            status={<StatusBadge value={conflict.status} label={conflict.status === "OPEN" ? "待处理" : conflict.status === "IGNORED" ? "已确认隔离" : "已处理"} />}
+            status={<StatusBadge value={conflict.status} label={conflict.status === "OPEN" ? "待处理" : conflict.status === "IGNORED" ? "已隔离" : "已处理"} />}
             href={"/reconciliation/conflicts/" + conflict.conflict_id} hrefLabel="查看冲突记录">
             <FieldList items={[
               { label: "发现时间", kind: "time", value: <RecordTime value={conflict.created_at} /> },
@@ -278,7 +278,7 @@ function LedgerRecord({ entry }: { entry: AdminLedgerDetail }) {
           const detail = matchQueries[index]?.data?.data;
           return { id: "match-" + match.payment_match_id, title: "收款关联技术信息", created: match.created_at, data: detail ?? match, identifiers: [
             ["关联编号", match.payment_match_id], ["内部流水编号", match.ledger_entry_id], ["可能匹配记录编号", detail?.candidate_id ?? null],
-            ["内部订单编号", match.order_id], ["网站编号", match.api_client_id],
+            ["内部订单编号", match.order_id], ["网站 ID", match.api_client_id],
           ] as const };
         }),
         ...offered.map(({ candidate }) => ({

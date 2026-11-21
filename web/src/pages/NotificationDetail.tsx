@@ -101,8 +101,8 @@ function DeliveryRecord({ detail, attempts, order }: {
           {!!nextAttemptAt && <> · {nextAttemptLabel(detail)} <RecordTime value={nextAttemptAt} /></>}
         </>]}
         nav={[
-          { id: "overview", label: "投递信息" },
-          { id: "attempts", label: "投递尝试", ...count },
+          { id: "overview", label: "通知信息" },
+          { id: "attempts", label: "发送记录", ...count },
           { id: "order", label: "关联订单" },
         ]} />
     </OverlaySummary>
@@ -111,7 +111,7 @@ function DeliveryRecord({ detail, attempts, order }: {
       {advice}
     </RecordNotice>}
     <Sections label="通知详情内容">
-      <Section id="overview" title="投递信息">
+      <Section id="overview" title="通知信息">
         <FieldList items={[
           !clientId && { label: "业务网站", value: <Link global className="underline underline-offset-4" aria-label={site + " · " + detail.target.api_client_id}
             to={"/sites/" + encodeURIComponent(detail.target.api_client_id) + "/summary"}>{site}</Link> },
@@ -120,12 +120,12 @@ function DeliveryRecord({ detail, attempts, order }: {
           { label: "创建时间", kind: "time", value: <RecordTime value={delivery.created_at} /> },
         ]} />
       </Section>
-      <Section id="attempts" title="投递尝试" {...count} empty={attempts.data && !made.length ? attemptResult(undefined) : undefined}>
+      <Section id="attempts" title="发送记录" {...count} empty={attempts.data && !made.length ? attemptResult(undefined) : undefined}>
         <ErrorNotice scope="page" error={attempts.error} retainedData={!!attempts.data} retry={() => { void attempts.refetch(); }}
-          placeholder="投递尝试读取失败，请刷新重试。" />
+          placeholder="发送记录读取失败，请刷新重试。" />
         {attempts.data
-          ? <Timeline label="投递尝试" entries={attemptEntries(made)} initial={10} moreLabel="更早的尝试" />
-          : !attempts.error && <Loading label="正在读取投递尝试…" />}
+          ? <Timeline label="发送记录" entries={attemptEntries(made)} initial={10} moreLabel="更早的记录" />
+          : !attempts.error && <Loading label="正在读取发送记录…" />}
       </Section>
       <RelatedOrder query={order} />
     </Sections>
@@ -137,8 +137,8 @@ function DeliveryRecord({ detail, attempts, order }: {
       // Sending a confirmed notification again is rare, so it stays out of the way.
       menu={resendable && delivery.status === "ACKNOWLEDGED" ? [{ label: "重新发送", disabled: redelivery.sent, onSelect: redelivery.open }] : []}
       technical={[{ title: "通知技术信息", data: { ...detail, attempts: made }, identifiers: [
-        ["网站编号", detail.target.api_client_id], ["投递编号", delivery.delivery_id], ["事件编号", detail.event.event_id],
-        ["内部订单编号", detail.event.order_id], ["通知目标编号", detail.target.target_id], ["前次投递编号", delivery.predecessor_delivery_id],
+        ["网站 ID", detail.target.api_client_id], ["通知编号", delivery.delivery_id], ["事件编号", detail.event.event_id],
+        ["内部订单编号", detail.event.order_id], ["回调地址编号", detail.target.target_id], ["原通知编号", delivery.predecessor_delivery_id],
       ] }]} />
     {redelivery.dialog}
   </>;

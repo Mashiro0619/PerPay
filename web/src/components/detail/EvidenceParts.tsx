@@ -43,12 +43,12 @@ export function orderLedgerComparison(order: EvidenceOrder, entry: Reconciliatio
       label: "金额",
       differs: difference !== 0,
       left: <>应付 {money(order.payable_amount_cents)}</>,
-      right: <>流水 {money(entry.amount_cents)}{difference !== 0 && <span data-amount-difference>（{difference > 0 ? "多" : "少"} {money(Math.abs(difference))}）</span>}</>,
+      right: <>流水 {money(entry.amount_cents)}{difference !== 0 && <span data-amount-difference>（{difference > 0 ? "多收" : "少收"} {money(Math.abs(difference))}）</span>}</>,
     },
     {
       label: "时间",
       differs: late,
-      left: <>收银台{ended.closed ? "关闭" : "到期"} <RecordTime value={ended.at} /></>,
+      left: <>收银台{ended.closed ? "关闭" : "有效期至"} <RecordTime value={ended.at} /></>,
       right: <>付款 <RecordTime value={entry.occurred_at} />{late && "（已结束）"}</>,
     },
   ];
@@ -69,12 +69,12 @@ export function RelatedOrderRecord({ order, linked = true, showSiteId = false }:
       {
         label: "业务网站",
         value: linked ? <Link global className="underline underline-offset-4" to={"/sites/" + encodeURIComponent(order.api_client_id) + "/summary"}>{siteName}</Link> : siteName,
-        ...(showSiteId ? { hint: "网站编号：" + order.api_client_id } : {}),
+        ...(showSiteId ? { hint: "网站 ID：" + order.api_client_id } : {}),
       },
       { label: "应付金额", kind: "money", value: money(order.payable_amount_cents) },
       order.received_amount_cents !== null && { label: "实收金额", kind: "money", value: money(order.received_amount_cents) },
       { label: "创建时间", kind: "time", value: <RecordTime value={order.created_at} /> },
-      { label: ended.closed ? "收银台关闭" : "收银台到期", kind: "time", value: <RecordTime value={ended.at} /> },
+      { label: ended.closed ? "收银台关闭" : "收银台有效期至", kind: "time", value: <RecordTime value={ended.at} /> },
     ]} />
   </SubRecord>;
 }
@@ -84,7 +84,7 @@ export function ledgerEntryFields(entry: ReconciliationLedgerEntry): Array<Field
   return [
     { label: "交易金额", kind: "money", value: <span className="inline-flex flex-wrap items-center gap-2">{money(entry.amount_cents)}<StatusBadge value={entry.direction} /></span> },
     { label: "交易时间", kind: "time", value: <RecordTime value={entry.occurred_at} /> },
-    { label: "对方", value: entry.other_account ?? "未提供" },
+    { label: "交易对方", value: entry.other_account ?? "未提供" },
     !!entry.memo && { label: "支付宝备注", value: entry.memo },
     { label: "支付宝流水号", kind: "id", value: entry.external_event_id, copy: entry.external_event_id },
     entry.provider_order_no

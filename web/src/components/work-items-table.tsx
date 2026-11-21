@@ -135,7 +135,7 @@ export function WorkItemsTable({
                   <span>已尝试 {item.attempt_count} 次</span>
                   {item.next_attempt_at && !item.ended && ["PENDING", "RETRY_WAIT"].includes(item.status) && (
                     <span>
-                      {item.status === "PENDING" ? "计划投递" : "下次重试"}{" "}
+                      {item.status === "PENDING" ? "计划发送" : "下次重试"}{" "}
                       <ListDateTime value={item.next_attempt_at} inline />
                     </span>
                   )}

@@ -129,7 +129,7 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
             <span className="inline-flex items-baseline gap-1"><span>应付</span><ListMoney value={order.payable_amount_cents} /></span>
             <span className="inline-flex items-baseline gap-1">
               <span>实收</span><ListMoney value={received} />
-              {difference !== 0 && <span className="text-destructive" data-amount-difference>（{difference > 0 ? "+" : "−"}{money(Math.abs(difference))}）</span>}
+              {difference !== 0 && <span className="text-destructive" data-amount-difference>（{difference > 0 ? "多收 " : "少收 "}{money(Math.abs(difference))}）</span>}
             </span>
             {basis && <span>{basis}</span>}
           </span>,
@@ -159,7 +159,7 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
           { label: "加价金额", kind: "money", value: money(order.payable_amount_cents - order.requested_amount_cents) },
           !!confirmed && { label: "确认收款时间", kind: "time", value: <RecordTime value={confirmed.occurred_at} /> },
           { label: "收银台状态", value: <StatusBadge value={order.checkout.status} /> },
-          { label: "有效期至", kind: "time", value: <RecordTime value={order.checkout.expires_at} /> },
+          { label: "收银台有效期至", kind: "time", value: <RecordTime value={order.checkout.expires_at} /> },
           !!order.note && { label: "订单备注", value: order.note },
           order.refund.status !== "NONE" && { label: "历史退款（只读）", value: <StatusBadge value={order.refund.status} /> },
         ]} />
@@ -187,7 +187,7 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
         : checkout}
       menu={[...(refund.action && !unresolved ? [refund.action] : []), ...(unresolved ? [checkout] : [])]}
       technical={technicalEntries([
-        { title: "订单技术信息", created: order.created_at, data: order, identifiers: [["内部订单编号", order.order_id], ["网站编号", order.api_client_id]] },
+        { title: "订单技术信息", created: order.created_at, data: order, identifiers: [["内部订单编号", order.order_id], ["网站 ID", order.api_client_id]] },
         ...paymentTechnical(order),
         ...notificationTechnical(notifications.deliveries),
       ])} />

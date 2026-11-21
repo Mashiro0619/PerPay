@@ -54,7 +54,7 @@ export function useRedelivery(detail: DeliveryContext) {
             setSnapshot(null);
             setSent(true);
             setNewDeliveryId(data.delivery.delivery_id);
-            setMessage("已创建新投递，等待发送");
+            setMessage("已创建新通知，等待发送");
             void refreshNotificationRecords(detail.event.order_id, detail.delivery.delivery_id);
           }}
         >
@@ -137,11 +137,11 @@ export function DeliveryStatus({ detail }: { detail: WebhookDeliveryDetail }) {
 export function deliveryPhrase(detail: WebhookDeliveryDetail): string {
   const status = detail.delivery.status;
   if (deliveryState(detail).confirmationRevoked) return status === "ACKNOWLEDGED" ? "对方已返回有效确认回执；原付款确认现已撤销" : "原付款确认已撤销，成功通知已终止";
-  if (!detail.is_latest) return status === "ACKNOWLEDGED" ? "历史投递 · 对方已返回有效确认回执" : "历史投递";
+  if (!detail.is_latest) return status === "ACKNOWLEDGED" ? "历史发送 · 对方已返回有效确认回执" : "历史发送";
   if (status === "DEAD_LETTER") return "已停止重试，需要处理";
   if (status === "RETRY_WAIT") return "等待自动重试";
   if (status === "ACKNOWLEDGED") return "对方已返回有效确认回执";
-  return "等待投递结果";
+  return "等待发送结果";
 }
 
 /** What to do about a delivery that failed or was ended; nothing when it needs no action. */
@@ -158,7 +158,7 @@ export function deliveryAdvice(detail: WebhookDeliveryDetail, attempts: readonly
 
 /** A delivery not attempted yet is scheduled; one that failed is waiting to be retried. */
 export function nextAttemptLabel(detail: WebhookDeliveryDetail) {
-  return detail.delivery.status === "RETRY_WAIT" ? "下次重试" : "计划投递";
+  return detail.delivery.status === "RETRY_WAIT" ? "下次重试" : "计划发送";
 }
 
 /**
@@ -171,7 +171,7 @@ export function deliveryFields(detail: WebhookDeliveryDetail, attempts: readonly
   return [
     { label: "通知地址", kind: "id", value: detail.target.target_url, copy: detail.target.target_url },
     !detail.is_latest && !!detail.latest_delivery_id && { label: "后续结果", value: <Link className="underline underline-offset-4" to={"/notifications/" + detail.latest_delivery_id}>已重新发送，查看最新结果</Link> },
-    !!delivery.predecessor_delivery_id && { label: "原投递", value: <Link className="underline underline-offset-4" to={"/notifications/" + delivery.predecessor_delivery_id}>查看原投递</Link> },
+    !!delivery.predecessor_delivery_id && { label: "原通知", value: <Link className="underline underline-offset-4" to={"/notifications/" + delivery.predecessor_delivery_id}>查看原通知</Link> },
     schedule && !!nextAttemptAt && { label: nextAttemptLabel(detail), kind: "time", value: <RecordTime value={nextAttemptAt} /> },
     // The business website keeps its own time of delivery; this one is PerPay's.
     !!delivery.acknowledged_at && { label: "通知确认时间", kind: "time", value: <RecordTime value={delivery.acknowledged_at} />, hint: "PerPay 收到成功回执的时间" },

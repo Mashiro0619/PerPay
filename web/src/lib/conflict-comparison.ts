@@ -110,13 +110,13 @@ export function conflictComparison(detail: LedgerConflictDetail) {
         incoming?.merchant_order_no !== existing.merchant_order_no,
     },
     {
-      name: "支付宝交易对方",
+      name: "交易对方",
       incoming: incoming?.other_account,
       existing: existing?.other_account,
       differs: !!existing && incoming?.other_account !== existing.other_account,
     },
     {
-      name: "支付宝交易备注",
+      name: "支付宝备注",
       incoming: incoming?.trans_memo,
       existing: existing?.trans_memo,
       differs: !!existing && incoming?.trans_memo !== existing.trans_memo,

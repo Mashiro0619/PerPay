@@ -52,7 +52,7 @@ function NotificationBadge({ summary }: { summary: NonNullable<AdminOrderSummary
     case "NO_EVENT":
       return <Badge variant="secondary">暂无通知事件</Badge>;
     case "UNMATERIALIZED":
-      return <Badge variant="warning">等待生成投递</Badge>;
+      return <Badge variant="warning">待创建通知</Badge>;
     case "ACKNOWLEDGED":
       return summary.total_events > 0 && summary.acknowledged_events === summary.total_events
         ? <StatusBadge value="ACKNOWLEDGED" label="通知已确认" />
@@ -98,7 +98,7 @@ function OrderMeta({ order, showSite, showTimes = false }: { order: AdminOrderSu
   return (
     <div className="overview-order-meta">
       <span className="overview-order-reference">
-        <span>网站订单号</span>
+        <span>商户订单号</span>
         <span className="list-code" title={order.merchant_order_no}>{order.merchant_order_no}</span>
       </span>
       {showSite && <SiteIdentity clientId={order.api_client_id} name={order.site_name} />}

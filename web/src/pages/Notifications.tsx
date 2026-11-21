@@ -45,8 +45,8 @@ import {
 import { Empty, EmptyHeader, EmptyTitle } from "@/components/admin-empty";
 const statuses = [
   { value: "", label: "全部状态" },
-  { value: "PENDING", label: "等待投递" },
-  { value: "LEASED", label: "投递中" },
+  { value: "PENDING", label: "待发送" },
+  { value: "LEASED", label: "发送中" },
   { value: "RETRY_WAIT", label: "等待重试" },
   { value: "ACKNOWLEDGED", label: "通知已确认" },
   { value: "DEAD_LETTER", label: "已停止重试" },
@@ -190,7 +190,7 @@ function DeliveryPage({
     },
     {
       id: "status",
-      label: "送达结果",
+      label: "通知状态",
       align: "center",
       layout: "status",
       summaryDefault: true,
@@ -233,7 +233,7 @@ function DeliveryPage({
     {
       id: "next_attempt_at",
       sortBy: "next_attempt_at",
-      label: "下次尝试",
+      label: "下次重试",
       align: "center",
       layout: "datetime",
       summaryDefault: true,

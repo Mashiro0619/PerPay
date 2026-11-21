@@ -88,7 +88,7 @@ export function candidateFacts(
       : null;
   return [
     ...(amount !== null && amount > 0
-      ? [["匹配金额", money(amount)] as [string, string]]
+      ? [["交易金额", money(amount)] as [string, string]]
       : []),
     ...(occurred !== null && occurred >= 0
       ? [["支付宝交易时间", detailTimestamp(occurred)] as [string, string]]
@@ -107,7 +107,7 @@ export function candidateFactsBeyondLedger(
   return candidateFacts(candidate, order).filter(
     ([name]) =>
       !ledger ||
-      (name === "匹配金额"
+      (name === "交易金额"
         ? numberField(candidate.evidence, "amount_cents") !==
           ledger.amount_cents
         : name === "支付宝交易时间"
@@ -242,10 +242,10 @@ const notificationErrorNames: Record<string, string> = {
   ack_json_invalid: "对方的确认回执不是有效 JSON",
   ack_shape_invalid: "对方的确认回执格式不正确",
   ack_event_mismatch: "确认的事件编号不匹配",
-  ack_delivery_mismatch: "确认的投递编号不匹配",
+  ack_delivery_mismatch: "确认的通知编号不匹配",
   transport_timeout: "请求超时",
   transport_network: "网络连接失败",
-  transport_cancelled: "投递请求已取消",
+  transport_cancelled: "通知发送已取消",
   dns_no_addresses: "通知域名未解析到地址",
   dns_failed: "通知域名解析失败",
   tls_verification_failed: "通知地址的 TLS 证书验证失败",
@@ -256,19 +256,19 @@ const notificationErrorNames: Record<string, string> = {
   response_body_too_large: "响应内容过大",
   request_body_too_large: "请求内容过大",
   request_headers_invalid: "请求头无效",
-  lease_expired_outcome_unknown: "投递执行超时，结果未知",
+  lease_expired_outcome_unknown: "发送超时，结果未知",
 };
 export function notificationErrorName(code: string): string {
   return notificationErrorNames[code] ?? "通知发送结果需核查";
 }
 export function attemptResult(attempt: WebhookAttempt | undefined): string {
-  if (!attempt) return "尚未开始投递";
+  if (!attempt) return "尚未开始发送";
   const http =
     attempt.http_status === null
       ? "未收到 HTTP 响应"
       : "HTTP " + attempt.http_status;
   if (attempt.outcome === "ACKNOWLEDGED") return http + " · 通知已确认（ACK）";
-  if (attempt.outcome === "STARTED") return "投递进行中，尚未确认结果";
+  if (attempt.outcome === "STARTED") return "发送进行中，尚未确认结果";
   const result = attempt.error_code ?? attempt.ack_code;
   return (
     http +

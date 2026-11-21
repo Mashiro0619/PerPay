@@ -20,7 +20,7 @@ import {
 import { Empty, EmptyHeader, EmptyTitle } from "@/components/admin-empty";
 import { Badge } from "@/components/ui/badge";
 const checkoutNames = {
-  OPEN: "收银台开放中",
+  OPEN: "收银台收款中",
   CLOSED: "收银台已关闭",
   EXPIRED: "收银台已过期",
 } as const;

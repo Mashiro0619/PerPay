@@ -205,7 +205,7 @@ export function SitePolicyFields({
           )}
           <CollapsibleContent ref={content} keepMounted>
             <FieldSet className={cn("settings-fields", !expandedNotificationPolicy && "pt-4")} disabled={disabled}>
-              <FieldLegend className="sr-only">通知投递策略</FieldLegend>
+              <FieldLegend className="sr-only">通知发送设置</FieldLegend>
               <Field data-invalid={!!timeoutError}>
                 <FieldLabel htmlFor={timeoutId}>通知超时（秒）</FieldLabel>
                 <Input
