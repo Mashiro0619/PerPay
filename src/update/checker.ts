@@ -6,7 +6,6 @@ const RELEASES_API = "https://api.github.com/repos/Mashiro0619/PerPay/releases";
 const RELEASE_API = RELEASES_API + "/latest";
 const RELEASE_PAGE = "https://github.com/Mashiro0619/PerPay/releases/tag/v";
 const SUCCESS_CACHE_MILLISECONDS = 5 * 60_000;
-const MANUAL_REFRESH_MILLISECONDS = 60_000;
 const FAILURE_CACHE_MILLISECONDS = 60_000;
 const MAX_RESPONSE_BYTES = 256 * 1024;
 const MAX_RELEASE_LIST_BYTES = 2 * 1024 * 1024;
@@ -88,6 +87,7 @@ export class OfficialUpdateChecker {
   }>();
   readonly #pending = new Map<OfficialUpdateChannel, Promise<OfficialUpdate>>();
   #githubRetryAt = 0;
+  #githubRetrySequence = 0;
 
   constructor(options: { fetch?: typeof fetch; clock?: () => number; timeoutMilliseconds?: number; currentVersion?: string } = {}) {
     this.#fetch = options.fetch ?? fetch;
@@ -99,33 +99,28 @@ export class OfficialUpdateChecker {
   async check(channel: OfficialUpdateChannel = "prerelease", options: { refresh?: boolean } = {}): Promise<OfficialUpdate> {
     if (channel !== "stable" && channel !== "prerelease") throw new RangeError("Invalid update channel");
     if (options.refresh !== undefined && typeof options.refresh !== "boolean") throw new RangeError("Invalid update refresh option");
-    // A manual request can share a real check, but must never report cached data as a fresh check.
+    // A manual request can share an in-flight real check, and is never locked out by prior cache or failure backoff.
     const pending = this.#pending.get(channel);
     if (pending) return pending;
-    const now = this.#clock();
-    const cache = this.#cache.get(channel);
-    const cached = cache && now >= cache.checkedAt && now < cache.expiresAt;
-    if (!options.refresh && cached && cache.result) return cache.result;
-    this.#requireGitHubAvailable(now);
-    if (cached && !cache.result) {
-      throw new UpdateCheckUnavailable(Math.max(1, Math.ceil((cache.expiresAt - now) / 1_000)), cache.failureReason);
+    const manual = options.refresh === true;
+    if (!manual) {
+      const now = this.#clock();
+      const cache = this.#cache.get(channel);
+      const cached = cache && now >= cache.checkedAt && now < cache.expiresAt;
+      if (cached && cache.result) return cache.result;
+      this.#requireGitHubAvailable(now);
+      if (cached && !cache.result) {
+        throw new UpdateCheckUnavailable(Math.max(1, Math.ceil((cache.expiresAt - now) / 1_000)), cache.failureReason);
+      }
     }
-    if (options.refresh && cache?.result && now >= cache.checkedAt && now < cache.checkedAt + MANUAL_REFRESH_MILLISECONDS) {
-      throw new UpdateCheckRateLimited(Math.ceil((cache.checkedAt + MANUAL_REFRESH_MILLISECONDS - now) / 1_000));
-    }
-    const request = this.#load(channel).finally(() => { this.#pending.delete(channel); });
+    const request = this.#load(channel, manual).finally(() => { this.#pending.delete(channel); });
     this.#pending.set(channel, request);
     return request;
   }
 
   refreshAfterSeconds(channel: OfficialUpdateChannel = "prerelease"): number {
     if (channel !== "stable" && channel !== "prerelease") throw new RangeError("Invalid update channel");
-    const now = this.#clock();
-    const cache = this.#cache.get(channel);
-    const channelRetryAt = cache && now >= cache.checkedAt
-      ? cache.result ? cache.checkedAt + MANUAL_REFRESH_MILLISECONDS : cache.expiresAt
-      : 0;
-    return Math.max(0, Math.ceil((Math.max(channelRetryAt, this.#githubRetryAt) - now) / 1_000));
+    return 0;
   }
 
   #requireGitHubAvailable(now = this.#clock()): void {
@@ -134,8 +129,13 @@ export class OfficialUpdateChecker {
     }
   }
 
-  async #request(url: string, signal: AbortSignal, allowMissing = false): Promise<Response | null> {
-    this.#requireGitHubAvailable();
+  async #request(
+    url: string,
+    signal: AbortSignal,
+    allowMissing: boolean,
+    attempt: { manual: boolean; quotaExhausted: boolean },
+  ): Promise<Response | null> {
+    if (!attempt.manual || attempt.quotaExhausted) this.#requireGitHubAvailable();
     signal.throwIfAborted();
     let response: Response;
     try {
@@ -160,7 +160,10 @@ export class OfficialUpdateChecker {
     const resetAt = exhausted ? rateLimitResetDeadline(response.headers.get("x-ratelimit-reset"), now) : null;
     const rateLimited = response.status === 429 || (response.status === 403 && (exhausted || retryAt !== null));
     if (rateLimited || (exhausted && resetAt !== null)) {
-      this.#githubRetryAt = Math.max(this.#githubRetryAt, now + FAILURE_CACHE_MILLISECONDS, retryAt ?? 0, resetAt ?? 0);
+      attempt.quotaExhausted = true;
+      const nextRetryAt = Math.max(this.#githubRetryAt, now + FAILURE_CACHE_MILLISECONDS, retryAt ?? 0, resetAt ?? 0);
+      if (nextRetryAt > this.#githubRetryAt) this.#githubRetryAt = nextRetryAt;
+      this.#githubRetrySequence += 1;
     }
     if (rateLimited) {
       await response.body?.cancel();
@@ -181,9 +184,13 @@ export class OfficialUpdateChecker {
     return response;
   }
 
-  async #latest(signal: AbortSignal, includePrereleases: boolean): Promise<PublishedRelease | null> {
+  async #latest(
+    signal: AbortSignal,
+    includePrereleases: boolean,
+    attempt: { manual: boolean; quotaExhausted: boolean },
+  ): Promise<PublishedRelease | null> {
     // Before the first stable release GitHub returns 404, but previews can still update.
-    const stableResponse = await this.#request(RELEASE_API, signal, includePrereleases);
+    const stableResponse = await this.#request(RELEASE_API, signal, includePrereleases, attempt);
     let latest: PublishedRelease | null = null;
     if (stableResponse) {
       latest = publishedRelease(await readRelease(stableResponse, signal), false);
@@ -192,7 +199,7 @@ export class OfficialUpdateChecker {
     if (!includePrereleases) return latest;
     for (let page = 1; page <= MAX_RELEASE_PAGES; page += 1) {
       // Never follow Link URLs supplied by the response. Every request stays on this repository.
-      const response = await this.#request(RELEASES_API + "?per_page=" + RELEASE_PAGE_SIZE + "&page=" + page, signal);
+      const response = await this.#request(RELEASES_API + "?per_page=" + RELEASE_PAGE_SIZE + "&page=" + page, signal, false, attempt);
       if (!response) throw new Error("Official release list is unavailable");
       const releases = await readRelease(response, signal, MAX_RELEASE_LIST_BYTES);
       if (!Array.isArray(releases) || releases.length > RELEASE_PAGE_SIZE) throw new Error("Invalid official release list");
@@ -208,12 +215,14 @@ export class OfficialUpdateChecker {
     throw new Error("Official release list exceeds the bounded lookup");
   }
 
-  async #load(channel: OfficialUpdateChannel): Promise<OfficialUpdate> {
+  async #load(channel: OfficialUpdateChannel, manual: boolean): Promise<OfficialUpdate> {
+    const retrySequenceAtStart = this.#githubRetrySequence;
+    const attempt = { manual, quotaExhausted: false };
     let signal: AbortSignal | undefined;
     try {
       if (!parseReleaseVersion(this.#currentVersion)) throw new Error("Invalid current version");
       signal = AbortSignal.timeout(this.#timeoutMilliseconds);
-      const release = await this.#latest(signal, channel === "prerelease");
+      const release = await this.#latest(signal, channel === "prerelease", attempt);
       if (!release) throw new Error("No official release is available");
       const comparison = compareReleaseVersions(this.#currentVersion, release.version);
       signal.throwIfAborted();
@@ -226,13 +235,20 @@ export class OfficialUpdateChecker {
         published_at: release.publishedAt,
         checked_at: new Date(checkedAt).toISOString(),
       });
+      if (manual && !attempt.quotaExhausted && this.#githubRetrySequence === retrySequenceAtStart) {
+        this.#githubRetryAt = 0;
+      }
       this.#cache.set(channel, { checkedAt, expiresAt: checkedAt + SUCCESS_CACHE_MILLISECONDS, result });
       return result;
     } catch (error) {
       const checkedAt = this.#clock();
       const reason = signal?.aborted ? "timeout" : error instanceof UpdateCheckUnavailable ? error.reason : "invalid_response";
       const retryAfter = error instanceof UpdateCheckUnavailable ? error.retryAfterSeconds * 1_000 : FAILURE_CACHE_MILLISECONDS;
-      const expiresAt = Math.max(checkedAt + FAILURE_CACHE_MILLISECONDS, checkedAt + retryAfter, this.#githubRetryAt);
+      const expiresAt = Math.max(
+        checkedAt + FAILURE_CACHE_MILLISECONDS,
+        checkedAt + retryAfter,
+        attempt.quotaExhausted || !manual ? this.#githubRetryAt : 0,
+      );
       // A failed refresh replaces old success; callers must never infer "up to date" from it.
       this.#cache.set(channel, { checkedAt, expiresAt, result: null, failureReason: reason });
       throw new UpdateCheckUnavailable(Math.max(1, Math.ceil((expiresAt - checkedAt) / 1_000)), reason);

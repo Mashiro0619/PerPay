@@ -29,13 +29,6 @@ function retryDeadline(error: unknown, updatedAt: number): number {
     ? updatedAt + seconds * 1000 : 0;
 }
 
-function refreshDeadline(raw: string | null | undefined): number {
-  if (!raw || !/^\d+$/.test(raw)) return 0;
-  const seconds = Number(raw);
-  const deadline = Date.now() + seconds * 1000;
-  return Number.isSafeInteger(seconds) && seconds > 0 && Number.isSafeInteger(deadline) ? deadline : 0;
-}
-
 function useUpdateOwner() {
   const preferences = useUpdatePreferences();
   const { channel, automatic } = preferences;
@@ -55,15 +48,9 @@ function useUpdateOwner() {
       if (queryClient.getQueryData(sessionKey) == null) {
         throw new DOMException("当前不能检查更新。", "AbortError");
       }
-      let refreshAfter = 0;
       const response = await result(api.checkOfficialUpdate({
         signal,
         query: { channel, ...(selection.pending?.manual ? { refresh: true } : {}) },
-      }).then((response) => {
-        // Read metadata locally, but only publish it after result() has validated
-        // the response and the administrator session generation.
-        refreshAfter = refreshDeadline(response.response?.headers.get("X-PerPay-Update-Refresh-After"));
-        return response;
       }));
       signal.throwIfAborted();
       const data = response?.data;
@@ -81,7 +68,7 @@ function useUpdateOwner() {
       ) {
         throw new Error("官方更新响应无效，请稍后重试。");
       }
-      return { ...response, refreshAfter };
+      return response;
     },
     // Only this owner schedules requests; observers and global refreshes cannot start one.
     enabled: false,
@@ -104,8 +91,7 @@ function useUpdateOwner() {
   const check = useCallback(async (manual = true, returnFocus: HTMLElement | null = null) => {
     if (!selection.active || selection.pending || queryClient.getQueryData(sessionKey) == null) return;
     const state = queryClient.getQueryState(selection.queryKey);
-    const cached = queryClient.getQueryData<{ refreshAfter: number }>(selection.queryKey);
-    if (Date.now() < Math.max(retryDeadline(state?.error, state?.errorUpdatedAt ?? 0), manual ? cached?.refreshAfter ?? 0 : 0)) return;
+    if (!manual && Date.now() < retryDeadline(state?.error, state?.errorUpdatedAt ?? 0)) return;
     const previousAttemptAt = selection.lastAttemptAt;
     const attempt = { manual };
     selection.pending = attempt;
@@ -229,12 +215,6 @@ export function useOfficialUpdateAvailable(): boolean {
   return checked && !update.isFetching && !update.isError &&
     data?.status === "update_available" && !reminder.ignored;
 }
-function retryWait(seconds: number) {
-  if (seconds > 0 && seconds % 3600 === 0) return `${seconds / 3600} 小时`;
-  if (seconds > 0 && seconds % 60 === 0) return `${seconds / 60} 分钟`;
-  return `${seconds} 秒`;
-}
-
 export function OfficialUpdatePanel({ currentVersion }: { currentVersion?: string }) {
   return <OfficialUpdateProvider><UpdatePanel currentVersion={currentVersion} /></OfficialUpdateProvider>;
 }
@@ -250,20 +230,6 @@ function UpdatePanel({ currentVersion }: { currentVersion?: string | undefined }
     : isReleaseVersion(lastKnownVersion) ? lastKnownVersion : undefined;
   const latestIsPrerelease = isPrereleaseVersion(data?.latest_version);
   const reminder = useUpdateReminder(preferences.channel, data?.latest_version);
-  const [clock, setClock] = useState(Date.now);
-  const retryAt = Math.max(retryDeadline(update.error, update.errorUpdatedAt), update.data?.refreshAfter ?? 0);
-  const remaining = Math.max(0, Math.ceil((retryAt - Math.max(clock, update.errorUpdatedAt)) / 1000));
-  useEffect(() => {
-    setClock(Date.now());
-    if (retryAt <= Date.now()) return;
-    let timer: number;
-    const tick = () => {
-      const now = Date.now(); setClock(now);
-      if (now < retryAt) timer = window.setTimeout(tick, Math.min(retryAt - now, retryAt - now > 60_000 ? 60_000 : 1000));
-    };
-    timer = window.setTimeout(tick, Math.min(retryAt - Date.now(), retryAt - Date.now() > 60_000 ? 60_000 : 1000));
-    return () => window.clearTimeout(timer);
-  }, [retryAt]);
   const status = checking
     ? "正在检查更新…"
     : failed
@@ -272,7 +238,7 @@ function UpdatePanel({ currentVersion }: { currentVersion?: string | undefined }
         ? "有可用更新：v" + data.latest_version + (latestIsPrerelease ? "（预发布）" : "") + (reminder.ignored ? "（已忽略）" : "")
         : null;
   const hasUpdate = data?.status === "update_available";
-  const hasNotice = Boolean(status || remaining > 0 || hasUpdate);
+  const hasNotice = Boolean(status || hasUpdate);
   return (
     <section
       className="system-update-strip"
@@ -295,12 +261,9 @@ function UpdatePanel({ currentVersion }: { currentVersion?: string | undefined }
         <CardContent className="system-update-body">
           {hasNotice && (
             <div className="system-update-notice" data-highlight={hasUpdate ? "true" : undefined}>
-              {(status || remaining > 0) && (
+              {status && (
                 <p className="system-update-status">
-                  {status && <span role="status" aria-label="更新状态">{status}</span>}
-                  {!checking && remaining > 0 && (
-                    <span id="official-update-wait"> 请至少等待 {retryWait(remaining)}后重试。</span>
-                  )}
+                  <span role="status" aria-label="更新状态">{status}</span>
                 </p>
               )}
               {hasUpdate && (
@@ -326,8 +289,7 @@ function UpdatePanel({ currentVersion }: { currentVersion?: string | undefined }
               </Select>
             </Field>
             <Button variant="outline" size="sm" className="system-update-check"
-              aria-describedby={remaining > 0 ? "official-update-wait" : undefined}
-              disabled={update.isFetching || remaining > 0} onClick={(event) => { void check(true, event.currentTarget); }}>
+              disabled={update.isFetching} onClick={(event) => { void check(true, event.currentTarget); }}>
               {update.isFetching && <Spinner aria-hidden="true" data-icon="inline-start" />}
               检查更新
             </Button>

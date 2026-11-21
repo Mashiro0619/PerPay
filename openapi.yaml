@@ -1471,9 +1471,8 @@ paths:
         stable 仅检查稳定版；prerelease 按 SemVer 优先级选择正式版及预发布版中的最高版本。
         预发布列表分页读取有界，超出上限或读取失败时返回不可用，不把不完整结果当作最新版本。
         两个通道独立合并并发检查和缓存，省略 channel 与显式 prerelease 共享。
-        refresh 省略或为 false 时成功结果最多缓存 5 分钟；refresh=true 请求实际检查，也可加入同通道正在执行的检查。
-        同通道成功检查完成后 60 秒内的手动刷新返回 429，不把旧缓存作为手动检查成功，也不延长缓存或等待期限。
-        普通检查失败至少冷却 60 秒；GitHub 限流的 Retry-After 和额度恢复时间在所有通道间共享，切换通道或手动刷新不能绕过。
+        refresh 省略或为 false 时为自动检查：成功结果最多缓存 5 分钟，普通失败至少退避 60 秒，GitHub 限流的 Retry-After 和额度恢复时间在所有通道间共享。
+        refresh=true 为管理员主动手动检查：始终发起实际检查（或加入同通道正在执行的检查），不受历史缓存、失败退避或冷却期锁死；成功后同步刷新该通道缓存。
         不接受 auto、重复 channel 或 refresh、自定义来源、force 或其他查询参数。
         不影响收款就绪判定，也不下载或执行更新。
       security:
@@ -1491,7 +1490,7 @@ paths:
         - name: refresh
           in: query
           required: false
-          description: true 请求实际检查；同通道成功检查后至少等待 60 秒，并遵守失败及 GitHub 限流冷却。
+          description: true 为管理员手动检查，绕过缓存与失败退避立即重新检查；并发时合并同通道进行中的请求。
           schema:
             type: boolean
             default: false
@@ -1500,7 +1499,7 @@ paths:
           description: 官方版本、发布时间及实际检查时间
           headers:
             X-PerPay-Update-Refresh-After:
-              description: 可再次手动检查前至少等待的秒数，包含同通道成功检查间隔与全局 GitHub 限流等待；0 表示可立即请求。
+              description: 手动检查冷却秒数（当前始终为 0，保留响应头以兼容旧客户端）。
               schema: { type: integer, minimum: 0 }
           content:
             application/json:
