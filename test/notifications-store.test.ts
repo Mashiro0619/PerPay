@@ -478,6 +478,108 @@ describe("WebhookStore", () => {
       assert.equal(integrity.ok, false);
     });
   });
+
+  it("claims a RETRY_WAIT delivery immediately, records an audit event, and rejects non-waiting states", async () => {
+    await withWebhookContext(async ({ database, store }) => {
+      assert.equal(store.materialize(10, DELIVERY_TIME), 1);
+      const first = store.claimNext({
+        clientId: API_CLIENT_ID,
+        now: DELIVERY_TIME,
+        leaseMilliseconds: 30_000,
+        maximumAttempts: 5,
+      });
+      assert.ok(first);
+      // Still LEASED: manual retry must be rejected.
+      assert.throws(
+        () => store.claimDeliveryForRetry({
+          deliveryId: first.delivery.deliveryId,
+          actorId: "admin",
+          activeAllowedOrigin: ALLOWED_ORIGIN,
+          now: DELIVERY_TIME + 500,
+          leaseMilliseconds: 30_000,
+          maximumAttempts: 5,
+        }),
+        (error: unknown) => error instanceof WebhookStoreError && error.code === "webhook_delivery_state_conflict",
+      );
+
+      // Fail attempt 1 into RETRY_WAIT with a long backoff.
+      const waiting = store.completeAttempt({
+        deliveryId: first.delivery.deliveryId,
+        attemptId: first.attempt.attemptId,
+        leaseToken: first.attempt.leaseToken,
+        outcome: "RETRYABLE_FAILURE",
+        now: DELIVERY_TIME + 1_000,
+        maximumAttempts: 5,
+        retryBaseMilliseconds: 600_000,
+        retryMaximumMilliseconds: 600_000,
+        httpStatus: 503,
+        responseBytes: 11,
+        responseFingerprint: "a".repeat(64),
+        resolvedAddressesFingerprint: "b".repeat(64),
+        connectedAddress: "203.0.113.10",
+        errorCode: "http_status_rejected",
+      });
+      assert.equal(waiting.status, "RETRY_WAIT");
+      assert.ok(waiting.nextAttemptAt > DELIVERY_TIME + 100_000);
+
+      // Claim immediately before backoff elapses.
+      const retried = store.claimDeliveryForRetry({
+        deliveryId: waiting.deliveryId,
+        actorId: "admin",
+        activeAllowedOrigin: ALLOWED_ORIGIN,
+        now: DELIVERY_TIME + 2_000,
+        leaseMilliseconds: 30_000,
+        maximumAttempts: 5,
+      });
+      assert.equal(retried.delivery.status, "LEASED");
+      assert.equal(retried.delivery.attemptCount, 2);
+      assert.equal(retried.attempt.attemptNumber, 2);
+      assert.equal(retried.attempt.outcome, "STARTED");
+
+      const acked = store.completeAttempt({
+        deliveryId: retried.delivery.deliveryId,
+        attemptId: retried.attempt.attemptId,
+        leaseToken: retried.attempt.leaseToken,
+        outcome: "ACKNOWLEDGED",
+        now: DELIVERY_TIME + 2_500,
+        maximumAttempts: 5,
+        retryBaseMilliseconds: 600_000,
+        retryMaximumMilliseconds: 600_000,
+        httpStatus: 200,
+        responseBytes: 24,
+        responseFingerprint: "c".repeat(64),
+        resolvedAddressesFingerprint: "b".repeat(64),
+        connectedAddress: "203.0.113.10",
+        ackCode: "acknowledged",
+      });
+      assert.equal(acked.status, "ACKNOWLEDGED");
+      assert.equal(acked.attemptCount, 2);
+
+      // Already ACKNOWLEDGED: manual retry must be rejected.
+      assert.throws(
+        () => store.claimDeliveryForRetry({
+          deliveryId: acked.deliveryId,
+          actorId: "admin",
+          activeAllowedOrigin: ALLOWED_ORIGIN,
+          now: DELIVERY_TIME + 3_000,
+          leaseMilliseconds: 30_000,
+          maximumAttempts: 5,
+        }),
+        (error: unknown) => error instanceof WebhookStoreError && error.code === "webhook_delivery_state_conflict",
+      );
+
+      database.read((connection) => {
+        const rows = connection
+          .prepare("SELECT action, actor_id, subject_id FROM audit_events WHERE action = 'webhook.delivery_retried'")
+          .all() as Array<{ action: string; actor_id: string; subject_id: string }>;
+        assert.deepEqual(
+          rows.map((row) => ({ action: row.action, actor_id: row.actor_id, subject_id: row.subject_id })),
+          [{ action: "webhook.delivery_retried", actor_id: "admin", subject_id: waiting.deliveryId }],
+        );
+      });
+      assert.equal(database.integrityCheck().ok, true);
+    });
+  });
 });
 
 interface WebhookTestContext {

@@ -367,6 +367,7 @@ interface SiteScopeCase {
     /** Collection routes have no foreign path ID; their ordinary scope gets a separate control below. */
     readonly queryBoundaryOnly?: boolean;
     readonly successStatus?: number;
+    readonly ownerControl?: () => Promise<void>;
 }
 
 it('covers every registered site route with real foreign resources and scoped positive controls', async () => {
@@ -489,6 +490,37 @@ it('covers every registered site route with real foreign resources and scoped po
             'GET /webhooks/deliveries/:deliveryId': { path: '/webhooks/deliveries/' + foreign.deliveryId },
             'GET /webhooks/deliveries/:deliveryId/attempts': { path: `/webhooks/deliveries/${foreign.deliveryId}/attempts` },
             'POST /webhooks/deliveries/:deliveryId/actions/redeliver': { path: `/webhooks/deliveries/${foreign.deliveryId}/actions/redeliver`, body: redeliver, successStatus: 201 },
+            'POST /webhooks/deliveries/:deliveryId/actions/retry': {
+                path: `/webhooks/deliveries/${foreign.deliveryId}/actions/retry`,
+                body: {},
+                ownerControl: async () => {
+                    const retryOrder = f.orders.forSite(b.clientId).create(createOrderRequestSchema.parse({
+                        merchant_order_no: 'matrix-b-retry', idempotency_key: 'matrix-b-retry',
+                        amount_cents: 25000, product_name: 'matrix-b-retry', notify_url: 'https://matrix.example.com/notify',
+                    })).order;
+                    const retryEntry = credit(retryOrder.payableAmountCents);
+                    assert.equal(f.reconciliation.reconcileEntry(retryEntry.ledgerEntryId, f.now()).kind, 'auto_settled');
+                    f.webhookStore.materialize(10, f.now(), b.clientId);
+                    const claim = f.webhookStore.claimNext({
+                        clientId: b.clientId, siteRevision: f.sites.get(b.clientId)!.revision,
+                        now: f.now(), leaseMilliseconds: 30000, maximumAttempts: 5,
+                    });
+                    assert.ok(claim);
+                    f.webhookStore.completeAttempt({
+                        deliveryId: claim.delivery.deliveryId, attemptId: claim.attempt.attemptId,
+                        leaseToken: claim.attempt.leaseToken, outcome: 'RETRYABLE_FAILURE', now: f.now(), maximumAttempts: 5,
+                        retryBaseMilliseconds: 60_000, retryMaximumMilliseconds: 60_000, errorCode: 'http_status_rejected',
+                    });
+                    const retryPath = `/webhooks/deliveries/${claim.delivery.deliveryId}/actions/retry`;
+                    await denied('POST /webhooks/deliveries/:deliveryId/actions/retry waiting foreign', retryPath, 'POST', {});
+                    const accepted = await request(b.clientId, retryPath, 'POST', {});
+                    assert.equal(accepted.status, 202, await accepted.clone().text());
+                    assert.equal((await accepted.json() as { data: { delivery: { status: string } } }).data.delivery.status, 'LEASED');
+                    await denied('POST /webhooks/deliveries/:deliveryId/actions/retry leased foreign', retryPath, 'POST', {});
+                    const conflict = await request(b.clientId, retryPath, 'POST', {});
+                    assert.equal(conflict.status, 409, await conflict.clone().text());
+                },
+            },
             'GET /reconciliation/candidates/:candidateId': { path: '/reconciliation/candidates/' + foreign.candidateId },
             'GET /reconciliation/matches/:paymentMatchId': { path: '/reconciliation/matches/' + foreign.matchId },
             'GET /reconciliation/exceptions/:exceptionId': { path: '/reconciliation/exceptions/' + foreign.exceptionId },
@@ -587,6 +619,10 @@ it('covers every registered site route with real foreign resources and scoped po
             const key = `${method} ${path}` as SiteRouteKey;
             const scenario: SiteScopeCase = cases[key];
             if (scenario.queryBoundaryOnly) continue;
+            if (scenario.ownerControl) {
+                await scenario.ownerControl();
+                continue;
+            }
             const response = await request(b.clientId, scenario.path, method, scenario.body);
             assert.equal(response.status, scenario.successStatus ?? 200, `${key} owner control: ${await response.clone().text()}`);
             if (key === 'GET /orders/:orderId/checkout') {

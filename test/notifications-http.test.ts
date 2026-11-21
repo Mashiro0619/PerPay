@@ -344,6 +344,66 @@ describe("notification HTTP contract", () => {
       assert.equal(await responseErrorCode(conflict), "webhook_operation_conflict");
     });
   });
+
+  it("allows immediate retry on a RETRY_WAIT delivery and rejects non-waiting deliveries", async () => {
+    await withNotificationFixture(async (fixture) => {
+      const auth = await login(fixture.app);
+      const ackedId = fixture.deliveries[0]!.deliveryId;
+      const ackedRetryPath = `/api/admin/v1/webhooks/deliveries/${ackedId}/actions/retry`;
+
+      // Delivery 0 starts as ACKNOWLEDGED: retry must be rejected with 409.
+      const ackConflict = await postAdmin(fixture.app, ackedRetryPath, auth, {});
+      assert.equal(ackConflict.status, 409);
+      assert.equal(await responseErrorCode(ackConflict), "webhook_delivery_state_conflict");
+
+      // Create a fresh generation and fail attempt 1 into RETRY_WAIT.
+      const redeliver = await postAdmin(
+        fixture.app,
+        `/api/admin/v1/webhooks/deliveries/${ackedId}/actions/redeliver`,
+        auth,
+        { redelivery_id: randomUUID(), reason: "seed waiting delivery for retry test" },
+      );
+      assert.equal(redeliver.status, 201);
+      const { delivery: pending } = await responseData<{ delivery: { delivery_id: string } }>(redeliver);
+      const claimed = fixture.webhooks.claimNext({
+        clientId: "default",
+        siteRevision: fixture.settingsStore.siteStore()!.get("default")!.revision,
+        now: Date.now(),
+        leaseMilliseconds: 30_000,
+        maximumAttempts: 5,
+      });
+      assert.ok(claimed && claimed.delivery.deliveryId === pending.delivery_id);
+      fixture.webhooks.completeAttempt({
+        deliveryId: claimed.delivery.deliveryId,
+        attemptId: claimed.attempt.attemptId,
+        leaseToken: claimed.attempt.leaseToken,
+        outcome: "RETRYABLE_FAILURE",
+        now: Date.now() + 100,
+        maximumAttempts: 5,
+        retryBaseMilliseconds: 600_000,
+        retryMaximumMilliseconds: 600_000,
+        httpStatus: 503,
+        responseBytes: 11,
+        responseFingerprint: "a".repeat(64),
+        resolvedAddressesFingerprint: "b".repeat(64),
+        connectedAddress: "203.0.113.10",
+        errorCode: "http_status_rejected",
+      });
+
+      const waitingRetryPath = `/api/admin/v1/webhooks/deliveries/${pending.delivery_id}/actions/retry`;
+      const accepted = await postAdmin(fixture.app, waitingRetryPath, auth, {});
+      assert.equal(accepted.status, 202, await accepted.clone().text());
+      const acceptedData = await responseData<{ delivery: { delivery_id: string; status: string; attempt_count: number } }>(accepted);
+      assert.equal(acceptedData.delivery.delivery_id, pending.delivery_id);
+      assert.equal(acceptedData.delivery.status, "LEASED");
+      assert.equal(acceptedData.delivery.attempt_count, 2);
+
+      // Second retry while already LEASED returns 409.
+      const second = await postAdmin(fixture.app, waitingRetryPath, auth, {});
+      assert.equal(second.status, 409);
+      assert.equal(await responseErrorCode(second), "webhook_delivery_state_conflict");
+    });
+  });
 });
 
 interface SessionAuth {
