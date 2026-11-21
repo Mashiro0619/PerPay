@@ -471,6 +471,28 @@ describe("order detail work surface", () => {
     expect(screen.getByRole("link", { name: "查看原投递" })).toHaveAttribute("href", "/notifications/" + terminal.delivery.delivery_id);
   });
 
+  it("retries a waiting order delivery immediately without leaving the order", async () => {
+    let retried = false;
+    const { state } = mockData(paidOrder, [delivery], async (request) => {
+      expect(new URL(request.url).pathname).toBe("/api/admin/v1/webhooks/deliveries/" + delivery.delivery.delivery_id + "/actions/retry");
+      expect(await request.json()).toEqual({});
+      retried = true;
+      state.deliveries = [{ ...delivery, delivery: { ...delivery.delivery, status: "LEASED", attempt_count: 2 } }];
+      return json({ data: { delivery: state.deliveries[0]!.delivery } }, 202);
+    });
+    mount();
+    const notifications = await screen.findByRole("region", { name: /^通知/ });
+    const retry = await within(notifications).findByRole("button", { name: "立即重试" });
+    await userEvent.setup().click(retry);
+    expect(await screen.findByText("已发起立即重试")).toBeVisible();
+    expect(retried).toBe(true);
+    await waitFor(() => {
+      expect(within(section("notifications")).queryByRole("button", { name: "立即重试" })).not.toBeInTheDocument();
+    });
+    expect(within(section("notifications")).getByText("投递中")).toBeVisible();
+    expect(screen.getByLabelText("当前页面")).toHaveTextContent("/orders/" + orderId);
+  });
+
   it.each([
     "PENDING",
     "LEASED",
@@ -478,7 +500,7 @@ describe("order detail work surface", () => {
     "ACKNOWLEDGED",
     "DEAD_LETTER",
   ] as const)(
-    "does not offer redelivery on a superseded %s record",
+    "does not offer redelivery or retry on a superseded %s record",
     async (status) => {
       mockData(paidOrder, [{ ...delivery, is_latest: false, delivery: { ...delivery.delivery, status } }]);
       mount();
@@ -486,6 +508,7 @@ describe("order detail work surface", () => {
       // A delivery replaced by a resend is folded into the section's history.
       await userEvent.setup().click(await within(section("notifications")).findByRole("button", { name: /^历史投递/ }));
       expect(await within(section("notifications")).findByRole("link", { name: "查看详情" })).toBeVisible();
+      expect(within(section("notifications")).queryByRole("button", { name: "立即重试" })).not.toBeInTheDocument();
       expect(within(section("notifications")).queryByRole("button", { name: "重新发送" })).not.toBeInTheDocument();
       expect(within(section("notifications")).queryByRole("button", { name: "更多操作，通知记录操作" })).not.toBeInTheDocument();
     },

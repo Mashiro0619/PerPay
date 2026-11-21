@@ -4,6 +4,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { describe, expect, it, vi } from "vitest";
 import { queryClient, type OrderWebhookDeliveryDetail, type WebhookAttempt } from "../src/api/client";
+import { Toaster } from "../src/components/ui/toast";
 import { RequestNoticeBanner } from "../src/components/request-notice-banner";
 import { RequestNoticeProvider } from "../src/lib/request-notices";
 import NotificationDetail from "../src/pages/NotificationDetail";
@@ -35,7 +36,7 @@ function mockDetail(attemptsUnavailable = false, orderUnavailable = false, detai
 function mountDetail(site = false) {
   const base = site ? "/sites/site_dense" : "";
   render(
-    <QueryClientProvider client={queryClient}>
+    <QueryClientProvider client={queryClient}><Toaster>
       <MemoryRouter initialEntries={[base + "/notifications/" + deliveryId]}>
         <WorkspaceProvider>
           {/* As in a record drawer: one notice reports the reads the service could not answer. */}
@@ -47,7 +48,7 @@ function mountDetail(site = false) {
           </RequestNoticeProvider>
         </WorkspaceProvider>
       </MemoryRouter>
-    </QueryClientProvider>,
+    </Toaster></QueryClientProvider>,
   );
 }
 const attemptReads = (requests: Request[]) => requests.filter(request => new URL(request.url).pathname.endsWith("/attempts"));
@@ -109,6 +110,7 @@ describe("readable standalone notification detail", () => {
     expect(screen.queryByText(deliveryId)).not.toBeInTheDocument();
     expect(document.querySelector('[data-record-notice="warning"]')).toHaveTextContent("请核对通知接收程序返回的确认回执");
     expect(screen.getAllByRole("button", { name: "更多操作，通知记录操作" })).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "立即重试" })).toBeVisible();
     expect(screen.queryByRole("button", { name: "重新发送" })).not.toBeInTheDocument();
     const list = await within(attempts).findByRole("list", { name: "投递尝试" });
     expect(within(list).getAllByRole("listitem")).toHaveLength(1);
@@ -212,13 +214,66 @@ describe("readable standalone notification detail", () => {
     await waitFor(() => expect(trigger).toHaveFocus());
   });
 
-  it.each(["PENDING", "LEASED", "RETRY_WAIT", "ACKNOWLEDGED", "DEAD_LETTER"] as const)("does not offer a resend on a superseded %s delivery", async (status) => {
+  it.each(["PENDING", "LEASED", "RETRY_WAIT", "ACKNOWLEDGED", "DEAD_LETTER"] as const)("does not offer a resend or retry on a superseded %s delivery", async (status) => {
     mockDetail(false, false, { ...delivery, is_latest: false, delivery: { ...delivery.delivery, status } });
     mountDetail();
     await screen.findByRole("region", { name: "投递信息" });
+    expect(screen.queryByRole("button", { name: "立即重试" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "重新发送" })).not.toBeInTheDocument();
     await recordAction("通知技术信息", "通知记录操作");
     expect(screen.queryByRole("menuitem", { name: "重新发送" })).not.toBeInTheDocument();
+  });
+
+  it.each([false, true])("retries a waiting delivery immediately and refreshes its state (site=%s)", async (site) => {
+    let retried = false;
+    const writes: { path: string; body: unknown }[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (request: Request) => {
+      const path = new URL(request.url).pathname;
+      if (path.endsWith("/sites/site_dense"))
+        return json({ data: { client_id: "site_dense", name: "紧凑布局网站" } });
+      if (request.method === "POST" && path.endsWith("/actions/retry")) {
+        retried = true;
+        writes.push({ path, body: await request.json() });
+        return json({
+          data: {
+            delivery: { ...delivery.delivery, status: "LEASED", attempt_count: 2 },
+          },
+        }, 202);
+      }
+      if (path.endsWith("/attempts")) return json({ data: delivery.attempts });
+      if (path.includes("/orders/")) return json({ data: paidOrder });
+      return json({
+        data: {
+          ...delivery,
+          delivery: retried
+            ? { ...delivery.delivery, status: "LEASED", attempt_count: 2 }
+            : delivery.delivery,
+        },
+      });
+    }));
+    mountDetail(site);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "立即重试" }));
+    expect(await screen.findByText("已发起立即重试")).toBeVisible();
+    expect(writes).toEqual([{
+      path: (site ? "/api/admin/v1/sites/site_dense" : "/api/admin/v1") + "/webhooks/deliveries/" + deliveryId + "/actions/retry",
+      body: {},
+    }]);
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: "立即重试" })).not.toBeInTheDocument();
+    });
+    expect(within(screen.getByRole("group", { name: "通知状态" })).getByText("投递中")).toBeVisible();
+  });
+
+  it("does not offer immediate retry when payment confirmation was revoked while waiting to retry", async () => {
+    mockDetail(false, false, {
+      ...delivery,
+      redelivery_blocked_reason: "payment_confirmation_revoked",
+      delivery: { ...delivery.delivery, status: "RETRY_WAIT" },
+    });
+    mountDetail();
+    await screen.findByRole("region", { name: "投递信息" });
+    expect(screen.queryByRole("button", { name: "立即重试" })).not.toBeInTheDocument();
   });
 
   it("states when a delivery not yet attempted is scheduled, without advice on a failure that has not happened", async () => {

@@ -340,7 +340,9 @@ describe("record summary", () => {
       <RecordNotice tone="danger" jump={{ section: "payments", label: "查看 1 项待核对" }}>收款有争议：原收款关联已撤销，请核对付款凭证。</RecordNotice>
       <Sections><Section id="payments" title="收款关联"><p>关联内容</p></Section></Sections>
     </div>);
-    expect(document.querySelector('[data-record-notice="danger"]')).toHaveTextContent("收款有争议：原收款关联已撤销，请核对付款凭证。");
+    const notice = document.querySelector('[data-record-notice="danger"]')!;
+    expect(notice).toHaveTextContent("收款有争议：原收款关联已撤销，请核对付款凭证。");
+    expect(notice.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
     await userEvent.setup().click(screen.getByRole("button", { name: "查看 1 项待核对" }));
     expect(document.querySelector('[data-detail-section="payments"]')).toHaveFocus();
   });
