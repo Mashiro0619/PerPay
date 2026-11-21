@@ -280,7 +280,7 @@ test(`${phase}: first-load resources and native input-to-result performance`, as
     const toggle = page.getByRole("button", { name: "切换导航", exact: true });
     for (const expected of ["collapsed", "expanded"]) observations.push(await observe(page, cdp, toggle, { name: `sidebar-${expected}`, kind: "sidebar", expected }));
     const trend = page.locator('[data-slot="card"]').filter({ has: page.getByRole("heading", { name: "收款趋势", exact: true }) });
-    for (const [expected, label] of [["BAR", "柱状图"], ["LINE", "折线图"]] as const) observations.push(await observe(page, cdp, trend.getByRole("group", { name: "图表类型" }).getByRole("button", { name: label, exact: true }), { name: `chart-${expected}`, kind: "chart", expected }));
+    for (const [expected, label] of [["BAR", "柱状图"], ["LINE", "累计图"]] as const) observations.push(await observe(page, cdp, trend.getByRole("group", { name: "图表类型" }).getByRole("button", { name: label, exact: true }), { name: `chart-${expected}`, kind: "chart", expected }));
     await page.getByRole("navigation", { name: "主导航", exact: true }).locator('a[href^="/admin/orders"]').click();
     const orders = page.locator('[data-business-list="orders"]');
     await expect(orders.locator("[data-row-link]").first()).toBeVisible();

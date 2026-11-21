@@ -60,6 +60,7 @@ describe("overview metric keyboard access", () => {
     await user.tab();
     expect(screen.getByRole("link", { name: "7" })).toHaveFocus();
     expect(screen.getByRole("link", { name: "7" })).toHaveAttribute("href", "/sites/site_a/work-items");
+    expect(screen.getByRole("link", { name: "7" }).closest('[data-slot="card"]')).toHaveAttribute("data-attention", "true");
     await user.tab();
     expect(screen.getByRole("button", { name: "卡片后续操作" })).toHaveFocus();
   });
@@ -115,5 +116,33 @@ describe("overview metric keyboard access", () => {
     expect(screen.getByRole("button", { name: "今日收款确认笔数统计口径" })).toHaveFocus();
     await user.tab();
     expect(screen.getByRole("link", { name: "3" })).toHaveFocus();
+  });
+
+  it("shows work-item breakdown on the global attention card and clears attention when zero", () => {
+    const { rerender } = render(
+      <MemoryRouter>
+        <SectionCards
+          analytics={analytics}
+          workItems={6}
+          workBreakdown={{ total: 6, financial_exceptions: 2, ledger_conflicts: 1, notification_failures: 3 }}
+        />
+      </MemoryRouter>,
+    );
+    const workCard = screen.getByRole("link", { name: "6" }).closest('[data-slot="card"]')!;
+    expect(workCard).toHaveAttribute("data-attention", "true");
+    expect(workCard).toHaveTextContent("异常 2 · 冲突 1 · 通知 3");
+
+    rerender(
+      <MemoryRouter>
+        <SectionCards
+          analytics={analytics}
+          workItems={0}
+          workBreakdown={{ total: 0, financial_exceptions: 0, ledger_conflicts: 0, notification_failures: 0 }}
+        />
+      </MemoryRouter>,
+    );
+    const calmCard = screen.getByRole("link", { name: "0" }).closest('[data-slot="card"]')!;
+    expect(calmCard).not.toHaveAttribute("data-attention");
+    expect(calmCard).toHaveTextContent("暂无待处理提醒");
   });
 });

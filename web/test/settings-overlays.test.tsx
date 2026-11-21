@@ -87,7 +87,7 @@ describe("settings summaries and owned editing overlays", () => {
     expect(dialog).not.toHaveAttribute("data-overlay-record");
     const name = within(dialog).getByLabelText("系统名称");
     const chart = within(dialog).getByRole("group", { name: "收款趋势默认图形" });
-    await user.click(within(chart).getByRole("button", { name: "折线图" }));
+    await user.click(within(chart).getByRole("button", { name: "累计图" }));
     await user.clear(name); await user.type(name, "尚未保存的名称");
     await user.click(footer(dialog).getByRole("button", { name: "关闭" }));
     const guard = await screen.findByRole("alertdialog", { name: "放弃未保存的修改？" });

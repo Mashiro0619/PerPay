@@ -150,7 +150,7 @@ describe("amount and order combination view", () => {
     const { container } = render(<ChartAreaInteractive analytics={analytics(30)} range={30} pending={false} onRangeChange={onRangeChange} />);
     await screen.findByRole("application");
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "折线图" }));
+    await user.click(screen.getByRole("button", { name: "累计图" }));
     expect(localStorage.getItem(CHART_TYPE_STORAGE_KEY)).toBe("LINE");
     screen.getByRole("button", { name: "新建订单" }).focus();
     await user.keyboard("{ArrowRight}{Enter}");
@@ -174,7 +174,7 @@ describe("amount and order combination view", () => {
       .map(time => time.dateTime)).toEqual(dates);
     await user.click(screen.getByRole("tab", { name: "图表" }));
     await user.click(screen.getByRole("button", { name: "确认金额" }));
-    expect(screen.getByRole("button", { name: "折线图" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "累计图" })).toHaveAttribute("aria-pressed", "true");
     expect(plot(container)).toHaveAttribute("data-chart-type", "LINE");
     expect(localStorage.getItem(CHART_TYPE_STORAGE_KEY)).toBe("LINE");
     expect(onRangeChange).not.toHaveBeenCalled();

@@ -120,7 +120,7 @@ test("combined money and order series retain independent units, authoritative to
   page.on("request", request => {
     if (new URL(request.url()).pathname.startsWith("/api/") && !["GET", "HEAD"].includes(request.method())) writes.push(request.method() + " " + new URL(request.url()).pathname);
   });
-  await card.getByRole("button", { name: "折线图", exact: true }).click();
+  await card.getByRole("button", { name: "累计图", exact: true }).click();
   await card.getByRole("tab", { name: "每日数据", exact: true }).click();
   const daily = card.getByRole("region", { name: "每日数据", exact: true });
   await expect(daily.getByRole("status")).toHaveText("共 30 天");
@@ -156,7 +156,7 @@ test("combined money and order series retain independent units, authoritative to
   await expectCombined(card, data);
   for (const metric of ["新建订单", "确认金额"]) {
     await card.getByRole("button", { name: metric, exact: true }).click();
-    await expect(card.getByRole("button", { name: "折线图", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await expect(card.getByRole("button", { name: "累计图", exact: true })).toHaveAttribute("aria-pressed", "true");
     await expect(plot).toHaveAttribute("data-chart-type", "LINE");
     await combined.click();
     await expectCombined(card, data);

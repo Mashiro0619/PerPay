@@ -36,7 +36,7 @@ function analytics(days: 7 | 30 | 90 = 7, amount = 12345): SystemAnalytics {
   };
 }
 
-const typeLabels = { AREA: "面积图", BAR: "柱状图", LINE: "折线图" } as const;
+const typeLabels = { AREA: "面积图", BAR: "柱状图", LINE: "累计图" } as const;
 
 function expectSelectedType(
   type: DashboardChartType,
@@ -106,7 +106,7 @@ describe("trend chart remembered preferences", () => {
       />,
     );
     await screen.findByRole("application");
-    await user.click(screen.getByRole("button", { name: "折线图" }));
+    await user.click(screen.getByRole("button", { name: "累计图" }));
     expectSelectedType("LINE", container);
 
     rerender(
@@ -271,7 +271,7 @@ describe("trend chart remembered preferences", () => {
       );
       await screen.findByRole("application");
       expectSelectedType("BAR", container);
-      await userEvent.setup().click(screen.getByRole("button", { name: "折线图" }));
+      await userEvent.setup().click(screen.getByRole("button", { name: "累计图" }));
       expectSelectedType("LINE", container);
       rerender(
         <ChartAreaInteractive analytics={analytics()} range={7} pending={false} onRangeChange={onRangeChange} chartType="AREA" />,
@@ -294,7 +294,7 @@ describe("trend chart remembered preferences", () => {
         onRangeChange={onRangeChange}
       />,
     );
-    await user.click(screen.getByRole("button", { name: "折线图" }));
+    await user.click(screen.getByRole("button", { name: "累计图" }));
     rerender(
       <ChartAreaInteractive
         analytics={analytics()}
@@ -320,7 +320,7 @@ describe("trend chart remembered preferences", () => {
       />,
     );
     await screen.findByRole("application");
-    await user.click(screen.getByRole("button", { name: "折线图" }));
+    await user.click(screen.getByRole("button", { name: "累计图" }));
     await user.click(screen.getByRole("button", { name: "新建订单" }));
     await user.click(screen.getByRole("tab", { name: "每日数据" }));
     expect(

@@ -262,7 +262,7 @@ describe("chart series motion", () => {
     const { rerender } = render(<SeriesContent token="area" text="面积图" />);
     rerender(<SeriesContent token="bar" text="柱状图" mark="bar" />);
     const previous = screen.getByTestId("content").querySelector(".trend-series-motion");
-    rerender(<SeriesContent token="line" text="折线图" mark="line" />);
+    rerender(<SeriesContent token="line" text="累计图" mark="line" />);
     expect(previous).not.toBeInTheDocument();
     expect(frames.size).toBe(1);
     flush();
@@ -308,7 +308,7 @@ describe("chart series motion", () => {
     act(() => { document.dispatchEvent(new Event("visibilitychange")); });
     flush();
     expect(animate).toHaveBeenCalledOnce();
-    rerender(<SeriesContent token="line" text="折线图" />);
+    rerender(<SeriesContent token="line" text="累计图" />);
     expect(frames.size).toBe(1);
     unmount();
     expect(frames.size).toBe(0);

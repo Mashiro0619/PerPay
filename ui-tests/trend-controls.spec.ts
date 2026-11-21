@@ -1,7 +1,7 @@
 import type { Locator, Page, TestInfo } from "@playwright/test";
 import { test, expect, login, record } from "./fixtures";
 
-const chartTypes = [["AREA", "面积图"], ["BAR", "柱状图"], ["LINE", "折线图"]] as const;
+const chartTypes = [["AREA", "面积图"], ["BAR", "柱状图"], ["LINE", "累计图"]] as const;
 const periods = [[7, "近 7 天"], [90, "近 90 天"], [30, "近 30 天"]] as const;
 
 function trendCard(page: Page) {
@@ -190,7 +190,7 @@ for (const width of [1440, 1920]) {
       await exerciseControls(page, card, false);
       await page.reload();
       await ready(page, card);
-      await expect(card.getByRole("button", { name: "折线图", exact: true })).toHaveAttribute("aria-pressed", "true");
+      await expect(card.getByRole("button", { name: "累计图", exact: true })).toHaveAttribute("aria-pressed", "true");
       await expect(card.locator('[data-slot="chart"]')).toHaveAttribute("data-chart-type", "LINE");
       expect(writes, "presentation choices stay local instead of saving server settings").toEqual([]);
     }

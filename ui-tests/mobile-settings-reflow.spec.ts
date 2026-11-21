@@ -160,7 +160,7 @@ test.describe("narrow settings and overview controls remain usable", () => {
       await expect(trigger).toBeVisible();
       await page.evaluate(font => document.documentElement.style.fontSize = font + "%", font);
       const values = [];
-      for (const [name, value] of [["面积图", "AREA"], ["柱状图", "BAR"], ["折线图", "LINE"]] as const) {
+      for (const [name, value] of [["面积图", "AREA"], ["柱状图", "BAR"], ["累计图", "LINE"]] as const) {
         await trigger.scrollIntoViewIfNeeded();
         await page.clock.runFor(100);
         await expectTouchTarget(trigger);

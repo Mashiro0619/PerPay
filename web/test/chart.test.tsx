@@ -165,8 +165,8 @@ describe("official shadcn interactive chart", () => {
       );
       const user = userEvent.setup();
       for (const [label, token, value] of [
-        ["确认金额", "chart-1", "¥1,324.43"],
-        ["新建订单", "chart-2", "40"],
+        ["确认金额", "chart-1", chartType === "LINE" ? "¥2,648.86" : "¥1,324.43"],
+        ["新建订单", "chart-2", chartType === "LINE" ? "120" : "40"],
       ] as const) {
         await user.click(screen.getByRole("button", { name: label }));
         const color = "var(--" + token + ")";
@@ -398,10 +398,11 @@ describe("official shadcn interactive chart", () => {
       const chart = await within(container).findByRole("application");
       fireEvent.focus(chart);
       fireEvent.keyDown(chart, { key: "ArrowRight" });
+      const expectedValue = chartType === "LINE" ? "¥2,648.86" : "¥1,324.43";
       await waitFor(() =>
         expect(
           container.querySelector(".recharts-tooltip-wrapper"),
-        ).toHaveTextContent("¥1,324.43"),
+        ).toHaveTextContent(expectedValue),
       );
       const tooltip = container.querySelector<HTMLElement>(
         ".recharts-tooltip-wrapper",
@@ -410,8 +411,11 @@ describe("official shadcn interactive chart", () => {
         within(tooltip).getByText("确认金额", { exact: true }),
       ).toBeVisible();
       expect(
-        within(tooltip).getByText("¥1,324.43", { exact: true }),
+        within(tooltip).getByText(expectedValue, { exact: true }),
       ).toHaveClass("tabular-nums");
+      if (chartType === "LINE") {
+        expect(tooltip).toHaveTextContent("累计");
+      }
       expect(within(tooltip).queryByText("确认次数")).not.toBeInTheDocument();
       expect(within(tooltip).queryByText("新建订单")).not.toBeInTheDocument();
     },

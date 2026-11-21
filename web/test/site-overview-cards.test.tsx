@@ -255,6 +255,7 @@ describe("website overview amount cards", () => {
     ], null, { range, end: "2025-12-31", maximum: 19753086 }), range);
     const link = await findCard(current.client_id);
     expect(screen.getByText("近 " + range + " 天实收", { exact: true })).toBeVisible();
+    expect(screen.getByRole("link", { name: "网站管理" })).toHaveAttribute("href", "/sites");
     expect(link).toHaveAttribute("href", "/sites/site_amount?range=" + range);
     expect(link).toHaveAccessibleName("金额网站，查看网站总览");
     expect(link).toHaveAccessibleDescription(new RegExp("近 " + range + " 天实收 ¥98,765\\.43"));

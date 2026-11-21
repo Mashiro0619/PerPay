@@ -228,7 +228,7 @@ test.describe("compact mobile button visuals and separate touch targets", () => 
     await page.clock.runFor(100);
     const triggerGeometry = await expectTouchTarget(trigger);
     const geometry = [];
-    for (const name of ["面积图", "柱状图", "折线图"]) {
+    for (const name of ["面积图", "柱状图", "累计图"]) {
       await trigger.tap();
       const choice = page.getByRole("menuitemradio", { name, exact: true });
       const target = await expectTouchTarget(choice, { hitTest: false });
@@ -246,7 +246,7 @@ test.describe("compact mobile button visuals and separate touch targets", () => 
       await expect(trigger).toHaveAccessibleName("图表类型：" + name);
     }
     await trigger.tap();
-    await expect(page.getByRole("menuitemradio", { name: "折线图", exact: true })).toHaveAttribute("aria-checked", "true");
+    await expect(page.getByRole("menuitemradio", { name: "累计图", exact: true })).toHaveAttribute("aria-checked", "true");
     await expect(page.getByRole("menuitemradio", { name: "面积图", exact: true })).toHaveAttribute("aria-checked", "false");
     await page.getByRole("menuitemradio", { name: "面积图", exact: true }).tap();
     await record(page, info, { evidence: "browser touch viewport", triggerGeometry, menuChoices: geometry });
@@ -335,7 +335,7 @@ test.describe("compact mobile button visuals and separate touch targets", () => 
       await tabs.getByRole("tab", { name: "图表", exact: true }).tap();
       const types = card.getByRole("button", { name: /^图表类型：/ });
       const typeGeometry = [];
-      for (const [name, value] of [["面积图", "AREA"], ["柱状图", "BAR"], ["折线图", "LINE"]] as const) {
+      for (const [name, value] of [["面积图", "AREA"], ["柱状图", "BAR"], ["累计图", "LINE"]] as const) {
         const geometry = await centered(types, page);
         expect(geometry.visual.width).toBeCloseTo(32, 1);
         expect(geometry.visual.height).toBeCloseTo(32, 1);
@@ -384,7 +384,7 @@ test.describe("compact mobile button visuals and separate touch targets", () => 
       const editor = page.locator("[data-overlay-content]");
       const defaults = editor.getByRole("group", { name: "收款趋势默认图形", exact: true });
       const defaultGeometry = [];
-      for (const name of ["面积图", "柱状图", "折线图"]) {
+      for (const name of ["面积图", "柱状图", "累计图"]) {
         const target = defaults.getByRole("button", { name, exact: true });
         const geometry = await centered(target, page);
         expect(geometry.visual.height).toBeCloseTo(32, 1);

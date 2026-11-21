@@ -194,6 +194,87 @@ export function measureSelectionContrast(element: Element) {
       contrast !== null && contrast >= requiredRatio && (!(labelledIcon || iconOnly) || iconContrast !== null && iconContrast >= 3) };
 }
 
+/** Measure text ink against an opaque sticky/fixed ancestor when scrolled content sits behind it. */
+export function measureOpaqueAncestorContrast(element: Element) {
+  const target = element as HTMLElement;
+  const context = document.createElement("canvas").getContext("2d")!;
+  const rgba = (color: string) => {
+    context.clearRect(0, 0, 1, 1); context.fillStyle = color; context.fillRect(0, 0, 1, 1);
+    return [...context.getImageData(0, 0, 1, 1).data];
+  };
+  const luminance = (channels: number[]) => channels.slice(0, 3).map(channel => channel / 255)
+    .map(channel => channel <= .04045 ? channel / 12.92 : ((channel + .055) / 1.055) ** 2.4)
+    .reduce((sum, channel, index) => sum + channel * [.2126, .7152, .0722][index]!, 0);
+  const conflicts: string[] = [];
+  let surface: Element | null = null;
+  let background: number[] | null = null;
+  let backgroundCss: string | null = null;
+  for (let node: Element | null = target; node; node = node.parentElement) {
+    const style = getComputedStyle(node);
+    if (style.opacity !== "1" || style.filter !== "none" || style.backdropFilter !== "none" ||
+      style.mixBlendMode !== "normal" || style.visibility !== "visible" || style.display === "none") {
+      conflicts.push(node.tagName + ": paint modifier");
+    }
+    if (style.backgroundImage !== "none") conflicts.push(node.tagName + ": background image");
+    const color = rgba(style.backgroundColor);
+    if (node !== target && (style.position === "sticky" || style.position === "fixed") && color[3] === 255) {
+      surface = node;
+      background = color;
+      backgroundCss = style.backgroundColor;
+      break;
+    }
+    if (color[3]! > 0 && color[3]! < 255) conflicts.push(node.tagName + ": translucent background");
+  }
+  if (!surface || !background) return null;
+  const textStyle = getComputedStyle(target);
+  const foreground = rgba(textStyle.color);
+  if (foreground[3] !== 255 || textStyle.textShadow !== "none" ||
+    Number.parseFloat(textStyle.getPropertyValue("-webkit-text-stroke-width")) > 0) {
+    conflicts.push("unverified text paint");
+  }
+  const box = target.getBoundingClientRect();
+  const surfaceBox = surface.getBoundingClientRect();
+  const contained = box.width > 0 && box.height > 0 &&
+    box.left >= surfaceBox.left - 1 && box.right <= surfaceBox.right + 1 &&
+    box.top >= surfaceBox.top - 1 && box.bottom <= surfaceBox.bottom + 1;
+  const ranges = [...target.childNodes].filter(node => node.nodeType === Node.TEXT_NODE && node.textContent?.trim()).flatMap(node => {
+    const range = document.createRange(); range.selectNodeContents(node);
+    return [...range.getClientRects()].filter(line => line.width > 0 && line.height > 0);
+  });
+  const hits = ranges.flatMap(line => {
+    const left = Math.max(box.left + 1, line.left + 1);
+    const right = Math.min(box.right - 1, line.right - 1);
+    const midY = (Math.max(box.top, line.top) + Math.min(box.bottom, line.bottom)) / 2;
+    if (right < left) return [false];
+    return [left, (left + right) / 2, right].map(x => {
+      const hit = document.elementFromPoint(x, midY);
+      return hit !== null && (hit === target || target.contains(hit));
+    });
+  });
+  const fontSize = Number.parseFloat(textStyle.fontSize);
+  const fontWeight = Number.parseFloat(textStyle.fontWeight);
+  const requiredRatio = fontSize >= 24 || fontWeight >= 700 && fontSize >= 18.6667 ? 3 : 4.5;
+  const first = luminance(foreground), second = luminance(background);
+  const contrast = (Math.max(first, second) + .05) / (Math.min(first, second) + .05);
+  return {
+    kind: "opaque-sticky-surface",
+    text: target.textContent?.trim() ?? null,
+    foreground: textStyle.color,
+    foregroundRgba: foreground,
+    background: backgroundCss,
+    backgroundRgba: background,
+    surfaceTag: surface.tagName,
+    fontSize,
+    fontWeight,
+    requiredRatio,
+    contrast,
+    contained,
+    hits,
+    conflicts,
+    passed: conflicts.length === 0 && contained && ranges.length > 0 && hits.every(Boolean) && contrast >= requiredRatio,
+  };
+}
+
 export async function resolveSvgContrast(page: Page, result: AxeResults) {
   const review = [];
   for (const rule of result.incomplete.filter(rule => rule.id === "color-contrast")) {
@@ -202,9 +283,11 @@ export async function resolveSvgContrast(page: Page, result: AxeResults) {
       const keys = [...node.any, ...node.all, ...node.none].map(check => check.data?.messageKey);
       const svgEligible = keys.length > 0 && keys.every(key => key === "imgNode");
       const selectionEligible = keys.length > 0 && keys.every(key => key === "bgOverlap");
+      const obscuringEligible = keys.length > 0 && keys.every(key => key === "elmPartiallyObscuring");
       const measurement = selector && await page.locator(selector).count() === 1
         ? svgEligible ? await page.locator(selector).evaluate(measureAxisContrast)
-          : selectionEligible ? await page.locator(selector).evaluate(measureSelectionContrast) : null
+          : selectionEligible ? await page.locator(selector).evaluate(measureSelectionContrast)
+          : obscuringEligible ? await page.locator(selector).evaluate(measureOpaqueAncestorContrast) : null
         : null;
       review.push({ target: node.target, originalReasons: keys, resolved: measurement?.passed === true, measurement });
     }

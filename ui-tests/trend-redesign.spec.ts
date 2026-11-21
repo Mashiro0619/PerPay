@@ -11,7 +11,7 @@ const SPARSE_DATE = "2025-12-31";
 const TYPES = [
   ["AREA", "面积图"],
   ["BAR", "柱状图"],
-  ["LINE", "折线图"],
+  ["LINE", "累计图"],
 ] as const;
 
 type Scenario = "sparse" | "zero" | "today" | "large";
@@ -175,7 +175,7 @@ test.describe("narrow trend reading", () => {
     const errors: string[] = [];
     page.on("pageerror", error => errors.push(error.message));
     await login(page, manifest);
-    for (const [type, label, font] of [["AREA", "面积图", 100], ["BAR", "柱状图", 200], ["LINE", "折线图", 200]] as const) {
+    for (const [type, label, font] of [["AREA", "面积图", 100], ["BAR", "柱状图", 200], ["LINE", "累计图", 200]] as const) {
       await page.evaluate(font => { document.documentElement.style.fontSize = font + "%"; }, font);
       await page.clock.runFor(200);
       const card = trendCard(page);
@@ -209,7 +209,7 @@ test.describe("narrow trend reading", () => {
       await application.press("ArrowRight");
       const tooltip = plot.locator(".trend-tooltip");
       await expect(tooltip).toBeVisible();
-      await expect(tooltip).toContainText("¥9,876,543,210.12");
+      await expect(tooltip).toContainText(type === "LINE" ? "¥19,753,086,420.24" : "¥9,876,543,210.12");
       await page.clock.runFor(200);
       const geometry = await tooltip.evaluate(element => {
         const tooltip = element.getBoundingClientRect();

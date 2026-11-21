@@ -66,7 +66,8 @@ for (const width of [390, 740, 1440]) {
       });
       expect(Math.abs(alignment.automatic - alignment.automaticLabel)).toBeLessThanOrEqual(1);
       expect(Math.abs(alignment.channel - alignment.channelLabel)).toBeLessThanOrEqual(1);
-      if (width >= 740) {
+      const panelWidth = await panel.evaluate(element => element.getBoundingClientRect().width);
+      if (panelWidth >= 544) {
         expect(Math.abs(alignment.automatic - alignment.channel)).toBeLessThanOrEqual(1);
         expect(Math.abs(alignment.manual - alignment.channel)).toBeLessThanOrEqual(1);
       }

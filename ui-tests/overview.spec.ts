@@ -85,7 +85,7 @@ test("empty reminders stay compact and give recent orders the full dashboard wid
     expect(geometry.ordersWidth).toBe(geometry.recordsWidth);
     expect(geometry.ordersBelowWork).toBe(true);
     expect(geometry.workHeight).toBeLessThan(width < 768 ? 100 : 72);
-    expect(geometry.siteColumns).toBe(width < 1024 ? 1 : 2);
+    expect(geometry.siteColumns).toBe(1);
     const siteCardWidth = (geometry.siteContentWidth - (geometry.siteColumns - 1) * geometry.siteGap) / geometry.siteColumns;
     for (const cardWidth of geometry.siteCardWidths) expect(Math.abs(cardWidth - siteCardWidth)).toBeLessThanOrEqual(1);
     expect(geometry.sitesContained).toBe(true);
@@ -205,15 +205,15 @@ test("overview grids use container widths and preserve complete identifiers and 
     expect(geometry.work.rows.every(row => row.inset >= 16 && row.hoverInset >= 8 && row.contained && row.inlineFields)).toBe(true);
     expect(geometry.recordColumns).toHaveLength(geometry.main >= 1088 ? 2 : 1);
     if (geometry.main >= 1088) { expect(geometry.recordColumns[0]).toBeGreaterThanOrEqual(352); expect(geometry.recordColumns[0]).toBeLessThanOrEqual(448); }
-    expect(geometry.siteColumns).toBe(geometry.siteWidth >= 1216 ? 4 : geometry.siteWidth >= 992 ? 3 : geometry.siteWidth >= 656 ? 2 : 1);
+    expect(geometry.siteColumns).toBe(geometry.siteWidth >= 576 ? 2 : 1);
     await record(page, info, geometry);
     await info.attach(`overview-${width}`, { body: await page.screenshot(), contentType: "image/png" });
   }
   await page.getByRole("button", { name: "切换为全屏布局", exact: true }).click();
-  expect(await page.locator(".site-overview-grid").evaluate(e => getComputedStyle(e).gridTemplateColumns.split(" ").length)).toBe(4);
+  expect(await page.locator(".overview-hero").evaluate(e => getComputedStyle(e).gridTemplateColumns.split(" ").length)).toBe(2);
 });
 
-test("overview container breakpoints switch at 68rem and 76rem in both width preferences", async ({ page, manifest }, info) => {
+test("overview container breakpoints switch at 68rem in both width preferences", async ({ page, manifest }, info) => {
   await login(page, manifest);
   for (const mode of ["compact", "full"]) for (const target of [1087, 1088, 1089, 1215, 1216, 1217]) {
     await page.setViewportSize({ width: 1280, height: 900 });
@@ -224,13 +224,21 @@ test("overview container breakpoints switch at 68rem and 76rem in both width pre
     await page.setViewportSize({ width: 1280 + target - measured, height: 900 });
     await expect.poll(() => page.locator("[data-content-width]").evaluate(element => element.getBoundingClientRect().width)).toBe(target);
     const columns = await page.evaluate(() => ({
+      hero: getComputedStyle(document.querySelector(".overview-hero")!).gridTemplateColumns.split(" ").length,
       records: getComputedStyle(document.querySelector(".overview-records")!).gridTemplateColumns.split(" ").length,
       sites: getComputedStyle(document.querySelector(".site-overview-grid")!).gridTemplateColumns.split(" ").length,
       siteWidth: document.querySelector(".site-overview-section")!.getBoundingClientRect().width,
     }));
+    expect(columns.hero).toBe(target >= 1088 ? 2 : 1);
     expect(columns.records).toBe(target >= 1088 ? 2 : 1);
-    expect(columns.siteWidth).toBe(target);
-    expect(columns.sites).toBe(target >= 1216 ? 4 : 3);
+    if (target < 1088) {
+      expect(columns.siteWidth).toBe(target);
+      expect(columns.sites).toBe(2);
+    } else {
+      expect(columns.siteWidth).toBeGreaterThanOrEqual(300);
+      expect(columns.siteWidth).toBeLessThanOrEqual(380);
+      expect(columns.sites).toBe(1);
+    }
     await record(page, info, { requested: { containerWidth: target, mode }, columns });
   }
 });

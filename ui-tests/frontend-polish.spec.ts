@@ -204,7 +204,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
       const trend = page.locator('[data-slot="card"]').filter({ has: page.getByRole("heading", { name: "收款趋势", exact: true }) });
       await trend.locator(".trend-toolbar").scrollIntoViewIfNeeded();
       observations.push(await observe(page, "chart-and-metric-switching", async () => {
-        for (const [type, label] of [["BAR", "柱状图"], ["LINE", "折线图"], ["AREA", "面积图"]] as const) {
+        for (const [type, label] of [["BAR", "柱状图"], ["LINE", "累计图"], ["AREA", "面积图"]] as const) {
           if (mobile) {
             await trend.getByRole("button", { name: /^图表类型：/ }).click();
             await page.getByRole("menuitemradio", { name: label, exact: true }).click();
@@ -473,7 +473,7 @@ if (phase === "final") {
       expect(await metricGroup.locator('[aria-pressed="true"]').count()).toBe(1);
       await page.clock.runFor(25);
     }
-    for (const [type, label] of [["BAR", "柱状图"], ["LINE", "折线图"], ["AREA", "面积图"], ["LINE", "折线图"]] as const) {
+    for (const [type, label] of [["BAR", "柱状图"], ["LINE", "累计图"], ["AREA", "面积图"], ["LINE", "累计图"]] as const) {
       const button = typeGroup.getByRole("button", { name: label, exact: true });
       await button.click({ force: true });
       expect(await button.getAttribute("aria-pressed")).toBe("true");

@@ -34,7 +34,7 @@ describe("instance display settings", () => {
     const chart = screen.getByRole("group", { name: "收款趋势默认图形" });
     expect(within(chart).getByRole("button", { name: "面积图" })).toHaveAttribute("aria-pressed", "true");
     expect(within(chart).getByRole("button", { name: "柱状图" })).toHaveAttribute("aria-pressed", "false");
-    expect(within(chart).getByRole("button", { name: "折线图" })).toHaveAttribute("aria-pressed", "false");
+    expect(within(chart).getByRole("button", { name: "累计图" })).toHaveAttribute("aria-pressed", "false");
     const form = name.closest("form")!;
     expect(form).toHaveClass("w-full");
     expect(form).not.toHaveClass("max-w-2xl");
@@ -103,7 +103,7 @@ describe("instance display settings", () => {
       revision: latest.revision,
       dashboard_chart_type: "LINE",
     });
-    expect(screen.getByRole("button", { name: "折线图" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "累计图" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.queryByText("未保存")).not.toBeInTheDocument();
   });
 

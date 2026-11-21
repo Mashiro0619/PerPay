@@ -61,7 +61,7 @@ for (const layout of [
           expect(Math.abs(fields.input.right - fields.chart.right)).toBeLessThanOrEqual(1);
         }
         const controls = [];
-        for (const label of ["面积图", "柱状图", "折线图"]) {
+        for (const label of ["面积图", "柱状图", "累计图"]) {
           const option = chart.getByRole("button", { name: label, exact: true });
           await option.scrollIntoViewIfNeeded();
           const complete = await option.evaluate(element => {
