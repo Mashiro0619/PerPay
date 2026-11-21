@@ -129,6 +129,7 @@ const actions: Readonly<Record<string, string>> = {
   "reconciliation_order_failed": "订单对账失败", "webhook_scheduler_failed": "通知调度失败",
   "system.started": "系统启动", "system.stopping": "系统正在停止", "system.stopped": "系统停止",
   "system.start_failed": "系统启动失败", "system.failed": "系统运行异常",
+  "system.update_requested": "发起在线更新",
 };
 export function auditActionLabel(action: string): string { return actions[action] ?? action; }
 

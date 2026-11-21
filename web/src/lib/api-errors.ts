@@ -76,6 +76,9 @@ const messages: Record<string, string> = {
   update_check_unavailable:
     "暂时无法检查官方更新，请稍后重试。此检查不影响收款。",
   update_check_rate_limited: "检查过于频繁，请稍后重试。",
+  self_update_unavailable:
+    "在线更新伴生服务未启用或暂时不可用，请使用升级助手中的手动命令，或检查 updater 容器状态。",
+  update_in_progress: "已有在线更新任务正在执行，请等待当前更新完成。",
   internal_error: "服务处理失败，请稍后重试。",
 };
 

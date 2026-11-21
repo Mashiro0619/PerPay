@@ -22,6 +22,7 @@ interface Props {
   candidate: OfficialUpdate | undefined;
   request: UpdateDialogRequest | null;
   onRequestHandled: (request: UpdateDialogRequest) => void;
+  onStartUpdate?: ((data: OfficialUpdate, returnFocus: HTMLElement | null) => void) | undefined;
   upgradeGuide: string;
 }
 
@@ -109,7 +110,7 @@ function useDialogAvailability() {
 }
 
 export function UpdateDialog(props: Props) {
-  const { channel, selection, candidate, request, onRequestHandled, upgradeGuide } = props;
+  const { channel, selection, candidate, request, onRequestHandled, onStartUpdate, upgradeGuide } = props;
   const dirty = useHasDirtyDrafts();
   const switching = useWorkspaceSwitching();
   const availability = useDialogAvailability();
@@ -264,7 +265,14 @@ export function UpdateDialog(props: Props) {
         </DialogBody>
         <DialogFooter>
           <Button variant="ghost" onClick={() => { dismissUpdateVersion(presentation.channel, data.latest_version); close(); }}>忽略此版本</Button>
-          <Button onClick={close}>知道了</Button>
+          <Button variant={onStartUpdate ? "outline" : "default"} onClick={close}>知道了</Button>
+          {onStartUpdate && (
+            <Button onClick={() => {
+              const returnTarget = presentation.returnFocus;
+              close();
+              onStartUpdate(data, returnTarget);
+            }}>立即更新</Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

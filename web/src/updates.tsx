@@ -5,6 +5,8 @@ import { api, ApiError, queryClient, result, sessionKey, type OfficialUpdate } f
 import { isUpdateChannel, setUpdatePreferences, useUpdatePreferences, type UpdateChannel } from "@/lib/update-preferences";
 import { dismissUpdateVersion, restoreUpdateReminders, useUpdateReminder } from "@/lib/update-reminders";
 import { UpdateDialog, type UpdateDialogRequest } from "@/components/update-dialog";
+import { SelfUpdateDialog } from "@/components/self-update-dialog";
+import { readActiveSelfUpdateHint, type ActiveSelfUpdateHint } from "@/api/self-update";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -42,6 +44,13 @@ function useUpdateOwner() {
   }), [channel]);
   const [completedSelection, setCompletedSelection] = useState<typeof selection | null>(null);
   const [dialogRequest, setDialogRequest] = useState<(UpdateDialogRequest & { selection: typeof selection }) | null>(null);
+  const [selfUpdateRequest, setSelfUpdateRequest] = useState<{
+    readonly targetVersion: string;
+    readonly currentVersion: string;
+    readonly releaseUrl?: string | undefined;
+    readonly returnFocus: HTMLElement | null;
+  } | null>(null);
+  const [activeHint, setActiveHint] = useState<ActiveSelfUpdateHint | null>(() => readActiveSelfUpdateHint());
   const update = useQuery({
     queryKey: selection.queryKey,
     queryFn: async ({ signal }) => {
@@ -87,6 +96,33 @@ function useUpdateOwner() {
   }, [channel, selection]);
   const clearDialogRequest = useCallback((request: UpdateDialogRequest) => {
     setDialogRequest(previous => previous === request ? null : previous);
+  }, []);
+  const openSelfUpdate = useCallback((
+    data: { readonly latest_version: string; readonly current_version: string; readonly release_url?: string | undefined },
+    returnFocus: HTMLElement | null = null,
+  ) => {
+    if (queryClient.getQueryData(sessionKey) == null) return;
+    setSelfUpdateRequest({
+      targetVersion: data.latest_version,
+      currentVersion: data.current_version,
+      releaseUrl: data.release_url,
+      returnFocus,
+    });
+  }, []);
+  const closeSelfUpdate = useCallback(() => {
+    setSelfUpdateRequest(null);
+    setActiveHint(readActiveSelfUpdateHint());
+  }, []);
+  useEffect(() => {
+    const hint = readActiveSelfUpdateHint();
+    setActiveHint(hint);
+    if (hint && queryClient.getQueryData(sessionKey) != null) {
+      setSelfUpdateRequest({
+        targetVersion: hint.target_version,
+        currentVersion: hint.previous_version,
+        returnFocus: null,
+      });
+    }
   }, []);
   const check = useCallback(async (manual = true, returnFocus: HTMLElement | null = null) => {
     if (!selection.active || selection.pending || queryClient.getQueryData(sessionKey) == null) return;
@@ -174,6 +210,7 @@ function useUpdateOwner() {
     update, check, preferences, checked: completedSelection === selection,
     selection, showDetails, clearDialogRequest,
     dialogRequest: dialogRequest?.selection === selection ? dialogRequest : null,
+    selfUpdateRequest, openSelfUpdate, closeSelfUpdate, activeHint,
   };
 }
 
@@ -181,7 +218,19 @@ const OfficialUpdateContext = createContext<ReturnType<typeof useUpdateOwner> | 
 
 function UpdateOwner({ children }: { children: ReactNode }) {
   const value = useUpdateOwner();
-  return <OfficialUpdateContext value={value}>{children}</OfficialUpdateContext>;
+  return (
+    <OfficialUpdateContext value={value}>
+      {children}
+      <SelfUpdateDialog
+        open={value.selfUpdateRequest !== null}
+        onOpenChange={(opened) => { if (!opened) value.closeSelfUpdate(); }}
+        targetVersion={value.selfUpdateRequest?.targetVersion ?? ""}
+        currentVersion={value.selfUpdateRequest?.currentVersion ?? ""}
+        releaseUrl={value.selfUpdateRequest?.releaseUrl}
+        returnFocus={value.selfUpdateRequest?.returnFocus}
+      />
+    </OfficialUpdateContext>
+  );
 }
 
 export function OfficialUpdateProvider({ children }: { children: ReactNode }) {
@@ -197,13 +246,14 @@ function useOfficialUpdate() {
 }
 
 export function OfficialUpdateDialog() {
-  const { update, checked, preferences, selection, dialogRequest, clearDialogRequest } = useOfficialUpdate();
+  const { update, checked, preferences, selection, dialogRequest, clearDialogRequest, openSelfUpdate } = useOfficialUpdate();
   return <UpdateDialog
     channel={preferences.channel}
     selection={selection}
     candidate={checked && !selection.pending?.manual && !dialogRequest && !update.isFetching && !update.isError ? update.data?.data : undefined}
     request={dialogRequest}
     onRequestHandled={clearDialogRequest}
+    onStartUpdate={openSelfUpdate}
     upgradeGuide={upgradeGuide}
   />;
 }
@@ -220,7 +270,7 @@ export function OfficialUpdatePanel({ currentVersion }: { currentVersion?: strin
 }
 
 function UpdatePanel({ currentVersion }: { currentVersion?: string | undefined }) {
-  const { update, checked, check, preferences, showDetails } = useOfficialUpdate();
+  const { update, checked, check, preferences, showDetails, openSelfUpdate, activeHint } = useOfficialUpdate();
   const checking = update.isFetching;
   const failed = checked && update.isError;
   const data = checked && !checking && !update.isError ? update.data?.data : undefined;
@@ -238,7 +288,7 @@ function UpdatePanel({ currentVersion }: { currentVersion?: string | undefined }
         ? "有可用更新：v" + data.latest_version + (latestIsPrerelease ? "（预发布）" : "") + (reminder.ignored ? "（已忽略）" : "")
         : null;
   const hasUpdate = data?.status === "update_available";
-  const hasNotice = Boolean(status || hasUpdate);
+  const hasNotice = Boolean(status || hasUpdate || activeHint);
   return (
     <section
       className="system-update-strip"
@@ -266,11 +316,40 @@ function UpdatePanel({ currentVersion }: { currentVersion?: string | undefined }
                   <span role="status" aria-label="更新状态">{status}</span>
                 </p>
               )}
+              {activeHint && (
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <span className="text-foreground">正在后台更新至 v{activeHint.target_version}</span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={(event) => openSelfUpdate({
+                      latest_version: activeHint.target_version,
+                      current_version: activeHint.previous_version,
+                    }, event.currentTarget)}
+                  >
+                    查看更新进度
+                  </Button>
+                </div>
+              )}
               {hasUpdate && (
-                <div className="flex min-w-0 flex-col gap-1.5 text-xs">
-                  <span className="font-medium text-foreground">目标镜像</span>
-                  <CopyValue value={"ghcr.io/mashiro0619/perpay:" + data.latest_version} label="复制目标镜像" />
-                  <span className="text-muted-foreground">将部署配置中的 x-perpay-image 改为此标签，再拉取并重启。</span>
+                <div className="flex min-w-0 flex-col gap-2 text-xs">
+                  <div className="flex min-w-0 flex-col gap-1">
+                    <span className="font-medium text-foreground">目标镜像</span>
+                    <CopyValue value={"ghcr.io/mashiro0619/perpay:" + data.latest_version} label="复制目标镜像" />
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={(event) => openSelfUpdate(data, event.currentTarget)}
+                    >
+                      立即更新
+                    </Button>
+                    <span className="text-muted-foreground">
+                      在线一键更新或使用升级助手。
+                    </span>
+                  </div>
                 </div>
               )}
             </div>
