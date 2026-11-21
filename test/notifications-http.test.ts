@@ -391,6 +391,23 @@ describe("notification HTTP contract", () => {
       });
 
       const waitingRetryPath = `/api/admin/v1/webhooks/deliveries/${pending.delivery_id}/actions/retry`;
+      // Without a wired retry dispatcher, the endpoint fails closed with 503 and never creates a ghost lease.
+      const unwired = createApp({
+        config: fixture.config,
+        database: fixture.database,
+        identity: fixture.identity,
+        settings: fixture.settings,
+        orders: fixture.ordersService,
+        webhookStore: fixture.webhooks,
+        startedAt: new Date(0),
+      });
+      const unavailable = await postAdmin(unwired, waitingRetryPath, auth, {});
+      assert.equal(unavailable.status, 503);
+      assert.equal(await responseErrorCode(unavailable), "webhook_unavailable");
+      const unchanged = fixture.webhooks.delivery(pending.delivery_id)!;
+      assert.equal(unchanged.delivery.status, "RETRY_WAIT");
+      assert.equal(unchanged.delivery.attemptCount, 1);
+
       const accepted = await postAdmin(fixture.app, waitingRetryPath, auth, {});
       assert.equal(accepted.status, 202, await accepted.clone().text());
       const acceptedData = await responseData<{ delivery: { delivery_id: string; status: string; attempt_count: number } }>(accepted);
@@ -483,6 +500,15 @@ async function withNotificationFixture(
       settings,
       orders: ordersService,
       webhookStore: webhooks,
+      retryWebhookDelivery: (input) => {
+        return webhooks.claimDeliveryForRetry({
+          ...input,
+          activeAllowedOrigin: null,
+          now: orderClock,
+          leaseMilliseconds: 30_000,
+          maximumAttempts: 12,
+        }).delivery;
+      },
       startedAt: new Date(0),
       clock: () => orderClock,
       ledgerHealth: () => ({

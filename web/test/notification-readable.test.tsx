@@ -276,6 +276,41 @@ describe("readable standalone notification detail", () => {
     expect(screen.queryByRole("button", { name: "立即重试" })).not.toBeInTheDocument();
   });
 
+  it("syncs surrounding notification lists when a polled delivery transitions out of LEASED", async () => {
+    let status: "LEASED" | "ACKNOWLEDGED" = "LEASED";
+    const requests: Request[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (request: Request) => {
+      requests.push(request);
+      const path = new URL(request.url).pathname;
+      if (path.endsWith("/attempts")) return json({ data: delivery.attempts });
+      if (path.includes("/orders/")) return json({ data: paidOrder });
+      return json({
+        data: {
+          ...delivery,
+          delivery: { ...delivery.delivery, status, attempt_count: status === "LEASED" ? 2 : 2 },
+        },
+      });
+    }));
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+    mountDetail();
+    expect(await within(await screen.findByRole("group", { name: "通知状态" })).findByText("投递中")).toBeVisible();
+    const orderReadsBefore = orderReads(requests).length;
+    status = "ACKNOWLEDGED";
+    await queryClient.refetchQueries({ queryKey: ["notification", deliveryId] });
+    expect(await within(screen.getByRole("group", { name: "通知状态" })).findByText("通知已确认")).toBeVisible();
+    await waitFor(() => {
+      expect(invalidate).toHaveBeenCalled();
+    });
+    const listPredicates = invalidate.mock.calls
+      .map(call => call[0]?.predicate)
+      .filter((predicate): predicate is NonNullable<typeof predicate> => typeof predicate === "function");
+    expect(listPredicates.some(fn => fn({ queryKey: ["notifications", "all"] } as never))).toBe(true);
+    expect(listPredicates.some(fn => fn({ queryKey: ["work-items"] } as never))).toBe(true);
+    expect(listPredicates.some(fn => fn({ queryKey: ["order-notifications", delivery.event.order_id, null] } as never))).toBe(true);
+    expect(listPredicates.some(fn => fn({ queryKey: ["notification", deliveryId] } as never))).toBe(false);
+    expect(orderReads(requests)).toHaveLength(orderReadsBefore);
+  });
+
   it("states when a delivery not yet attempted is scheduled, without advice on a failure that has not happened", async () => {
     mockDetail(false, false, { ...delivery, attempts: [], delivery: { ...delivery.delivery, status: "PENDING", attempt_count: 0, last_error_code: null } });
     mountDetail();

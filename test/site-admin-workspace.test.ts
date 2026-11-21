@@ -16,7 +16,20 @@ async function fixture() {
     const f = await createSitePaymentFixture();
     f.setNow(f.now() - 10000);
     const ledger = new LedgerStore(f.database), reconciliation = new ReconciliationStore(f.database), webhookStore = new WebhookStore(f.database);
-    const deps = { ...f, ledger, reconciliation, webhookStore, startedAt: new Date(), clock: f.now };
+    const retryWebhookDelivery = (input: Parameters<typeof webhookStore.claimDeliveryForRetry>[0] extends infer _ ? {
+        readonly expectedClientId?: string | undefined;
+        readonly deliveryId: string;
+        readonly actorId: string;
+        readonly requestId?: string | undefined;
+        readonly remoteAddressHash?: string | undefined;
+    } : never) => webhookStore.claimDeliveryForRetry({
+        ...input,
+        activeAllowedOrigin: null,
+        now: f.now(),
+        leaseMilliseconds: 30_000,
+        maximumAttempts: 12,
+    }).delivery;
+    const deps = { ...f, ledger, reconciliation, webhookStore, retryWebhookDelivery, startedAt: new Date(), clock: f.now };
     const app = createApp(deps), session = await f.identity.login(HTTP_TEST_ADMIN_PASSWORD);
     const headers = { cookie: `perpay_session=${session.sessionToken}; perpay_csrf=${session.csrfToken}`, 'x-csrf-token': session.csrfToken, origin: f.config.publicOrigin, 'content-type': 'application/json' };
     const order = (site: string, no: string = randomUUID()) => f.orders.forSite(site).create(createOrderRequestSchema.parse({ merchant_order_no: no, idempotency_key: no, amount_cents: 10000, product_name: no })).order;

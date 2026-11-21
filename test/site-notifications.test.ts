@@ -329,4 +329,98 @@ describe("website notification processing", () => {
     } finally { f.close(); }
   });
 
+  it("refuses manual retry when a native website's signing secret is missing instead of signing with an empty secret", async (t) => {
+    const f = await createSitePaymentFixture();
+    try {
+      const site = configure(f, "MissingSecret");
+      createEvent(f, site.clientId, "https://missingsecret.example.com/notify");
+      const webhooks = new WebhookStore(f.database);
+      let postCalls = 0;
+      const processor = new SiteWebhookProcessor({
+        sites: f.sites, webhooks, clock: f.now,
+        transport: () => ({
+          async post() {
+            postCalls += 1;
+            return networkFailure();
+          },
+        }),
+      });
+      await processor.processOne();
+      const waiting = webhooks.listDeliveries({ status: "RETRY_WAIT", limit: 10, cursor: null }).deliveries[0]!;
+      assert.ok(waiting);
+      assert.equal(postCalls, 1);
+
+      t.mock.method(f.sites, "notificationSecret", () => null);
+      assert.throws(
+        () => processor.retryDelivery({ deliveryId: waiting.delivery.deliveryId, actorId: "admin" }),
+        { code: "webhook_signing_key_unavailable" },
+      );
+      assert.equal(postCalls, 1);
+      assert.equal(webhooks.delivery(waiting.delivery.deliveryId)!.delivery.status, "RETRY_WAIT");
+    } finally { f.close(); }
+  });
+
+  it("preserves payment_confirmation_revoked error precedence on manual retry even when site notifications are disabled", async () => {
+    const f = await createSitePaymentFixture();
+    try {
+      const site = configure(f, "RevokedOrder");
+      const epay = f.settings.epayStore()!;
+      const creds = epay.credentialsForSite(site.clientId)!;
+      const notifyUrl = "https://revokedorder.example.com/notify";
+      const request = {
+        merchant_order_no: randomUUID(), idempotency_key: randomUUID(),
+        amount_cents: 10000, product_name: "epay revoked order", notify_url: notifyUrl,
+      };
+      const order = f.orders.forSite(site.clientId).create(request, undefined, {
+        siteId: site.clientId, protocol: "epay_v1", configurationRevision: creds.revision,
+        requestFingerprint: createHash("sha256").update(JSON.stringify(request)).digest("hex"),
+        param: "0", returnUrl: null,
+      }).order;
+      const ledger = new LedgerStore(f.database);
+      const occurredAt = order.createdAt + 1000;
+      const now = order.createdAt + 2000;
+      const run = ledger.startIngestRun({ providerAccountKey: f.snapshot.activeProviderAccountKey!, start: timestamp(order.createdAt - 60000), end: timestamp(order.createdAt + 60000), pageSize: 1, now });
+      const id = randomUUID(), amount = (order.payableAmountCents / 100).toFixed(2), occurred = timestamp(occurredAt);
+      const recorded = ledger.recordPage({
+        ingestRunId: run.ingestRunId,
+        page: { pageNo: 1, pageSize: 1, totalSize: 1, hasMore: false, details: [{ raw: { account_log_id: id, amount, direction: "CREDIT", occurred_at: occurred }, accountLogId: id, occurredAt: occurred, amount, direction: "CREDIT", alipayOrderNo: id, merchantOrderNo: null, transMemo: null, otherAccount: null }] },
+        evidence: { httpStatus: 200, headers: {}, body: JSON.stringify({ id, amount }), traceId: id, signatureVerified: true }, now,
+      });
+      const entry = recorded.normalized[0];
+      assert.equal(entry?.kind, "created");
+      if (!entry || entry.kind !== "created") throw new Error("missing test ledger entry");
+      const reconciliation = new ReconciliationStore(f.database);
+      reconciliation.settleManually({ financialOperationId: randomUUID(), orderId: order.orderId, ledgerEntryId: entry.entry.ledgerEntryId, actorId: "admin", now: now + 1 });
+      f.setNow(now + 2);
+
+      const webhooks = new WebhookStore(f.database);
+      const processor = new SiteWebhookProcessor({
+        sites: f.sites, webhooks, epay, clock: f.now,
+        transport: () => ({
+          async post() { return networkFailure(); },
+          async get() { return networkFailure(); },
+        }),
+      });
+      await processor.processOne();
+      const waiting = webhooks.listDeliveries({ status: "RETRY_WAIT", limit: 10, cursor: null }).deliveries[0]!;
+      assert.ok(waiting);
+      const match = reconciliation.paymentMatchDetailsForOrder(order.orderId)[0]!;
+      reconciliation.reverseSettlement({
+        financialOperationId: randomUUID(),
+        paymentMatchId: match.paymentMatch.paymentMatchId,
+        actorId: "admin",
+        reason: "撤销误关联收款",
+        now: f.now() + 10,
+      });
+      f.sites.update(site.clientId, {
+        revision: site.revision,
+        configuration: { ...site.configuration, notifications_enabled: false },
+      }, audit, f.now() + 20);
+      assert.throws(
+        () => processor.retryDelivery({ deliveryId: waiting.delivery.deliveryId, actorId: "admin" }),
+        { code: "webhook_payment_confirmation_revoked" },
+      );
+    } finally { f.close(); }
+  });
+
 });

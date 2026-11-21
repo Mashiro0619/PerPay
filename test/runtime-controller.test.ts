@@ -7,6 +7,8 @@ import { parseProviderKeys, type InstanceRuntimeSettingsSnapshot, type RuntimeSe
 import { LedgerIngestScheduler } from "../src/ledger/scheduler.ts";
 import { ReconciliationScheduler } from "../src/reconciliation/scheduler.ts";
 import { WebhookScheduler } from "../src/notifications/scheduler.ts";
+import { SiteWebhookProcessor } from "../src/notifications/site-processor.ts";
+import type { WebhookDelivery } from "../src/notifications/model.ts";
 import { LedgerIngestService, type LedgerScanResult } from "../src/ledger/service.ts";
 import { LedgerScanCadencePolicy } from "../src/ledger/cadence.ts";
 import { privatePem, platformPem } from "./application-key-fixture.ts";
@@ -400,4 +402,71 @@ it("gates manual scans on the active runtime and invalidates requests on transit
     assert.equal(runtime.ledgerManualScan().request?.state, "FAILED");
     assert.throws(() => runtime.requestLedgerScan());
   } finally { await runtime.stop(); }
+});
+
+it("bounds concurrent manual webhook retries and aborts in-flight retries on stop", async (t) => {
+  t.mock.method(WebhookScheduler.prototype, "start", async () => ({
+    reason: "startup", processed: 0, acknowledged: 0, failed: 0, pending: false,
+  }));
+  const pendingResolvers: Array<() => void> = [];
+  const signals: Array<AbortSignal | undefined> = [];
+  let retryCalls = 0;
+  t.mock.method(SiteWebhookProcessor.prototype, "retryDelivery", (input: { deliveryId: string }) => {
+    retryCalls += 1;
+    return {
+      delivery: { deliveryId: input.deliveryId, status: "LEASED" } as WebhookDelivery,
+      execute: (signal?: AbortSignal) => new Promise((resolve) => {
+        signals.push(signal);
+        pendingResolvers.push(() => resolve({
+          processed: true, deliveryId: input.deliveryId, status: "ACKNOWLEDGED", outcome: "ACKNOWLEDGED", errorCode: null,
+        }));
+      }),
+    };
+  });
+  const runtime = new RuntimeController({
+    database: {} as never,
+    orders: { initialize() {} } as never,
+    ledger: {} as never,
+    reconciliation: {} as never,
+    webhooks: {} as never,
+    sites: {} as never,
+  });
+  try {
+    // Before start(), manual retry fails closed with webhook_unavailable.
+    assert.throws(
+      () => runtime.retryWebhookDelivery({ deliveryId: "00000000-0000-4000-8000-000000000000", actorId: "admin" }),
+      { code: "webhook_unavailable" },
+    );
+    await runtime.start(unconfiguredSettings);
+    for (let index = 1; index <= 4; index += 1) {
+      const id = `00000000-0000-4000-8000-00000000000${index}`;
+      assert.equal(runtime.retryWebhookDelivery({ deliveryId: id, actorId: "admin" }).deliveryId, id);
+    }
+    assert.equal(retryCalls, 4);
+    // The 5th concurrent manual retry is rejected before claiming a lease.
+    assert.throws(
+      () => runtime.retryWebhookDelivery({ deliveryId: "00000000-0000-4000-8000-000000000005", actorId: "admin" }),
+      { code: "webhook_unavailable" },
+    );
+    assert.equal(retryCalls, 4);
+
+    // Completing one frees a slot for the next manual retry.
+    pendingResolvers.shift()!();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(
+      runtime.retryWebhookDelivery({ deliveryId: "00000000-0000-4000-8000-000000000005", actorId: "admin" }).deliveryId,
+      "00000000-0000-4000-8000-000000000005",
+    );
+    assert.equal(retryCalls, 5);
+
+    // Stopping aborts every remaining in-flight retry signal and waits for them to settle.
+    const stopping = runtime.stop();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.ok(signals.slice(1).every(signal => signal?.aborted === true));
+    while (pendingResolvers.length > 0) pendingResolvers.shift()!();
+    await stopping;
+  } finally {
+    while (pendingResolvers.length > 0) pendingResolvers.shift()!();
+    await runtime.stop();
+  }
 });
