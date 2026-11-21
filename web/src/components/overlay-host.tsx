@@ -21,7 +21,7 @@ import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "
 import { useToastFooterDock } from "@/lib/toast-layout";
 
 type RootPosition = { trigger: HTMLElement | null; triggerId: string | null; y: number; canReturn: boolean; background: Path; stepped?: boolean };
-type PendingPageStep = { listId: string; direction: "previous" | "next"; fromPageKey: string; fromPathname: string };
+type PendingPageStep = { listId: string; direction: "previous" | "next"; fromPageKey: string; fromPathname: string; approvedOwners: readonly string[] };
 type InternalNavigation = OverlayNavigation & {
   readonly hasOverlay: boolean;
   readonly canGoBack: boolean;
@@ -409,11 +409,21 @@ export function OverlayHost({ routes }: { routes?: ReactNode }) {
     if (!pendingPageStep) return;
     if (!pagerActive || !overlay?.hasOverlay || target?.pathname !== pendingPageStep.fromPathname) {
       setPendingPageStep(null);
+      drafts.revokeApprovedOwners(pendingPageStep.approvedOwners);
       return;
     }
+    const abort = () => {
+      setPendingPageStep(null);
+      drafts.revokeApprovedOwners(pendingPageStep.approvedOwners);
+      const shell = title.current?.closest("[data-overlay-content]");
+      const active = document.activeElement;
+      if (title.current && shell && (!(active instanceof HTMLElement) || !shell.contains(active) || active.matches(":disabled"))) {
+        title.current.focus({ preventScroll: true });
+      }
+    };
     const list = overlay.getRecordList(pendingPageStep.listId);
     if (!list || list.failed) {
-      setPendingPageStep(null);
+      abort();
       return;
     }
     if (list.pending) return;
@@ -421,12 +431,13 @@ export function OverlayHost({ routes }: { routes?: ReactNode }) {
     let nextTarget: Path | null = null;
     if (currentIndex >= 0) {
       // Infinite-append lists keep the current record and append more rows after it.
+      const hasMore = pendingPageStep.direction === "next" ? !!list.hasNext : !!list.hasPrevious;
       if (pendingPageStep.direction === "next" && currentIndex < list.items.length - 1) {
         nextTarget = list.items[currentIndex + 1]!;
       } else if (pendingPageStep.direction === "previous" && currentIndex > 0) {
         nextTarget = list.items[currentIndex - 1]!;
-      } else if ((list.pageKey ?? "") !== pendingPageStep.fromPageKey) {
-        setPendingPageStep(null);
+      } else if ((list.pageKey ?? "") !== pendingPageStep.fromPageKey || !hasMore) {
+        abort();
         return;
       } else {
         return;
@@ -439,18 +450,15 @@ export function OverlayHost({ routes }: { routes?: ReactNode }) {
     } else {
       return;
     }
-    setPendingPageStep(null);
     if (!nextTarget) {
-      const shell = title.current?.closest("[data-overlay-content]");
-      if (title.current && shell && !shell.contains(document.activeElement)) {
-        title.current.focus({ preventScroll: true });
-      }
+      abort();
       return;
     }
+    setPendingPageStep(null);
     if (overlay.step(nextTarget, list.getElement(nextTarget.pathname), pendingPageStep.listId)) {
       pendingPagerFocus.current = { direction: pendingPageStep.direction, pathname: nextTarget.pathname };
     }
-  }, [pendingPageStep, pagerActive, overlay, overlay?.hasOverlay, overlay?.listVersion, target?.pathname]);
+  }, [pendingPageStep, pagerActive, overlay, overlay?.hasOverlay, overlay?.listVersion, target?.pathname, drafts]);
   useLayoutEffect(() => {
     if (!overlay?.hasOverlay || activeStep || nestedModals.current.size) return;
     const pending = pendingPagerFocus.current;
@@ -482,15 +490,22 @@ export function OverlayHost({ routes }: { routes?: ReactNode }) {
     if (!turnPage) return;
     const owners = [overlayOwner(target), "page:" + actualPageAddress(overlay.background)];
     drafts.requestLeaveOwners(owners, () => {
-      if (overlay.blocked()) return;
+      if (overlay.blocked()) {
+        drafts.revokeApprovedOwners(owners);
+        return;
+      }
       const latest = overlay.getRecordList(pager.listId);
       const go = direction === "previous" ? latest?.onPreviousPage : latest?.onNextPage;
-      if (!latest || !go) return;
+      if (!latest || !go) {
+        drafts.revokeApprovedOwners(owners);
+        return;
+      }
       setPendingPageStep({
         listId: pager.listId,
         direction,
         fromPageKey: latest.pageKey ?? "",
         fromPathname: target.pathname,
+        approvedOwners: owners,
       });
       go();
     });

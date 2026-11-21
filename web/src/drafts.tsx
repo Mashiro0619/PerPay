@@ -28,6 +28,7 @@ const DraftContext = createContext({
   setDirty: (_id: string, _dirty: boolean, _owner?: string, _submitting?: () => boolean) => undefined as void,
   requestDiscard: (action: () => void) => action(),
   requestLeaveOwners: (_owners: readonly string[], action: () => void) => action(),
+  revokeApprovedOwners: (_owners: readonly string[]) => undefined as void,
   setDialogFinalFocus: (_element: HTMLElement | null) => undefined as void,
 });
 type NavigationCheck = () => boolean;
@@ -131,13 +132,17 @@ export function DraftProvider({ children }: { children: ReactNode }) {
       return;
     }
     const submitting = affected.some(draft => draft.submitting?.());
+    const affectedOwners = [...new Set(affected.map(draft => draft.owner))];
     setAction({
       submitting,
       run: () => {
-        for (const owner of leaving) approvedLeaveOwners.current.add(owner);
+        for (const owner of affectedOwners) approvedLeaveOwners.current.add(owner);
         pendingAction();
       },
     });
+  }, []);
+  const revokeApprovedOwners = useCallback((owners: readonly string[]) => {
+    for (const owner of owners) approvedLeaveOwners.current.delete(owner);
   }, []);
   const setDialogFinalFocus = useCallback((element: HTMLElement | null) => {
     dialogFinalFocus.current = element;
@@ -191,7 +196,7 @@ export function DraftProvider({ children }: { children: ReactNode }) {
     blocker.proceed();
   }
   return (
-    <DraftContext value={{ setDirty, requestDiscard, requestLeaveOwners, setDialogFinalFocus }}>
+    <DraftContext value={{ setDirty, requestDiscard, requestLeaveOwners, revokeApprovedOwners, setDialogFinalFocus }}>
       <OperationNavigationContext
         value={{
           setProtection,

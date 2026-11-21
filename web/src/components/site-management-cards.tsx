@@ -68,7 +68,7 @@ export function SiteManagementCards() {
         hasNext={query.hasNextPage}
         pending={pending || query.isFetchingNextPage}
         failed={query.isFetchNextPageError}
-        pageKey={String(sites.length)}
+        pageKey={`${query.data?.pages.length ?? 0}:${sites.length}`}
         onNextPage={loadMore}
       >
       {pending ? <div role="status" aria-label="正在读取网站经营概况…" className="flex flex-col gap-3">

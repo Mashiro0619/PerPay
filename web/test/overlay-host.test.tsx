@@ -845,11 +845,75 @@ describe("one routed detail surface", () => {
     await user.click(within(dialog).getByRole("button", { name: "完成查看" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
 
-    // Opening the shared record from list 1 and stepping into a failed next page cancels pending state cleanly.
+    // Opening the shared record from list 1 and stepping into a failed next page cancels pending state cleanly,
+    // restores keyboard focus to the drawer heading, and keeps draft protection intact on the still-open record.
     await user.click(screen.getByRole("link", { name: "列表一 order-shared" }));
     const dialog2 = await screen.findByRole("dialog", { name: "记录 order-shared" });
-    await user.click(within(dialog2).getByRole("button", { name: "下一条" }));
+    await user.type(within(dialog2).getByLabelText("详情草稿"), "仍在编辑");
+    const nextButton = within(dialog2).getByRole("button", { name: "下一条" });
+    nextButton.focus();
+    await user.keyboard("{Enter}");
+    const discard = await screen.findByRole("alertdialog", { name: "放弃未保存的修改？" });
+    await user.click(within(discard).getByRole("button", { name: "放弃修改并继续" }));
     await waitFor(() => expect(within(dialog2).queryByRole("button", { name: "下一条" })).not.toBeInTheDocument());
     expect(screen.getByRole("dialog", { name: "记录 order-shared" })).toBeVisible();
+    await waitFor(() => expect(dialog2.querySelector("[data-overlay-heading]")).toHaveFocus());
+    // Draft was never left because page 2 failed, so closing must still ask for confirmation.
+    await user.click(within(dialog2).getByRole("button", { name: "完成查看" }));
+    const guard = await screen.findByRole("alertdialog", { name: "放弃未保存的修改？" });
+    await user.click(within(guard).getByRole("button", { name: "放弃修改并继续" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
+  it("releases the pager and restores focus when an infinite-append list loads an empty page", async () => {
+    let finishLoad: (() => void) | null = null;
+    function InfiniteOrders() {
+      const [items] = useState(["order-1", "order-2"]);
+      const [hasNext, setHasNext] = useState(true);
+      const [pending, setPending] = useState(false);
+      return <main id="main-content" tabIndex={-1}>
+        <OverlayRecordList
+          items={items.map(id => "/orders/" + id)}
+          hasNext={hasNext}
+          pending={pending}
+          pageKey={String(items.length)}
+          onNextPage={() => {
+            setPending(true);
+            finishLoad = () => {
+              finishLoad = null;
+              setHasNext(false);
+              setPending(false);
+            };
+          }}
+        >
+          <div role="list">
+            {items.map(id => <Link key={id} data-row-link to={"/orders/" + id}>{"追加订单 " + id}</Link>)}
+          </div>
+        </OverlayRecordList>
+      </main>;
+    }
+    const router = createMemoryRouter([{ element: <RequestNoticeProvider><PageHeaderActionsProvider><DraftProvider><OverlayProvider><Outlet /><OverlayHost routes={detailRoutes} /></OverlayProvider></DraftProvider></PageHeaderActionsProvider></RequestNoticeProvider>, children: [
+      { path: "/orders", element: <InfiniteOrders /> },
+    ] }], { initialEntries: ["/orders"] });
+    render(<QueryClientProvider client={queryClient}><RouterProvider router={router} /></QueryClientProvider>);
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole("link", { name: "追加订单 order-2" }));
+    const dialog = await screen.findByRole("dialog", { name: "记录 order-2" });
+    const prev = () => within(dialog).getByRole("button", { name: "上一条" });
+    const next = () => within(dialog).getByRole("button", { name: "下一条" });
+    expect(prev()).toBeEnabled();
+    expect(next()).toBeEnabled();
+
+    next().focus();
+    await user.keyboard("{Enter}");
+    expect(prev()).toBeDisabled();
+    expect(next()).toBeDisabled();
+    expect(finishLoad).not.toBeNull();
+    act(() => { finishLoad?.(); });
+
+    await waitFor(() => expect(prev()).toBeEnabled());
+    expect(next()).toBeDisabled();
+    expect(dialog.querySelector("[data-overlay-heading]")).toHaveFocus();
   });
 });
