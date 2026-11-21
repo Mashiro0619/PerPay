@@ -209,7 +209,7 @@ function TestPaymentForm({ dialog, overlay = false }: { dialog?: TestPaymentDial
               <Alert>
                 <AlertCircle />
                 <AlertDescription>
-                  暂不能收款，请<Link to="/settings">完成配置</Link>或查看
+                  暂不可收款，请<Link to="/settings">完成配置</Link>或查看
                   <Link to="/system">运行状态</Link>。
                 </AlertDescription>
               </Alert>

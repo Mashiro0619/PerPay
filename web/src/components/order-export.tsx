@@ -147,8 +147,8 @@ export function OrderExport({
               <p className="text-sm">{[
                 clientId ? "当前网站" : "全部网站",
                 query.q ? "关键词：“" + query.q + "”" : "",
-                payment ? "收款：" + statusLabel(payment) : "",
-                checkout ? "收银台：" + statusLabel(checkout) : "",
+                payment ? "收款状态：" + statusLabel(payment) : "",
+                checkout ? "收银台状态：" + statusLabel(checkout) : "",
                 accountId ? "收款账号：" + (accountName ?? accountId) : "",
               ].filter(Boolean).join(" · ")}</p>
               <FieldGroup>

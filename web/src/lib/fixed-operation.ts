@@ -135,7 +135,7 @@ export function operationReasonError(
   const reason = value.trim();
   if (!reason) return required ? "请填写操作理由。" : null;
   if (/\p{Cc}/u.test(reason))
-    return "操作理由不能包含换行或控制字符，请使用一行完整说明。";
+    return "操作理由不能包含换行或不支持的隐藏字符，请使用一行完整说明。";
   if (reason.length > 500) return "操作理由最多 500 个字符。";
   return null;
 }

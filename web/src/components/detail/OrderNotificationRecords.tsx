@@ -88,14 +88,14 @@ export function OrderNotificationsSection({ notifications, notifyUrl }: {
   const { query, pagination, deliveries, count } = notifications;
   const current = deliveries.filter(detail => detail.is_latest);
   const superseded = deliveries.filter(detail => !detail.is_latest);
-  const none = pagination.page > 1 ? "此页暂无发送记录" : notifyUrl ? "此订单已设置通知地址，暂无发送记录" : "此订单未设置通知地址";
+  const none = pagination.page > 1 ? "此页暂无通知记录" : notifyUrl ? "此订单已设置通知地址，暂无通知记录" : "此订单未设置通知地址";
   return <Section id="notifications" title="通知" {...(count ? { count } : {})} empty={count === 0 && !query.error ? none : undefined}>
     <ErrorNotice scope="page" error={query.error} retainedData={!!query.data} retry={() => { void query.refetch(); }}
       placeholder="通知结果读取失败，请刷新重试。" />
     {query.isPending ? <Loading label="正在读取通知结果…" /> : query.data && <>
       {current.map(detail => <OrderDeliveryRecord key={detail.delivery.delivery_id} detail={detail} />)}
       {!deliveries.length && <p className="text-[0.8125rem] leading-5 text-muted-foreground">{none}</p>}
-      {superseded.length > 0 && <Disclosure label="历史发送记录" count={superseded.length}>
+      {superseded.length > 0 && <Disclosure label="历史通知" count={superseded.length}>
         {superseded.map(detail => <OrderDeliveryRecord key={detail.delivery.delivery_id} detail={detail} />)}
       </Disclosure>}
       <CursorPagination

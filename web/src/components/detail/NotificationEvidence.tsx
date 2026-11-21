@@ -144,12 +144,15 @@ export function deliveryPhrase(detail: WebhookDeliveryDetail, attempts: readonly
   const last = latestAttempt(attempts);
   const errorCode = detail.delivery.last_error_code ?? last?.error_code ?? last?.ack_code ?? null;
   if (status === "DEAD_LETTER" || status === "RETRY_WAIT") {
-    if (last?.http_status != null && errorCode === "http_status_not_ack") {
+    const lastErrorCode = last?.error_code ?? last?.ack_code ?? null;
+    if (last?.http_status != null && lastErrorCode === "http_status_not_ack" && errorCode === "http_status_not_ack") {
       return `返回 HTTP ${last.http_status}，状态不符合确认要求`;
     }
     if (errorCode) return notificationErrorName(errorCode);
     if (last?.http_status != null) return `返回 HTTP ${last.http_status}，未收到有效确认回执`;
-    return status === "DEAD_LETTER" ? "多次发送未确认，需人工处理" : "上次发送未确认，将自动重试";
+    return status === "DEAD_LETTER"
+      ? detail.delivery.attempt_count > 1 ? "多次发送未确认，需人工处理" : "发送未确认，需人工处理"
+      : "上次发送未确认，将自动重试";
   }
   if (status === "LEASED") return "正在向业务网站发送通知";
   return "已排入发送队列";
@@ -176,7 +179,7 @@ export function nextAttemptLabel(detail: WebhookDeliveryDetail) {
  * The facts of one delivery besides its event, status and attempts.
  * `schedule: false` leaves out the next attempt for a caller that states it elsewhere.
  */
-export function deliveryFields(detail: WebhookDeliveryDetail, attempts: readonly WebhookAttempt[], { schedule = true }: { schedule?: boolean } = {}): Array<Field | false> {
+export function deliveryFields(detail: WebhookDeliveryDetail, attempts: readonly WebhookAttempt[], { schedule = true, showLastError = true }: { schedule?: boolean; showLastError?: boolean } = {}): Array<Field | false> {
   const delivery = detail.delivery;
   const { nextAttemptAt } = deliveryState(detail);
   return [
@@ -186,7 +189,7 @@ export function deliveryFields(detail: WebhookDeliveryDetail, attempts: readonly
     schedule && !!nextAttemptAt && { label: nextAttemptLabel(detail), kind: "time", value: <RecordTime value={nextAttemptAt} /> },
     // The business website keeps its own time of delivery; this one is PerPay's.
     !!delivery.acknowledged_at && { label: "通知确认时间", kind: "time", value: <RecordTime value={delivery.acknowledged_at} />, hint: "PerPay 收到成功回执的时间" },
-    !!delivery.last_error_code && delivery.last_error_code !== latestAttempt(attempts)?.error_code && { label: "最近错误", value: notificationErrorName(delivery.last_error_code) },
+    showLastError && !!delivery.last_error_code && delivery.last_error_code !== latestAttempt(attempts)?.error_code && { label: "最近错误", value: notificationErrorName(delivery.last_error_code) },
     delivery.requested_by_type === "ADMIN" && { label: "发起人", value: delivery.requested_by_actor_id ?? "管理员" },
     !!delivery.reason && { label: "重发理由", value: delivery.reason },
   ];

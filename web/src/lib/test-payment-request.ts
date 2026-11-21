@@ -81,7 +81,7 @@ export function useTestPaymentRequest(active: boolean) {
           typeof order.checkout?.checkout_url !== "string" ||
           !["UNPAID", "CONFIRMED", "DISPUTED"].includes(order.payment?.status)
         ) {
-          throw new Error("服务未返回完整的订单结果，请使用原请求重试。");
+          throw new Error("服务未返回完整的订单结果，请重试上一次操作。");
         }
         return response;
       } catch (error) {

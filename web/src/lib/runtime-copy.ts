@@ -37,9 +37,9 @@ export function runtimeErrorMessage(task: RuntimeTask, code: string): string {
     return "自动确认收款未完成，请查看待核对记录和运行诊断。";
   }
   if (code === "webhook_delivery_failed")
-    return "部分付款通知发送失败，请查看通知投递记录。";
+    return "部分付款通知发送失败，请查看通知发送记录。";
   if (code === "transport_network" || code === "transport_timeout")
-    return "通知发送连接失败或超时，请查看通知投递记录。";
+    return "通知发送连接失败或超时，请查看通知发送记录。";
   return "通知任务运行异常，请查看运行诊断。";
 }
 

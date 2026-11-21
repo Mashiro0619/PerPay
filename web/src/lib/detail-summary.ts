@@ -162,7 +162,7 @@ export function exceptionStateLabel(exception: FinancialException): string {
   if (["UNMATCHED_DEBIT", "UNLINKED_REFUND"].includes(exception.exception_type))
     return "历史记录";
   if (exception.status === "RESOLVED") return "已处理";
-  return exception.reminder_ignored ? "未处理 · 已忽略" : "待处理";
+  return exception.reminder_ignored ? "未处理 · 提醒已忽略" : "待处理";
 }
 export function exceptionExplanation(exception: FinancialException): string {
   const details = exception.details;
@@ -232,7 +232,7 @@ export function latestAttempt(
   );
 }
 const notificationErrorNames: Record<string, string> = {
-  payment_confirmation_revoked: "原付款确认已撤销，成功通知已终止",
+  payment_confirmation_revoked: "原付款确认已撤销，已停止发送",
   INVALID_ACKNOWLEDGEMENT: "对方的确认回执无效",
   TIMEOUT: "请求超时",
   NETWORK_ERROR: "网络连接失败",

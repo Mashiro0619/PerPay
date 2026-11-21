@@ -77,32 +77,30 @@ export default function Notifications() {
     </ToggleGroup>
   );
   return (
-    <div className="flex min-w-0 flex-col gap-3">
-      <DeliveryPage
-        status={status || undefined}
-        mobileLeading={shortcuts}
-        filters={
-          <Select
-            items={statuses}
-            value={status}
-            onValueChange={changeStatus}
-          >
-            <SelectTrigger aria-label="通知状态筛选">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup>
-                {statuses.map((item) => (
-                  <SelectItem key={item.value} value={item.value}>
-                    {item.label}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-        }
-      />
-    </div>
+    <DeliveryPage
+      status={status || undefined}
+      mobileLeading={shortcuts}
+      filters={
+        <Select
+          items={statuses}
+          value={status}
+          onValueChange={changeStatus}
+        >
+          <SelectTrigger aria-label="通知状态筛选">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectGroup>
+              {statuses.map((item) => (
+                <SelectItem key={item.value} value={item.value}>
+                  {item.label}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+      }
+    />
   );
 }
 function DeliveryPage({
@@ -231,7 +229,7 @@ function DeliveryPage({
     {
       id: "next_attempt_at",
       sortBy: "next_attempt_at",
-      label: "下次重试",
+      label: "下次发送",
       align: "center",
       layout: "datetime",
       summaryDefault: true,
@@ -311,7 +309,7 @@ function DeliveryPage({
         sorts={[
           { value: "created_at", label: "创建时间" },
           { value: "attempt_count", label: "尝试次数" },
-          { value: "next_attempt_at", label: "下次重试时间" },
+          { value: "next_attempt_at", label: "下次发送时间" },
         ]}
       />
       </ListToolbarPart>
@@ -359,7 +357,12 @@ function DeliveryPage({
                         !["identity", "status", "event_type"].includes(column.id) &&
                         (column.id !== "next_attempt_at" || !!delivery.next_attempt_at) && context.isSummaryPrimary(column.id),
                       ).map((column) => (
-                        <ListSummaryField key={column.id} label={column.label} visibleLabel fullWidth={column.id === "order" || column.id === "created_at"}>
+                        <ListSummaryField
+                          key={column.id}
+                          label={column.id === "next_attempt_at" ? (delivery.status === "RETRY_WAIT" ? "下次重试" : "计划发送") : column.label}
+                          visibleLabel
+                          fullWidth={column.id === "order" || column.id === "created_at"}
+                        >
                           {column.id === "next_attempt_at" || column.id === "created_at" ? <ListDateTime value={delivery[column.id]} inline /> : column.cell(delivery, context)}
                         </ListSummaryField>
                       ))}

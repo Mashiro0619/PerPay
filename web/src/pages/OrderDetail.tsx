@@ -123,13 +123,14 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
 
   return <>
     <OverlaySummary>
-      <RecordSummary label="PerPay 收款状态" value={money(paid ? received : order.payable_amount_cents)}
+      <RecordSummary label="收款状态" value={money(paid ? received : order.payable_amount_cents)}
         status={<OrderStatusBadge payment={order.payment.status} checkout={order.checkout.status} refundMarked={order.refund_mark.marked} />}
         meta={[
           ...(paid && difference !== 0
-            ? [<span className="flex min-w-0 flex-wrap items-baseline gap-x-3">
-              <span className="inline-flex items-baseline gap-1">
-                <span>实收 · 应付</span><ListMoney value={order.payable_amount_cents} />
+            ? [<span className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-0.5">
+              <span>实收金额</span>
+              <span className="inline-flex min-w-0 flex-wrap items-baseline">
+                <span>应付&nbsp;</span><ListMoney value={order.payable_amount_cents} />
                 <span className="text-destructive" data-amount-difference>（{difference > 0 ? "多收 " : "少收 "}{money(Math.abs(difference))}）</span>
               </span>
               {basis && <span>{basis}</span>}
@@ -152,11 +153,7 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
         ]} />
     </OverlaySummary>
     {dispute ? <RecordNotice tone="danger" {...(exceptions.length ? { jump: { section: "payments", label: pending } } : {})}>
-      <p>{!active.length && !unassociated
-        ? dispute.refunded
-          ? "原收款关联已撤销，已标记退款。核对完成后可忽略本次争议提醒，处理记录保留在订单历史中。"
-          : "原收款关联已撤销，请核对付款人、交易凭证和金额；确认属于本订单后重新关联收款。暂不能确认时保留争议，补齐凭证后继续。"
-        : dispute.guidance}</p>
+      <p>{dispute.notice(!active.length && !unassociated)}</p>
     </RecordNotice> : exceptions.length > 0 && <RecordNotice tone="warning" jump={{ section: "payments", label: pending }}>
       该订单存在待核对异常：{[...new Set(exceptions.map(exception => label(exception.exception_type)))].join("、")}
     </RecordNotice>}
@@ -170,7 +167,7 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
           { label: "下单金额", kind: "money", value: money(order.requested_amount_cents) },
           order.payable_amount_cents !== order.requested_amount_cents && { label: "加价金额", kind: "money", value: money(order.payable_amount_cents - order.requested_amount_cents) },
           !!confirmed && { label: "确认收款时间", kind: "time", value: <RecordTime value={confirmed.occurred_at} /> },
-          !ended && { label: "收银台状态", value: <StatusBadge value={order.checkout.status} /> },
+          !ended && { label: "收银台状态", value: <StatusBadge value={order.checkout.status} label={order.checkout.status === "OPEN" && !unpaid ? "有效期内" : undefined} /> },
           { label: "收银台有效期至", kind: "time", value: <RecordTime value={order.checkout.expires_at} /> },
           !!order.note && { label: "订单备注", value: order.note },
           order.refund.status !== "NONE" && { label: "历史退款记录", value: <StatusBadge value={order.refund.status} />, hint: "旧版历史留档，不可编辑" },

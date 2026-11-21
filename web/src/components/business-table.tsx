@@ -336,8 +336,8 @@ function BusinessTableView<T extends RowData>({
         <DropdownMenuGroup>
           <DropdownMenuLabel>
             {isSummary
-              ? "显示信息（标识与操作固定）"
-              : "显示列（标识与操作固定）"}
+              ? "显示信息（首项与操作固定）"
+              : "显示列（首列与操作列固定）"}
           </DropdownMenuLabel>
           {table.getAllLeafColumns().map((column) => (
             <DropdownMenuCheckboxItem

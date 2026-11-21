@@ -9,7 +9,12 @@ import type { RecordAction } from "@/components/record/ActionMenu";
 
 /** What a disputed order still needs: who may act on it, and on which of its records. */
 export function disputeState(order: AdminOrderDetail) {
-  const refunded = order.refund_mark.marked || order.refund.status !== "NONE";
+  const refundMarked = order.refund_mark.marked;
+  const refunded = refundMarked || order.refund.status !== "NONE";
+  const refundPhrase = refundMarked ? "已标记退款" : "已有退款记录";
+  const baseGuidance = refunded
+    ? `${refundPhrase}。核对完成后可忽略本次争议提醒，处理记录保留在订单历史中。`
+    : "核对付款人、交易凭证和金额；确认属于本订单后重新关联收款。暂不能确认时保留争议，补齐凭证后继续。";
   /** Open reversal reminders; once a refund is on record they can be dismissed one by one. */
   const dismissible = new Set(refunded ? order.reconciliation.exceptions.filter(exception => exception.status === "OPEN" &&
     !exception.reminder_ignored && exception.exception_type === "RECONCILIATION_CONFLICT" && exception.details.reason === "settlement_reversed")
@@ -21,9 +26,13 @@ export function disputeState(order: AdminOrderDetail) {
     refunded,
     dismissible,
     released,
-    guidance: refunded
-      ? "已标记退款。核对完成后可忽略本次争议提醒，处理记录保留在订单历史中。"
-      : "核对付款人、交易凭证和金额；确认属于本订单后重新关联收款。暂不能确认时保留争议，补齐凭证后继续。",
+    guidance: baseGuidance,
+    notice(reversedOnly: boolean) {
+      if (!reversedOnly) return baseGuidance;
+      return refunded
+        ? `原收款关联已撤销，${refundPhrase}。核对完成后可忽略本次争议提醒，处理记录保留在订单历史中。`
+        : "原收款关联已撤销，请核对付款人、交易凭证和金额；确认属于本订单后重新关联收款。暂不能确认时保留争议，补齐凭证后继续。";
+    },
   };
 }
 

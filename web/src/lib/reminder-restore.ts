@@ -28,7 +28,7 @@ export async function restoreReminder(
       typeof data.restored !== "boolean"
     )
       throw new Error(
-        "恢复响应不完整，暂时无法确认结果。请重试同一请求或刷新列表核查。",
+        "操作结果未完整返回，暂时无法确认是否成功。请重试上一次操作或刷新列表核查。",
       );
     return data.restored ? "restored" : "already";
   } catch (error) {

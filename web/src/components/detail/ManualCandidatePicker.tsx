@@ -245,8 +245,8 @@ export function ManualCandidatePicker({
                       )}
                     </ItemContent>
                     <ItemActions className="flex-col items-end">
-                      <span className="inline-flex items-baseline gap-1">
-                        <span className="record-list-meta">{kind === "orders" ? "应付" : "交易金额"}</span>
+                      <span className="inline-flex flex-wrap items-baseline justify-end gap-1">
+                        <span className="record-list-meta whitespace-nowrap">{kind === "orders" ? "应付" : "交易金额"}</span>
                         <ListMoney value={choice.amount} />
                       </span>
                       <Button

@@ -115,8 +115,11 @@ function DeliveryRecord({ detail, attempts, order }: {
         <FieldList items={[
           !clientId && { label: "业务网站", value: <Link global className="underline underline-offset-4" aria-label={site + " · " + detail.target.api_client_id}
             to={"/sites/" + encodeURIComponent(detail.target.api_client_id) + "/summary"}>{site}</Link> },
-          // The summary already states when the next attempt is due.
-          ...deliveryFields(detail, made, { schedule: false }),
+          // The summary already states when the next attempt is due and the active failure phrase.
+          ...deliveryFields(detail, made, {
+            schedule: false,
+            showLastError: !attempts.isPending && !(detail.is_latest && (delivery.status === "DEAD_LETTER" || delivery.status === "RETRY_WAIT")),
+          }),
           { label: "创建时间", kind: "time", value: <RecordTime value={delivery.created_at} /> },
         ]} />
       </Section>

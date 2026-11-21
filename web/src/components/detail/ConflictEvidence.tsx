@@ -23,11 +23,11 @@ const explanations: Record<string, string> = {
   INVALID_AMOUNT: "交易金额格式无效，已隔离，不计入收款。",
   INVALID_TIMESTAMP: "交易时间无效，已隔离，不参与订单时间窗口匹配。",
   INVALID_DIRECTION: "收支方向未知，已隔离，不参与自动收款匹配。",
-  INVALID_SHAPE: "原始记录结构不符合账本要求，已被隔离。",
+  INVALID_SHAPE: "账单数据格式不符合要求，已被隔离。",
 };
 
 function conflictStateLabel(conflict: LedgerConflictDetail["conflict"]) {
-  if (conflict.status === "OPEN") return conflict.reminder_ignored ? "未处理 · 已忽略" : "待处理";
+  if (conflict.status === "OPEN") return conflict.reminder_ignored ? "未处理 · 提醒已忽略" : "待处理";
   return conflict.status === "IGNORED" ? "已隔离" : "已处理";
 }
 

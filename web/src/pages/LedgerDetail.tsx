@@ -51,7 +51,7 @@ function ledgerLabel(source: AdminLedgerSource) {
 }
 
 function sourceIdentifiers(source: AdminLedgerSource): Array<readonly [string, string | null]> {
-  return [["原始事件编号", source.raw_event_id], ["支付宝 App ID", source.app_id], ["采集来源标识", source.provider_account_key], ["语义指纹", source.semantic_fingerprint]];
+  return [["原始事件编号", source.raw_event_id], ["支付宝 App ID", source.app_id], ["查账来源标识", source.provider_account_key], ["交易内容标识", source.semantic_fingerprint]];
 }
 
 /** What stands in for a part of the record while its own read is under way. */
@@ -143,7 +143,7 @@ function SourceLink({ id, number }: { id: string; number: number }) {
     const target = repeated ? document.getElementById(anchor.slice(1)) : null;
     target?.scrollIntoView?.({ block: "start", behavior: "instant" });
     target?.focus({ preventScroll: true });
-  }}>采集记录 {number}</Link>;
+  }}>查账记录 {number}</Link>;
 }
 
 function LedgerRecord({ entry }: { entry: AdminLedgerDetail }) {
@@ -208,15 +208,15 @@ function LedgerRecord({ entry }: { entry: AdminLedgerDetail }) {
         nav={[
           { id: "transaction", label: "交易信息" },
           { id: "payments", label: "对应订单", ...(current.length ? { count: current.length } : {}) },
-          { id: "sources", label: "采集记录", count: entry.sources.length },
+          { id: "sources", label: "查账记录", count: entry.sources.length },
           ...(entry.conflicts.length ? [{ id: "conflicts", label: "账本冲突", count: entry.conflicts.length }] : []),
         ]} />
     </OverlaySummary>
     {(multiple || !entry.content_consistent || pending > 0) && <RecordNotice tone={multiple || pending > 0 ? "danger" : "warning"}
-      jump={multiple ? { section: "payments", label: "核对各条关联" } : pending > 0 ? { section: "conflicts", label: "查看账本冲突" } : { section: "sources", label: "核对采集记录" }}>
+      jump={multiple ? { section: "payments", label: "核对各条关联" } : pending > 0 ? { section: "conflicts", label: "查看账本冲突" } : { section: "sources", label: "核对查账记录" }}>
       <p className="font-medium">{multiple ? `同一笔流水存在 ${entry.active_match_count} 条有效关联` : !entry.content_consistent ? "账单存在不同版本，金额不可相加" : `有 ${pending} 条账本冲突待处理`}</p>
       {multiple && <p>无法确定唯一订单，请核对后撤销多余关联。</p>}
-      {!entry.content_consistent && <p>{multiple ? "同时各版本的账单内容不一致，请逐份核对，金额不可相加。" : "请逐份核对各条采集记录后再做处理。"}</p>}
+      {!entry.content_consistent && <p>{multiple ? "同时各版本的账单内容不一致，请逐份核对，金额不可相加。" : "请逐份核对各版本内容后再做处理。"}</p>}
       {pending > 0 && (multiple || !entry.content_consistent) && <p>另有 {pending} 条账本冲突待处理。</p>}
     </RecordNotice>}
     <Sections label="流水详情内容">
@@ -225,7 +225,7 @@ function LedgerRecord({ entry }: { entry: AdminLedgerDetail }) {
       </Section>
       <Section id="payments" title="对应订单" anchorPrefixes={["match-", "candidate-"]} {...(current.length ? { count: current.length } : {})}
         empty={unassociated ? entry.direction === "DEBIT" ? "支出流水不关联收款订单。"
-          : associable.length && !chosen ? "尚未关联收款订单，可在要采用的采集记录上人工关联。" : "尚未关联收款订单。" : undefined}>
+          : associable.length && !chosen ? "尚未关联收款订单，可在要采用的查账记录上人工关联。" : "尚未关联收款订单。" : undefined}>
         {!current.length && <p className={note}>{reversed.length ? "原关联已撤销，当前没有对应的收款订单。" : "尚未关联收款订单。"}</p>}
         {current.map(matchRecord)}
         {candidateQueries.some(query => query.isPending) && <Pending query={{ isPending: true, isPaused: candidateQueries.some(query => query.isPending && query.isPaused) }} label="正在读取可能匹配的订单…" />}
@@ -236,9 +236,9 @@ function LedgerRecord({ entry }: { entry: AdminLedgerDetail }) {
         {reversed.length > 0 && <Disclosure label="已撤销的关联" count={reversed.length} defaultOpen={!current.length}>{reversed.map(matchRecord)}</Disclosure>}
         {superseded.length > 0 && <Disclosure label="已替代的匹配建议" count={superseded.length}>{superseded.map(candidateRecord)}</Disclosure>}
       </Section>
-      <Section id="sources" title="采集记录" count={entry.sources.length} {...(several ? { anchorPrefixes: ["source-"] } : {})}>
+      <Section id="sources" title="查账记录" count={entry.sources.length} {...(several ? { anchorPrefixes: ["source-"] } : {})}>
         {several
-          ? <p className={note}>{entry.content_consistent ? "多份采集记录对应同一笔交易。" : "以下各份采集记录内容存在差异。"}</p>
+          ? <p className={note}>{entry.content_consistent ? "多份查账记录对应同一笔交易。" : "以下各份查账记录内容存在差异。"}</p>
           : !entry.content_consistent && <p className={note}>这是 PerPay 保存的版本，与它不一致的版本见账本冲突。</p>}
         {entry.sources.map((source, index) => several
           ? <SourceRecord key={source.ledger_entry_id} source={source} entry={entry} number={index + 1} associable={perCopy && associable.includes(source)} />
@@ -255,7 +255,7 @@ function LedgerRecord({ entry }: { entry: AdminLedgerDetail }) {
             <FieldList items={[
               { label: "发现时间", kind: "time", value: <RecordTime value={conflict.created_at} /> },
               !!conflict.resolved_at && { label: "处理时间", kind: "time", value: <RecordTime value={conflict.resolved_at} /> },
-              !!existing && !!number && { label: "涉及的采集记录", value: <SourceLink id={existing} number={number} /> },
+              !!existing && !!number && { label: "涉及的查账记录", value: <SourceLink id={existing} number={number} /> },
               // A source of this transaction is already shown above; any other entry is named here.
               !!existing && !numbers.has(existing) && { label: "关联内部流水编号", kind: "id", value: existing, copy: existing },
             ]} />
@@ -271,7 +271,7 @@ function LedgerRecord({ entry }: { entry: AdminLedgerDetail }) {
           ...(several ? [] : entry.sources.flatMap(sourceIdentifiers)),
         ] },
         ...(several ? entry.sources.map((source, index) => ({
-          id: "source-" + source.ledger_entry_id, title: `采集记录 ${index + 1} 技术信息`, created: source.created_at, data: source,
+          id: "source-" + source.ledger_entry_id, title: `查账记录 ${index + 1} 技术信息`, created: source.created_at, data: source,
           identifiers: [["内部流水编号", source.ledger_entry_id] as const, ...sourceIdentifiers(source)],
         })) : []),
         ...entry.matches.map((match, index) => {
@@ -297,8 +297,8 @@ function LedgerRecord({ entry }: { entry: AdminLedgerDetail }) {
 /** One of several sources. Its own association ties the order to this copy and no other. */
 function SourceRecord({ source, entry, number, associable }: { source: AdminLedgerSource; entry: AdminLedgerDetail; number: number; associable: boolean }) {
   const associate = useAssociateIncome({ ledgerId: source.ledger_entry_id, ledgerLabel: ledgerLabel(source), actionLabel: "用这份记录关联" });
-  return <SubRecord id={"source-" + source.ledger_entry_id} title={"采集记录 " + number} status={<LedgerState value={source.state} />}
-    actions={associable ? [associate.action] : []} actionsLabel={`更多操作，采集记录 ${number} 操作`}>
+  return <SubRecord id={"source-" + source.ledger_entry_id} title={"查账记录 " + number} status={<LedgerState value={source.state} />}
+    actions={associable ? [associate.action] : []} actionsLabel={`更多操作，查账记录 ${number} 操作`}>
     <FieldList items={sourceFields(source, entry, false)} />
     {associate.dialog}
   </SubRecord>;
@@ -334,7 +334,7 @@ function LedgerMatchRecord({ match, query, source, multiple }: {
       { label: "商户订单号", kind: "id", value: match.merchant_order_no, copy: match.merchant_order_no },
       siteField(match.api_client_id, match.site_name),
       ...(detail ? orderFields(detail.order, detail.ledger_entry.amount_cents) : []),
-      !!source && { label: "采集记录", value: <SourceLink id={match.ledger_entry_id} number={source} /> },
+      !!source && { label: "查账记录", value: <SourceLink id={match.ledger_entry_id} number={source} /> },
       !!operation?.reason && { label: "关联理由", value: operation.reason },
       match.status === "REVERSED" && { label: "撤销时间", kind: "time", value: <RecordTime value={reversal?.created_at ?? match.resolved_at} /> },
       ...(match.status === "REVERSED" && detail ? [
@@ -392,7 +392,7 @@ function LedgerCandidateRecord({ candidate, source, number, settled }: {
         ...orderFields(order, source.amount_cents),
       ] : []),
       ...candidateFactsBeyondLedger(candidate, source, order).map(([name, value]) => ({ label: name, value })),
-      !!number && { label: "采集记录", value: <SourceLink id={source.ledger_entry_id} number={number} /> },
+      !!number && { label: "查账记录", value: <SourceLink id={source.ledger_entry_id} number={number} /> },
       { label: "生成时间", kind: "time", value: <RecordTime value={candidate.created_at} /> },
       !!candidate.decided_at && { label: "处理时间", kind: "time", value: <RecordTime value={candidate.decided_at} /> },
     ]} />

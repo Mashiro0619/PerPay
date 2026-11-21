@@ -225,7 +225,7 @@ export function TestPaymentResult({
       <TechnicalDetails
         title="记录技术信息"
         data={order}
-        identifiers={[["订单编号", created.order_id]]}
+        identifiers={[["内部订单编号", created.order_id]]}
       />
     </div>
   );
