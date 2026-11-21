@@ -24,7 +24,7 @@ test("a website deletion keeps its editor pending then closes and refreshes shar
       await held;
       await route.fulfill({ response });
     });
-    await page.getByRole("button", { name: "删除空业务网站", exact: true }).click();
+    await page.getByRole("button", { name: "删除网站", exact: true }).click();
     await page.getByRole("alertdialog").getByRole("button", { name: "确认", exact: true }).click();
     await expect.poll(() => deleted).toBe(true);
     const pendingUrl = page.url();

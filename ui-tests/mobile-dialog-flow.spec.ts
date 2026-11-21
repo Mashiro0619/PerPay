@@ -213,7 +213,7 @@ test.describe("enlarged admin dialogs keep fields and decisions reachable", () =
       await page.evaluate(font => document.documentElement.style.fontSize = font + "%", font);
       // An association's only action stands on its record as a button.
       const operations = matchDialog.locator('[data-detail-section="payments"] article[id="match-' + manifest.details.matchManual!.split("/").at(-1) + '"]')
-        .getByRole("button", { name: "撤销错误关联", exact: true });
+        .getByRole("button", { name: "撤销收款关联", exact: true });
       await operations.click();
       const reasonDialog = page.locator("[data-overlay-step]:visible");
       await expect(reasonDialog).toHaveAccessibleName("撤销收款关联？");

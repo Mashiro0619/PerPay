@@ -736,15 +736,15 @@ test("automatic, manual and reversed matches keep full evidence in unified and s
         await expect(history).toContainText(match.resolution_operation!.reason!);
         await foreground(page).locator("[data-overlay-footer]").getByRole("button", { name: "更多操作，收款关联记录操作", exact: true }).click();
         await expect(page.getByRole("menuitem", { name: "收款关联技术信息", exact: true })).toBeVisible();
-        await expect(page.getByRole("menuitem", { name: "撤销错误关联", exact: true })).toHaveCount(0);
+        await expect(page.getByRole("menuitem", { name: "撤销收款关联", exact: true })).toHaveCount(0);
         await page.keyboard.press("Escape");
         await expect(page.getByRole("menu")).toHaveCount(0);
       } else {
         await fields(card, ["撤销时间", "撤销操作人", "撤销理由"]);
         await expect(card.locator("dd").filter({ hasText: match.resolution_operation!.reason! })).toBeVisible();
-        await expect(page.getByRole("menuitem", { name: "撤销错误关联", exact: true })).toHaveCount(0);
+        await expect(page.getByRole("menuitem", { name: "撤销收款关联", exact: true })).toHaveCount(0);
         // A reversed association offers nothing; its technical information stays in the transaction's menu.
-        await expect(card.getByRole("button", { name: "撤销错误关联", exact: true })).toHaveCount(0);
+        await expect(card.getByRole("button", { name: "撤销收款关联", exact: true })).toHaveCount(0);
         await foreground(page).locator("[data-overlay-footer]").getByRole("button", { name: "更多操作，流水操作", exact: true }).click();
         await expect(page.getByRole("menuitem", { name: /^收款关联技术信息/ }).first()).toBeVisible();
         await page.keyboard.press("Escape");
@@ -754,9 +754,9 @@ test("automatic, manual and reversed matches keep full evidence in unified and s
       // A scoped match puts the destructive reversal in its footer menu; a sub-record with a single action shows it as a button.
       const trigger = scoped
         ? foreground(page).locator("[data-overlay-footer]").getByRole("button", { name: "更多操作，收款关联记录操作", exact: true })
-        : card.getByRole("button", { name: "撤销错误关联", exact: true });
+        : card.getByRole("button", { name: "撤销收款关联", exact: true });
       await trigger.click();
-      if (scoped) await page.getByRole("menuitem", { name: "撤销错误关联", exact: true }).click();
+      if (scoped) await page.getByRole("menuitem", { name: "撤销收款关联", exact: true }).click();
       const dialog = page.getByRole("dialog", { name: "撤销收款关联？", exact: true });
       await expect(dialog).toBeVisible();
       await expect(dialog).toContainText("不会转出资金");

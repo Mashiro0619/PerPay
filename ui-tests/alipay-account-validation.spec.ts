@@ -74,7 +74,7 @@ for (const layout of [{ width: 1440, height: 900, font: 100 }, { width: 390, hei
         async function failOldCheck() {
           await selectSettingsSection(page, dialog, "支付宝账号配置分组", "基本信息");
           await dialog.getByRole("button", { name: "更多账号操作", exact: true }).click();
-          await page.getByRole("menuitem", { name: "重新检查", exact: true }).click();
+          await page.getByRole("menuitem", { name: "重新测试连接", exact: true }).click();
           await expect(dialog.getByText("连接检查未通过", { exact: true })).toBeVisible();
           await selectSettingsSection(page, dialog, "支付宝账号配置分组", "使用情况");
           await expect(dialog.getByText("最近连接检查", { exact: true }).locator("..").locator("dd").first()).toHaveText("未通过");

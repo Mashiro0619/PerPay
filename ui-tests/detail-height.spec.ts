@@ -160,8 +160,8 @@ for (const layout of layouts) {
 
     await page.goto(fixture.origin + "/admin/sites/default/settings/integration");
     await page.getByRole("link", { name: "编辑接入与通知", exact: true }).click();
-    await expect(dialog.getByRole("button", { name: "高级设置", exact: true })).toBeVisible();
-    await dialog.getByRole("button", { name: "高级设置", exact: true }).click();
+    await expect(dialog.getByRole("button", { name: "通知超时与重试设置", exact: true })).toBeVisible();
+    await dialog.getByRole("button", { name: "通知超时与重试设置", exact: true }).click();
     const editor = await measure(dialog);
     bounded(editor, layout.width < 768 ? "screen" : "dialog");
     const footer = dialog.locator("[data-overlay-footer]");

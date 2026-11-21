@@ -56,22 +56,22 @@ test("website required fields show custom feedback, suppress native bubbles and 
       await offset.fill("");
       await page.getByRole("button", { name: "保存业务网站", exact: true }).click();
       await expect(ttl).toHaveAccessibleDescription("请输入收银台有效期（秒）。");
-      await expect(offset).toHaveAccessibleDescription("请输入最大加价金额（分）。");
+      await expect(offset).toHaveAccessibleDescription(/请输入最大加价金额（分）。/);
       await expect(ttl).toBeFocused();
       expect(writes).toEqual([]);
       await ttl.fill(originalTtl);
       await offset.fill(originalOffset);
 
       await page.goto(fixture.origin + "/admin/sites/default/edit?section=integration");
-      const advanced = page.getByRole("button", { name: "高级设置", exact: true });
+      const advanced = page.getByRole("button", { name: "通知超时与重试设置", exact: true });
       await advanced.click();
-      const attempts = page.getByLabel("最多发送次数", { exact: true });
+      const attempts = page.getByLabel("最多发送次数（次）", { exact: true });
       const originalAttempts = await attempts.inputValue();
       await attempts.fill("");
       await advanced.click();
       await page.getByRole("button", { name: "保存业务网站", exact: true }).click();
       await expect(attempts).toBeVisible();
-      await expect(attempts).toHaveAccessibleDescription("请输入最多发送次数。");
+      await expect(attempts).toHaveAccessibleDescription(/请输入最多发送次数（次）。/);
       await expect(attempts).toBeFocused();
       expect(writes).toEqual([]);
       await attempts.fill(originalAttempts);

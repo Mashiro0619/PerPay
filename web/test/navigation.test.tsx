@@ -600,7 +600,7 @@ describe("navigation and draft protection", () => {
     mount({ conflict: true });
     const { user, field } = await edit();
     await user.click(screen.getByRole("button", { name: "保存" }));
-    expect(await screen.findByText(/配置已在其他会话中更新/)).toBeVisible();
+    expect(await screen.findByText(/配置已在其他页面或设备中更新/)).toBeVisible();
     expect(field).toHaveValue(450);
     await user.click(screen.getByRole("button", { name: "刷新" }));
     await user.click(screen.getByRole("button", { name: "放弃修改并继续" }));

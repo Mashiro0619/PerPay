@@ -138,7 +138,7 @@ describe("readable payment match detail", () => {
     await user.click(screen.getByRole("button", { name: "复制支付宝订单号" }));
     expect(copy).toHaveBeenCalledWith(match.ledger_entry.provider_order_no);
     await recordAction("收款关联技术信息", "收款关联记录操作");
-    expect(screen.queryByRole("menuitem", { name: "撤销错误关联" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "撤销收款关联" })).not.toBeInTheDocument();
   });
 
   it("restores the footer menu trigger after cancelling a reversal with Escape", async () => {
@@ -147,7 +147,7 @@ describe("readable payment match detail", () => {
     const trigger = screen.getByRole("button", { name: "更多操作，收款关联记录操作" });
     trigger.focus();
     await user.keyboard("{Enter}");
-    await user.click(await screen.findByRole("menuitem", { name: "撤销错误关联" }));
+    await user.click(await screen.findByRole("menuitem", { name: "撤销收款关联" }));
     const dialog = await screen.findByRole("dialog", { name: "撤销收款关联？" });
     expect(within(dialog).getByText(paymentMatch.ledger_entry.provider_order_no!)).toBeVisible();
     await user.keyboard("{Escape}");
@@ -168,7 +168,7 @@ describe("readable payment match detail", () => {
     vi.spyOn(queryClient, "invalidateQueries").mockResolvedValue(undefined);
     mount(<MatchRecord match={paymentMatch} />);
     const user = userEvent.setup();
-    await user.click(await recordAction("撤销错误关联", "收款关联记录操作"));
+    await user.click(await recordAction("撤销收款关联", "收款关联记录操作"));
     const dialog = screen.getByRole("dialog", { name: "撤销收款关联？" });
     await user.type(within(dialog).getByLabelText("操作理由"), "核对原始凭据后撤销");
     await user.click(within(dialog).getByRole("button", { name: "确认撤销关联" }));

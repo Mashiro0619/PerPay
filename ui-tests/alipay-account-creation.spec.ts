@@ -132,7 +132,7 @@ for (const layout of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]
         await expect(usage.getByText("收款状态", { exact: true }).locator("..").locator("dd")).toHaveText("配置未完成");
         await expect(usage.getByText("尚未分配给网站。", { exact: true })).toBeVisible();
         await expectReachable(usage.getByRole("button", { name: "删除账号", exact: true }));
-        await expect(dialog.getByRole("button", { name: "保存并检查", exact: true })).toHaveCount(0);
+        await expect(dialog.getByRole("button", { name: "保存并测试连接", exact: true })).toHaveCount(0);
         await expect(dialog.locator("[data-overlay-footer] [data-overlay-actions]")).toHaveCount(0);
         await page.screenshot({ path: info.outputPath("created-account-usage.png") });
 

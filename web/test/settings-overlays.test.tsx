@@ -177,7 +177,7 @@ describe("settings summaries and owned editing overlays", () => {
     const name = await within(dialog).findByLabelText("账号名称");
     await user.click(footer(dialog).getByRole("button", { name: "更多账号操作" }));
     expect(await screen.findByRole("menuitem", { name: "保存草稿" })).toHaveAttribute("aria-disabled", "true");
-    expect(screen.getByRole("menuitem", { name: "重新检查" })).not.toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByRole("menuitem", { name: "重新测试连接" })).not.toHaveAttribute("aria-disabled", "true");
     await user.keyboard("{Escape}");
     await waitFor(() => expect(footer(dialog).getByRole("button", { name: "更多账号操作" })).toHaveFocus());
     await user.clear(name); await user.type(name, "跨分组账号");
@@ -189,7 +189,7 @@ describe("settings summaries and owned editing overlays", () => {
     await user.click(within(dialog).getByRole("tab", { name: "基本信息" }));
     expect(within(dialog).getByLabelText("账号名称")).toHaveValue("跨分组账号");
     await user.click(footer(dialog).getByRole("button", { name: "更多账号操作" }));
-    expect(await screen.findByRole("menuitem", { name: "重新检查" })).toHaveAttribute("aria-disabled", "true");
+    expect(await screen.findByRole("menuitem", { name: "重新测试连接" })).toHaveAttribute("aria-disabled", "true");
     await user.click(screen.getByRole("menuitem", { name: "保存草稿" }));
     await waitFor(() => expect(writes).toHaveLength(1));
     expect(writes[0]).toMatchObject({ name: "跨分组账号", app_id: "app-updated", code_payload: "https://qr.alipay.com/overlay", revision: 1 });
@@ -261,21 +261,21 @@ describe("settings summaries and owned editing overlays", () => {
     const dialog = await screen.findByRole("dialog", { name: "支付宝账号" });
     await within(dialog).findByLabelText("账号名称");
     await user.click(within(dialog).getByRole("tab", { name: "应用信息" }));
-    expect(footer(dialog).getByRole("button", { name: "保存并检查" })).toBeVisible();
+    expect(footer(dialog).getByRole("button", { name: "保存并测试连接" })).toBeVisible();
     await user.click(within(dialog).getByRole("tab", { name: "使用情况" }));
-    expect(within(dialog).queryByRole("button", { name: "保存并检查" })).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: "保存并测试连接" })).not.toBeInTheDocument();
     expect(dialog.querySelector('[data-account-usage-card] [data-slot="card-footer"]')).toBeNull();
     await user.click(within(dialog).getByRole("tab", { name: "基本信息" }));
     fireEvent.change(within(dialog).getByLabelText("账号名称"), { target: { value: "未保存的账号名称" } });
     await user.click(within(dialog).getByRole("tab", { name: "使用情况" }));
-    expect(footer(dialog).getByRole("button", { name: "保存并检查" })).toBeVisible();
+    expect(footer(dialog).getByRole("button", { name: "保存并测试连接" })).toBeVisible();
     expect(within(dialog).getByRole("button", { name: "删除账号" })).toBeDisabled();
     expect(view.writes()).toHaveLength(0);
   });
 
   it.each([
-    ["保存草稿", false], ["保存并检查", false],
-    ["保存草稿", true], ["保存并检查", true],
+    ["保存草稿", false], ["保存并测试连接", false],
+    ["保存草稿", true], ["保存并测试连接", true],
   ] as const)("reopens a collapsed private-key import and focuses its validation error after %s in another tab (frame before panel commit: %s)", async (label, earlyFrame) => {
     const account = sampleAccount();
     const message = "应用私钥格式不正确，请粘贴完整的 RSA 私钥。";
@@ -429,7 +429,7 @@ describe("settings summaries and owned editing overlays", () => {
     const dialog = await screen.findByRole("dialog", { name: "支付宝账号" });
     await user.click(await within(dialog).findByRole("tab", { name: "基本信息" }));
     await user.click(footer(dialog).getByRole("button", { name: "更多账号操作" }));
-    await user.click(await screen.findByRole("menuitem", { name: "重新检查" }));
+    await user.click(await screen.findByRole("menuitem", { name: "重新测试连接" }));
     expect(await within(dialog).findByText("连接检查未通过")).toBeVisible();
     await user.click(within(dialog).getByRole("tab", { name: "应用信息" }));
     await user.type(within(dialog).getByLabelText("新的支付宝公钥"), "verified-platform-key");
@@ -506,7 +506,7 @@ describe("settings summaries and owned editing overlays", () => {
     expect(dialog.querySelectorAll("[data-account-public-key]")).toHaveLength(1);
     expect(within(dialog).getByRole("tab", { name: "应用信息" })).toHaveAttribute("aria-selected", "true");
     expect(within(dialog).getByLabelText("App ID")).toBeDisabled();
-    expect(within(dialog).queryByRole("button", { name: "保存并检查" })).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: "保存并测试连接" })).not.toBeInTheDocument();
     await user.type(within(dialog).getByLabelText("新的支付宝公钥"), "returned-platform-public-key");
     await user.click(within(dialog).getByRole("button", { name: "验证并启用" }));
     await waitFor(() => expect(within(dialog).getByRole("textbox", { name: "应用公钥" })).toHaveValue(pending.public_key));
@@ -701,7 +701,7 @@ describe("settings summaries and owned editing overlays", () => {
       return deleted ? apiError("site_not_found", "网站不存在", 404) : json({ data: site });
     } });
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "删除空业务网站" }));
+    await user.click(await screen.findByRole("button", { name: "删除网站" }));
     await user.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "确认" }));
     await waitFor(() => expect(view.router.state.location.pathname).toBe("/sites"));
     expect(new URLSearchParams(view.router.state.location.search).has("overlay")).toBe(false);

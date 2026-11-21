@@ -150,7 +150,7 @@ describe("optional website client ID", () => {
     await user.click(screen.getByRole("button", { name: "添加网站" }));
     await screen.findByText("创建结果待确认");
     await user.click(screen.getByRole("button", { name: "重试上一次操作" }));
-    await screen.findByText("服务返回冲突，请关闭并刷新，核对原操作是否生效。");
+    await screen.findByText("服务器数据已发生变化，请关闭窗口并刷新页面，核对刚才的操作是否已生效。");
     expect(input).toBeDisabled();
     expect(input).toHaveValue("original");
     expect(screen.getByRole("button", { name: "重试上一次操作" })).toBeDisabled();

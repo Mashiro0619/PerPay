@@ -178,7 +178,7 @@ describe("支付宝账号设置", () => {
     await user.click(await screen.findByRole("button", { name: "重新读取账号" }));
     await screen.findByText("账号配置存在不同修改");
     expect(screen.getByRole("button", { name: "应用核对结果" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "保存并检查" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "保存并测试连接" })).toBeDisabled();
     await user.click(screen.getByRole("button", { name: choice }));
     await user.click(screen.getByRole("button", { name: "应用核对结果" }));
     expect(screen.getByLabelText("账号名称")).toHaveValue(choice === "保留我的修改" ? "本地名称" : "服务器名称");
@@ -289,11 +289,11 @@ describe("支付宝账号设置", () => {
     const user = userEvent.setup();
     await user.clear(screen.getByLabelText("账号名称"));
     await user.type(screen.getByLabelText("账号名称"), "主账号（更新）");
-    await user.click(screen.getByRole("button", { name: "保存并检查" }));
+    await user.click(screen.getByRole("button", { name: "保存并测试连接" }));
     expect(await screen.findByText("连接检查未通过")).toBeVisible();
     expect(screen.getByLabelText("账号名称")).toHaveValue("主账号（更新）");
     expect(screen.getByText("账号已保存")).toBeVisible();
-    await user.click(screen.getByRole("button", { name: "重新检查" }));
+    await user.click(screen.getByRole("button", { name: "重新测试连接" }));
     const lastCheck = screen.getByText("最近连接检查").closest("dl")!;
     expect(await within(lastCheck).findByText("通过")).toBeVisible();
     expect(lastCheck.querySelector("time")).toHaveAttribute("datetime", "2026-10-29T00:02:00Z");
@@ -328,9 +328,9 @@ describe("支付宝账号设置", () => {
     expect(screen.getByText("旧版测试账号已停用")).toBeVisible();
     expect(screen.queryByText("连接检查通过")).not.toBeInTheDocument();
     expect(screen.getByLabelText("账号名称")).toBeDisabled();
-    expect(screen.getByRole("button", { name: "保存并检查" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "保存并测试连接" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "保存草稿" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "重新检查" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "重新测试连接" })).toBeDisabled();
     expect(screen.queryByRole("button", { name: /验证并启用|生成应用密钥|更换应用密钥/ })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "添加支付宝账号" })).toHaveAttribute("href", "/settings/accounts/new");
     fireEvent.submit(screen.getByLabelText("账号名称").closest("form")!);

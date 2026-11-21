@@ -217,7 +217,7 @@ describe("list navigation continuity", () => {
     expect(screen.getByText("第 4 页 · 本页 1 条")).toBeVisible();
     await userEvent
       .setup()
-      .click(screen.getByRole("button", { name: "返回首页" }));
+      .click(screen.getByRole("button", { name: "返回第 1 页" }));
     expect(
       await screen.findByRole("link", { name: "第一页订单" }),
     ).toBeVisible();

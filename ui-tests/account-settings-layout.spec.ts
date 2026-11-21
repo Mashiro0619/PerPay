@@ -108,7 +108,7 @@ for (const layout of [{ width: 1440, height: 900, font: 100 }, { width: 390, hei
       expect(measures.emptyFooters).toBe(0);
       const actions = dialog.locator("[data-overlay-footer] [data-overlay-actions]");
       await expect(dialog.getByRole("button", { name: "关闭对话框", exact: true })).toBeVisible();
-      const save = actions.getByRole("button", { name: "保存并检查", exact: true });
+      const save = actions.getByRole("button", { name: "保存并测试连接", exact: true });
       let saveGeometry;
       if (panel === "usage") await expect(save).toHaveCount(0);
       else {
@@ -157,7 +157,7 @@ for (const layout of [{ width: 1440, height: 900, font: 100 }, { width: 390, hei
     await accountName.fill("待保存布局检查");
     await selectSettingsSection(page, editor, "支付宝账号配置分组", "应用信息");
     await selectSettingsSection(page, editor, "支付宝账号配置分组", "使用情况");
-    await expect(dialog.getByRole("button", { name: "保存并检查", exact: true })).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "保存并测试连接", exact: true })).toBeVisible();
     await selectSettingsSection(page, editor, "支付宝账号配置分组", "基本信息");
     await expect(accountName).toHaveValue("待保存布局检查");
     await dialog.getByRole("button", { name: "关闭对话框", exact: true }).click();

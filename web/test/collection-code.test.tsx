@@ -160,7 +160,7 @@ describe("collection QR image upload", () => {
       const field = await openCodeContent();
       const user = userEvent.setup();
       expect(screen.queryByLabelText("收银台有效期（秒）")).not.toBeInTheDocument();
-      expect(screen.queryByLabelText("应付金额复用等待（秒）")).not.toBeInTheDocument();
+      expect(screen.queryByLabelText("同金额冷却时长（秒）")).not.toBeInTheDocument();
       if (source === "picker")
         await user.upload(
           screen.getByLabelText("选择收款码图片"),
@@ -399,7 +399,7 @@ describe("collection QR image upload", () => {
     );
     await screen.findByText("已识别");
     await user.click(screen.getByRole("button", { name: "保存草稿" }));
-    expect(await screen.findByText("账号配置已在其他会话中更新")).toBeVisible();
+    expect(await screen.findByText("账号配置已在其他页面或设备中更新")).toBeVisible();
     expect(screen.getByRole("button", { name: "重新读取账号" })).toBeEnabled();
     expect(screen.getByLabelText("支付宝收款码内容")).toHaveValue(
       recognizedLink,

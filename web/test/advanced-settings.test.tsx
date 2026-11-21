@@ -33,7 +33,7 @@ describe("advanced checkout settings clarity", () => {
     expect(rotation).toHaveAccessibleDescription(
       "不影响已有订单链接，通常无需修改。",
     );
-    const queryWindow = screen.getByLabelText("结束后可查询时长（秒）");
+    const queryWindow = screen.getByLabelText("订单结束后收银台可查时长（秒）");
     expect(queryWindow).toHaveValue(86400);
     expect(queryWindow).toHaveAccessibleDescription(
       "仅影响新订单的公开状态查询，不延长付款期限，不影响后台处理迟到账单。",

@@ -221,7 +221,7 @@ describe("refund mark result recovery", () => {
       fireEvent.submit(note.closest("form")!);
       expect(note).toHaveAttribute("aria-invalid", "true");
       expect(note).toHaveAccessibleDescription(
-        /不支持的控制字符|无效的 Unicode 字符/,
+        /不支持的隐藏字符|不支持的特殊字符/,
       );
       expect(note).toHaveFocus();
       expect(fetchMock).not.toHaveBeenCalled();
@@ -310,11 +310,11 @@ describe("refund mark result recovery", () => {
     );
     const user = userEvent.setup();
     const originalDialog = screen.getByRole("dialog", { name: "标记已退款" });
-    expect(originalDialog).toHaveAccessibleDescription(/不执行实际退款，也未验证退款/);
-    expect(within(originalDialog).getAllByText(/不执行实际退款/)).toHaveLength(1);
+    expect(originalDialog).toHaveAccessibleDescription(/不会发起或验证实际退款/);
+    expect(within(originalDialog).getAllByText(/不会发起或验证实际退款/)).toHaveLength(1);
     await user.click(screen.getByRole("button", { name: "确认标记已退款" }));
     await screen.findByText("标记结果待确认", { exact: true });
-    expect(within(originalDialog).getAllByText(/不执行实际退款/)).toHaveLength(1);
+    expect(within(originalDialog).getAllByText(/不会发起或验证实际退款/)).toHaveLength(1);
     await act(async () => {
       await router.navigate("/other");
     });

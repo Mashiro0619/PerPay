@@ -50,7 +50,7 @@ describe("business dialogs during workspace navigation", () => {
     await act(async () => { await view.router.navigate("/sites/a/settings/basic?overlay=%2Fsites%2Fa%2Fedit"); });
     await waitFor(() => expect(screen.getByLabelText("业务网站名称")).toHaveValue("网站 A"));
     await user.type(screen.getByLabelText("业务网站名称"), "（保留草稿）");
-    await user.click(screen.getByRole("button", { name: "删除空业务网站" }));
+    await user.click(screen.getByRole("button", { name: "删除网站" }));
     const dialog = await screen.findByRole("alertdialog", { name: "确认删除业务网站？" });
     expect(dialog.closest("main")).toBeNull();
 

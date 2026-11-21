@@ -189,7 +189,7 @@ describe("readable financial exception detail", () => {
     await user.click(trigger);
     const dialog = await screen.findByRole("dialog", { name: "人工关联收款" });
     expect(await within(dialog).findByRole("button", { name: "确认关联收款" })).toBeEnabled();
-    await user.type(within(dialog).getByLabelText("操作理由（可选）"), "核对凭据但取消本次操作");
+    await user.type(within(dialog).getByLabelText("操作理由（可选）"), "更多流水与匹配信息但取消本次操作");
     await user.click(within(dialog).getByRole("button", { name: "取消" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     await waitFor(() => expect(trigger).toHaveFocus());

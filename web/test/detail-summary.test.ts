@@ -148,7 +148,7 @@ describe("readable evidence without stronger financial claims", () => {
         outcome: "ACKNOWLEDGED",
         error_code: null,
       }),
-    ).toBe("HTTP 200 · 通知已确认（ACK）");
+    ).toBe("HTTP 200 · 通知已确认");
   });
   it("separates ignored, retired, ended and active exceptions", () => {
     expect(isHistoricalException(financialException)).toBe(false);

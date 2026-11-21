@@ -308,7 +308,7 @@ describe("business websites in the sidebar", () => {
     expect(within(shared).queryByRole("link", { name: "支付宝流水" })).not.toBeInTheDocument();
     const manage = within(shared).getByRole("link", { name: "网站管理" });
     expect(manage).toHaveAttribute("href", "/sites");
-    expect(within(settings).getByRole("link", { name: "设置" })).toHaveAttribute("href", "/settings");
+    expect(within(settings).getByRole("link", { name: "系统设置" })).toHaveAttribute("href", "/settings");
     expect(within(settings).queryByText("当前网站")).not.toBeInTheDocument();
     expect(settings).toHaveClass("border-t", "border-sidebar-border");
     expect(settings.closest("[data-slot=sidebar-footer]")).toContainElement(shared);
@@ -421,7 +421,7 @@ describe("business websites in the sidebar", () => {
     expect(primaryLinks(nav)).toEqual(["总览", "订单", "待处理", "通知"]);
     const settings = within(nav).getByRole("navigation", { name: "设置导航" });
     expect(within(settings).getByText("当前网站")).toBeVisible();
-    expect(within(settings).getByRole("link", { name: "设置" })).toHaveAttribute("href", "/sites/a/settings/basic");
+    expect(within(settings).getByRole("link", { name: "网站设置" })).toHaveAttribute("href", "/sites/a/settings/basic");
     expect(within(nav).getByRole("link", { name: "对账" })).toHaveAttribute("href", "/reconciliation?selected_site=a");
     expect(within(nav).getByRole("link", { name: "运行状态" })).toHaveAttribute("href", "/system?selected_site=a");
     expect(within(nav).getByRole("link", { name: "网站管理" })).toHaveAttribute("href", "/sites?selected_site=a");
@@ -712,7 +712,7 @@ describe("website selection on shared pages", () => {
     expect(screen.getByRole("link", { name: groupedLedger.external_event_id })).toBe(sharedRow);
     expect(sharedReads()).toHaveLength(1);
     expect(within(nav).getByRole("link", { name: "订单" })).toHaveAttribute("href", "/sites/b/orders");
-    expect(within(nav).getByRole("link", { name: "设置" })).toHaveAttribute("href", "/sites/b/settings/basic");
+    expect(within(nav).getByRole("link", { name: "网站设置" })).toHaveAttribute("href", "/sites/b/settings/basic");
     expect(within(nav).getByRole("link", { name: "运行状态" })).toHaveAttribute("href", "/system?selected_site=b");
     expect(view.fetchMock.mock.calls.every(([request]) => !new URL(request.url).searchParams.has("selected_site"))).toBe(true);
     expect(view.fetchMock.mock.calls.some(([request]) => /\/sites\/[ab]\/reconciliation/.test(new URL(request.url).pathname))).toBe(false);
@@ -742,7 +742,7 @@ describe("website selection on shared pages", () => {
     await user.click(within(restored).getByRole("link", { name: "全部网站" }));
     await waitFor(() => expect(new URLSearchParams(refreshed.router.state.location.search).has("selected_site")).toBe(false));
     expect(refreshed.router.state.location.pathname).toBe("/reconciliation");
-    await waitFor(() => expect(within(restored).getByRole("link", { name: "设置" })).toHaveAttribute("href", "/settings"));
+    await waitFor(() => expect(within(restored).getByRole("link", { name: "系统设置" })).toHaveAttribute("href", "/settings"));
     expect(within(restored).getByRole("link", { name: "订单" })).toHaveAttribute("href", "/orders");
   });
 
@@ -877,7 +877,7 @@ describe("website selection on shared pages", () => {
     });
     const user = userEvent.setup();
     // The association is a record among the entry's orders; its only action stands on it once its detail is read.
-    const reverse = await screen.findByRole("button", { name: "撤销错误关联" });
+    const reverse = await screen.findByRole("button", { name: "撤销收款关联" });
     expect(reverse.closest("article")).toHaveAttribute("id", "match-" + matchId);
     expect(view.router.state.location.pathname).toBe("/reconciliation");
     const target = new URLSearchParams(view.router.state.location.search).get("overlay")!;

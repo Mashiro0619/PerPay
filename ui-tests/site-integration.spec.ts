@@ -190,7 +190,7 @@ for (const width of [1440, 390, 320]) {
       expect((await page.request.put(fixture.origin + apiPath + "/epay", { headers, data: {
         revision: current.revision, v1_enabled: current.v1_enabled, v2_enabled: current.v2_enabled,
       } })).status()).toBe(200);
-      await assistant.getByRole("switch", { name: "允许易支付 V2新订单", exact: true }).click();
+      await assistant.getByRole("switch", { name: "启用易支付 V2", exact: true }).click();
       const conflicting = page.waitForResponse(response => new URL(response.url()).pathname === apiPath + "/epay" && response.request().method() === "PUT");
       await assistant.getByRole("button", { name: "保存易支付设置", exact: true }).click();
       expect((await conflicting).status()).toBe(409);
@@ -228,7 +228,7 @@ for (const width of [1440, 390, 320]) {
       expect(other.merchant_key_version).toBe(1);
       expect(other.platform_key_version).toBe(1);
       await expect(assistant.getByText(other.pid, { exact: true })).toBeVisible();
-      await expect(assistant.getByRole("switch", { name: "允许易支付 V1新订单", exact: true })).toBeChecked();
+      await expect(assistant.getByRole("switch", { name: "启用易支付 V1", exact: true })).toBeChecked();
       expect(await assistant.textContent()).not.toContain(previousSecret);
       const otherView = await viewKey("商户密钥", "epay_v1", "browser_other");
       expect(otherView.data.secret).not.toBe(previousSecret);

@@ -105,7 +105,7 @@ for (const width of [390, 1440]) {
         .getByLabel("支付宝收款码内容", { exact: true })
         .fill("https://qr.alipay.com/browser-second-account");
       await page
-        .getByRole("button", { name: "保存并检查", exact: true })
+        .getByRole("button", { name: "保存并测试连接", exact: true })
         .click();
       await selectSettingsSection(page, page.locator("[data-overlay-content]"), "支付宝账号配置分组", "使用情况");
       const latestCheck = page.getByText("最近连接检查", { exact: true }).locator("..");

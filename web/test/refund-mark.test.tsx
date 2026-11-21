@@ -100,7 +100,7 @@ describe("administrator-only refund marks", () => {
       "shrink-0",
     );
     expect(within(dialog).getByText(longOrder.product_name)).toBeVisible();
-    expect(dialog).toHaveAccessibleDescription(/PerPay 不执行实际退款/);
+    expect(dialog).toHaveAccessibleDescription(/PerPay 不会发起或验证实际退款/);
     await userEvent
       .setup()
       .click(within(dialog).getByRole("button", { name: "取消" }));
@@ -133,14 +133,16 @@ describe("administrator-only refund marks", () => {
       );
       const dialog = screen.getByRole("dialog");
       expect(dialog).toHaveAccessibleDescription(
-        /仅记录外部已完成的退款。PerPay 不执行实际退款，也未验证退款。/,
+        marked
+          ? /仅用于后台备注已在外部完成的退款。PerPay 不会发起或验证实际退款/
+          : /仅撤销此条后台退款标记，不会影响实际退款及订单资金状态。/,
       );
       expect(within(dialog).getByLabelText("备注（可选）")).not.toBeRequired();
       expect(
         within(dialog).queryByLabelText(/流水编号/),
       ).not.toBeInTheDocument();
       expect(
-        within(dialog).getByText(marked ? /不会通知业务网站/ : /只撤销标记/),
+        within(dialog).getByText(marked ? /通知业务网站/ : /仅撤销此条后台退款标记/),
       ).toBeVisible();
       await user.click(
         within(dialog).getByRole("button", {

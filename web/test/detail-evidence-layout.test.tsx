@@ -170,7 +170,7 @@ describe("always-visible detail evidence", () => {
         expect(within(amount).getByText("1.001")).toBeVisible();
         expect(within(amount).getByText("异常")).toBeVisible();
         expect(screen.queryByRole("link", { name: /^查看已有流水/ })).not.toBeInTheDocument();
-        expect(screen.getByRole("button", { name: "确认隔离记录" }).closest("[data-overlay-actions]")).not.toBeNull();
+        expect(screen.getByRole("button", { name: "确认隔离并关闭冲突" }).closest("[data-overlay-actions]")).not.toBeNull();
       }
       expect(screen.getByRole("heading", { name: "查账摘要" })).toBeVisible();
       expect(screen.getByText("验签通过")).toBeVisible();

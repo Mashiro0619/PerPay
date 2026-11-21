@@ -303,7 +303,7 @@ describe("reconciliation issue identities", () => {
     expect(within(list).getByText("买家乙")).toBeVisible();
     expect(within(list).getByText("raw-event-alpha", { exact: true })).toBeVisible();
     expect(within(list).getByText("raw-event-beta", { exact: true })).toBeVisible();
-    expect(within(list).getByText(/支付宝流水页 #acacacac/)).toBeVisible();
+    expect(within(list).getByText(/查账批次 #acacacac/)).toBeVisible();
     expect(within(list).getByText("暂无可关联的订单或单笔流水")).toBeVisible();
   });
 

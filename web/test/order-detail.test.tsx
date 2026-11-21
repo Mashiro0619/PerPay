@@ -169,7 +169,7 @@ describe("order detail work surface", () => {
     const fields = (root: Element) => Array.from(root.querySelectorAll("[data-detail-fields] > dl > div")).filter(shown).map(row => row.querySelector("dt")!.textContent);
     expect(fields(document.getElementById("match-" + matchId)!)).toEqual(["支付宝交易金额", "支付宝交易时间", "交易对方", "支付宝订单号", "支付宝备注"]);
     expect(screen.getByText("金额占用时间")).not.toBeVisible();
-    await userEvent.setup().click(screen.getByRole("button", { name: /^核对凭据/ }));
+    await userEvent.setup().click(screen.getByRole("button", { name: /^更多流水与匹配信息/ }));
     expect(screen.getByText("金额占用时间")).toBeVisible();
     expect(screen.getByRole("heading", { name: "匹配依据" })).toBeVisible();
     expect(
@@ -382,7 +382,7 @@ describe("order detail work surface", () => {
     expect(await screen.findByText("撤销时间")).toBeVisible();
     expect(screen.getByText("平台记录归属不符")).toBeVisible();
     expect(screen.getByText("对照交易号确认")).toBeVisible();
-    expect(screen.queryByRole("button", { name: "撤销错误关联" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "撤销收款关联" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "更多操作，收款关联记录操作" })).not.toBeInTheDocument();
   });
 
@@ -415,7 +415,7 @@ describe("order detail work surface", () => {
     await screen.findByRole("heading", { name: "订单信息" });
     const user = userEvent.setup();
     // The association's only action is shown directly on its record.
-    await user.click(within(document.getElementById("match-" + matchId)!).getByRole("button", { name: "撤销错误关联" }));
+    await user.click(within(document.getElementById("match-" + matchId)!).getByRole("button", { name: "撤销收款关联" }));
     await confirmReason(user, "测试撤销原因", "确认撤销关联");
     await user.click(await screen.findByRole("button", { name: /^已撤销的收款关联，共 ?1 ?项$/ }));
     expect(await screen.findByText("测试撤销原因")).toBeVisible();
@@ -671,7 +671,7 @@ describe("order detail work surface", () => {
     await user.click(await recordAction("标记已退款"));
     const dialog = screen.getByRole("dialog");
     expect(dialog).toHaveAccessibleDescription(
-      /PerPay 不执行实际退款，也未验证退款/,
+      /PerPay 不会发起或验证实际退款/,
     );
     await user.type(
       within(dialog).getByLabelText("备注（可选）"),

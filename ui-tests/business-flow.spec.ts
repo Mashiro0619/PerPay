@@ -92,7 +92,7 @@ async function createAccount(page: Page, fixture: BusinessFixture, info: TestInf
   const platformKey = overlay.getByRole("textbox", { name: "支付宝公钥", exact: true });
   await platformKey.fill("invalid-public-key-for-recovery");
   const rejected = page.waitForResponse(response => new URL(response.url()).pathname === `/api/admin/v1/alipay-accounts/${account.id}` && response.request().method() === "PUT");
-  await overlay.getByRole("button", { name: "保存并检查", exact: true }).click();
+  await overlay.getByRole("button", { name: "保存并测试连接", exact: true }).click();
   expect((await rejected).status()).toBe(422);
   await expect(platformKey).toHaveAttribute("aria-invalid", "true");
   await expect(platformKey).toHaveValue("invalid-public-key-for-recovery");
@@ -101,7 +101,7 @@ async function createAccount(page: Page, fixture: BusinessFixture, info: TestInf
 
   await platformKey.fill(fixture.platformPublicKey);
   const applicationChecked = page.waitForResponse(response => new URL(response.url()).pathname === `/api/admin/v1/alipay-accounts/${account.id}/check` && response.request().method() === "POST");
-  await overlay.getByRole("button", { name: "保存并检查", exact: true }).click();
+  await overlay.getByRole("button", { name: "保存并测试连接", exact: true }).click();
   expect((await applicationChecked).ok()).toBe(true);
   await selectSettingsSection(page, overlay, "支付宝账号配置分组", "使用情况");
   await expect(overlay.getByText("最近连接检查", { exact: true }).locator("..").locator("dd").first()).toHaveText("通过");
@@ -110,7 +110,7 @@ async function createAccount(page: Page, fixture: BusinessFixture, info: TestInf
   await expectSettingsSection(overlay, "支付宝账号配置分组", "收款码");
   await overlay.getByRole("textbox", { name: "支付宝收款码内容", exact: true }).fill(fixture.collectionCode);
   const checked = page.waitForResponse(response => new URL(response.url()).pathname === `/api/admin/v1/alipay-accounts/${account.id}/check` && response.request().method() === "POST");
-  await overlay.getByRole("button", { name: "保存并检查", exact: true }).click();
+  await overlay.getByRole("button", { name: "保存并测试连接", exact: true }).click();
   expect((await checked).ok()).toBe(true);
   await selectSettingsSection(page, overlay, "支付宝账号配置分组", "使用情况");
   await expect(overlay.getByText("最近连接检查", { exact: true }).locator("..").locator("dd").first()).toHaveText("通过");
@@ -163,8 +163,8 @@ async function createSite(page: Page, fixture: BusinessFixture, info: TestInfo, 
   }
   await overlay.getByRole("textbox", { name: "通知域名", exact: true }).fill(fixture.notificationOrigin);
   await overlay.getByRole("switch", { name: "开启通知", exact: true }).check();
-  await overlay.getByRole("button", { name: "高级设置", exact: true }).click();
-  await overlay.getByRole("spinbutton", { name: "最多发送次数", exact: true }).fill("2");
+  await overlay.getByRole("button", { name: "通知超时与重试设置", exact: true }).click();
+  await overlay.getByRole("spinbutton", { name: "最多发送次数（次）", exact: true }).fill("2");
   const saved = page.waitForResponse(response => new URL(response.url()).pathname === `/api/admin/v1/sites/${site.client_id}` && response.request().method() === "PUT");
   await overlay.getByRole("button", { name: "保存业务网站", exact: true }).click();
   const saveConfirm = page.getByRole("alertdialog", { name: "确认保存配置？", exact: true });
@@ -408,7 +408,7 @@ async function reconcileUnmatchedIncome(page: Page, fixture: BusinessFixture, in
   await screenshot(page, info, "09b-manual-settlement-persisted");
 
   // An association's only action stands on its record as a button.
-  await overlay.getByRole("button", { name: "撤销错误关联", exact: true }).click();
+  await overlay.getByRole("button", { name: "撤销收款关联", exact: true }).click();
   const reverse = page.getByRole("dialog", { name: "撤销收款关联？", exact: true });
   const reverseSubmit = reverse.getByRole("button", { name: "确认撤销关联", exact: true });
   await expect(reverseSubmit).toBeDisabled();

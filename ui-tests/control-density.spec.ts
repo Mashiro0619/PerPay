@@ -119,7 +119,7 @@ test.describe("compact mobile controls preserve their actual touch areas", () =>
         sidebar.getByRole("navigation", { name: "主导航", exact: true }).getByRole("link", { name: "订单", exact: true }),
         sidebar.getByRole("navigation", { name: "查看范围", exact: true }).getByRole("link", { name: "全部网站", exact: true }),
         sidebar.getByRole("navigation", { name: "全局管理", exact: true }).getByRole("link", { name: "运行状态", exact: true }),
-        sidebar.getByRole("navigation", { name: "设置导航", exact: true }).getByRole("link", { name: "设置", exact: true }),
+        sidebar.getByRole("navigation", { name: "设置导航", exact: true }).getByRole("link", { name: "系统设置", exact: true }),
         sidebar.getByRole("button", { name: /账户菜单$/, exact: true }),
       ];
       const geometry = [];

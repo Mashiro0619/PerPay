@@ -37,8 +37,8 @@ describe("readable settings form structure", () => {
     for (const label of [
       "收银台有效期（秒）",
       "最大加价金额（分）",
-      "应付金额复用等待（秒）",
-      "待付款订单上限",
+      "同金额冷却时长（秒）",
+      "待付款订单上限（笔）",
       "收银台名称",
     ]) {
       const input = screen.getByLabelText(label);
@@ -50,7 +50,7 @@ describe("readable settings form structure", () => {
     expect(
       screen.getByLabelText("收银台有效期（秒）"),
     ).toHaveAccessibleDescription("有效期错误");
-    expect(screen.getByLabelText("待付款订单上限")).toHaveAccessibleDescription(
+    expect(screen.getByLabelText("待付款订单上限（笔）")).toHaveAccessibleDescription(
       "容量错误",
     );
     expect(view.container.querySelectorAll(".settings-fields")).toHaveLength(2);

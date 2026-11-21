@@ -22,14 +22,14 @@ it("账号冲突时弹窗底部操作也停用，重读后保留草稿并恢复�
   await user.click(await screen.findByRole("menuitem", { name: "保存草稿" }));
   const reload = await within(dialog).findByRole("button", { name: "重新读取账号" });
   expect(within(dialog).getByRole("button", { name: "更多账号操作" })).toBeDisabled();
-  expect(within(dialog).getByRole("button", { name: "保存并检查" })).toBeDisabled();
+  expect(within(dialog).getByRole("button", { name: "保存并测试连接" })).toBeDisabled();
   account = { ...account, revision: account.revision + 1, enabled: false };
   await user.click(reload);
   await within(dialog).findByText("账号配置已重新读取");
   expect(name).toHaveValue("仍保留的账号名称");
   expect(within(dialog).getByRole("switch", { name: "接收新订单" })).not.toBeChecked();
   expect(within(dialog).getByRole("button", { name: "更多账号操作" })).toBeEnabled();
-  expect(within(dialog).getByRole("button", { name: "保存并检查" })).toBeEnabled();
+  expect(within(dialog).getByRole("button", { name: "保存并测试连接" })).toBeEnabled();
   expect(view.writes()).toHaveLength(1);
 });
 

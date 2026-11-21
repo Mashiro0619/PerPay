@@ -232,7 +232,7 @@ describe("website default template conflict recovery", () => {
     edit("通知超时（秒）", "5.0004");
     expect(screen.getByText("通知超时最多 3 位小数。")).toBeVisible();
     expect(save()).toBeDisabled();
-    edit("最多发送次数", "15");
+    edit("最多发送次数（次）", "15");
     expect(screen.getByLabelText("通知超时（秒）")).toHaveValue(5.0004);
     await group(user, "订单设置");
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
@@ -273,7 +273,7 @@ describe("website default template conflict recovery", () => {
     await group(user, "收银台展示");
     edit("收银台名称", "我的模板");
     await group(user, "通知设置");
-    edit("最多发送次数", "15");
+    edit("最多发送次数（次）", "15");
     view.changeRemote(policy => {
       policy.orders.amount_reuse_cooldown_seconds = 1200;
       policy.display.checkout_help_url = "https://help.example.com";
@@ -287,7 +287,7 @@ describe("website default template conflict recovery", () => {
     fireEvent.submit(save().closest("form")!);
     await act(async () => { await Promise.resolve(); });
     expect(view.puts).toHaveLength(1);
-    expect(screen.getByLabelText("最多发送次数")).toHaveValue(15);
+    expect(screen.getByLabelText("最多发送次数（次）")).toHaveValue(15);
     await group(user, "收银台展示");
     expect(screen.getByLabelText("收银台名称")).toHaveValue("我的模板");
     await group(user, "订单设置");
@@ -321,7 +321,7 @@ describe("website default template conflict recovery", () => {
     await screen.findByLabelText("收银台有效期（秒）");
     edit("收银台有效期（秒）", "600");
     await group(user, "通知设置");
-    edit("最多发送次数", "15");
+    edit("最多发送次数（次）", "15");
     view.changeRemote(policy => {
       policy.orders.order_ttl_seconds = 900;
       policy.display.checkout_name = "服务器收银台";
@@ -417,13 +417,13 @@ describe("website default template conflict recovery", () => {
     view.changeRemote(policy => { policy.display.checkout_name = "第一次远端修改"; });
     await user.click(save());
     await mergeLatest(user);
-    edit("待付款订单上限", "7");
+    edit("待付款订单上限（笔）", "7");
     view.changeRemote(policy => { policy.notification_delivery.timeout_milliseconds = 8000; });
     await user.click(save());
     await mergeLatest(user);
     expect(view.puts).toHaveLength(2);
     expect(screen.getByLabelText("收银台有效期（秒）")).toHaveValue(600);
-    expect(screen.getByLabelText("待付款订单上限")).toHaveValue(7);
+    expect(screen.getByLabelText("待付款订单上限（笔）")).toHaveValue(7);
     await user.click(save());
     await screen.findByText("模板已保存");
     expect(view.puts.map(body => body.revision)).toEqual([0, 1, 2]);

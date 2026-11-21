@@ -10,13 +10,13 @@ test("template seconds drafts survive tabs, reject excess precision and save exa
     await page.context().addCookies(fixture.cookies);
     await page.goto(fixture.origin + "/admin/sites/defaults");
     await page.getByRole("tab", { name: "通知设置" }).click();
-    await expect(page.getByRole("button", { name: "高级设置" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "通知超时与重试设置" })).toHaveCount(0);
     const timeout = page.getByLabel("通知超时（秒）", { exact: true });
     const save = page.getByRole("button", { name: "保存默认设置" });
     await timeout.fill("5.0004");
     await expect(page.getByText("通知超时最多 3 位小数。", { exact: true })).toBeVisible();
     await expect(save).toBeDisabled();
-    await page.getByLabel("最多发送次数", { exact: true }).fill("15");
+    await page.getByLabel("最多发送次数（次）", { exact: true }).fill("15");
     await expect(timeout).toHaveValue("5.0004");
     await page.getByRole("tab", { name: "订单设置" }).click();
     await expect(page.getByRole("alertdialog")).toHaveCount(0);
@@ -58,7 +58,7 @@ browserTest("site timeout keeps invalid input through a concurrent key conflict 
     });
     expect(generated.status()).toBe(200);
     await page.goto(fixture.origin + "/admin/sites/default/edit?section=integration");
-    await page.getByRole("button", { name: "高级设置", exact: true }).click();
+    await page.getByRole("button", { name: "通知超时与重试设置", exact: true }).click();
     const timeout = page.getByLabel("通知超时（秒）", { exact: true });
     const save = page.getByRole("button", { name: "保存业务网站", exact: true });
     await timeout.fill("5.123");

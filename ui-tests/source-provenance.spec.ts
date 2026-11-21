@@ -57,7 +57,7 @@ test("order and ledger sources remain distinct at desktop and 320 pixels", async
       const association = associations.nth(index);
       await expect(association).toHaveAttribute("id", "match-" + match.payment_match_id);
       // The disclosure's name ends with how many facts it holds.
-      const credentials = association.getByRole("button", { name: /^核对凭据/ });
+      const credentials = association.getByRole("button", { name: /^更多流水与匹配信息/ });
       if (await credentials.count()) {
         await credentials.click();
         await expect(credentials).toHaveAttribute("aria-expanded", "true");

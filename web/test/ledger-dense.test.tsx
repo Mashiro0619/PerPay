@@ -224,8 +224,8 @@ describe("unified transaction detail", () => {
       if (match.status === "REVERSED") {
         expect(value(card, "撤销操作人")).toHaveTextContent("reviewer");
         expect(value(card, "撤销理由")).toHaveTextContent("原订单归属错误");
-        expect(within(card).queryByRole("button", { name: "撤销错误关联" })).not.toBeInTheDocument();
-      } else expect(within(card).getByRole("button", { name: "撤销错误关联" })).toBeVisible();
+        expect(within(card).queryByRole("button", { name: "撤销收款关联" })).not.toBeInTheDocument();
+      } else expect(within(card).getByRole("button", { name: "撤销收款关联" })).toBeVisible();
     }
     // Each order is compared with the copy it is tied to.
     expect(value(record("match-" + first.payment_match_id), "应付金额")).toHaveTextContent(/^¥1\.01$/);
@@ -374,7 +374,7 @@ describe("unified transaction detail", () => {
     expect(within(suggestion).getByText("可匹配", { exact: true })).toBeVisible();
     expect(within(suggestion).getByText("仅为匹配建议，核对订单与流水后可人工关联，尚未确认收款。")).toBeVisible();
     expect(within(suggestion).getByRole("link", { name: "查看订单" }).getAttribute("href")).toContain("/orders/" + orderId);
-    expect(terms(suggestion)).toEqual(["商户订单号", "业务网站", "应付金额", "订单收款状态", "金额占用时间", "形成时间"]);
+    expect(terms(suggestion)).toEqual(["商户订单号", "业务网站", "应付金额", "订单收款状态", "金额占用时间", "生成时间"]);
     expect(value(suggestion, "商户订单号")).toHaveTextContent(order.merchant_order_no);
     expect(within(suggestion).getByRole("button", { name: "关联到此订单" })).toBeVisible();
     // The record's own action stays beside it: it lets the administrator choose any other order.

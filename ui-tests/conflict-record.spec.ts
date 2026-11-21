@@ -29,7 +29,7 @@ const primaryScenarios = [
     title: "支付宝交易金额无法解析",
     statusLabel: "未处理 · 已忽略",
     explanation: "交易金额格式无效，已隔离，不计入收款。",
-    actionLabel: "确认隔离记录",
+    actionLabel: "确认隔离并关闭冲突",
     twoSided: false,
   },
 ] as const;
@@ -230,7 +230,7 @@ for (const scenario of secondaryScenarios) {
 
     const measured = await expectDetailRecordLayout(page);
     const footer = overlay.locator("[data-overlay-footer]");
-    await expect(footer.getByRole("button", { name: /保留已有流水|确认隔离记录/ })).toHaveCount(0);
+    await expect(footer.getByRole("button", { name: /保留已有流水|确认隔离并关闭冲突/ })).toHaveCount(0);
     const session = await openTechnicalDialog(page, footer.locator('button[aria-label="更多操作，冲突记录操作"]'), "冲突记录技术信息");
     const technical = await expectTechnicalDialogLayout(session);
     await closeTechnicalDialog(session);

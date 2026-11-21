@@ -432,7 +432,7 @@ test("merged financial actions keep the chosen source and match identity without
   await page.goto(manifest.origin + "/admin" + detailPath(match.ledger_entry_id));
   const matchCard = (await revealDetailSection(page, "payments")).locator('article[id="match-' + match.payment_match_id + '"]');
   // An association's only action stands on its record as a button.
-  const reverse = matchCard.getByRole("button", { name: "撤销错误关联", exact: true });
+  const reverse = matchCard.getByRole("button", { name: "撤销收款关联", exact: true });
   await reverse.click();
   const reversal = page.getByRole("dialog", { name: "撤销收款关联？", exact: true });
   await expect(reversal).toContainText(match.order.product_name);

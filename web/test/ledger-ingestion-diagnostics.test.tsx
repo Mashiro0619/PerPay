@@ -22,7 +22,7 @@ describe("ingestion failure presentation", () => {
     expect(screen.getByText(/连续查账失败 3 次/)).toBeVisible();
     expect(screen.getByText("pagination_invalid")).toBeVisible();
     expect(screen.getByText(/账单流水时间超出/)).toBeVisible();
-    expect(screen.getByText(/^失败窗口：/)).toBeVisible();
+    expect(screen.getByText(/^查询账单区间：/)).toBeVisible();
     expect(screen.getByText(/计划下次重试：.*12:00:08/)).toBeVisible();
     expect(screen.getByRole("link", { name: "排查步骤" })).toHaveAttribute("rel", "noopener noreferrer");
     expect(screen.queryByRole("button", {name:/重试|恢复/})).not.toBeInTheDocument();

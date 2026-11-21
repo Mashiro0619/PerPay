@@ -119,15 +119,15 @@ describe("business website management", () => {
   it("shows all default notification policy fields immediately when selecting its tab", async () => {
     const view = mount("/sites/defaults"), user = userEvent.setup();
     await user.click(await screen.findByRole("tab", { name: "通知设置" }));
-    for (const label of ["通知超时（秒）", "最多发送次数", "首次重试间隔（秒）", "最大重试间隔（秒）"]) {
+    for (const label of ["通知超时（秒）", "最多发送次数（次）", "首次重试间隔（秒）", "最大重试间隔（秒）"]) {
       expect(screen.getByLabelText(label)).toBeVisible();
     }
-    expect(screen.queryByRole("button", { name: "高级设置" })).not.toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("最多发送次数"), { target: { value: "15" } });
+    expect(screen.queryByRole("button", { name: "通知超时与重试设置" })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("最多发送次数（次）"), { target: { value: "15" } });
     await user.click(screen.getByRole("tab", { name: "订单设置" }));
     await user.click(screen.getByRole("tab", { name: "通知设置" }));
-    expect(screen.getByLabelText("最多发送次数")).toBeVisible();
-    expect(screen.getByLabelText("最多发送次数")).toHaveValue(15);
+    expect(screen.getByLabelText("最多发送次数（次）")).toBeVisible();
+    expect(screen.getByLabelText("最多发送次数（次）")).toHaveValue(15);
     expect(view.writes).toHaveLength(0);
   });
   it("groups each website key with its own view and rotation actions", async () => {
@@ -187,7 +187,7 @@ describe("business website management", () => {
     fireEvent.change(second, { target: { value: "" } });
     await user.click(screen.getByRole("button", { name: path.endsWith("defaults") ? "保存默认设置" : "保存业务网站" }));
     expect(await screen.findByText("请输入收银台有效期（秒）。")).toBeVisible();
-    expect(second).toHaveAccessibleDescription("请输入最大加价金额（分）。");
+    expect(second).toHaveAccessibleDescription(/请输入最大加价金额（分）。/);
     expect(first).toHaveFocus();
     expect(first).toHaveAttribute("aria-invalid", "true");
     expect(second).toHaveAttribute("aria-invalid", "true");
@@ -200,15 +200,15 @@ describe("business website management", () => {
 
   it("reopens advanced notification settings for a missing required number", async () => {
     const view = mount("/sites/site_test/settings/integration"), user = userEvent.setup();
-    const advanced = await screen.findByRole("button", { name: "高级设置" });
+    const advanced = await screen.findByRole("button", { name: "通知超时与重试设置" });
     await user.click(advanced);
-    const attempts = screen.getByLabelText("最多发送次数");
+    const attempts = screen.getByLabelText("最多发送次数（次）");
     fireEvent.change(attempts, { target: { value: "" } });
     await user.click(advanced);
     await user.click(screen.getByRole("button", { name: "保存业务网站" }));
-    expect(await screen.findByText("请输入最多发送次数。")).toBeVisible();
+    expect(await screen.findByText("请输入最多发送次数（次）。")).toBeVisible();
     await waitFor(() => expect(attempts).toHaveFocus());
-    expect(attempts).toHaveAccessibleDescription("请输入最多发送次数。");
+    expect(attempts).toHaveAccessibleDescription(/请输入最多发送次数（次）。/);
     expect(view.writes).toHaveLength(0);
   });
 
@@ -229,7 +229,7 @@ describe("business website management", () => {
 
   it("blocks submission and protects an invalid seconds draft when leaving", async () => {
     const view = mount("/sites/site_test/settings/integration"), user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "高级设置" }));
+    await user.click(await screen.findByRole("button", { name: "通知超时与重试设置" }));
     fireEvent.change(screen.getByLabelText("通知超时（秒）"), { target: { value: "5.0004" } });
     const save = screen.getByRole("button", { name: "保存业务网站" });
     expect(save).toBeDisabled();
@@ -241,7 +241,7 @@ describe("business website management", () => {
   });
   it("saves a seconds timeout as integer milliseconds without a precision mismatch", async () => {
     const view = mount("/sites/site_test/settings/integration"), user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "高级设置" }));
+    await user.click(await screen.findByRole("button", { name: "通知超时与重试设置" }));
     fireEvent.change(screen.getByLabelText("通知超时（秒）"), { target: { value: "5.123" } });
     expect(screen.getByLabelText("通知超时（秒）")).toBeValid();
     await user.click(screen.getByRole("button", { name: "保存业务网站" }));
@@ -316,7 +316,7 @@ describe("business website management", () => {
 describe("website configuration recovery", () => {
   it("preserves invalid timeout through an automatic merge after a key revision conflict", async () => {
     const view = mount("/sites/site_test/settings/integration"), user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "高级设置" }));
+    await user.click(await screen.findByRole("button", { name: "通知超时与重试设置" }));
     const timeout = screen.getByLabelText("通知超时（秒）");
     fireEvent.change(timeout, { target: { value: "5.123" } });
     fireEvent.change(timeout, { target: { value: "5.1234" } });
@@ -348,11 +348,11 @@ describe("website configuration recovery", () => {
 
   it.each(["保留我的修改", "采用服务器值"])("preserves invalid timeout while resolving an unrelated conflict: %s", async choice => {
     const view = mount("/sites/site_test/settings/integration"), user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "高级设置" }));
+    await user.click(await screen.findByRole("button", { name: "通知超时与重试设置" }));
     const timeout = screen.getByLabelText("通知超时（秒）");
     fireEvent.change(timeout, { target: { value: "5.123" } });
     fireEvent.change(timeout, { target: { value: "5.1234" } });
-    fireEvent.change(screen.getByLabelText("最多发送次数"), { target: { value: "15" } });
+    fireEvent.change(screen.getByLabelText("最多发送次数（次）"), { target: { value: "15" } });
     view.changeRemote(configuration => { configuration.policy.notification_delivery.maximum_attempts = 18; });
     await user.click(screen.getByRole("button", { name: "更换 API 密钥" }));
     await user.click(await screen.findByRole("button", { name: "确认更换" }));
@@ -363,7 +363,7 @@ describe("website configuration recovery", () => {
     await user.click(screen.getByRole("button", { name: "应用核对结果" }));
     expect(timeout).toHaveValue(5.1234);
     expect(timeout).toBeEnabled();
-    expect(screen.getByLabelText("最多发送次数")).toHaveValue(choice === "保留我的修改" ? 15 : 18);
+    expect(screen.getByLabelText("最多发送次数（次）")).toHaveValue(choice === "保留我的修改" ? 15 : 18);
     expect(screen.getByText("通知超时最多 3 位小数。")).toBeVisible();
     const save = screen.getByRole("button", { name: "保存业务网站" });
     expect(save).toBeDisabled();
@@ -376,7 +376,7 @@ describe("website configuration recovery", () => {
     { choice: "采用服务器值", seconds: 7.555, milliseconds: 7555 },
   ])("resolves an invalid timeout draft only after choosing its conflict value: $choice", async ({ choice, seconds, milliseconds }) => {
     const view = mount("/sites/site_test/settings/integration"), user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "高级设置" }));
+    await user.click(await screen.findByRole("button", { name: "通知超时与重试设置" }));
     const timeout = screen.getByLabelText("通知超时（秒）");
     fireEvent.change(timeout, { target: { value: "5.123" } });
     fireEvent.change(timeout, { target: { value: "5.1234" } });
@@ -500,7 +500,7 @@ describe("website configuration recovery", () => {
   it("merges separate nested fields in the same group while resolving only the overlapping field", async () => {
     const view = mount("/sites/site_test/settings/orders"), user = userEvent.setup();
     fireEvent.change(await screen.findByLabelText("收银台有效期（秒）"), { target: { value: "600" } });
-    fireEvent.change(screen.getByLabelText("待付款订单上限"), { target: { value: "10" } });
+    fireEvent.change(screen.getByLabelText("待付款订单上限（笔）"), { target: { value: "10" } });
     view.changeRemote(configuration => {
       configuration.name = "远端名称";
       configuration.policy.orders.order_ttl_seconds = 900;
@@ -510,8 +510,8 @@ describe("website configuration recovery", () => {
     await user.click(await screen.findByRole("button", { name: "读取最新配置并核对" }));
     await user.click(await screen.findByRole("button", { name: "保留我的修改" }));
     await user.click(screen.getByRole("button", { name: "应用核对结果" }));
-    expect(screen.getByLabelText("应付金额复用等待（秒）")).toHaveValue(1200);
-    expect(screen.getByLabelText("待付款订单上限")).toHaveValue(10);
+    expect(screen.getByLabelText("同金额冷却时长（秒）")).toHaveValue(1200);
+    expect(screen.getByLabelText("待付款订单上限（笔）")).toHaveValue(10);
     await user.click(screen.getByRole("button", { name: "保存业务网站" }));
     await waitFor(() => expect(view.writes).toHaveLength(2));
     expect(view.writes[1]!.body).toMatchObject({ revision: 1, configuration: { name: "远端名称", policy: { orders: { order_ttl_seconds: 600, amount_reuse_cooldown_seconds: 1200, pending_order_limit: 10 } } } });
@@ -535,8 +535,8 @@ describe("website configuration recovery", () => {
     const view = mount(), user = userEvent.setup();
     await user.click(await screen.findByRole("tab", { name: "接入与通知" }));
     fireEvent.change(await screen.findByLabelText("返回域名"), { target: { value: "https://draft.example.com" } });
-    await user.click(screen.getByRole("button", { name: "高级设置" }));
-    fireEvent.change(await screen.findByLabelText("最多发送次数"), { target: { value: "15" } });
+    await user.click(screen.getByRole("button", { name: "通知超时与重试设置" }));
+    fireEvent.change(await screen.findByLabelText("最多发送次数（次）"), { target: { value: "15" } });
     view.changeRemote(configuration => {
       configuration.policy.orders.order_ttl_seconds = 600;
       configuration.policy.notification_delivery.timeout_milliseconds = 7000;
@@ -552,7 +552,7 @@ describe("website configuration recovery", () => {
     await screen.findByDisplayValue("synthetic-site-key");
     await user.click(within(screen.getByRole("dialog", { name: /^(API 密钥|通知签名密钥)$/ })).getByRole("button", { name: "关闭" }));
     expect(screen.getByLabelText("返回域名")).toHaveValue("https://draft.example.com");
-    expect(screen.getByLabelText("最多发送次数")).toHaveValue(15);
+    expect(screen.getByLabelText("最多发送次数（次）")).toHaveValue(15);
     expect(queryClient.getQueryData<{ site: Site }>(["site-editor", "site_test"])?.site.configuration.return_origin).toBeNull();
     await user.click(screen.getByRole("tab", { name: "基本信息" }));
     await screen.findByRole("button", { name: "放弃修改并继续" });
@@ -591,7 +591,7 @@ describe("website field feedback", () => {
     const path = section === "defaults" ? "/sites/defaults" : "/sites/site_test/settings/" + section;
     const cases: Record<string, [string, string, string][]> = {
       basic: [["业务网站名称", "configuration.name", "新的网站名"]],
-      orders: [["收银台有效期（秒）", "configuration.policy.orders.order_ttl_seconds", "600"], ["待付款订单上限", "configuration.policy.orders.pending_order_limit", "10"]],
+      orders: [["收银台有效期（秒）", "configuration.policy.orders.order_ttl_seconds", "600"], ["待付款订单上限（笔）", "configuration.policy.orders.pending_order_limit", "10"]],
       integration: [["通知域名", "configuration.notification_origin", "https://notify.example.com"], ["返回域名", "configuration.return_origin", "https://shop.example.com"]],
       display: [["收银台名称", "configuration.policy.display.checkout_name", "草稿名称"], ["帮助链接", "configuration.policy.display.checkout_help_url", "https://help.example.com"]],
       defaults: [["收银台名称", "policy.display.checkout_name", "模板草稿"], ["收银台有效期（秒）", "policy.orders.order_ttl_seconds", "600"]],
@@ -631,7 +631,7 @@ describe("website field feedback", () => {
   });
   it("evicts the deleted website editor instead of keeping a usable-looking cached form", async () => {
     const view = mount(); const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "删除空业务网站" })); await user.click(await screen.findByRole("button", { name: "确认" }));
+    await user.click(await screen.findByRole("button", { name: "删除网站" })); await user.click(await screen.findByRole("button", { name: "确认" }));
     await waitFor(() => expect(view.router.state.location.pathname).toBe("/sites"));
     expect(queryClient.getQueryData(["site-editor", "site_test"])).toBeUndefined();
   });
@@ -640,7 +640,7 @@ describe("website field feedback", () => {
     const siteReads = () => view.fetchMock.mock.calls.filter(([request]) =>
       request.method === "GET" && new URL(request.url).pathname === "/api/admin/v1/sites/site_test",
     ).length;
-    await user.click(await screen.findByRole("button", { name: "删除空业务网站" }));
+    await user.click(await screen.findByRole("button", { name: "删除网站" }));
     await user.click(await screen.findByRole("button", { name: "确认" }));
     await waitFor(() => expect(view.writes.filter(write => write.method === "DELETE")).toHaveLength(1));
     const deletion = view.fetchMock.mock.calls.find(([request]) => request.method === "DELETE")![0];
@@ -666,7 +666,7 @@ describe("website field feedback", () => {
     const view = mount(), user = userEvent.setup(), pending = view.delayNextDelete();
     queryClient.setQueryData(["workspace-site", "site_test"], { data: initial });
     for (const key of ["sites", "site-overview", "settings"]) queryClient.setQueryData([key], { data: [] });
-    await user.click(await screen.findByRole("button", { name: "删除空业务网站" }));
+    await user.click(await screen.findByRole("button", { name: "删除网站" }));
     await user.click(await screen.findByRole("button", { name: "确认" }));
     await waitFor(() => expect(view.writes.filter(write => write.method === "DELETE")).toHaveLength(1));
     await act(async () => { await view.router.navigate(destination); });
@@ -680,7 +680,7 @@ describe("website field feedback", () => {
   it("preserves a destination whose route is still loading when deletion completes", async () => {
     const view = mount(), user = userEvent.setup();
     const deletion = view.delayNextDelete(), navigation = view.delayNextNavigation();
-    await user.click(await screen.findByRole("button", { name: "删除空业务网站" }));
+    await user.click(await screen.findByRole("button", { name: "删除网站" }));
     await user.click(await screen.findByRole("button", { name: "确认" }));
     await waitFor(() => expect(view.writes.filter(write => write.method === "DELETE")).toHaveLength(1));
     await act(async () => { void view.router.navigate("/orders"); });
@@ -698,7 +698,7 @@ describe("website field feedback", () => {
   it("preserves a navigation started in the same tick as the deletion response", async () => {
     const view = mount(), user = userEvent.setup();
     const deletion = view.delayNextDelete(), navigation = view.delayNextNavigation();
-    await user.click(await screen.findByRole("button", { name: "删除空业务网站" }));
+    await user.click(await screen.findByRole("button", { name: "删除网站" }));
     await user.click(await screen.findByRole("button", { name: "确认" }));
     await waitFor(() => expect(view.writes.filter(write => write.method === "DELETE")).toHaveLength(1));
     try {
