@@ -487,7 +487,7 @@ export function SettingsEditor({
                 return next;
               });
             }}>
-            {([["AREA", "面积图"], ["BAR", "柱状图"], ["LINE", "折线图"]] as const).map(([value, label]) =>
+            {([["AREA", "面积图"], ["BAR", "柱状图"], ["LINE", "累计图"]] as const).map(([value, label]) =>
               <ToggleGroupItem key={value} value={value} type="button" disabled={save.isPending}
                 aria-invalid={!!fieldErrors.dashboard_chart_type}
                 className="h-auto min-h-8 min-w-0 flex-[1_1_6rem] whitespace-normal py-2 max-md:flex-[0_1_auto] max-md:py-1">{label}</ToggleGroupItem>)}

@@ -26,6 +26,8 @@ import {
 const chartConfig = {
   amount: { label: "确认金额" },
   orders: { label: "新建订单" },
+  cumulative_amount: { label: "确认金额" },
+  cumulative_orders: { label: "新建订单" },
 } satisfies ChartConfig;
 const activeDot = {
   r: 5,
@@ -120,7 +122,11 @@ export function TrendPlot({
 
   const gradientId = "trend-" + useId().replace(/[^a-zA-Z0-9_-]/g, "");
   const seriesColor = metric === "amount" ? "var(--chart-1)" : "var(--chart-2)";
-  const maximum = Math.max(...data.map((day) => day[metric]), 0);
+  const cumulative = chartType === "LINE";
+  const seriesKey = cumulative
+    ? (metric === "amount" ? "cumulative_amount" : "cumulative_orders")
+    : metric;
+  const maximum = Math.max(...data.map((day) => day[seriesKey]), 0);
   const activeDays = data.filter((day) => day[metric] > 0).length;
   const Chart =
     chartType === "BAR"
@@ -170,8 +176,8 @@ export function TrendPlot({
         className="trend-plot aspect-auto w-full"
         aria-label={
           metric === "amount"
-            ? "每日付款确认金额，左右方向键查看日期"
-            : "每日新建订单，左右方向键查看日期"
+            ? (cumulative ? "每日付款确认金额累计趋势，左右方向键查看日期" : "每日付款确认金额，左右方向键查看日期")
+            : (cumulative ? "每日新建订单累计趋势，左右方向键查看日期" : "每日新建订单，左右方向键查看日期")
         }
       >
         <Chart
@@ -193,7 +199,7 @@ export function TrendPlot({
               <stop offset="95%" stopColor={seriesColor} stopOpacity={0.02} />
             </linearGradient>
           </defs>
-          <CartesianGrid vertical={false} strokeDasharray="3 5" />
+          <CartesianGrid vertical={false} strokeDasharray="2 4" strokeOpacity={0.55} />
           <XAxis
             dataKey="date"
             tickLine={false}
@@ -239,26 +245,29 @@ export function TrendPlot({
                 className="trend-tooltip"
                 labelFormatter={(value) => {
                   const date = String(value);
-                  return `${date.replaceAll("-", "/")} ${dailyWeekday(date)}${date === today ? " · 今日" : ""}`;
+                  return `${date.replaceAll("-", "/")} ${dailyWeekday(date)}${date === today ? " · 今日" : ""}${cumulative ? " · 累计" : ""}`;
                 }}
-                formatter={(value, name) => (
-                  <div className="trend-tooltip-value">
-                    <span className="flex min-w-0 items-center gap-2 text-muted-foreground">
-                      <span
-                        className={cn(
-                          "size-2.5 shrink-0 rounded-[2px]",
-                          name === "amount" ? "bg-chart-1" : "bg-chart-2",
-                        )}
-                      />
-                      {chartConfig[name as TrendMetric]?.label ?? name}
-                    </span>
-                    <span className="tabular-nums font-medium text-foreground">
-                      {name === "amount"
-                        ? money(Number(value))
-                        : count(Number(value))}
-                    </span>
-                  </div>
-                )}
+                formatter={(value, name) => {
+                  const isAmount = name === "amount" || name === "cumulative_amount";
+                  return (
+                    <div className="trend-tooltip-value">
+                      <span className="flex min-w-0 items-center gap-2 text-muted-foreground">
+                        <span
+                          className={cn(
+                            "size-2.5 shrink-0 rounded-[2px]",
+                            isAmount ? "bg-chart-1" : "bg-chart-2",
+                          )}
+                        />
+                        {chartConfig[name as keyof typeof chartConfig]?.label ?? name}
+                      </span>
+                      <span className="tabular-nums font-medium text-foreground">
+                        {isAmount
+                          ? money(Number(value))
+                          : count(Number(value))}
+                      </span>
+                    </div>
+                  );
+                }}
               />
             }
           />
@@ -269,15 +278,15 @@ export function TrendPlot({
               fill={seriesColor}
               fillOpacity={0.85}
               activeBar={{ fillOpacity: 1 }}
-              radius={[3, 3, 0, 0]}
+              radius={[4, 4, 0, 0]}
               maxBarSize={32}
               isAnimationActive={false}
             />
           ) : chartType === "LINE" ? (
             <Line
               className="trend-series-motion"
-              dataKey={metric}
-              type="linear"
+              dataKey={seriesKey}
+              type="monotone"
               stroke={seriesColor}
               strokeWidth={2}
               dot={dot}
@@ -288,7 +297,7 @@ export function TrendPlot({
             <Area
               className="trend-series-motion"
               dataKey={metric}
-              type="step"
+              type="monotone"
               fill={"url(#" + gradientId + ")"}
               fillOpacity={1}
               stroke={seriesColor}

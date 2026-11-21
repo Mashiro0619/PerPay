@@ -8,6 +8,8 @@ export type TrendDay = DailyDay & {
   /** Amounts remain in cents until display formatting. */
   readonly amount: number;
   readonly orders: number;
+  readonly cumulative_amount: number;
+  readonly cumulative_orders: number;
 };
 
 export interface TrendMetricSummary {
@@ -57,11 +59,19 @@ function summarize(
 
 export function buildTrendReport(analytics: SystemAnalytics): TrendReport {
   const daily = buildDailyReport(analytics);
-  const data = [...daily.days].reverse().map((day) => ({
-    ...day,
-    amount: day.confirmed_amount_cents,
-    orders: day.orders_created,
-  }));
+  let cumulativeAmount = 0;
+  let cumulativeOrders = 0;
+  const data = [...daily.days].reverse().map((day) => {
+    cumulativeAmount += day.confirmed_amount_cents;
+    cumulativeOrders += day.orders_created;
+    return {
+      ...day,
+      amount: day.confirmed_amount_cents,
+      orders: day.orders_created,
+      cumulative_amount: cumulativeAmount,
+      cumulative_orders: cumulativeOrders,
+    };
+  });
   const completed = data.filter((day) => day.date < daily.today);
 
   return {

@@ -60,7 +60,7 @@ export function CombinedTrendChart({
       aria-label="每日确认金额与新建订单，左轴为元，右轴为笔数，左右方向键查看日期">
       <ComposedChart key={layout.fontSize} accessibilityLayer data={data}
         margin={{ top: layout.fontSize, right: 0, bottom: layout.fontSize / 2, left: 0 }}>
-        <CartesianGrid vertical={false} strokeDasharray="3 5" yAxisId="amount" />
+        <CartesianGrid vertical={false} strokeDasharray="2 4" strokeOpacity={0.55} yAxisId="amount" />
         <XAxis xAxisId={0} dataKey="date" tickLine={false} axisLine={false}
           tickMargin={8} minTickGap={layout.fontSize * 3} padding={{ left: 8, right: 8 }}
           height={layout.xHeight} fontSize={layout.fontSize}
@@ -106,9 +106,9 @@ export function CombinedTrendChart({
           } />
         <Bar dataKey="amount" xAxisId={0} yAxisId="amount"
           fill="var(--chart-1)" fillOpacity={0.18} stroke="var(--chart-1)" strokeOpacity={0.75}
-          radius={[2, 2, 0, 0]} maxBarSize={28} minPointSize={value => Number(value) > 0 ? 3 : 0}
+          radius={[3, 3, 0, 0]} maxBarSize={28} minPointSize={value => Number(value) > 0 ? 3 : 0}
           activeBar={{ fillOpacity: 0.3 }} isAnimationActive={false} />
-        <Line dataKey="orders" xAxisId={0} yAxisId="orders" type="linear"
+        <Line dataKey="orders" xAxisId={0} yAxisId="orders" type="monotone"
           stroke="var(--chart-2)" strokeWidth={2.5} strokeDasharray="6 4"
           dot={dot} activeDot={{ r: 5, fill: "var(--card)", stroke: "var(--chart-2)", strokeWidth: 2 }}
           isAnimationActive={false} />

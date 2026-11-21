@@ -1,5 +1,5 @@
 import { lazy, Suspense, useId, useState } from "react";
-import { ChartArea, ChartColumn, ChartLine, Info } from "lucide-react";
+import { ChartArea, ChartColumn, Info, TrendingUp } from "lucide-react";
 import type { DashboardChartType, SystemAnalytics } from "@/api/client";
 import { useChartType } from "@/hooks/use-chart-type";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -8,6 +8,7 @@ import { buildTrendReport, type TrendView } from "@/lib/trend-analytics";
 import { dailyDateLabel } from "@/lib/daily-analytics";
 import { DailyAnalytics } from "@/components/daily-analytics";
 import { CombinedTrendPlot } from "@/components/combined-trend-plot";
+import { TrendSeriesSymbol } from "@/components/trend-series-symbol";
 import {
   SelectionMotionGroup,
   SelectionMotionIndicator,
@@ -67,7 +68,7 @@ const metrics = [...individualMetrics, { value: "combined", label: "金额与订
 const chartTypes = [
   { value: "AREA", label: "面积图", icon: ChartArea },
   { value: "BAR", label: "柱状图", icon: ChartColumn },
-  { value: "LINE", label: "折线图", icon: ChartLine },
+  { value: "LINE", label: "累计图", icon: TrendingUp },
 ] as const;
 
 export function ChartAreaInteractive({
@@ -290,7 +291,10 @@ export function ChartAreaInteractive({
                   const formatted = !report ? "—" : value === "amount" ? money(report.amount.total) : count(report.orders.total);
                   return (
                   <div className="trend-total" key={value}>
-                    <dt>{label}</dt>
+                    <dt className="flex items-center gap-2">
+                      <TrendSeriesSymbol metric={value} />
+                      <span>{label}</span>
+                    </dt>
                     <dd id={summaryId + value} data-metric-value data-trend-metric={value}
                       data-value-length={pending ? undefined : formatted.length} className="trend-value leading-tight">
                       {pending ? <Skeleton className="h-9 w-32" /> : formatted}
@@ -413,7 +417,7 @@ export function ChartAreaInteractive({
                       <span>{format(singleActiveDay[singleMetric])}</span>
                     </p>
                   ) : (
-                    <p>按日展示 · 今天仍在累计</p>
+                    <p>{metric !== "combined" && effectiveType === "LINE" ? "按日累计增长 · 今天仍在累计" : "按日展示 · 今天仍在累计"}</p>
                   )}
                 </div>
               </>
