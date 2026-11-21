@@ -28,21 +28,21 @@ export function auditViewValues(id: AuditView): Record<string, string | null> {
 }
 
 export function auditCaptureLabel(capture?: AuditCaptureState): string {
-  if (!capture) return "采集状态";
-  if (capture.dropped_events > 0 || capture.spool_gap_count > 0) return "采集有缺口";
-  if (capture.state === "unavailable") return "采集状态暂不可用";
-  if (capture.state === "degraded") return "采集异常";
-  if (capture.write_failures > 0 || capture.spool_failures > 0) return "曾有采集异常";
-  return "采集正常";
+  if (!capture) return "日志记录状态";
+  if (capture.dropped_events > 0 || capture.spool_gap_count > 0) return "部分日志未记录";
+  if (capture.state === "unavailable") return "日志记录状态暂不可用";
+  if (capture.state === "degraded") return "日志记录异常";
+  if (capture.write_failures > 0 || capture.spool_failures > 0) return "曾有日志记录异常";
+  return "记录正常";
 }
 
 const fieldLabels: Readonly<Record<string, string>> = {
-  api_client_id: "客户端 ID",
+  api_client_id: "网站 ID",
   name: "名称", enabled: "启用状态", deleted: "删除状态", accepting_orders: "接收新订单", notifications_enabled: "付款通知",
-  notification_origin: "通知域名", return_origin: "返回域名", "collection.mode": "收款账号分配方式", "collection.accounts": "参与收款的账号",
-  system_name: "系统名称", checkout_name: "收银台名称", checkout_help_url: "收银台帮助链接", checkout_show_product_name: "展示商品名称", dashboard_chart_type: "总览图表类型",
+  notification_origin: "通知域名", return_origin: "返回域名", "collection.mode": "支付宝账号分配方式", "collection.accounts": "参与收款的账号",
+  system_name: "系统名称", checkout_name: "收银台名称", checkout_help_url: "收银台帮助链接", checkout_show_product_name: "展示商品名称", dashboard_chart_type: "收款趋势默认图形",
   order_ttl_seconds: "收银台有效期（秒）", amount_offset_maximum_cents: "最大加价（分）", amount_reuse_cooldown_seconds: "金额复用间隔（秒）", pending_order_limit: "待付款订单上限",
-  app_id: "应用编号（App ID）", environment: "支付宝环境", code_payload: "收款码", collection_code_payload: "收款码",
+  app_id: "App ID", environment: "支付宝环境", code_payload: "收款码", collection_code_payload: "收款码",
   private_key: "应用私钥", provider_private_key: "应用私钥", public_key: "支付宝公钥", provider_public_key: "支付宝公钥", pending_private_key: "待启用应用私钥",
   api_secret: "API 密钥", webhook_secret: "通知签名密钥", cidrs: "管理员 IP 白名单", admin_access_enabled: "管理员 IP 白名单开关",
   v1_key: "易支付 V1 商户密钥", v2_merchant: "易支付 V2 商户私钥", v2_platform: "易支付 V2 平台私钥",
@@ -63,7 +63,7 @@ export function auditFieldLabel(field: string): string {
   return fieldLabels[field] ?? fieldLabels[field.split(".").at(-1)!] ?? field;
 }
 const subjectLabels: Readonly<Record<string, string>> = {
-  settings: "系统设置", runtime_configuration: "系统设置", site: "业务网站", website: "业务网站", site_defaults: "网站默认模板", alipay_account: "收款账号",
+  settings: "系统设置", runtime_configuration: "系统设置", site: "业务网站", website: "业务网站", site_defaults: "新网站默认设置", alipay_account: "支付宝账号",
   admin: "管理员", administrator: "管理员", administrator_session: "登录会话", admin_session: "登录会话", api_client: "调用凭据",
   order: "订单", payment_order: "订单", ledger_entry: "支付宝流水", payment_match: "收款关联", financial_exception: "账务异常",
   webhook_delivery: "付款通知", notification: "付款通知", audit_export: "审计导出",
@@ -74,20 +74,20 @@ export function auditSubjectLabel(type: string | null): string { return type ? s
 const actions: Readonly<Record<string, string>> = {
   "admin.initialized": "初始化管理员", "admin.login": "管理员登录", "admin.logout": "退出登录",
   "admin.password_changed": "修改管理员密码", "admin.password_recover": "恢复管理员密码",
-  "admin.allowlist_disabled": "恢复管理员访问", "admin.session_revoked": "撤销登录会话",
-  "admin.sessions_revoke_all": "注销全部会话", "admin.sessions_revoke_others": "退出其他会话",
+  "admin.allowlist_disabled": "停用管理员 IP 白名单（离线恢复）", "admin.session_revoked": "强制下线登录设备",
+  "admin.sessions_revoke_all": "退出全部设备", "admin.sessions_revoke_others": "退出其他设备",
   "api_client.initialized": "初始化调用凭据", "api_client.rotated": "轮换调用凭据",
   "site.created": "创建业务网站", "site.updated": "更新业务网站", "site.deleted": "删除业务网站",
-  "site.client_id_changed": "更换客户端 ID",
+  "site.client_id_changed": "更换网站 ID",
   "site.secret_rotated": "轮换网站密钥", "site.secret_viewed": "查看网站密钥", "site_defaults.updated": "更新网站默认设置",
   "epay.configuration_updated": "更新易支付设置", "epay.secret_viewed": "查看易支付密钥",
   "epay.configuration_exported": "导出网站接入配置", "epay.secret_rotated": "轮换易支付密钥",
-  "alipay_account.created": "添加收款账号", "alipay_account.updated": "更新收款账号", "alipay_account.deleted": "删除收款账号",
-  "alipay_account.checked": "检查收款账号",
+  "alipay_account.created": "添加支付宝账号", "alipay_account.updated": "更新支付宝账号", "alipay_account.deleted": "删除支付宝账号",
+  "alipay_account.checked": "检查支付宝账号",
   "alipay_account.application_key_generated": "生成账号应用密钥", "alipay_account.application_key_regenerated": "重新生成账号应用密钥",
   "alipay_account.application_key_prepared": "准备账号应用密钥", "alipay_account.application_key_activated": "启用账号应用密钥",
   "alipay_account.application_key_discarded": "放弃账号待用密钥",
-  "settings.admin_access_updated": "更新管理员访问规则", "settings.advanced_updated": "更新高级设置",
+  "settings.admin_access_updated": "更新管理员 IP 白名单", "settings.advanced_updated": "更新高级设置",
   "settings.backup_updated": "更新备份设置", "settings.collection_code_updated": "更新收款码",
   "settings.collection_policy_updated": "更新查账策略", "settings.collection_updated": "更新收款设置",
   "settings.display_updated": "更新显示设置", "settings.notifications_updated": "更新通知设置",
@@ -100,10 +100,10 @@ const actions: Readonly<Record<string, string>> = {
   "financial.auto_settlement": "自动确认收款", "financial.manual_settlement": "人工确认收款",
   "financial.reverse_settlement": "撤销收款关联", "financial.supersede_candidate": "更新待确认的收款关联",
   "work_items.ignore_all": "批量忽略提醒", "work_items.ignore": "忽略提醒", "work_items.restore": "恢复提醒",
-  "webhook.delivery_redelivered": "重新投递通知", "webhook.delivery_retried": "立即重试通知", "webhook.signing_key_initialized": "初始化通知签名密钥",
+  "webhook.delivery_redelivered": "重新发送通知", "webhook.delivery_retried": "立即重试通知", "webhook.signing_key_initialized": "初始化通知签名密钥",
   "webhook.signing_key_rotated": "轮换通知签名密钥", "webhook.delivery": "投递通知", "webhook.dispatch": "通知调度",
   "http.request": "接口请求", "http.read": "接口查询", "audit.export": "导出审计日志", "audit.export_generated": "导出审计日志",
-  "ledger.scan": "扫描支付宝流水", "reconciliation.sweep": "执行对账扫描", "activity.capture_gap": "活动日志采集缺口",
+  "ledger.scan": "自动查账", "reconciliation.sweep": "执行自动对账", "activity.capture_gap": "部分活动日志未记录",
   "backup.scheduler": "备份调度", "backup.run_once": "立即备份", "backup.health": "检查备份状态",
   "backup.restore": "恢复备份", "backup.delete": "删除备份", "backup.lock.clear": "清理备份锁",
   "backup.list": "查看备份列表", "backup.files.list": "查看备份文件", "backup.lock.inspect": "检查备份锁",
@@ -117,7 +117,7 @@ const actions: Readonly<Record<string, string>> = {
   "maintenance.quarantine.list": "查看隔离列表", "maintenance.lock.inspect": "检查维护锁",
   "maintenance.publication_lock.inspect": "检查发布锁", "maintenance.command.invalid": "无效维护命令",
   "reconciliation_scheduler_startup_failed": "对账调度器启动失败", "webhook_scheduler_startup_failed": "通知调度器启动失败",
-  "reconciliation_sweep_trigger_failed": "触发对账扫描失败", "ledger_scheduler_failed": "流水调度失败",
+  "reconciliation_sweep_trigger_failed": "触发自动对账失败", "ledger_scheduler_failed": "查账任务调度失败",
   "webhook_delivery_trigger_failed": "触发通知投递失败", "reconciliation_entry_failed": "流水对账失败",
   "reconciliation_order_failed": "订单对账失败", "webhook_scheduler_failed": "通知调度失败",
   "system.started": "系统启动", "system.stopping": "系统正在停止", "system.stopped": "系统停止",

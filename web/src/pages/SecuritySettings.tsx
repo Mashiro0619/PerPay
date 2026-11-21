@@ -31,7 +31,7 @@ export function SecuritySettings({ settings }: { settings: RuntimeSettings }) {
     <Card>
       <CardHeader><CardTitle role="heading" aria-level={2}>密钥</CardTitle></CardHeader>
       <CardContent className="flex flex-col items-start gap-2">
-        <Link to="/sites">业务网站密钥与客户端 ID</Link>
+        <Link to="/sites">业务网站密钥与网站 ID</Link>
         <Link to="/settings/accounts">在支付宝账号中管理应用密钥</Link>
         <a data-external-link href="https://github.com/Mashiro0619/PerPay/blob/main/USAGE.md" target="_blank" rel="noopener noreferrer" className="text-sm underline underline-offset-4">接入文档</a>
       </CardContent>

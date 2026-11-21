@@ -328,7 +328,7 @@ function ArchiveRecords({ archiveId }: { archiveId: string }) {
   });
   const unavailable = records.error instanceof ApiError && [404, 410].includes(records.error.status);
   return <Card size="sm">
-    <CardHeader><CardTitle role="heading" aria-level={2}>全部归档记录</CardTitle><CardDescription>查看订单、流水、采集批次和请求检查点等归档内容。</CardDescription></CardHeader>
+    <CardHeader><CardTitle role="heading" aria-level={2}>全部归档记录</CardTitle><CardDescription>查看订单、支付宝流水及相关业务记录的归档内容。</CardDescription></CardHeader>
     <CardContent className="min-w-0">
       {unavailable ? <ErrorNotice error={records.error} /> : <QueryView query={records}>{data => {
         const choices = [{ value: "", label: "全部数据表 · " + count(data.tables.reduce((total, item) => total + item.count, 0)) + " 条" },

@@ -82,7 +82,7 @@ export function accountHealth(account: AlipayAccount): string {
     account.health.state === "failed"
   )
     return "查账异常";
-  if (compensationContinuing) return account.health.collection_ready ? "查账正常 · 历史补扫中" : "历史补扫中";
+  if (compensationContinuing) return account.health.collection_ready ? "查账正常 · 历史补查中" : "历史补查中";
   if (
     account.health.state === "running" ||
     account.health.state === "catching_up"

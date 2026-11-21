@@ -182,12 +182,12 @@ export function AdminAccessSettings({
             </AlertDescription>
           </Alert>}
           {review && <Alert>
-            <AlertTitle>访问规则存在不同修改</AlertTitle>
+            <AlertTitle>IP 白名单存在不同修改</AlertTitle>
             <AlertDescription>
               <FieldGroup>
                 <Field><FieldTitle>服务器规则</FieldTitle><FieldDescription className="whitespace-pre-wrap break-all">{review.snapshot.cidrs.join("\n") || "空规则"}</FieldDescription></Field>
                 <Field><FieldTitle>我的规则</FieldTitle><FieldDescription className="whitespace-pre-wrap break-all">{review.text || "空规则"}</FieldDescription></Field>
-                <ToggleGroup aria-label="访问规则冲突处理" variant="outline" className="max-w-full flex-wrap"
+                <ToggleGroup aria-label="IP 白名单冲突处理" variant="outline" className="max-w-full flex-wrap"
                   value={choice ? [choice] : []} onValueChange={value => setChoice(value[0] === "local" || value[0] === "remote" ? value[0] : null)}>
                   <ToggleGroupItem value="local">保留我的修改</ToggleGroupItem>
                   <ToggleGroupItem value="remote">采用服务器值</ToggleGroupItem>
@@ -280,7 +280,7 @@ export function AdminAccessSettings({
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>确认保存访问规则？</DialogTitle>
+            <DialogTitle>确认保存 IP 白名单？</DialogTitle>
           </DialogHeader>
           <DialogBody>
             <DialogDescription>

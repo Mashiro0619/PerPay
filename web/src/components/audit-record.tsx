@@ -65,12 +65,12 @@ export function AuditCaptureNotice({ capture, compact = false }: Pick<AuditMetad
   const gaps = capture.dropped_events > 0 || capture.spool_gap_count > 0;
   const errors = capture.write_failures > 0 || capture.spool_failures > 0;
   if (capture.state === "healthy" && !gaps && !errors) return compact ? null : <div className="flex min-w-0 flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground" data-audit-capture>
-    <span>采集正常 · {capture.last_flush_at ? <>最近成功写入：<AuditTime value={capture.last_flush_at} /></> : "等待首次成功写入"}</span>
+    <span>记录正常 · {capture.last_flush_at ? <>最近成功写入：<AuditTime value={capture.last_flush_at} /></> : "等待首次成功写入"}</span>
     {capture.spool_last_import_at && <span>最近维护日志导入：<AuditTime value={capture.spool_last_import_at} /></span>}
     {capture.buffered_events > 0 && <span>等待写入：{capture.buffered_events.toLocaleString("zh-CN")} 条</span>}
   </div>;
   return <Alert variant={capture.state === "healthy" ? "default" : "destructive"} data-audit-capture>
-    <AlertTitle>{gaps ? "部分活动日志未完整记录" : capture.state === "unavailable" ? "采集状态暂不可用" : capture.state === "degraded" ? "日志采集异常" : "日志采集曾出现异常"}</AlertTitle>
+    <AlertTitle>{gaps ? "部分活动日志未完整记录" : capture.state === "unavailable" ? "日志记录状态暂不可用" : capture.state === "degraded" ? "日志记录异常" : "日志记录曾出现异常"}</AlertTitle>
     <AlertDescription>
       <div className="flex flex-wrap gap-x-4 gap-y-1">
         {capture.dropped_events > 0 && <span>未记录活动：{capture.dropped_events.toLocaleString("zh-CN")} 条</span>}

@@ -24,17 +24,17 @@ export default function AuditStatus() {
   const refresh = <RefreshButton busy={metadata.isFetching} disabled={metadata.isFetching} onClick={() => { void metadata.refetch(); }} />;
 
   return <DetailPage>
-    <PageHeading title="审计采集状态" />
+    <PageHeading title="日志记录状态" />
     <DetailNavigation back={back} global><PageHeaderActions>{refresh}</PageHeaderActions></DetailNavigation>
     <QueryView query={metadata}>{({ data }) => <>
       <OverlaySummary>
-        <RecordSummary label="采集状态" size="phrase" value={auditCaptureLabel(data.capture)}
+        <RecordSummary label="日志记录状态" size="phrase" value={auditCaptureLabel(data.capture)}
           meta={[data.capture.last_flush_at ? <>最近成功写入：<RecordTime value={data.capture.last_flush_at} /></> : "等待首次成功写入"]} />
       </OverlaySummary>
       <AuditCaptureNotice capture={data.capture} compact />
       <Sections>
         {/* The summary already names these figures, so they carry no visible title of their own. */}
-        <div role="group" aria-label="采集概况" data-audit-capture-summary className="min-w-0">
+        <div role="group" aria-label="日志记录概况" data-audit-capture-summary className="min-w-0">
           <FieldList items={[
             { label: "等待写入", value: data.capture.buffered_events.toLocaleString("zh-CN") + " 条" },
             data.capture.last_dropped_at ? { label: "最近丢弃活动", value: <RecordTime value={data.capture.last_dropped_at} />, kind: "time" } : null,

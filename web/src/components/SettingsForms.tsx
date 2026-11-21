@@ -69,7 +69,7 @@ export type ConfigurationSection =
 export const sections = [
   ["accounts", "支付宝账号"],
   ["collection-policy", "查账设置"],
-  ["security", "密钥与安全"],
+  ["security", "账户与安全"],
   ["backup", "备份与恢复"],
   ["display", "界面显示"],
   ["advanced", "高级设置"],
@@ -374,11 +374,11 @@ export function SettingsEditor({
       <NumberField
         name="minimum_scan_interval_seconds"
         error={fieldErrors.minimum_scan_interval_seconds}
-        label="查账最小间隔（秒）"
+        label="最小查账间隔（秒）"
         value={initialSettings.collection_policy?.minimum_scan_interval_seconds ?? PROVIDER_TIMING_DEFAULTS.activeScanIntervalSeconds}
         min={5}
         max={3600}
-        hint="也适用于手动核实，不能大于活跃间隔。"
+        hint="同样限制手动查账的频率，且不能大于活跃查账间隔。"
       />
       <NumberField
         name="safety_lag_seconds"
@@ -445,7 +445,7 @@ export function SettingsEditor({
         className={displayRowClassName}
         data-invalid={!!fieldErrors.system_name}
       >
-        <FieldLabel htmlFor="setting-system-name">支付系统名称</FieldLabel>
+        <FieldLabel htmlFor="setting-system-name">系统名称</FieldLabel>
         <FieldContent className="min-w-0">
           <Input
             id="setting-system-name"

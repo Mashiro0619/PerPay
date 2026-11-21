@@ -54,13 +54,13 @@ type SessionAction =
 
 function confirmation(action: SessionAction) {
   switch (action.kind) {
-    case "logout": return { title: "退出当前会话？", description: "当前设备需要重新登录。", label: "退出登录" };
-    case "others": return { title: "退出其他会话？", description: "其他登录会话将立即失效，当前会话保持登录。", label: "退出其他会话" };
-    case "all": return { title: "注销全部会话？", description: "包括当前设备，所有登录会话都需要重新登录。", label: "注销全部会话" };
+    case "logout": return { title: "退出当前登录？", description: "当前设备需要重新登录。", label: "退出当前登录" };
+    case "others": return { title: "退出其他设备？", description: "其他设备将立即下线，当前设备保持登录。", label: "退出其他设备" };
+    case "all": return { title: "退出全部设备？", description: "包括当前设备，所有已登录设备都需要重新登录。", label: "退出全部设备" };
     case "single": return {
-      title: "撤销此会话？",
-      description: `${sessionDevice(action.session.user_agent).label}，登录 IP：${action.session.ip_address ?? "未知"}。此会话将立即失效，需要重新登录。`,
-      label: "撤销",
+      title: "强制下线此设备？",
+      description: `${sessionDevice(action.session.user_agent).label}，登录 IP：${action.session.ip_address ?? "未记录"}。此设备将立即下线，需要重新登录。`,
+      label: "强制下线",
     };
   }
 }
@@ -107,7 +107,7 @@ export function AdministratorSessions({ detailSessionId }: { detailSessionId?: s
       }
       void queryClient.invalidateQueries({ queryKey: administratorSessionsKey });
       setAction(null);
-      success(completed.kind === "single" ? "已撤销该登录会话" : count ? `已退出 ${count} 个其他会话` : "没有其他登录会话");
+      success(completed.kind === "single" ? "已强制下线该设备" : count ? `已退出 ${count} 台其他设备` : "没有其他已登录设备");
     },
     onSettled: () => { sending.current = false; },
   });
@@ -140,8 +140,8 @@ export function AdministratorSessions({ detailSessionId }: { detailSessionId?: s
     { id: "ip", label: "登录 IP", summaryDefault: true, cell: row => row.ip_address ?? "未知" },
     { id: "activity", label: "最近活跃", layout: "datetime", summaryDefault: true, cell: row => <time dateTime={row.last_seen_at} title={dateTime(row.last_seen_at) + "（北京时间）"}>{sessionActivity(row.last_seen_at)}</time> },
     { id: "actions", label: "操作", layout: "actions", hideable: false, cell: row => <Button variant={row.is_current ? "outline" : "ghost"} size="sm" disabled={operation.isPending}
-      aria-label={row.is_current ? "退出登录" : `撤销 ${sessionDevice(row.user_agent).label} 会话`}
-      onClick={event => open(row.is_current ? { kind: "logout" } : { kind: "single", session: row }, event.currentTarget)}>{row.is_current ? "退出登录" : "撤销"}</Button> },
+      aria-label={row.is_current ? "退出当前登录" : `强制下线 ${sessionDevice(row.user_agent).label}`}
+      onClick={event => open(row.is_current ? { kind: "logout" } : { kind: "single", session: row }, event.currentTarget)}>{row.is_current ? "退出当前登录" : "强制下线"}</Button> },
   ];
   return (
     <>
@@ -171,7 +171,7 @@ export function AdministratorSessions({ detailSessionId }: { detailSessionId?: s
           </div>
         </> : !sessions.error && <Empty><EmptyHeader><EmptyTitle>此会话已结束</EmptyTitle><EmptyDescription>已失效的会话不再出现在有效会话列表中。</EmptyDescription></EmptyHeader></Empty>}
         {selected && <ActionBar menuLabel="更多操作，会话操作" primary={{
-          label: selected.is_current ? "退出当前会话" : "撤销此会话",
+          label: selected.is_current ? "退出当前登录" : "强制下线",
           danger: true,
           disabled: operation.isPending,
           onSelect: trigger => open(selected.is_current ? { kind: "logout" } : { kind: "single", session: selected }, trigger),
@@ -183,7 +183,7 @@ export function AdministratorSessions({ detailSessionId }: { detailSessionId?: s
           <CardAction className="administrator-sessions-actions flex items-center gap-1">
             <RefreshButton size="icon-sm" disabled={operation.isPending} busy={sessions.isFetching} onClick={() => { void sessions.refetch(); }} />
             <Button variant="outline" size="sm" disabled={!hasOthers || operation.isPending} onClick={event => open({ kind: "others" }, event.currentTarget)}>
-              <LogOut data-icon="inline-start" />退出其他会话
+              <LogOut data-icon="inline-start" />退出其他设备
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger render={<Button ref={menuTrigger} variant="ghost" size="icon-sm" aria-label="会话操作" disabled={operation.isPending} />}>
@@ -191,7 +191,7 @@ export function AdministratorSessions({ detailSessionId }: { detailSessionId?: s
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuGroup>
-                  <DropdownMenuItem variant="destructive" onClick={() => open({ kind: "all" }, menuTrigger.current)}>注销全部会话</DropdownMenuItem>
+                  <DropdownMenuItem variant="destructive" onClick={() => open({ kind: "all" }, menuTrigger.current)}>退出全部设备</DropdownMenuItem>
                 </DropdownMenuGroup>
               </DropdownMenuContent>
             </DropdownMenu>

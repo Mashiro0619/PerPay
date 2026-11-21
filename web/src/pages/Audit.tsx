@@ -110,7 +110,7 @@ export default function Audit() {
   }));
   const deletedSites = new Set(metadata.data?.data.sites.filter(site => site.deleted).map(site => site.site_id) ?? []);
   const deleted = (event: AuditEventItem) => !!event.site_id && deletedSites.has(event.site_id);
-  const captureLabel = metadata.error ? "采集状态暂不可用" : auditCaptureLabel(metadata.data?.data.capture);
+  const captureLabel = metadata.error ? "日志记录状态暂不可用" : auditCaptureLabel(metadata.data?.data.capture);
   const statusHref = "/audit/status" + (events.data ? "?snapshot_at=" + encodeURIComponent(events.data.page.snapshot_at) : "");
 
   function refresh() {
@@ -137,7 +137,7 @@ export default function Audit() {
 
   return <div className="flex min-w-0 flex-col gap-3" data-audit-page>
     <PageHeading title="审计日志" />
-    <PageHeaderActions><PageHeaderActionLink><Link global to={statusHref} className={buttonVariants({ variant: "ghost", size: "sm" })} data-audit-status-trigger aria-label={captureLabel + "，查看采集状态"}>{captureLabel}</Link></PageHeaderActionLink></PageHeaderActions>
+    <PageHeaderActions><PageHeaderActionLink><Link global to={statusHref} className={buttonVariants({ variant: "ghost", size: "sm" })} data-audit-status-trigger aria-label={captureLabel + "，查看日志记录状态"}>{captureLabel}</Link></PageHeaderActionLink></PageHeaderActions>
     {metadata.data && <AuditCaptureNotice capture={metadata.data.data.capture} compact />}
     <ErrorNotice error={metadata.error} retry={() => { void metadata.refetch(); }} retainedData={!!metadata.data} />
     <ListColumnsProvider>

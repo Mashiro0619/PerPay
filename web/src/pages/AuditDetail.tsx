@@ -79,7 +79,7 @@ function AuditRecord({ event, siteDeleted }: { event: AuditEventDetail; siteDele
           { label: "执行者", value: <AuditActor event={event} /> },
           { label: "关联网站", value: <AuditSite event={event} deleted={siteDeleted} record /> },
           { label: "操作对象", value: event.subject_type === "alipay_account" && event.subject_id
-            ? <AuditRecordLink to={"/settings/accounts/" + encodeURIComponent(event.subject_id)}>查看收款账号</AuditRecordLink>
+            ? <AuditRecordLink to={"/settings/accounts/" + encodeURIComponent(event.subject_id)}>查看支付宝账号</AuditRecordLink>
             : auditSubjectLabel(event.subject_type) },
           { label: "来源 IP", value: event.source_address ?? auditContextUnavailable(event), kind: event.source_address ? "id" : "text", copy: event.source_address },
           { label: "设备 / 客户端", value: auditClientLabel(event) },

@@ -51,7 +51,7 @@ export function LedgerIngestionDiagnostics({
           {latest && (
             <>
               <p>
-                {latest.scan_kind === "NORMAL" ? "正常查账" : "历史查账"}：
+                {latest.scan_kind === "NORMAL" ? "常规查账" : "历史补查"}：
                 {latest.reason}
               </p>
               <Collapsible>
@@ -75,7 +75,7 @@ export function LedgerIngestionDiagnostics({
             {diagnostics.in_flight
               ? "正在查账，请等待本轮结果。"
               : diagnostics.next_retry_at
-                ? `计划下次尝试：${timestamp(diagnostics.next_retry_at)}`
+                ? `计划下次重试：${timestamp(diagnostics.next_retry_at)}`
                 : "重试时间未定，请检查查账任务。"}
           </p>
           <p>

@@ -48,7 +48,7 @@ export function MaintenanceJobResult({ job }: { job: MaintenanceJob | null }) {
     startedAt={job.started_at} finishedAt={job.finished_at}>
     {running && (job.kind === "ARCHIVE" || job.kind === "RESTORE") && <span>业务暂不可用，任务完成后自动恢复。可留在本页查看进度。</span>}
     {job.result?.backup_name && <CopyValue value={job.result.backup_name} label="复制备份文件名" />}
-    {job.result?.safety_backup_name && <span>恢复前副本：<CopyValue value={job.result.safety_backup_name} label="复制恢复前备份文件名" /></span>}
+    {job.result?.safety_backup_name && <span>恢复前备份：<CopyValue value={job.result.safety_backup_name} label="复制恢复前备份文件名" /></span>}
     {job.result?.archive_id && <Link global to={"/settings/archives/" + encodeURIComponent(job.result.archive_id)}>查看归档</Link>}
     {maintenanceJobRequiresLogin(job) && restoreSessionHold === job.id && <><span>请重新登录后继续使用系统。</span><Button variant="outline" size="sm" className="self-start" onClick={() => window.dispatchEvent(new Event("perpay:session-expired"))}>重新登录</Button></>}
   </MaintenanceJobNotice>;

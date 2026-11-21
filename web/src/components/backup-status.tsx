@@ -24,7 +24,7 @@ function backupStatusMessage(backup: BackupHealth): string {
   if (backup.configuration_mismatch) return "已保存的备份策略与当前运行配置不一致，请检查服务器备份任务是否已同步。";
   if (backup.instance_matches === false) return "备份与当前实例不匹配，请检查备份目录。";
   if (backup.last_error_stage) return "最近备份失败（" + backupFailureStageName(backup.last_error_stage) + "）。";
-  if (!backup.enabled) return "定时备份未运行，可立即创建备份。";
+  if (!backup.enabled) return "自动备份未运行，可立即创建备份。";
   if (!backup.backup_available) return "尚无已验证可用的备份。";
   if (backup.backup_required) return "当前数据需要重新备份。";
   if (!backup.ok) return "当前备份未通过健康检查。";
@@ -64,16 +64,16 @@ export function BackupOverview({ settings }: { settings: RuntimeSettings }) {
   const rows: SettingsSummaryRow[] = [["任务状态", status.isPending ? "正在读取…" : !current ? "当前状态待确认" : backupStatusMessage(backup)]];
   if (backup && !notStarted) rows.push(
     ["最近成功", backup.last_success_at === null ? "尚未成功备份" : dateTime(backup.last_success_at)],
-    ["恢复校验", !current ? "待确认" : backup.backup_available ? "最近副本已验证可用" : "暂无已验证的可恢复副本"],
+    ["恢复校验", !current ? "待确认" : backup.backup_available ? "最近备份文件已验证可用" : "暂无已验证的可恢复备份文件"],
     ["最近内容校验", backup.content_verified_at === null ? "尚未通过校验" : dateTime(backup.content_verified_at)],
-    ["保留记录", backup.retained_count === null ? "未记录数量" : backup.retained_count + " 份"],
-    ...(current && backup.backup_available && backup.backup_name ? [["最近可用副本", <CopyValue value={backup.backup_name} label="复制备份文件名" />] as const] : []),
+    ["已保留备份", backup.retained_count === null ? "未记录数量" : backup.retained_count + " 份"],
+    ...(current && backup.backup_available && backup.backup_name ? [["最近可用备份", <CopyValue value={backup.backup_name} label="复制备份文件名" />] as const] : []),
     ["下次计划", !current ? "待确认" : !backup.enabled ? "未启用" : backup.backup_in_progress ? "正在执行"
       : backup.configuration_mismatch || backup.recovery_required || backup.clock_moved_backwards || backup.last_error_stage ? "等待任务恢复"
-        : backup.backup_required || backup.last_success_at === null ? "等待首次或恢复后备份"
+        : backup.backup_required || backup.last_success_at === null ? "等待下一次备份执行"
           : dateTime(backup.last_success_at + (backup.interval_milliseconds ?? settings.backup.interval_seconds * 1000))],
   );
-  rows.push(["备份间隔", backupIntervalLabel(settings.backup.interval_seconds)], ["保留备份数量", settings.backup.keep_count]);
+  rows.push(["备份间隔", backupIntervalLabel(settings.backup.interval_seconds)], ["保留备份数量", settings.backup.keep_count + " 份"]);
   return <div className="flex flex-col gap-3">
     <ErrorNotice error={maintenance.error} retry={() => { void maintenance.refetch(); }} />
     <MaintenanceJobResult job={maintenance.active ?? maintenance.latest} />
