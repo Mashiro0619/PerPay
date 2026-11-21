@@ -33,6 +33,23 @@ export function refreshNotificationRecords(orderId: string, deliveryId: string):
   } });
 }
 
+/** Syncs surrounding notification/order/work-item lists when a polled detail observes a delivery status change. */
+export function refreshNotificationProjections(
+  orderId: string,
+  options?: { readonly excludeOrderNotifications?: boolean; readonly deliveryIds?: readonly string[] },
+): Promise<void> {
+  const deliveryIds = options?.deliveryIds ?? [];
+  return queryClient.invalidateQueries({ predicate: query => {
+    const domain = String(query.queryKey[0]);
+    if (["notifications", "orders", "work-items"].includes(domain)) return true;
+    if (!options?.excludeOrderNotifications && domain === "order-notifications" && query.queryKey.includes(orderId)) return true;
+    if (deliveryIds.length > 0 && ["notification", "notification-attempts"].includes(domain)) {
+      return deliveryIds.some(id => query.queryKey.includes(id));
+    }
+    return false;
+  } });
+}
+
 const financialProjections = new Set([
   "orders", "order", "work-items", "reconciliation", "analytics", "site-overview",
   "administrator-ledger", "administrator-ledger-detail", "ledger", "ledger-candidates",

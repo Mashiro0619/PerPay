@@ -118,8 +118,8 @@ export function RecordNotice({ tone, children, jump }: {
   const root = useRef<HTMLDivElement>(null);
   const danger = tone === "danger";
   const Icon = danger ? CircleAlert : AlertTriangle;
-  const link = "inline-flex w-fit items-center gap-0.5 rounded-xs text-[0.8125rem] leading-5 font-medium text-foreground/90 underline decoration-current/40 underline-offset-4 outline-none transition-colors hover:text-foreground hover:decoration-current focus-visible:ring-2 focus-visible:ring-ring";
-  const button = "h-auto w-fit gap-0.5 rounded-xs border-0 p-0 text-[0.8125rem] leading-5 font-medium whitespace-normal text-foreground/90 underline decoration-current/40 underline-offset-4 hover:text-foreground hover:decoration-current";
+  const link = "inline-flex w-fit items-center gap-0.5 rounded-xs text-left text-[0.8125rem] leading-5 font-medium text-foreground/90 underline decoration-current/40 underline-offset-4 outline-none transition-colors hover:text-foreground hover:decoration-current focus-visible:ring-2 focus-visible:ring-ring";
+  const button = "h-auto w-fit justify-start gap-0.5 rounded-xs border-0 p-0 text-left text-[0.8125rem] leading-5 font-medium whitespace-normal text-foreground/90 underline decoration-current/40 underline-offset-4 hover:text-foreground hover:decoration-current";
   return <div ref={root} data-record-notice={tone} className={cn(
     "flex min-w-0 items-start gap-2.5 rounded-lg border px-3.5 py-3 text-sm leading-5 text-foreground",
     danger

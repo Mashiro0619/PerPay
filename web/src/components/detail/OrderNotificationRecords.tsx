@@ -1,9 +1,11 @@
+import { useEffect, useRef } from "react";
 import { useQuery } from "@/lib/workspace-query";
 import { useWorkspaceApi } from "@/workspace";
 import { result, type OrderWebhookDeliveryDetail } from "@/api/client";
 import { useCursor } from "@/lib/cursor";
 import { attemptResult } from "@/lib/detail-summary";
 import { label } from "@/lib/labels";
+import { refreshNotificationProjections } from "@/lib/record-refresh";
 import { CursorPagination } from "@/components/cursor-pagination";
 import { ErrorNotice, Loading } from "@/components/request-state";
 import { Disclosure } from "@/components/record/Disclosure";
@@ -27,9 +29,28 @@ export function useOrderNotifications(orderId: string) {
     })),
     refetchInterval: state => state.state.data?.data.some(item => item.delivery.status === "LEASED") ? 1_500 : false,
   });
+  const deliveries = query.data?.data ?? [];
+  const statusSignature = deliveries.map(item => `${item.delivery.delivery_id}:${item.delivery.status}`).join(",");
+  const previousStatuses = useRef<{ orderId: string; statuses: Map<string, string> }>({ orderId, statuses: new Map() });
+  useEffect(() => {
+    const prior = previousStatuses.current.orderId === orderId ? previousStatuses.current.statuses : new Map<string, string>();
+    const next = new Map<string, string>();
+    const changed: string[] = [];
+    for (const item of deliveries) {
+      const id = item.delivery.delivery_id;
+      const status = item.delivery.status;
+      next.set(id, status);
+      const oldStatus = prior.get(id);
+      if (oldStatus && oldStatus !== status) changed.push(id);
+    }
+    previousStatuses.current = { orderId, statuses: next };
+    if (changed.length > 0) {
+      void refreshNotificationProjections(orderId, { excludeOrderNotifications: true, deliveryIds: changed });
+    }
+  }, [orderId, statusSignature]);
   // A count is only true when this page holds every delivery.
   const complete = !!query.data && pagination.page === 1 && !query.data.page.next_cursor;
-  return { query, pagination, deliveries: query.data?.data ?? [], count: complete ? query.data!.data.length : undefined };
+  return { query, pagination, deliveries, count: complete ? query.data!.data.length : undefined };
 }
 
 /** One delivery of an order event: its result once, in the badge, then the address and each attempt. */

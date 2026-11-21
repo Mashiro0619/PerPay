@@ -1,9 +1,11 @@
+import { useEffect, useRef } from "react";
 import type { UseQueryResult } from "@tanstack/react-query";
 import { useParams } from "react-router";
 import { queryClient, result, type AdminOrderDetailEnvelope, type WebhookAttemptListEnvelope, type WebhookDeliveryDetail } from "@/api/client";
 import { attemptResult } from "@/lib/detail-summary";
 import { money } from "@/lib/format";
 import { label } from "@/lib/labels";
+import { refreshNotificationProjections } from "@/lib/record-refresh";
 import { useQuery } from "@/lib/workspace-query";
 import { Link, useDetailBack } from "@/navigation";
 import { useWorkspace, useWorkspaceApi } from "@/workspace";
@@ -45,6 +47,16 @@ function DeliveryDetail({ deliveryId }: { deliveryId: string }) {
     queryFn: ({ signal }) => result(api.listWebhookDeliveryAttempts({ path: { deliveryId }, signal })),
   });
   const orderId = delivery.data?.data.event.order_id;
+  const deliveryStatus = delivery.data?.data.delivery.status;
+  const previousStatus = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (!deliveryStatus || !orderId) return;
+    const prior = previousStatus.current;
+    previousStatus.current = deliveryStatus;
+    if (prior && prior !== deliveryStatus) {
+      void refreshNotificationProjections(orderId);
+    }
+  }, [deliveryStatus, orderId]);
   // The order the notification reports on is read separately: when that fails, the delivery and its attempts stay readable.
   const order = useQuery({
     queryKey: ["order", orderId],
