@@ -252,7 +252,7 @@ export function FinancialDialog({
           </DialogDescription>
         </DialogHeader>
         <form className="contents" onSubmit={submit}>
-          <FieldGroup data-overlay-step-scroll className="-mx-4 min-h-0 flex-1 w-auto overflow-y-auto px-4 pb-1">
+          <FieldGroup data-overlay-step-scroll className="-mx-4 min-h-0 flex-1 w-auto overflow-y-auto px-4 pt-4 pb-4">
             {save.recovery && (
               <OperationRecoveryNotice
                 operationId={save.recovery.financial_operation_id}

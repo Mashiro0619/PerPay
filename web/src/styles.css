@@ -1119,6 +1119,11 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   }
   [data-overlay-presentation="drawer"] > [data-overlay-primary] > [data-overlay-footer]:not(:empty) { padding: 0.75rem 1.5rem; }
   [data-overlay-presentation="drawer"] > [data-overlay-step-host]:not(:empty) { padding: var(--overlay-chrome-space, 1rem) 1.5rem; }
+  [data-overlay-presentation="drawer"] [data-overlay-step] > [data-slot="dialog-header"] {
+    margin: 0 -1.5rem;
+    padding: 0 3.5rem 0.75rem 1.5rem;
+    border-bottom: 1px solid var(--border);
+  }
   [data-overlay-presentation="drawer"] [data-overlay-step] > [data-slot="dialog-footer"],
   [data-overlay-presentation="drawer"] [data-overlay-step] > form > [data-slot="dialog-footer"] {
     margin: 0 -1.5rem calc(var(--overlay-chrome-space, 1rem) * -1);
@@ -1150,6 +1155,11 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   [data-overlay-viewport="dialog"]:is([data-overlay-content], [data-admin-dialog="form"], [data-admin-dialog="technical"]) > [data-slot="dialog-close"] {
     top: max(0.5rem, env(safe-area-inset-top));
     right: max(0.5rem, env(safe-area-inset-right));
+  }
+  [data-overlay-presentation="drawer"] [data-overlay-step] > [data-slot="dialog-header"] {
+    margin: 0 calc(max(1rem, env(safe-area-inset-right)) * -1) 0 calc(max(1rem, env(safe-area-inset-left)) * -1);
+    padding: 0 max(3.5rem, env(safe-area-inset-right)) 0.75rem max(1rem, env(safe-area-inset-left));
+    border-bottom: 1px solid var(--border);
   }
   [data-overlay-presentation="drawer"] [data-overlay-step] > [data-slot="dialog-footer"],
   [data-overlay-presentation="drawer"] [data-overlay-step] > form > [data-slot="dialog-footer"] {
@@ -1198,6 +1208,11 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 [data-overlay-step-scroll] > form { display: contents; }
 [data-overlay-step-scroll] [data-slot="dialog-header"] { min-height: 2rem; }
 [data-admin-dialog] [data-slot="dialog-header"] { padding-right: 0; }
+[data-admin-dialog="form"]:not([data-overlay-step]):has(> form > [data-overlay-step-scroll]) > [data-slot="dialog-header"] {
+  margin: 0 -1rem;
+  padding: 0 3rem 0.75rem 1rem;
+  border-bottom: 1px solid var(--border);
+}
 [data-admin-dialog]:has(> [data-slot="dialog-close"]) [data-slot="dialog-header"] > [data-slot="dialog-title"] { padding-right: 2rem; }
 [data-overlay-step]:has(> [data-slot="dialog-close"]) [data-overlay-step-scroll] [data-slot="dialog-header"] > [data-slot="dialog-title"] { padding-right: 3rem; }
 [data-overlay-step-scroll] > form > :is([data-admin-dialog-body], [data-slot="field-group"], .overflow-auto) { overflow: visible; }
