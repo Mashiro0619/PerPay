@@ -209,7 +209,7 @@ export function CollectionCodeField({
         accept={qrImageAccept}
         hidden
         disabled={disabled}
-        aria-label="选择收款码二维码图片"
+        aria-label="选择收款码图片"
         onChange={(event) => {
           void selectImage(event);
         }}
@@ -237,7 +237,7 @@ export function CollectionCodeField({
                 {dragging ? "松开即可更换" : "收款码已配置"}
               </ItemTitle>
               <ItemDescription className="line-clamp-none">
-                更换二维码后保存账号配置。
+                更换收款码后请保存账号配置。
               </ItemDescription>
             </ItemContent>
             <ItemActions className="max-w-full flex-wrap">
@@ -251,7 +251,7 @@ export function CollectionCodeField({
                 onClick={() => picker.current?.click()}
               >
                 {feedback.kind === "pending" ? <Spinner data-icon="inline-start" /> : <ImageUp data-icon="inline-start" />}
-                {feedback.kind === "pending" ? "正在识别…" : "更换二维码"}
+                {feedback.kind === "pending" ? "正在识别…" : "更换收款码"}
               </Button>
               <CollapsibleTrigger
                 ref={contentTrigger}
@@ -301,7 +301,7 @@ export function CollectionCodeField({
                   feedback.kind === "error" && feedbackId,
                 ].filter(Boolean).join(" ")}
               >
-                上传二维码
+                上传收款码
               </Button>
             </EmptyContent>
           </Empty>

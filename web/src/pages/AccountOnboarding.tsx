@@ -27,7 +27,7 @@ import { cn } from "@/lib/utils";
 const steps = [
   { id: "accounts", title: "配置支付宝账号" },
   { id: "sites", title: "配置网站" },
-  { id: "check", title: "试收款" },
+  { id: "check", title: "测试收款" },
 ] as const;
 
 export function AccountOnboarding({
@@ -190,7 +190,7 @@ export function AccountOnboarding({
                 {current.id === "sites" && (
                   <>
                     <p className="text-sm text-muted-foreground">
-                      为网站选择收款账号。只接收试收款时，可先跳过 API
+                      为网站选择收款账号。如果目前只需先测试收款，可暂不配置 API
                       密钥与通知设置。
                     </p>
                     {createSite || !sites.data?.data.length ? (
@@ -243,7 +243,7 @@ export function AccountOnboarding({
                           className="self-start"
                           onClick={() => setCreateSite(true)}
                         >
-                          再添加一个网站
+                          继续添加网站
                         </Button>
                       </>
                     )}
@@ -262,7 +262,7 @@ export function AccountOnboarding({
                       <Alert>
                         <AlertTitle>测试收款须知</AlertTitle>
                         <AlertDescription>
-                          试收款会创建真实订单。请按收银台显示的实际应付金额付款，再查看确认结果。
+                          测试收款会创建真实订单。请按收银台显示的实际应付金额付款，再查看确认结果。
                         </AlertDescription>
                       </Alert>
                       <TestPaymentButton />

@@ -204,7 +204,7 @@ type AccountDraft = ReturnType<typeof accountConfiguration>;
 type AccountField = keyof AccountDraft | "private_key";
 const accountFieldLabels: Record<AccountField, string> = {
   name: "账号名称", enabled: "接收新订单", code_payload: "收款码",
-  app_id: "应用 ID", platform_public_key: "支付宝公钥", private_key: "导入的应用私钥",
+  app_id: "App ID", platform_public_key: "支付宝公钥", private_key: "导入的应用私钥",
 };
 type AccountConflict = { field: AccountField; local: string | boolean; remote: string | boolean };
 type AccountCreation = { body: AlipayAccountInput & { operation_id: string }; checkAfter: boolean };
@@ -261,7 +261,7 @@ function AccountSiteSettings() {
       <CollapsibleTrigger render={<Button type="button" variant="outline" size="sm" />}>
         网站设置
       </CollapsibleTrigger>
-      <Link to="/sites/new" className={buttonVariants({ variant: "outline", size: "sm" })}>创建业务网站</Link>
+      <Link to="/sites/new" className={buttonVariants({ variant: "outline", size: "sm" })}>添加网站</Link>
     </div>
     <CollapsibleContent>
       <SitePicker value="" onChange={clientId => navigate("/sites/" + clientId + "/settings/collection")} />
@@ -696,7 +696,7 @@ export function AlipayAccountEditor({
   const lastCheck = historical ? null : check.data?.data ?? saved?.last_check;
   const checkFailure = historical ? undefined : check.error?.message ?? initialCheckFailure;
   const setupGaps = saved ? [
-    !saved.app_id && { label: "应用 ID", panel: "application", field: "alipay-app-id" },
+    !saved.app_id && { label: "App ID", panel: "application", field: "alipay-app-id" },
     !saved.application_public_key && { label: "应用密钥", panel: "application", field: "alipay-app-id" },
     !saved.platform_public_key && { label: "支付宝公钥", panel: "application", field: "alipay-platform-key" },
     !saved.code_payload && { label: "收款码", panel: "collection", field: null },
@@ -803,7 +803,7 @@ export function AlipayAccountEditor({
               }}>继续配置{nextSetupGap.label}</Button>
             </> : <>
               <p>请查看运行状态，核对查账连接和最近一次查账结果。</p>
-              <Link to="/system" className={buttonVariants({ variant: "outline" })}>查看收款状态</Link>
+              <Link to="/system" className={buttonVariants({ variant: "outline" })}>查看运行状态</Link>
             </>}
           {dirty && saved && <p>以上为已保存的配置，当前修改尚未保存。</p>}
         </AlertDescription>
@@ -905,7 +905,7 @@ export function AlipayAccountEditor({
                   </FieldDescription>
                   <Field data-invalid={!!errors.app_id}>
                     <FieldLabel htmlFor="alipay-app-id">
-                      应用 ID（App ID）
+                      App ID
                     </FieldLabel>
                     <Input
                       id="alipay-app-id"
@@ -1113,7 +1113,7 @@ export function AlipayAccountEditor({
           <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
             <CardTitle>使用情况</CardTitle>
             {!historical && <CardAction className="max-w-full">
-              <Link to="/system" className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-auto min-h-8 max-w-full whitespace-normal py-1.5")}>查看收款状态</Link>
+              <Link to="/system" className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-auto min-h-8 max-w-full whitespace-normal py-1.5")}>查看运行状态</Link>
             </CardAction>}
           </CardHeader>
           <CardContent className="flex min-w-0 flex-col gap-4">

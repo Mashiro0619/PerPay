@@ -125,6 +125,6 @@ export function resolveSitePolicyConflicts(
 export function siteFieldValue(value: FieldValue): string {
   if (value === null || value === undefined || value === "") return "未设置";
   if (typeof value === "boolean") return value ? "开启" : "关闭";
-  if (typeof value === "object") return ({ FIXED: "指定账号", RANDOM: "随机", WEIGHTED: "按权重" }[value.mode]) + "：" + value.accounts.map(account => account.account_id + (value.mode === "WEIGHTED" ? "（权重 " + account.weight + "）" : "")).join("、");
+  if (typeof value === "object") return ({ FIXED: "指定账号", RANDOM: "随机分配", WEIGHTED: "按权重分配" }[value.mode]) + "：" + value.accounts.map(account => account.account_id + (value.mode === "WEIGHTED" ? "（权重 " + account.weight + "）" : "")).join("、");
   return String(value);
 }

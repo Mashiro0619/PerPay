@@ -115,7 +115,7 @@ function siteSummaryRows(site: Site, section: string): SettingsSummaryRow[] {
   return [
     ["业务网站名称", value.name],
     ["新订单", value.accepting_orders ? "允许接单" : "暂停接单"],
-    ["客户端 ID", <CopyValue value={site.api_client_id ?? site.client_id} label="复制客户端 ID" />],
+    ["网站 ID", <CopyValue value={site.api_client_id ?? site.client_id} label="复制网站 ID" />],
     ["创建时间", dateTime(site.created_at)],
   ];
 }
@@ -123,7 +123,7 @@ function siteSummaryRows(site: Site, section: string): SettingsSummaryRow[] {
 function collectionAvailability(account: AlipayAccount): string {
   if (account.environment !== "PRODUCTION" || !account.enabled || !account.configured) return accountState(account);
   if (!account.health) return "已配置，收款状态待确认";
-  return account.health.collection_ready ? "当前可收款" : "当前不可收款";
+  return account.health.collection_ready ? "当前可收款" : "暂不可收款";
 }
 
 function SiteCollectionSummary({ collection }: { collection: SiteCollection | undefined }) {
@@ -219,7 +219,7 @@ export function SiteSummaryOverlay() {
       <ErrorNotice error={work.error} retry={() => { void work.refetch(); }} />
       <FieldList items={[
         { label: "通知", value: current.configuration.notifications_enabled ? "开启" : "关闭" },
-        { label: "客户端 ID", value: current.api_client_id ?? current.client_id, kind: "id", copy: current.api_client_id ?? current.client_id },
+        { label: "网站 ID", value: current.api_client_id ?? current.client_id, kind: "id", copy: current.api_client_id ?? current.client_id },
       ]} />
       <ActionBar menuLabel="更多操作，网站操作"
         primary={{ label: "查看网站总览", to: "/sites/" + encodeURIComponent(current.client_id) + "?range=" + range }}
@@ -450,7 +450,7 @@ function SiteEditor({
     retry: false,
     mutationFn: async () => {
       if (timeoutError) throw new Error(timeoutError);
-      if (!saved) throw new Error("缺少业务网站身份");
+      if (!saved) throw new Error("未找到对应的网站信息，请刷新后重试。");
       void queryClient.invalidateQueries({ queryKey: siteEditorKey(saved.client_id), refetchType: "none" });
       return run(signal => result(api.updateSite({
         path: { clientId: saved.client_id },
@@ -557,7 +557,7 @@ function SiteEditor({
       }
       setFeedback(superseded
         ? "密钥操作已完成，请重新查看当前密钥。"
-        : "密钥已生成或轮换，请更新业务网站配置。");
+        : "密钥已更新，请同步更新业务网站配置。");
     },
     onError: async (error, kind) => {
       requireWriteReview(error);
@@ -592,7 +592,7 @@ function SiteEditor({
     networkMode: "always",
     retry: false,
     mutationFn: async () => {
-      if (!saved) throw new Error("缺少业务网站身份");
+      if (!saved) throw new Error("未找到对应的网站信息，请刷新后重试。");
       const controller = new AbortController();
       reloadController.current = controller;
       const originKey = currentNavigation.current.key;
@@ -670,10 +670,10 @@ function SiteEditor({
       : "",
     saved &&
     saved.configuration.notification_origin !== draft.notification_origin
-      ? "后续通知按新前缀校验，旧地址可能无法发送。"
+      ? "修改后，后续通知将按新通知域名校验，旧地址可能无法发送。"
       : "",
     saved && saved.configuration.return_origin !== draft.return_origin
-      ? "新订单的返回地址将按新前缀校验。"
+      ? "修改后，新订单的返回地址将按新返回域名校验。"
       : "",
   ]
     .filter(Boolean)
@@ -691,7 +691,7 @@ function SiteEditor({
     ? false : saved?.secrets?.[purpose === "api" ? "api_secret" : "webhook_secret"];
   const generatingSecret = isSecretConfirmation && secretConfigured(confirmation) === false;
   const secretActionName = (purpose: "api" | "webhook") =>
-    (secretConfigured(purpose) === false ? "生成" : "轮换") + (purpose === "api" ? " API 密钥" : "通知签名密钥");
+    (secretConfigured(purpose) === false ? "生成" : "更换") + (purpose === "api" ? " API 密钥" : "通知签名密钥");
   return (
     <div className="admin-settings-layout flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -747,7 +747,7 @@ function SiteEditor({
           <AlertTitle>{writeResultUnknown ? "操作结果待确认" : requiresConfigurationReview ? "业务网站配置已变更" : "核对密钥操作结果"}</AlertTitle>
           <AlertDescription>
             <p>{writeResultUnknown
-              ? "输入和操作前的版本已保留。请读取最新配置核对结果，再继续保存、轮换或删除。"
+              ? "输入和操作前的版本已保留。请读取最新配置核对结果，再继续保存、更换或删除。"
               : requiresConfigurationReview
               ? "你的修改已保留。读取最新配置将合并无冲突项，冲突需核对；不会自动保存或重试密钥操作。"
               : "重新读取密钥状态后，可查看已保存的密钥。未保存的配置会保留。"}</p>
@@ -783,11 +783,11 @@ function SiteEditor({
           <CardContent>
             <FieldGroup>
               <Field>
-                <FieldLabel>客户端 ID</FieldLabel>
-                <CopyValue value={saved.api_client_id ?? saved.client_id} label="复制客户端 ID" />
+                <FieldLabel>网站 ID</FieldLabel>
+                <CopyValue value={saved.api_client_id ?? saved.client_id} label="复制网站 ID" />
                 <Button ref={changeClientIdTrigger} type="button" variant="outline" className="self-start"
-                  disabled={busy || dirty || requiresReview} onClick={() => setChangingClientId(true)}>更换客户端 ID</Button>
-                {dirty && <FieldDescription>请先保存或撤销当前配置修改，再更换客户端 ID。</FieldDescription>}
+                  disabled={busy || dirty || requiresReview} onClick={() => setChangingClientId(true)}>更换网站 ID</Button>
+                {dirty && <FieldDescription>请先保存或撤销当前配置修改，再更换网站 ID。</FieldDescription>}
               </Field>
             </FieldGroup>
           </CardContent>
@@ -916,7 +916,7 @@ function SiteEditor({
           setTimeoutRaw(siteTimeoutSeconds(latest.configuration.policy.notification_delivery.timeout_milliseconds));
           clearDraft();
           setChangingClientId(false);
-          setFeedback("客户端 ID 操作已完成。");
+          setFeedback("网站 ID 已更换，请同步更新业务网站接入配置。");
           void queryClient.invalidateQueries({ queryKey: ["sites"] });
         }} />}
       {saved && visible("integration") && protocol === "native" && (
@@ -1006,7 +1006,7 @@ function SiteEditor({
             </AlertDialogTitle>
             <AlertDialogDescription>
               {confirmation === "delete"
-                ? "仅限无历史订单的网站。删除后不可恢复，客户端 ID 不可复用。"
+                ? "仅限无历史订单的网站。删除后不可恢复，原网站 ID 不可复用。"
                 : confirmation === "save"
                   ? impact
                   : generatingSecret ? "生成后复制到业务网站的接入配置。"
@@ -1038,7 +1038,7 @@ function SiteEditor({
                 }
               }}
             >
-              {isSecretConfirmation ? action.isPending ? <><Spinner data-icon="inline-start" />处理中…</> : generatingSecret ? "生成密钥" : "确认轮换" : "确认"}
+              {isSecretConfirmation ? action.isPending ? <><Spinner data-icon="inline-start" />处理中…</> : generatingSecret ? "生成密钥" : "确认更换" : "确认"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

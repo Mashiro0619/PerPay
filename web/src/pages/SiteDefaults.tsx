@@ -28,7 +28,7 @@ const defaultsKey = ["site-defaults"] as const;
 const sections = [
   { value: "orders", label: "订单设置" },
   { value: "display", label: "收银台展示" },
-  { value: "integration", label: "通知策略" },
+  { value: "integration", label: "通知设置" },
 ];
 
 function latestDefaults(snapshot: DefaultsSnapshot): DefaultsSnapshot {
@@ -193,7 +193,7 @@ function DefaultsEditor({ initial }: { initial: DefaultsSnapshot }) {
 
   return (
     <div className="admin-settings-layout flex flex-col gap-6">
-      <PageHeading title="网站默认模板" />
+      <PageHeading title="新网站默认设置" />
       <p className="text-sm text-muted-foreground">仅用于新网站，已有网站不变。</p>
       <Tabs value={section} onValueChange={value => { if (value) setSection(value); }}>
         <ScrollingTabs selection={{ items: sections, value: section, onValueChange: setSection, label: "模板分组" }}>
@@ -217,7 +217,7 @@ function DefaultsEditor({ initial }: { initial: DefaultsSnapshot }) {
       <ErrorNotice error={reload.error} />
       {requiresReview && (
         <Alert>
-          <AlertTitle>{writeResultUnknown ? "默认模板保存结果待确认" : "默认模板已变更"}</AlertTitle>
+          <AlertTitle>{writeResultUnknown ? "默认设置保存结果待确认" : "默认设置已变更"}</AlertTitle>
           <AlertDescription>
             <p>{writeResultUnknown
               ? "输入和操作前的版本已保留。请读取最新模板核对保存结果，再继续修改。"
@@ -239,7 +239,7 @@ function DefaultsEditor({ initial }: { initial: DefaultsSnapshot }) {
               review.conflicts.some(conflict => conflict.path === "policy.notification_delivery.timeout_milliseconds"));
           }}
           disabled={busy}
-          saveLabel="保存默认模板"
+          saveLabel="保存默认设置"
         />
       )}
       <form id={formId} ref={formRef} onSubmit={event => {
@@ -263,7 +263,7 @@ function DefaultsEditor({ initial }: { initial: DefaultsSnapshot }) {
           />
           <OverlayActions>
             {overlay && <Button type="button" variant="outline" disabled={busy} onClick={() => overlay.requestClose()}>关闭</Button>}
-            <Button form={formId} type="submit" disabled={busy || requiresReview || !!timeoutError}>保存默认模板</Button>
+            <Button form={formId} type="submit" disabled={busy || requiresReview || !!timeoutError}>保存默认设置</Button>
           </OverlayActions>
         </FieldSet>
       </form>

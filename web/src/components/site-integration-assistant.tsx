@@ -288,7 +288,7 @@ function IntegrationContent({ site, siteDirty = false, disabled = false, showCli
 
   function credential(purpose: EpaySecret, publicOnly = false) {
     const label = publicOnly ? "平台公钥" : secretLabels[purpose];
-    const rotationLabel = (keyReady(purpose) ? "轮换" : "生成") + label;
+    const rotationLabel = (keyReady(purpose) ? "更换" : "生成") + label;
     const labelId = id + "-" + purpose + (publicOnly ? "-public" : "");
     return <Field key={labelId} aria-labelledby={labelId} className="min-w-0">
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
@@ -302,7 +302,7 @@ function IntegrationContent({ site, siteDirty = false, disabled = false, showCli
             disabled={blocked || needsRefresh} onClick={event => {
               rotationTrigger.current = event.currentTarget;
               persist.reset(); setError(null); setRotation(purpose);
-            }}>{keyReady(purpose) ? "轮换" : "生成"}</Button>}
+            }}>{keyReady(purpose) ? "更换" : "生成"}</Button>}
         </div>
       </div>
     </Field>;
@@ -354,8 +354,8 @@ function IntegrationContent({ site, siteDirty = false, disabled = false, showCli
             : <FieldDescription>请先配置服务端公开地址。</FieldDescription>}
         </Field>
         {(showClientId || protocol !== "native") && <Field>
-          <FieldLabel>{protocol === "native" ? "客户端 ID" : "商户 PID"}</FieldLabel>
-          <CopyValue value={protocol === "native" ? site.api_client_id ?? site.client_id : configuration.pid} label="复制接入身份" />
+          <FieldLabel>{protocol === "native" ? "网站 ID（client_id）" : "商户 PID"}</FieldLabel>
+          <CopyValue value={protocol === "native" ? site.api_client_id ?? site.client_id : configuration.pid} label={protocol === "native" ? "复制网站 ID" : "复制商户 PID"} />
         </Field>}
       </FieldGroup>
       {protocol === "native"
@@ -384,7 +384,7 @@ function IntegrationContent({ site, siteDirty = false, disabled = false, showCli
       else if (!open) setRotation(null);
     }}>
       <AlertDialogContent finalFocus={() => rotationTrigger.current}><AlertDialogHeader>
-        <AlertDialogTitle>{rotation && keyReady(rotation) ? "轮换" : "生成"}{rotation ? secretLabels[rotation] : "密钥"}？</AlertDialogTitle>
+        <AlertDialogTitle>{rotation && keyReady(rotation) ? "更换" : "生成"}{rotation ? secretLabels[rotation] : "密钥"}？</AlertDialogTitle>
         <AlertDialogDescription>{rotation && keyReady(rotation) ? rotationDescriptions[rotation] : "生成后，请将接入密钥配置到业务网站。"}</AlertDialogDescription>
       </AlertDialogHeader>
       <ErrorNotice error={error} showDiagnostics={false} />
@@ -393,7 +393,7 @@ function IntegrationContent({ site, siteDirty = false, disabled = false, showCli
         <AlertDialogAction variant={rotation && keyReady(rotation) ? "destructive" : "default"}
           disabled={blocked || needsRefresh || persist.isError} onClick={() => { if (rotation && !persist.isError) submit(rotation); }}>
           {persist.isPending && <Spinner data-icon="inline-start" />}
-          {persist.isPending ? "正在处理…" : rotation && keyReady(rotation) ? "确认轮换" : "生成密钥"}
+          {persist.isPending ? "正在处理…" : rotation && keyReady(rotation) ? "确认更换" : "生成密钥"}
         </AlertDialogAction>
       </AlertDialogFooter></AlertDialogContent>
     </AlertDialog>

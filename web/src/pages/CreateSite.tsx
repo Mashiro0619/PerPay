@@ -118,7 +118,7 @@ function CreateSiteForm({ policy, accounts, onCreated, onRefreshLockChange }: Cr
     }
     const normalizedClientId = clientId.trim();
     if (normalizedClientId && !/^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$/.test(normalizedClientId)) {
-      setClientIdValidation("请填写 3–64 位客户端 ID，首位为英文字母或数字，其余仅可包含英文字母、数字、点、下划线或连字符。");
+      setClientIdValidation("请填写 3–64 位网站 ID，首位为英文字母或数字，其余可使用英文字母、数字、点（.）、下划线（_）或连字符（-）。");
       clientIdInput.current?.focus();
       return;
     }
@@ -136,7 +136,7 @@ function CreateSiteForm({ policy, accounts, onCreated, onRefreshLockChange }: Cr
   }
   if (!availableAccounts.length && !create.recovery) return <Empty>
     <EmptyHeader><EmptyTitle>先配置收款账号</EmptyTitle>
-      <EmptyDescription>完成支付宝应用和收款码配置，并启用账号后，即可创建业务网站。</EmptyDescription>
+      <EmptyDescription>完成支付宝应用和收款码配置，并启用账号后，即可添加网站。</EmptyDescription>
     </EmptyHeader>
     <EmptyContent><Link to="/settings/accounts" className={buttonVariants()}>配置收款账号</Link></EmptyContent>
   </Empty>;
@@ -153,7 +153,7 @@ function CreateSiteForm({ policy, accounts, onCreated, onRefreshLockChange }: Cr
       >
         <Card>
           {!overlay && <CardHeader>
-            <CardTitle>创建业务网站</CardTitle>
+            <CardTitle>添加网站</CardTitle>
           </CardHeader>}
           <CardContent>
             <FieldGroup>
@@ -175,7 +175,7 @@ function CreateSiteForm({ policy, accounts, onCreated, onRefreshLockChange }: Cr
                   }}
                 />
                 <Field className="max-w-md" data-invalid={!!clientIdError} data-disabled={create.isPending || !!create.recovery}>
-                  <FieldLabel htmlFor={clientIdFieldId}>客户端 ID（可选）</FieldLabel>
+                  <FieldLabel htmlFor={clientIdFieldId}>网站 ID（client_id，可选）</FieldLabel>
                   <Input
                     ref={clientIdInput}
                     id={clientIdFieldId}
@@ -219,7 +219,7 @@ function CreateSiteForm({ policy, accounts, onCreated, onRefreshLockChange }: Cr
                 ? "正在创建…"
                 : create.recovery
                   ? "重试上一次操作"
-                  : "创建业务网站"}
+                  : "添加网站"}
             </Button>
             {overlay ? <Button type="button" variant="outline" onClick={() => overlay.requestClose()} disabled={create.isPending}>取消</Button> : <Link to="/sites" className={buttonVariants({ variant: "ghost" })}>
               取消

@@ -59,8 +59,8 @@ export function SiteManagementCards() {
           </Popover>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Link to="/sites/defaults" className={buttonVariants({ variant: "outline", size: "sm" })}>默认模板</Link>
-          <Link to="/sites/new" className={buttonVariants({ size: "sm" })}>创建业务网站</Link>
+          <Link to="/sites/defaults" className={buttonVariants({ variant: "outline", size: "sm" })}>新网站默认设置</Link>
+          <Link to="/sites/new" className={buttonVariants({ size: "sm" })}>添加网站</Link>
         </div>
       </div>
       <OverlayRecordList

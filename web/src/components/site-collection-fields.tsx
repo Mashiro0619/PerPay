@@ -32,8 +32,8 @@ import {
 
 const modes = [
   ["FIXED", "指定账号"],
-  ["RANDOM", "随机"],
-  ["WEIGHTED", "按权重"],
+  ["RANDOM", "随机分配"],
+  ["WEIGHTED", "按权重分配"],
 ] as const;
 
 export function SiteCollectionFields({

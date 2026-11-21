@@ -64,7 +64,7 @@ export function SiteClientIdChange({ site, onChanged, onClose, finalFocus }: {
     if (change.recovery) { change.submit(change.recovery); return; }
     const clientId = nextId.trim();
     if (!/^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$/.test(clientId)) {
-      setValidation("请填写 3–64 位客户端 ID，首位为英文字母或数字，其余仅可包含英文字母、数字、点、下划线或连字符。");
+      setValidation("请填写 3–64 位网站 ID，首位为英文字母或数字，其余可使用英文字母、数字、点（.）、下划线（_）或连字符（-）。");
       input.current?.focus();
       return;
     }
@@ -76,14 +76,14 @@ export function SiteClientIdChange({ site, onChanged, onClose, finalFocus }: {
       if (!open) { if (change.isBusy()) event.cancel(); else close(); }
     }}>
       <DialogContent ref={content} showCloseButton={!change.isPending} finalFocus={finalFocus}>
-        <DialogHeader><DialogTitle>更换客户端 ID</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>更换网站 ID</DialogTitle></DialogHeader>
         <form className="contents" onSubmit={event => { event.preventDefault(); submit(); }}>
           <DialogBody>
-            <DialogDescription>更换后立即生效，请同步更新业务端接入配置。旧 ID 保留占用，无法再次分配。</DialogDescription>
+            <DialogDescription>更换后立即生效，请同步更新业务网站接入配置。原网站 ID 将保留占用，无法再次分配。</DialogDescription>
             <FieldGroup>
-              <Field><FieldLabel>当前客户端 ID</FieldLabel><CopyValue value={currentId} label="复制当前客户端 ID" /></Field>
+              <Field><FieldLabel>当前网站 ID</FieldLabel><CopyValue value={currentId} label="复制当前网站 ID" /></Field>
               <Field data-invalid={!!fieldError} data-disabled={locked}>
-                <FieldLabel htmlFor={fieldId}>新客户端 ID</FieldLabel>
+                <FieldLabel htmlFor={fieldId}>新网站 ID</FieldLabel>
                 <Input ref={input} id={fieldId} value={nextId} disabled={locked} autoCapitalize="none" autoCorrect="off" spellCheck={false}
                   aria-invalid={!!fieldError} aria-describedby={fieldId + "-help" + (fieldError ? " " + fieldId + "-error" : "")}
                   onChange={event => {
@@ -109,12 +109,12 @@ export function SiteClientIdChange({ site, onChanged, onClose, finalFocus }: {
       </DialogContent>
     <AlertDialog open={!!confirmation} onOpenChange={open => { if (!open) setConfirmation(null); }}>
       <AlertDialogContent finalFocus={() => locked ? content.current : input.current}>
-        <AlertDialogHeader><AlertDialogTitle>确认更换客户端 ID？</AlertDialogTitle></AlertDialogHeader>
+        <AlertDialogHeader><AlertDialogTitle>确认更换网站 ID？</AlertDialogTitle></AlertDialogHeader>
         <DialogBody>
-          <AlertDialogDescription>{snapshot.configuration.name} 的接入 ID 将立即更换，请同步更新业务端。旧 ID 将停止用于接入并继续保留占用。</AlertDialogDescription>
+          <AlertDialogDescription>{snapshot.configuration.name} 的网站 ID 将立即更换，请同步更新业务网站。原网站 ID 将停止用于接入并继续保留占用。</AlertDialogDescription>
           <FieldGroup>
-            <Field><FieldLabel>原客户端 ID</FieldLabel><CopyValue value={currentId} label="复制原客户端 ID" /></Field>
-            <Field><FieldLabel>新客户端 ID</FieldLabel><CopyValue value={confirmation?.client_id ?? ""} label="复制新客户端 ID" /></Field>
+            <Field><FieldLabel>原网站 ID</FieldLabel><CopyValue value={currentId} label="复制原网站 ID" /></Field>
+            <Field><FieldLabel>新网站 ID</FieldLabel><CopyValue value={confirmation?.client_id ?? ""} label="复制新网站 ID" /></Field>
           </FieldGroup>
         </DialogBody>
         <AlertDialogFooter>

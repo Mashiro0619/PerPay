@@ -143,7 +143,7 @@ function DashboardContent() {
         ? "本站已暂停接单，请先在网站设置中允许新订单。"
         : siteNeedsAccount
           ? "本站尚未分配收款账号，请先选择支付宝账号。"
-          : "本站可以试收款。接入业务 API 时配置密钥，需要通知时设置回调。";
+          : "本站已就绪，可以先发起一笔测试收款；正式接入时再配置 API 密钥与回调通知。";
   const trend = <div key="trend" className="overview-trend flex min-w-0 flex-col gap-6">
     {analytics.isPaused ? <ReadPausedNotice retainedData={data !== undefined} /> : <ErrorNotice
       scope="page"
