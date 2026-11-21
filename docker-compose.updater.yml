@@ -1,0 +1,59 @@
+# 可选在线一键更新伴生配置。
+# 启用方式（与主 docker-compose.yml 合并启动）：
+#   docker compose -f docker-compose.yml -f docker-compose.updater.yml up -d
+#
+# 安全说明：
+# - app 主容器仍保持只读、非 root 且不挂载 docker.sock；
+# - 仅独立的 updater 伴生容器访问 /var/run/docker.sock，不暴露任何公网端口，
+#   不挂载业务数据卷或主密钥卷，且仅允许拉取 ghcr.io/mashiro0619/perpay 官方镜像并重建本项目容器。
+
+services:
+  app:
+    environment:
+      PERPAY_UPDATER_URL: "http://updater:6199"
+      PERPAY_UPDATER_TOKEN_FILE: "/run/perpay-updater-secrets/token"
+    volumes:
+      - perpay-updater-secrets:/run/perpay-updater-secrets:ro
+
+  updater:
+    image: ${PERPAY_IMAGE:-ghcr.io/mashiro0619/perpay:latest}
+    command:
+      - node
+      - dist/update/updater.js
+    environment:
+      PERPAY_UPDATER_HOST: "0.0.0.0"
+      PERPAY_UPDATER_PORT: "6199"
+      PERPAY_UPDATER_TOKEN_FILE: "/run/perpay-updater-secrets/token"
+      PERPAY_COMPOSE_PROJECT: "perpay"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - perpay-updater-secrets:/run/perpay-updater-secrets
+    # 访问宿主机 /var/run/docker.sock 通常需要 root 或加入宿主机 docker 组。
+    user: "0:0"
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    init: true
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:6199/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  perpay-updater-secrets:
