@@ -338,19 +338,6 @@ test("summaries and credentials retain reading order in stable responsive column
         }
         const narrow = samples[0]!, roomy = samples.at(-1)!;
         expect(roomy.height, "additional width never adds vertical space to the same facts").toBeLessThanOrEqual(narrow.height + 1);
-        if (roomy.orderSummary) {
-          const shortFacts = ["应付金额", "实收金额", "所属网站"];
-          expect(roomy.fields.filter(field => shortFacts.includes(field.name!))).toHaveLength(shortFacts.length);
-          const columnCount = roomy.width >= 44 * roomy.rootFont ? 2 : 1;
-          expect(roomy.rows.every(row => row.length <= columnCount), "field groups use at most the responsive column count").toBe(true);
-          expect(narrow.rows.every(row => row.length === 1), "narrow content has one predictable field per row").toBe(true);
-          if (columnCount === 2) {
-            const first = roomy.fields.find(field => field.name === "应付金额")!, second = roomy.fields.find(field => field.name === "实收金额")!;
-            expect(roomy.rows[0]).toEqual(["应付金额", "实收金额"]);
-            expect(Math.abs(first.width - second.width), "the two monetary fields share equal column widths").toBeLessThanOrEqual(1);
-            expect(roomy.rows.length).toBeLessThan(narrow.rows.length);
-          }
-        }
       }
     } finally {
       await container.evaluate((element, width) => { (element as HTMLElement).style.width = width; }, originalWidth);

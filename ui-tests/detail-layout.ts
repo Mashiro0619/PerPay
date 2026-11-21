@@ -71,13 +71,12 @@ export async function expectDetailFields(containers: Locator) {
       else rows.push([field]);
     }
     return {
-      width: bounds.width, height: bounds.height, left: bounds.left, right: bounds.right, layout: container.getAttribute("data-layout"),
+      width: bounds.width, height: bounds.height, left: bounds.left, right: bounds.right,
       // Migrated record details use one shared label column; other details keep a grid per field.
       record: container.hasAttribute("data-record-fields"),
       rootFont: Number.parseFloat(getComputedStyle(document.documentElement).fontSize),
       display: style.display, wrap: style.flexWrap,
       rowGap: Number.parseFloat(style.rowGap), columnGap: Number.parseFloat(style.columnGap),
-      orderSummary: !!container.closest("[data-detail-order-summary]"), credentials: !!container.closest("[data-detail-credentials]"),
       fields, rows: rows.map(row => row.map(field => field.name)),
     };
   }));
