@@ -119,8 +119,7 @@ for (const layout of layouts) for (const scenario of scenarios) {
     }
 
     const stored = await revealDetailSection(page, "record");
-    await expect(stored.locator("dt")).toHaveText(["PerPay 记录状态", "内部流水编号", "保存时间"]);
-    await expect(stored.getByText(scenario.stateLabel, { exact: true })).toBeVisible();
+    await expect(stored.locator("dt")).toHaveText(["内部流水编号", "保存时间"]);
     await expect(stored.getByText(entry.ledger_entry_id, { exact: true })).toBeVisible();
     await expect(stored.getByRole("button", { name: "复制内部流水编号", exact: true })).toBeVisible();
 

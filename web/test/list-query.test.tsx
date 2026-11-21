@@ -186,15 +186,20 @@ describe("server-driven business queries", () => {
       expect(query.get("status")).toBe("DEAD_LETTER");
       expect(query.has("cursor")).toBe(false);
     });
-    expect(screen.getByRole("button", { name: "已停止重试" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByLabelText("查询地址")).toHaveTextContent("source=overview");
     expect(screen.getByLabelText("查询地址")).not.toHaveTextContent("page=");
+    expect(screen.getByLabelText("当前查询条件")).toHaveTextContent("通知状态：已停止重试");
     if (width < 1024) {
-      expect(screen.getByLabelText("当前查询条件")).toHaveTextContent("通知状态：已停止重试");
+      expect(screen.getByRole("button", { name: "已停止重试" })).toHaveAttribute("aria-pressed", "true");
+      await user.click(screen.getByRole("button", { name: "等待重试" }));
+      await waitFor(() => expect(new URL(requests.at(-1)!.url).searchParams.get("status")).toBe("RETRY_WAIT"));
+      expect(screen.getByRole("button", { name: "已停止重试" })).toHaveAttribute("aria-pressed", "false");
+    } else {
+      expect(screen.queryByRole("group", { name: "通知快捷筛选" })).not.toBeInTheDocument();
+      await user.click(screen.getByRole("combobox", { name: "通知状态筛选" }));
+      await user.click(await screen.findByRole("option", { name: "等待重试" }));
+      await waitFor(() => expect(new URL(requests.at(-1)!.url).searchParams.get("status")).toBe("RETRY_WAIT"));
     }
-    await user.click(screen.getByRole("button", { name: "等待重试" }));
-    await waitFor(() => expect(new URL(requests.at(-1)!.url).searchParams.get("status")).toBe("RETRY_WAIT"));
-    expect(screen.getByRole("button", { name: "已停止重试" })).toHaveAttribute("aria-pressed", "false");
     expect(requests.every((request) => request.method === "GET")).toBe(true);
   });
 

@@ -32,12 +32,16 @@ test("order and ledger sources remain distinct at desktop and 320 pixels", async
     const websiteOrder = orderOverlay.getByRole("region", { name: "订单信息", exact: true });
     await expect(websiteOrder).toBeVisible();
     await expect(websiteOrder.getByText("下单金额", { exact: true }).locator("..").locator("dd")).toHaveText(currency(order.requested_amount_cents));
-    await expect(websiteOrder.getByText("加价金额", { exact: true }).locator("..").locator("dd")).toHaveText(currency(order.payable_amount_cents - order.requested_amount_cents));
+    const markup = order.payable_amount_cents - order.requested_amount_cents;
+    if (markup !== 0) {
+      await expect(websiteOrder.getByText("加价金额", { exact: true }).locator("..").locator("dd")).toHaveText(currency(markup));
+    } else {
+      await expect(websiteOrder.getByText("加价金额", { exact: true })).toHaveCount(0);
+    }
     const payment = orderOverlay.getByRole("group", { name: "PerPay 收款状态", exact: true });
-    await expect(payment.getByText("应付", { exact: true }).locator("..")).toContainText(currency(order.payable_amount_cents));
-    await expect(payment.getByText("实收", { exact: true }).locator("..")).toContainText(currency(order.received_amount_cents));
+    await expect(payment.locator("[data-record-summary-value]")).toHaveText(currency(order.received_amount_cents ?? order.payable_amount_cents));
     await expect(websiteOrder.getByText("商户订单号", { exact: true }).locator("..")).toContainText(order.merchant_order_no);
-    await expect(websiteOrder.getByText("有效期至", { exact: true }).locator("..").locator("dd")).toHaveText(timestamp(order.checkout.expires_at));
+    await expect(websiteOrder.getByText("收银台有效期至", { exact: true }).locator("..").locator("dd")).toHaveText(timestamp(order.checkout.expires_at));
     const website = websiteOrder.getByText("业务网站", { exact: true }).locator("..").getByRole("link");
     await expect(website).toHaveText(order.site_name!);
     expect(new URL((await website.getAttribute("href"))!, manifest.origin).searchParams.get("overlay")).toBe("/sites/" + order.api_client_id + "/summary");

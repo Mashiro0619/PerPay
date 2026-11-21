@@ -761,9 +761,17 @@ describe("order record layout", () => {
     await screen.findByRole("heading", { name: "订单信息" });
     const summary = screen.getByRole("group", { name: "PerPay 收款状态" });
     expect(summary.querySelector("[data-record-summary-value]")).toHaveTextContent(value);
-    expect(within(summary).getByText("应付").parentElement).toHaveTextContent("应付¥1.01");
-    expect(within(summary).getByText("实收").parentElement).toHaveTextContent(data.received_amount_cents ? "实收" + value : "实收—");
+    if (difference) {
+      expect(within(summary).getByText("实收 · 应付").parentElement).toHaveTextContent("实收 · 应付¥1.01（" + difference + "）");
+    } else if (data.received_amount_cents) {
+      expect(within(summary).queryByText("应付")).not.toBeInTheDocument();
+      expect(within(summary).queryByText("实收")).not.toBeInTheDocument();
+    } else {
+      expect(within(summary).getByText("应付金额")).toBeVisible();
+      expect(within(summary).queryByText("实收")).not.toBeInTheDocument();
+    }
     expect(summary.querySelector("[data-amount-difference]")?.textContent ?? null).toBe(difference && "（" + difference + "）");
+    expect(summary).toHaveTextContent("创建于 ");
     expect(summary.querySelector("time")).toHaveAttribute("datetime", data.created_at);
     // The summary is not repeated in the scrolling content.
     expect(screen.getByRole("group", { name: "订单详情内容" })).not.toContainElement(summary);
@@ -784,7 +792,7 @@ describe("order record layout", () => {
     mount();
     await screen.findByRole("heading", { name: "订单信息" });
     const notice = document.querySelector<HTMLElement>('[data-record-notice="danger"]')!;
-    expect(notice).toHaveTextContent("原收款关联已撤销，请继续核对付款凭证。");
+    expect(notice).toHaveTextContent("原收款关联已撤销，请核对付款人、交易凭证和金额；确认属于本订单后重新关联收款。");
     expect(notice).toHaveTextContent(/确认属于本订单后重新关联收款/);
     expect(within(notice).queryByRole("button")).not.toBeInTheDocument();
     expect(footerActions()).toEqual(["标记已退款", "重新核对并确认收款"]);

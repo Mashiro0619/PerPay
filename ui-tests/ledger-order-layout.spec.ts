@@ -106,7 +106,8 @@ for (const scenario of [
     const identity = overlay.getByRole("region", { name: "订单信息", exact: true });
     await expect(identity).toHaveAttribute("data-detail-section", "overview");
     await expect(identity.getByText(targetOrder.merchant_order_no, { exact: true })).toBeVisible();
-    for (const [name, cents] of [["下单金额", targetOrder.requested_amount_cents], ["加价金额", targetOrder.payable_amount_cents - targetOrder.requested_amount_cents]] as const) {
+    const markup = targetOrder.payable_amount_cents - targetOrder.requested_amount_cents;
+    for (const [name, cents] of [["下单金额", targetOrder.requested_amount_cents], ...(markup !== 0 ? [["加价金额", markup] as const] : [])] as const) {
       const term = identity.locator("dt").filter({ hasText: new RegExp("^" + name + "$") });
       await expect(term).toBeVisible();
       await expect(term.locator("..").locator("dd")).toHaveText(money(cents));

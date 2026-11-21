@@ -141,8 +141,8 @@ describe("unified transaction detail", () => {
       expect(writeText).toHaveBeenLastCalledWith("20261103");
       expect(within(sources).getByText("这是 PerPay 保存的版本，与它不一致的版本见账本冲突。")).toBeVisible();
       expect(document.querySelector("[data-record-notice]")).toHaveAttribute("data-record-notice", "danger");
-      expect(screen.getByText("账单信息存在不同版本", { exact: true })).toBeVisible();
-      expect(screen.getByText("有 1 条账本冲突待处理。")).toBeVisible();
+      expect(screen.getByText("账单存在不同版本，金额不可相加", { exact: true })).toBeVisible();
+      expect(screen.getByText("另有 1 条账本冲突待处理。")).toBeVisible();
       // The conflict is about another version of this very record, so it does not point back at it.
       expect(terms(record("conflict-conflict-id"))).toEqual(["发现时间"]);
     }
@@ -203,10 +203,10 @@ describe("unified transaction detail", () => {
       sources: [{ ...source(ledgerId), state: "CONFLICT" }, { ...source(secondSourceId), state: "CONFLICT", amount_cents: 102, semantic_fingerprint: "b".repeat(64) }],
       matches: [history, first, second], conflicts: [{ conflict_id: "conflict-id", conflict_type: "DUPLICATE_EXTERNAL_ID", status: "OPEN", existing_ledger_entry_id: secondSourceId, created_at: ledger.created_at, resolved_at: null }] });
     const user = userEvent.setup();
-    await screen.findByText("同一笔流水关联了多个订单");
+    await screen.findByText("同一笔流水存在 2 条有效关联");
     expect(document.querySelector("[data-record-notice]")).toHaveAttribute("data-record-notice", "danger");
     expect(screen.getByText(/金额不可相加/)).toBeVisible();
-    expect(screen.getByText("有 1 条账本冲突待处理。")).toBeVisible();
+    expect(screen.getByText("另有 1 条账本冲突待处理。")).toBeVisible();
     await settle();
     expect(screen.getAllByText("存在多条关联")).toHaveLength(2);
     // A payment is settled once: with an association in effect, no copy offers another.

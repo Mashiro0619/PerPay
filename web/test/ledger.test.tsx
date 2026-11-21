@@ -319,12 +319,12 @@ describe("administrator ledger pages", () => {
     const variant: AdminLedgerDetail = { ...detail, amount_cents: null, direction: null, occurred_at: null, content_consistent: false, has_conflicts: true, active_match_count: 2, active_match: null, matches: [...detail.matches, secondMatch], conflicts: [{ conflict_id: "66666666-6666-4666-8666-666666666666", conflict_type: "DUPLICATE_EXTERNAL_ID", status: "OPEN", existing_ledger_entry_id: secondSourceId, created_at: ledger.created_at, resolved_at: null }] };
     fetchMock.mockImplementation(async request => detailResponse(request, variant));
     mount("/reconciliation/transactions/" + ledgerId);
-    expect(await screen.findByText("同一笔流水关联了多个订单")).toBeVisible();
+    expect(await screen.findByText("同一笔流水存在 2 条有效关联")).toBeVisible();
     // Neither a receipt nor an expense while the versions disagree on the direction.
     expect(screen.getByRole("heading", { name: "支付宝交易 · 付款用户", level: 1 })).toBeVisible();
     const summary = screen.getByRole("group", { name: "流水概况" });
     for (const text of ["金额有争议", "收支方向有争议", "交易时间有争议", "多笔关联", "需要核查"]) expect(summary).toHaveTextContent(text);
-    expect(screen.getByText("有 2 条有效关联，无法确定唯一订单。")).toBeVisible();
+    expect(screen.getByText("无法确定唯一订单，请核对后撤销多余关联。")).toBeVisible();
     expect(await screen.findAllByText("存在多条关联", { exact: true })).toHaveLength(2);
     expect(within(record("match-" + reversedMatchId)).queryByText("存在多条关联")).not.toBeInTheDocument();
     // Each source states for itself what the transaction as a whole cannot.
@@ -351,8 +351,8 @@ describe("administrator ledger pages", () => {
     for (const title of ["交易对方", "支付宝订单号"]) expect(within(facts).getByText(title).nextElementSibling).toHaveTextContent(/^—$/);
     expect(facts).not.toHaveTextContent(/有争议|未提供/);
     expect(screen.getByRole("group", { name: "流水概况" })).toHaveTextContent("金额有争议");
-    expect(screen.getByText("账单信息存在不同版本", { exact: true })).toBeVisible();
-    expect(screen.getByText("各份采集记录存在差异，请逐份核对。")).toBeVisible();
+    expect(screen.getByText("账单存在不同版本，金额不可相加", { exact: true })).toBeVisible();
+    expect(screen.getByText("以下各份采集记录内容存在差异。")).toBeVisible();
     for (const [id, amount] of [[ledgerId, "¥1.01"], [secondSourceId, "¥1.02"]] as const) {
       expect(within(record("source-" + id)).getByText("交易金额").nextElementSibling).toHaveTextContent(amount);
     }

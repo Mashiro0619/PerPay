@@ -349,7 +349,7 @@ describe("manual settlement selection instead of ID entry", () => {
     const user = userEvent.setup();
     const note = await screen.findByLabelText("操作理由（可选）");
     expect(note).not.toBeRequired();
-    const mismatch = screen.getByText("支付宝交易金额与订单应付不同，请核对后确认。");
+    const mismatch = screen.getByText("请核对实际收款金额，确认无误后再关联。");
     expect(mismatch).toBeVisible();
     expect(mismatch.closest("[role=alert]")).toHaveTextContent(
       "流水 " + money(order.payable_amount_cents + 100) + "，订单应付 " + money(order.payable_amount_cents) + "，多收 " + money(100));

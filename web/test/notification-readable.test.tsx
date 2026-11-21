@@ -83,7 +83,7 @@ describe("readable standalone notification detail", () => {
     const latest = await screen.findByRole("link", { name: "已重新发送，查看最新结果" });
     expect(latest).toHaveAttribute("href", "/notifications/" + nextId);
     // A delivery replaced by a resend is history: it offers no resend of its own.
-    expect(within(screen.getByRole("group", { name: "通知状态" })).getByText("历史发送")).toBeVisible();
+    expect(within(screen.getByRole("group", { name: "通知状态" })).getByText("历史发送记录")).toBeVisible();
     expect(screen.queryByRole("button", { name: "重新发送" })).not.toBeInTheDocument();
   });
   it.each([false, true])("shows the delivery, its attempts and the order together without duplicate reads (site=%s)", async (site) => {
@@ -92,7 +92,7 @@ describe("readable standalone notification detail", () => {
     // The notification is titled by the event it reports.
     expect(await screen.findByRole("heading", { name: "收款已确认", level: 1 })).toBeVisible();
     const summary = screen.getByRole("group", { name: "通知状态" });
-    expect(within(summary).getByText("等待自动重试")).toBeVisible();
+    expect(within(summary).getByText("对方的确认回执无效")).toBeVisible();
     expect(within(summary).getByText("等待重试")).toBeVisible();
     expect(summary).toHaveTextContent("已尝试 1 次 · 下次重试 2026/09/06 08:02:00");
     expect(screen.getAllByRole("heading", { level: 2 }).map(heading => heading.firstChild?.textContent)).toEqual(["通知信息", "发送记录", "关联订单"]);
@@ -315,7 +315,7 @@ describe("readable standalone notification detail", () => {
     mockDetail(false, false, { ...delivery, attempts: [], delivery: { ...delivery.delivery, status: "PENDING", attempt_count: 0, last_error_code: null } });
     mountDetail();
     const summary = await screen.findByRole("group", { name: "通知状态" });
-    expect(within(summary).getByText("等待发送结果")).toBeVisible();
+    expect(within(summary).getByText("已排入发送队列")).toBeVisible();
     expect(within(summary).getByText("待发送")).toBeVisible();
     expect(summary).toHaveTextContent("已尝试 0 次 · 计划发送 2026/09/06 08:02:00");
     expect(document.querySelector("[data-record-notice]")).toBeNull();
@@ -325,7 +325,7 @@ describe("readable standalone notification detail", () => {
     mockDetail(false, false, { ...delivery, delivery: { ...delivery.delivery, status: "DEAD_LETTER", next_attempt_at: null } });
     mountDetail();
     const summary = await screen.findByRole("group", { name: "通知状态" });
-    expect(within(summary).getByText("已停止重试，需要处理")).toBeVisible();
+    expect(within(summary).getByText("对方的确认回执无效")).toBeVisible();
     // Nothing further is scheduled, so the summary names no next attempt.
     expect(summary.querySelector("[data-record-summary-meta]")).toHaveTextContent(/^已尝试 1 次$/);
     const notice = document.querySelector<HTMLElement>('[data-record-notice="danger"]')!;
@@ -339,7 +339,7 @@ describe("readable standalone notification detail", () => {
     mockDetail(false, false, { ...delivery, redelivery_blocked_reason: "payment_confirmation_revoked", delivery: { ...delivery.delivery, status: "DEAD_LETTER", next_attempt_at: null } });
     mountDetail();
     const summary = await screen.findByRole("group", { name: "通知状态" });
-    expect(within(summary).getByText("原付款确认已撤销，成功通知已终止")).toBeVisible();
+    expect(within(summary).getByText("原付款确认已撤销，已停止发送")).toBeVisible();
     expect(within(summary).getByText("已终止")).toBeVisible();
     const notice = document.querySelector<HTMLElement>('[data-record-notice="warning"]')!;
     expect(notice).toHaveTextContent("重新确认收款后，系统会为新的确认事件生成通知");

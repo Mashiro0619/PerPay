@@ -725,12 +725,12 @@ describe("settings summaries and owned editing overlays", () => {
     expect(within(dialog).getAllByRole("heading", { level: 1 }).map(heading => heading.textContent)).toEqual(["Chrome · Android"]);
     expect(dialog.querySelector("[data-overlay-eyebrow-text]")).toHaveTextContent(/^登录会话详情$/);
     const body = dialog.querySelector<HTMLElement>("[data-overlay-detail]")!;
-    expect(await within(body).findByText("2001:db8::1")).toBeVisible();
     const summary = within(dialog.querySelector<HTMLElement>("[data-overlay-summary]")!).getByRole("group", { name: "会话概况" });
-    expect(summary).toHaveTextContent(/^最近活跃：2026\/10\/29 08:00:00 · 登录 IP：2001:db8::1$/);
+    expect(await within(summary).findByText("其他设备", { exact: true })).toBeVisible();
+    expect(summary).toHaveTextContent(/最近活跃：2026\/10\/29 08:00:00 · 登录 IP：2001:db8::1/);
     expect(within(summary).queryByText("当前会话")).not.toBeInTheDocument();
     expect(Array.from(body.querySelectorAll("[data-detail-fields] > dl > div")).map(row => [row.querySelector("dt")!.textContent, row.querySelector("dd")!.textContent])).toEqual([
-      ["当前会话", "否"], ["登录方式", "密码"], ["最近活跃", "2026/10/29 08:00:00"], ["到期时间", "2099/01/01 08:00:00"], ["登录 IP", "2001:db8::1"],
+      ["登录方式", "密码"], ["到期时间", "2099/01/01 08:00:00"],
     ]);
     const device = within(body).getByRole("button", { name: "设备信息" });
     expect(device).toHaveAttribute("aria-expanded", "false");
@@ -761,7 +761,7 @@ describe("settings summaries and owned editing overlays", () => {
     expect(within(summary).getByText("当前会话", { exact: true })).toBeVisible();
     expect(summary.querySelector("[data-record-summary-meta]")).toHaveTextContent(/^最近活跃：2026\/10\/29 08:00:00 · 登录 IP：未记录$/);
     const body = dialog.querySelector<HTMLElement>("[data-overlay-detail]")!;
-    expect(within(body).getByText("当前会话", { selector: "dt" }).nextElementSibling).toHaveTextContent(/^是$/);
+    expect(within(body).queryByText("当前会话", { selector: "dt" })).not.toBeInTheDocument();
     // Without a recorded User-Agent there is nothing to disclose.
     expect(within(body).getByText("设备信息", { selector: "dt" }).nextElementSibling).toHaveTextContent(/^未记录$/);
     expect(within(body).queryByRole("button", { name: "设备信息" })).not.toBeInTheDocument();

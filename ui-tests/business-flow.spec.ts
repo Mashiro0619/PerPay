@@ -368,7 +368,7 @@ async function reconcileUnmatchedIncome(page: Page, fixture: BusinessFixture, in
     await manual.getByRole("button", { name: /^选择订单：/ }).click();
     await expect(manual.getByRole("button", { name: "确认关联收款", exact: true })).toBeEnabled();
     await expect(manual).toContainText(merchantOrderNo);
-    await expect(manual.getByText("支付宝交易金额与订单应付不同，请核对后确认。", { exact: true })).toBeVisible();
+    await expect(manual.getByText("请核对实际收款金额，确认无误后再关联。", { exact: true })).toBeVisible();
   };
   await selectOrder();
   await manual.getByRole("button", { name: "返回选择", exact: true }).click();

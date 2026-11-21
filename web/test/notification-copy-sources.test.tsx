@@ -134,7 +134,7 @@ describe("order and notification copy follows its actual source", () => {
     expect(await within(await screen.findByRole("region", { name: "关联订单" })).findByText("收款已确认", { exact: true })).toBeVisible();
     const summary = screen.getByRole("group", { name: "通知状态" });
     expect(within(summary).getByText("通知已确认", { exact: true })).toBeVisible();
-    expect(within(summary).getByText(latest ? "对方已返回有效确认回执" : "历史发送 · 对方已返回有效确认回执")).toBeVisible();
+    expect(within(summary).getByText(latest ? "对方已返回有效确认回执" : "历史发送 · 对方已返回确认回执")).toBeVisible();
     // The label stays short; whose clock the time comes from is said under the value.
     const acknowledged = screen.getByText("通知确认时间", { selector: "dt" }).nextElementSibling!;
     expect(acknowledged).toHaveTextContent("2026/10/21 18:10:00");
@@ -169,7 +169,7 @@ describe("order and notification copy follows its actual source", () => {
       delivery: { ...delivery.delivery, status: "DEAD_LETTER", next_attempt_at: null } }], page: { next_cursor: null } })));
     mount(<OrderNotifications orderId={paidOrder.order_id} notifyUrl="https://business.example.invalid/notify" />, "/orders/" + paidOrder.order_id);
     expect(await screen.findByText("已终止", { exact: true })).toBeVisible();
-    expect(screen.getByText("原付款确认已撤销，成功通知已终止")).toBeVisible();
+    expect(screen.getByText("原付款确认已撤销，已停止发送")).toBeVisible();
     expect(screen.getByText(/重新确认收款后，系统会为新的确认事件生成通知/)).toBeVisible();
     expect(screen.getByRole("link", { name: "查看详情" })).toBeVisible();
     expect(screen.queryByRole("button", { name: "重新发送" })).not.toBeInTheDocument();

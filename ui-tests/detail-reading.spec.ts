@@ -804,7 +804,7 @@ test("all genuine ledger versions and synthetic simultaneous associations remain
     if (key === "ledgerIdentical") { expect(entry.content_consistent).toBe(true); expect(several).toBe(true); }
     if (key === "ledgerDisputed") {
       expect(entry.content_consistent).toBe(false);
-      await expect(foreground(page).locator("[data-record-notice]")).toContainText("账单信息存在不同版本");
+      await expect(foreground(page).locator("[data-record-notice]")).toContainText("账单存在不同版本");
       expect(entry.amount_cents, "the genuine versions differ in their amounts").toBeNull();
       // Each version states its own amount; the versions are never added up.
       for (const source of entry.sources) {

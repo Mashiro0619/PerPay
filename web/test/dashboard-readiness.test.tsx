@@ -42,7 +42,7 @@ describe("dashboard collection readiness guidance", () => {
     });
     const alert = await pausedAlert();
 
-    expect(alert.getByText("最近查账成功已超过有效时限，请查看运行状态")).toBeVisible();
+    expect(alert.getByText("最近查账成功已超过有效时限")).toBeVisible();
     expect(alert.queryByText(/还没有成功查账/)).not.toBeInTheDocument();
     expect(view.router.state.location.pathname).toBe("/");
   });
@@ -55,7 +55,7 @@ describe("dashboard collection readiness guidance", () => {
     });
     const alert = await pausedAlert();
 
-    expect(alert.getByText("查账任务未运行，请查看运行状态")).toBeVisible();
+    expect(alert.getByText("查账任务未运行")).toBeVisible();
     expect(alert.queryByText(/还没有成功查账|超过有效时限/)).not.toBeInTheDocument();
     expect(view.router.state.location.pathname).toBe("/");
   });
@@ -77,7 +77,7 @@ describe("dashboard collection readiness guidance", () => {
     mount({ last_success_age_milliseconds: null });
     const alert = await pausedAlert();
 
-    expect(alert.getByText("查账暂未就绪，请查看运行状态")).toBeVisible();
+    expect(alert.getByText("查账暂未就绪")).toBeVisible();
     expect(alert.queryByText(/还没有成功查账|超过有效时限/)).not.toBeInTheDocument();
   });
 });

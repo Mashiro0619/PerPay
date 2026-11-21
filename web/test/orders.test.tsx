@@ -207,7 +207,7 @@ describe("order browsing", () => {
     expect(screen.getByLabelText("收款状态筛选")).toHaveTextContent("待付款");
     await user.click(screen.getByRole("button", { name: "高级筛选" }));
     expect(screen.getByLabelText("收银台状态筛选")).toHaveTextContent("收款中");
-    await user.click(screen.getByRole("button", { name: "清除筛选" }));
+    await user.click(screen.getByRole("button", { name: "清除搜索和筛选" }));
     expect(
       await screen.findByRole("link", { name: order.product_name }),
     ).toBeVisible();
@@ -221,7 +221,7 @@ describe("order browsing", () => {
       "/orders?source=overview",
     );
     expect(
-      screen.queryByRole("button", { name: "清除筛选" }),
+      screen.queryByRole("button", { name: "清除搜索和筛选" }),
     ).not.toBeInTheDocument();
     expect(
       new URL(fetchMock.mock.calls.at(-1)![0].url).searchParams.has(
