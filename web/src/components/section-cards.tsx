@@ -45,8 +45,8 @@ export function SectionCards({
   const averageAmount = completedDays.length
     ? Math.round(completedDays.reduce((sum, day) => sum + day.confirmed_amount_cents, 0) / completedDays.length)
     : null;
-  const hasWorkAttention = !pending && workItems != null && workItems > 0;
-  const workBreakdownSummary = !clientId && hasWorkAttention ? formatWorkBreakdown(workBreakdown) : null;
+  const hasWorkItems = !pending && workItems != null && workItems > 0;
+  const workBreakdownSummary = !clientId && hasWorkItems ? formatWorkBreakdown(workBreakdown) : null;
 
   const cards = [
     {
@@ -58,7 +58,6 @@ export function SectionCards({
         : averageAmount != null
           ? `近 ${range} 天日均 ${money(averageAmount)}`
           : "北京时间今日累计",
-      attention: false,
     },
     {
       title: "今日收款确认笔数",
@@ -67,7 +66,6 @@ export function SectionCards({
       caption: !analytics
         ? "统计暂不可用"
         : `近 ${range} 天累计 ${count(analytics.confirmations.count)} 笔`,
-      attention: false,
     },
     {
       title: "当前待付款",
@@ -78,7 +76,6 @@ export function SectionCards({
           ? "收款中待付款订单"
           : "当前无收款中订单",
       href: (clientId ? "/sites/" + encodeURIComponent(clientId) : "") + "/orders?payment=UNPAID&checkout=OPEN",
-      attention: false,
     },
     {
       title: "待处理",
@@ -89,7 +86,6 @@ export function SectionCards({
           ? (workBreakdownSummary ?? "点击查看待处理队列")
           : "暂无待处理提醒",
       href: (clientId ? "/sites/" + encodeURIComponent(clientId) : "") + "/work-items",
-      attention: hasWorkAttention,
     },
   ];
 
@@ -105,7 +101,6 @@ export function SectionCards({
           <Card
             key={card.title}
             aria-busy={pending}
-            data-attention={card.attention || undefined}
             data-interactive={card.href && !pending ? "true" : undefined}
             className={cn(
               "overview-kpi-card",
@@ -143,7 +138,6 @@ export function SectionCards({
                 aria-label={pending || card.href ? undefined : `${card.title}：${card.value}`}
                 className={cn(
                   "overview-metric-value min-w-0 text-xl font-semibold whitespace-nowrap tabular-nums focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
-                  card.attention && "text-warning-foreground",
                   card.href && "[@media(pointer:coarse)]:min-h-[40px]",
                   !card.href && "overflow-x-auto",
                 )}
