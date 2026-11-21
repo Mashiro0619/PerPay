@@ -130,11 +130,6 @@ export default function Orders() {
                 </SelectGroup>
               </SelectContent>
             </Select>
-            {(payment || checkout) && (
-              <Button variant="ghost" onClick={clearFilters}>
-                清除筛选
-              </Button>
-            )}
           </>
         }
         lookup={{

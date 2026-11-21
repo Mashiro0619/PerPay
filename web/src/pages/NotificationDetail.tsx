@@ -95,7 +95,7 @@ function DeliveryRecord({ detail, attempts, order }: {
   const count = total > 0 ? { count: total } : {};
   return <>
     <OverlaySummary>
-      <RecordSummary label="通知状态" size="phrase" value={deliveryPhrase(detail)} status={<DeliveryStatus detail={detail} />}
+      <RecordSummary label="通知状态" size="phrase" value={deliveryPhrase(detail, made)} status={<DeliveryStatus detail={detail} />}
         meta={[<>
           已尝试 {delivery.attempt_count} 次
           {!!nextAttemptAt && <> · {nextAttemptLabel(detail)} <RecordTime value={nextAttemptAt} /></>}

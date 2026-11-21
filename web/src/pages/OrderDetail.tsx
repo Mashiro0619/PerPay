@@ -89,6 +89,7 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
   const candidates = new Map(matches.flatMap(match => match.candidate ? [[match.candidate.candidate_id, match.candidate] as const] : []));
   const confirmed = [...order.events].reverse().find(event => event.event_type === "PAYMENT_CONFIRMED");
   const unpaid = order.payment.status === "UNPAID";
+  const ended = unpaid && (order.checkout.status === "EXPIRED" || order.checkout.status === "CLOSED");
   const dispute = order.payment.status === "DISPUTED" ? disputeState(order) : null;
   // A dispute stays open to reconfirmation or a refund until a refund is on record.
   const unresolved = !!dispute && !dispute.refunded;
@@ -125,15 +126,23 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
       <RecordSummary label="PerPay 收款状态" value={money(paid ? received : order.payable_amount_cents)}
         status={<OrderStatusBadge payment={order.payment.status} checkout={order.checkout.status} refundMarked={order.refund_mark.marked} />}
         meta={[
-          <span className="flex min-w-0 flex-wrap items-baseline gap-x-3">
-            <span className="inline-flex items-baseline gap-1"><span>应付</span><ListMoney value={order.payable_amount_cents} /></span>
-            <span className="inline-flex items-baseline gap-1">
-              <span>实收</span><ListMoney value={received} />
-              {difference !== 0 && <span className="text-destructive" data-amount-difference>（{difference > 0 ? "多收 " : "少收 "}{money(Math.abs(difference))}）</span>}
-            </span>
-            {basis && <span>{basis}</span>}
-          </span>,
-          <RecordTime value={order.created_at} />,
+          ...(paid && difference !== 0
+            ? [<span className="flex min-w-0 flex-wrap items-baseline gap-x-3">
+              <span className="inline-flex items-baseline gap-1">
+                <span>实收 · 应付</span><ListMoney value={order.payable_amount_cents} />
+                <span className="text-destructive" data-amount-difference>（{difference > 0 ? "多收 " : "少收 "}{money(Math.abs(difference))}）</span>
+              </span>
+              {basis && <span>{basis}</span>}
+            </span>]
+            : !paid
+              ? [<span className="flex min-w-0 flex-wrap items-baseline gap-x-3">
+                <span>应付金额</span>
+                {basis && <span>{basis}</span>}
+              </span>]
+              : basis
+                ? [<span>{basis}</span>]
+                : []),
+          <>创建于 <RecordTime value={order.created_at} /></>,
         ]}
         nav={[
           { id: "overview", label: "订单信息" },
@@ -143,10 +152,13 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
         ]} />
     </OverlaySummary>
     {dispute ? <RecordNotice tone="danger" {...(exceptions.length ? { jump: { section: "payments", label: pending } } : {})}>
-      {!active.length && !unassociated && <p>原收款关联已撤销，请继续核对付款凭证。</p>}
-      <p>{dispute.guidance}</p>
+      <p>{!active.length && !unassociated
+        ? dispute.refunded
+          ? "原收款关联已撤销，已标记退款。核对完成后可忽略本次争议提醒，处理记录保留在订单历史中。"
+          : "原收款关联已撤销，请核对付款人、交易凭证和金额；确认属于本订单后重新关联收款。暂不能确认时保留争议，补齐凭证后继续。"
+        : dispute.guidance}</p>
     </RecordNotice> : exceptions.length > 0 && <RecordNotice tone="warning" jump={{ section: "payments", label: pending }}>
-      {[...new Set(exceptions.map(exception => label(exception.exception_type)))].join("、")}
+      该订单存在待核对异常：{[...new Set(exceptions.map(exception => label(exception.exception_type)))].join("、")}
     </RecordNotice>}
     <Sections label="订单详情内容">
       <Section id="overview" title="订单信息">
@@ -156,9 +168,9 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
           !clientId && { label: "业务网站", value: <Link global className="underline underline-offset-4" to={"/sites/" + encodeURIComponent(order.api_client_id) + "/summary"}>{order.site_name ?? "业务网站名称暂不可用"}</Link> },
           { label: "收款账号", value: <AlipayAccountIdentity id={order.alipay_account_id} name={order.alipay_account_name} /> },
           { label: "下单金额", kind: "money", value: money(order.requested_amount_cents) },
-          { label: "加价金额", kind: "money", value: money(order.payable_amount_cents - order.requested_amount_cents) },
+          order.payable_amount_cents !== order.requested_amount_cents && { label: "加价金额", kind: "money", value: money(order.payable_amount_cents - order.requested_amount_cents) },
           !!confirmed && { label: "确认收款时间", kind: "time", value: <RecordTime value={confirmed.occurred_at} /> },
-          { label: "收银台状态", value: <StatusBadge value={order.checkout.status} /> },
+          !ended && { label: "收银台状态", value: <StatusBadge value={order.checkout.status} /> },
           { label: "收银台有效期至", kind: "time", value: <RecordTime value={order.checkout.expires_at} /> },
           !!order.note && { label: "订单备注", value: order.note },
           order.refund.status !== "NONE" && { label: "历史退款（只读）", value: <StatusBadge value={order.refund.status} /> },

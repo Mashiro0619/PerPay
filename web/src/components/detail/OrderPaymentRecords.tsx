@@ -70,7 +70,7 @@ export function OrderMatchRecord({ match, release = false }: { match: PaymentMat
   return <SubRecord id={"match-" + match.payment_match_id} title="收款关联记录" status={<StatusBadge value={match.status} />}
     description={<>
       {match.evidence_type === "MANUAL" ? "管理员人工关联 · " + (operation?.actor_id ?? "未记录") : "PerPay 按金额和付款时间推断"}
-      {" · "}<RecordTime value={operation?.created_at ?? match.created_at} />
+      {" · 关联于 "}<RecordTime value={operation?.created_at ?? match.created_at} />
     </>}
     href={"/reconciliation/matches/" + match.payment_match_id}
     actions={[...(reverse.action ? [reverse.action] : []), ...(release ? [reassign.action] : [])]} actionsLabel="更多操作，收款关联记录操作">

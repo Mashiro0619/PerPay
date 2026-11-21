@@ -230,6 +230,7 @@ export function ManualCandidatePicker({
                         </ItemDescription>
                       )}
                       <ItemDescription className="line-clamp-none whitespace-normal">
+                        {kind === "orders" ? "创建于 " : "交易于 "}
                         <ListDateTime value={choice.occurredAt} inline />
                         {kind === "orders" && " · " + choice.summary}
                       </ItemDescription>
@@ -245,7 +246,10 @@ export function ManualCandidatePicker({
                       )}
                     </ItemContent>
                     <ItemActions className="flex-col items-end">
-                      <ListMoney value={choice.amount} />
+                      <span className="inline-flex items-baseline gap-1">
+                        <span className="record-list-meta">{kind === "orders" ? "应付" : "交易金额"}</span>
+                        <ListMoney value={choice.amount} />
+                      </span>
                       <Button
                         type="button"
                         variant="outline"

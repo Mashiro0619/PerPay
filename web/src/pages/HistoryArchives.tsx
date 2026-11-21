@@ -57,7 +57,7 @@ function archiveDateError(value: string): string {
 }
 
 const archiveColumns: BusinessColumn<HistoryArchiveSummary>[] = [
-  { id: "archive", label: "归档", layout: "identity", hideable: false, cell: archive => <div className="flex min-w-0 flex-col gap-1">
+  { id: "archive", label: "创建时间", layout: "identity", hideable: false, cell: archive => <div className="flex min-w-0 flex-col gap-1">
     {archive.status === "AVAILABLE" ? <Link global to={archivePath(archive.archive_id)} className="text-primary underline-offset-4 hover:underline">{dateTime(archive.created_at)}</Link> : <span>{dateTime(archive.created_at)}</span>}
     <span className="text-xs text-muted-foreground">{shortId(archive.archive_id)}</span>
   </div> },
@@ -67,7 +67,7 @@ const archiveColumns: BusinessColumn<HistoryArchiveSummary>[] = [
   { id: "size", label: "文件大小", layout: "number", hideable: false, summaryDefault: true, summaryLabel: true, cell: archive => archiveSize(archive.size_bytes) },
   { id: "status", label: "状态", layout: "status", hideable: false, summaryDefault: true, cell: archive => <div className="flex flex-col items-start gap-1">
     <Badge variant={archive.deletion_pending ? "warning" : archive.status === "AVAILABLE" ? "outline" : "secondary"}>{archive.deletion_pending ? "删除待完成" : archive.status === "AVAILABLE" ? "长期保留" : "已永久删除"}</Badge>
-    {archive.deleted_at !== null && <span className="text-xs text-muted-foreground">{dateTime(archive.deleted_at)}</span>}
+    {archive.deleted_at !== null && <span className="text-xs text-muted-foreground">删除于 {dateTime(archive.deleted_at)}</span>}
   </div> },
   { id: "actions", label: "操作", layout: "actions", hideable: false, cell: archive => archive.deletion_pending ? <RetryArchiveDeletion archive={archive} /> : null },
 ];

@@ -202,8 +202,8 @@ function LedgerRecord({ entry }: { entry: AdminLedgerDetail }) {
           {entry.environment === "SANDBOX" && <Badge variant="outline">沙箱环境</Badge>}
         </>}
         meta={[<>
-          {entry.occurred_at ? <RecordTime value={entry.occurred_at} /> : entry.content_consistent ? "交易时间未知" : "交易时间有争议"}
-          {" · "}<AlipayAccountIdentity id={entry.alipay_account_id} name={entry.alipay_account_name} />
+          {entry.occurred_at ? <>交易于 <RecordTime value={entry.occurred_at} /></> : entry.content_consistent ? "交易时间未知" : "交易时间有争议"}
+          {" · 收款账号："}<AlipayAccountIdentity id={entry.alipay_account_id} name={entry.alipay_account_name} />
         </>]}
         nav={[
           { id: "transaction", label: "交易信息" },
@@ -214,10 +214,10 @@ function LedgerRecord({ entry }: { entry: AdminLedgerDetail }) {
     </OverlaySummary>
     {(multiple || !entry.content_consistent || pending > 0) && <RecordNotice tone={multiple || pending > 0 ? "danger" : "warning"}
       jump={multiple ? { section: "payments", label: "核对各条关联" } : pending > 0 ? { section: "conflicts", label: "查看账本冲突" } : { section: "sources", label: "核对采集记录" }}>
-      <p className="font-medium">{multiple ? "同一笔流水关联了多个订单" : !entry.content_consistent ? "账单信息存在不同版本" : `有 ${pending} 条账本冲突待处理`}</p>
-      {multiple && <p>有 {entry.active_match_count} 条有效关联，无法确定唯一订单。</p>}
-      {!entry.content_consistent && <p>各版本的账单内容不一致，请逐份核对；金额不可相加。</p>}
-      {pending > 0 && (multiple || !entry.content_consistent) && <p>有 {pending} 条账本冲突待处理。</p>}
+      <p className="font-medium">{multiple ? `同一笔流水存在 ${entry.active_match_count} 条有效关联` : !entry.content_consistent ? "账单存在不同版本，金额不可相加" : `有 ${pending} 条账本冲突待处理`}</p>
+      {multiple && <p>无法确定唯一订单，请核对后撤销多余关联。</p>}
+      {!entry.content_consistent && <p>{multiple ? "同时各版本的账单内容不一致，请逐份核对，金额不可相加。" : "请逐份核对各条采集记录后再做处理。"}</p>}
+      {pending > 0 && (multiple || !entry.content_consistent) && <p>另有 {pending} 条账本冲突待处理。</p>}
     </RecordNotice>}
     <Sections label="流水详情内容">
       <Section id="transaction" title="交易信息">
@@ -238,7 +238,7 @@ function LedgerRecord({ entry }: { entry: AdminLedgerDetail }) {
       </Section>
       <Section id="sources" title="采集记录" count={entry.sources.length} {...(several ? { anchorPrefixes: ["source-"] } : {})}>
         {several
-          ? <p className={note}>{entry.content_consistent ? "多份采集记录对应同一笔交易。" : "各份采集记录存在差异，请逐份核对。"}</p>
+          ? <p className={note}>{entry.content_consistent ? "多份采集记录对应同一笔交易。" : "以下各份采集记录内容存在差异。"}</p>
           : !entry.content_consistent && <p className={note}>这是 PerPay 保存的版本，与它不一致的版本见账本冲突。</p>}
         {entry.sources.map((source, index) => several
           ? <SourceRecord key={source.ledger_entry_id} source={source} entry={entry} number={index + 1} associable={perCopy && associable.includes(source)} />
@@ -325,7 +325,7 @@ function LedgerMatchRecord({ match, query, source, multiple }: {
     status={<><StatusBadge value={match.status} />{multiple && <Badge variant="destructive">存在多条关联</Badge>}</>}
     description={<>
       {match.evidence_type === "MANUAL" ? "管理员人工关联" + (detail ? " · " + (operation?.actor_id ?? "未记录") : "") : "PerPay 按金额和付款时间推断"}
-      {" · "}<RecordTime value={operation?.created_at ?? match.created_at} />
+      {" · 关联于 "}<RecordTime value={operation?.created_at ?? match.created_at} />
     </>}
     href={"/orders/" + match.order_id} hrefLabel="查看订单"
     // The entry may report the reversal before the association's own read does.

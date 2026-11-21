@@ -96,7 +96,7 @@ export function RefundMarkStatus({ order }: { order: AdminOrderDetail }) {
           value={mark.marked ? "ADMIN_REFUND_MARK" : "NONE"}
           label={mark.marked ? "已标记退款" : "标记已撤销"}
         />
-        <span className="min-w-0 wrap-anywhere">{mark.updated_by ?? "管理员"} · <RecordTime value={mark.updated_at} /></span>
+        <span className="min-w-0 wrap-anywhere">{mark.updated_by ?? "管理员"} · 更新于 <RecordTime value={mark.updated_at} /></span>
       </div>
       {mark.note && (
         <p className="text-sm leading-5 whitespace-pre-wrap wrap-anywhere">
@@ -269,7 +269,7 @@ export function RefundMarkDialog({
                     {context.order.product_name}
                   </ItemTitle>
                   <ItemDescription className="record-list-meta wrap-anywhere">
-                    {context.order.merchant_order_no}
+                    商户订单号：{context.order.merchant_order_no}
                   </ItemDescription>
                 </ItemContent>
                 <div className="flex flex-col items-end gap-1"><span className="record-list-meta">实收</span><ListMoney value={context.order.received_amount_cents} /></div>

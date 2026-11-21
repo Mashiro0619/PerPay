@@ -363,7 +363,7 @@ export function FinancialDialog({
                       {money(Math.abs(preview.data.ledger.amount_cents - preview.data.order.payable_amount_cents))}
                     </AlertTitle>
                     <AlertDescription>
-                      支付宝交易金额与订单应付不同，请核对后确认。
+                      请核对实际收款金额，确认无误后再关联。
                     </AlertDescription>
                   </Alert>
                 )}

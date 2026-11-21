@@ -152,16 +152,12 @@ export function AdministratorSessions({ detailSessionId }: { detailSessionId?: s
         <ErrorNotice error={sessions.error} retry={() => { void sessions.refetch(); }} />
         {sessions.isPending ? <Loading label="正在读取登录会话…" /> : selected ? <>
           <OverlaySummary>
-            {/* Only the current session has a badge to lead with. */}
-            <RecordSummary label="会话概况" status={selected.is_current && <Badge variant="secondary">当前会话</Badge>} meta={[conclusion(selected)]} />
+            <RecordSummary label="会话概况" status={<Badge variant={selected.is_current ? "secondary" : "outline"}>{selected.is_current ? "当前会话" : "其他设备"}</Badge>} meta={[conclusion(selected)]} />
           </OverlaySummary>
           <div className="flex min-w-0 flex-col gap-3">
             <FieldList items={[
-              { label: "当前会话", value: selected.is_current ? "是" : "否" },
               { label: "登录方式", value: "密码" },
-              { label: "最近活跃", value: <RecordTime value={selected.last_seen_at} />, kind: "time" },
               { label: "到期时间", value: <RecordTime value={selected.expires_at} />, kind: "time" },
-              { label: "登录 IP", value: selected.ip_address ?? "未记录", kind: selected.ip_address ? "id" : "text" },
               !selected.user_agent && { label: "设备信息", value: "未记录" },
             ]} />
             {/* The title already names the browser and system; the raw User-Agent is kept for checking. */}

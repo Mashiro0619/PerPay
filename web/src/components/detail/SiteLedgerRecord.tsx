@@ -44,8 +44,8 @@ export function SiteLedgerRecord({
         value={(isCredit ? "+" : "−") + money(entry.amount_cents)}
         status={<><StatusBadge value={entry.direction} /><LedgerState value={entry.state} /></>}
         meta={[<>
-          <RecordTime value={entry.occurred_at} />
-          {hasAccount && <>{" · "}<AlipayAccountIdentity id={entry.alipay_account_id ?? null} name={entry.alipay_account_name ?? null} /></>}
+          交易于 <RecordTime value={entry.occurred_at} />
+          {hasAccount && <>{" · 收款账号："}<AlipayAccountIdentity id={entry.alipay_account_id ?? null} name={entry.alipay_account_name ?? null} /></>}
         </>]}
         nav={[
           { id: "transaction", label: "交易信息" },
@@ -75,7 +75,6 @@ export function SiteLedgerRecord({
       </Section>}
       <Section id="record" title="PerPay 记录">
         <FieldList items={[
-          { label: "PerPay 记录状态", value: <LedgerState value={entry.state} /> },
           { label: "内部流水编号", kind: "id", value: entry.ledger_entry_id, copy: entry.ledger_entry_id },
           { label: "保存时间", kind: "time", value: <RecordTime value={entry.created_at} /> },
         ]} />

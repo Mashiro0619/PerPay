@@ -55,7 +55,7 @@ export function MatchRecord({ match }: { match: PaymentMatchDetail }) {
         status={<StatusBadge value={match.status} />}
         meta={[<>
           {manual ? "管理员人工关联 · " + (operation?.actor_id ?? "未记录") : "PerPay 按金额和付款时间推断"}
-          {" · "}<RecordTime value={operation?.created_at ?? match.created_at} />
+          {" · 关联于 "}<RecordTime value={operation?.created_at ?? match.created_at} />
         </>]}
         compare={difference !== 0 ? [{
           label: "金额",

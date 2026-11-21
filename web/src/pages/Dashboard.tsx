@@ -36,14 +36,14 @@ import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 
 function collectionReadinessReason(ledger: SystemStatus["ledger"]) {
   if (!ledger.enabled || ledger.state === "stopped")
-    return "查账任务未运行，请查看运行状态";
+    return "查账任务未运行";
   if (ledger.last_success_at === null)
     return "还没有成功查账，请检查支付宝账号";
   const age = ledger.last_success_age_milliseconds;
   const maximumAge = ledger.maximum_success_age_milliseconds;
   if (typeof age === "number" && typeof maximumAge === "number" && age > maximumAge)
-    return "最近查账成功已超过有效时限，请查看运行状态";
-  return "查账暂未就绪，请查看运行状态";
+    return "最近查账成功已超过有效时限";
+  return "查账暂未就绪";
 }
 
 function OverviewRecordsLoading({ count }: { count: number }) {

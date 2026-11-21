@@ -26,7 +26,6 @@ import { CursorPagination } from "@/components/cursor-pagination";
 import { OverlayRecordList } from "@/components/overlay-record-list";
 import { QueryView, ErrorNotice } from "@/components/request-state";
 import { RefreshButton } from "@/components/refresh-button";
-import { Button } from "@/components/ui/button";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/admin-empty";
@@ -103,7 +102,6 @@ export function LedgerList({ onManual }: { onManual?: (trigger: HTMLButtonElemen
     { id: "handled_at", label: "最近处理时间", sortBy: "handled_at", layout: "datetime", align: "center", summaryDefault: false, responsive: { minWidthRem: 100, basis: "container" }, cell: entry => entry.last_handled_at ? <ListDateTime value={entry.last_handled_at} /> : "—" },
   ];
   const hasAmounts = search.has("min_amount_cents") || search.has("max_amount_cents");
-  const clearFilterValues = { q: null, alipay_account_id: null, direction: null, state: null, association_status: null, has_reversals: null, occurred_from: null, occurred_to: null, associated_from: null, associated_to: null, min_amount_cents: null, max_amount_cents: null, sort_by: null, sort_order: null };
   const extraFilterSummaries = [
     ...(control.query.createdFrom || control.query.createdTo ? ["交易日期：" + (control.query.createdFrom ?? "不限") + " 至 " + (control.query.createdTo ?? "不限")] : []),
     ...(associatedDates.query.createdFrom || associatedDates.query.createdTo ? ["关联日期：" + (associatedDates.query.createdFrom ?? "不限") + " 至 " + (associatedDates.query.createdTo ?? "不限")] : []),
@@ -127,7 +125,6 @@ export function LedgerList({ onManual }: { onManual?: (trigger: HTMLButtonElemen
           <CreatedDateFilter control={associatedDates} label="关联日期" fields={LEDGER_ASSOCIATED_DATE_FIELDS} />
           <LedgerAmountFilter control={control} />
           {hasAmounts && <span className="text-xs text-muted-foreground">{ledgerAmountInput(search.get("min_amount_cents")) || "不限"} 至 {ledgerAmountInput(search.get("max_amount_cents")) || "不限"} 元</span>}
-          {activeFilters && <Button variant="ghost" size="sm" onClick={() => control.update(clearFilterValues)}>清除筛选</Button>}
         </>}
         lookup={{
           modes: [{ value: "ledger", label: "内部流水编号（PerPay）", placeholder: "输入完整的 PerPay 内部流水编号", pattern: resourceIdPattern.source }],

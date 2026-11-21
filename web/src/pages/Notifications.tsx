@@ -33,7 +33,7 @@ import { QueryView } from "@/components/request-state";
 import { notificationStatus, notificationsQuery } from "@/api/workspace-queries";
 import { CursorPagination } from "@/components/cursor-pagination";
 import { OverlayRecordList } from "@/components/overlay-record-list";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -62,48 +62,44 @@ export default function Notifications() {
     next.delete("page");
     setSearch(next, { replace: true });
   }
+  const shortcuts = (
+    <ToggleGroup
+      variant="outline"
+      value={[status || "ALL"]}
+      onValueChange={(values) => changeStatus(values[0] === "ALL" ? null : values[0] ?? null)}
+      aria-label="通知快捷筛选"
+      className="max-w-full flex-wrap"
+      data-notification-shortcuts
+    >
+      <ToggleGroupItem value="ALL">全部</ToggleGroupItem>
+      <ToggleGroupItem value="RETRY_WAIT">等待重试</ToggleGroupItem>
+      <ToggleGroupItem value="DEAD_LETTER">已停止重试</ToggleGroupItem>
+    </ToggleGroup>
+  );
   return (
     <div className="flex min-w-0 flex-col gap-3">
-      <ToggleGroup
-        variant="outline"
-        value={[status || "ALL"]}
-        onValueChange={(values) => changeStatus(values[0] === "ALL" ? null : values[0] ?? null)}
-        aria-label="通知快捷筛选"
-        className="max-w-full flex-wrap"
-        data-notification-shortcuts
-      >
-        <ToggleGroupItem value="ALL">全部</ToggleGroupItem>
-        <ToggleGroupItem value="RETRY_WAIT">等待重试</ToggleGroupItem>
-        <ToggleGroupItem value="DEAD_LETTER">已停止重试</ToggleGroupItem>
-      </ToggleGroup>
       <DeliveryPage
         status={status || undefined}
+        mobileLeading={shortcuts}
         filters={
-          <>
-            <Select
-              items={statuses}
-              value={status}
-              onValueChange={changeStatus}
-            >
-              <SelectTrigger aria-label="通知状态筛选">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  {statuses.map((item) => (
-                    <SelectItem key={item.value} value={item.value}>
-                      {item.label}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-            {status && (
-              <Button variant="ghost" onClick={() => changeStatus(null)}>
-                清除筛选
-              </Button>
-            )}
-          </>
+          <Select
+            items={statuses}
+            value={status}
+            onValueChange={changeStatus}
+          >
+            <SelectTrigger aria-label="通知状态筛选">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                {statuses.map((item) => (
+                  <SelectItem key={item.value} value={item.value}>
+                    {item.label}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
         }
       />
     </div>
@@ -112,9 +108,11 @@ export default function Notifications() {
 function DeliveryPage({
   status,
   filters,
+  mobileLeading,
 }: {
   status: WebhookDeliveryStatus | undefined;
   filters: ReactNode;
+  mobileLeading: ReactNode;
 }) {
   const { clientId } = useWorkspace();
   const pagination = useCursor();
@@ -260,6 +258,7 @@ function DeliveryPage({
       <ListQueryToolbar
         control={listQuery}
         label="通知关键词搜索"
+        mobileLeading={mobileLeading}
         desktopFilters={filters}
         desktopFilterContent={<CreatedDateFilter control={listQuery} />}
         mobileFilterContent={draft => <CreatedDateFilter control={draft} />}

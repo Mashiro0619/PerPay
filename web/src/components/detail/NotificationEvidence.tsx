@@ -133,15 +133,26 @@ export function DeliveryStatus({ detail }: { detail: WebhookDeliveryDetail }) {
   return <StatusBadge value={terminated ? "REVERSED" : detail.delivery.status} label={terminated ? "已终止" : undefined} />;
 }
 
-/** One sentence on where the delivery stands. */
-export function deliveryPhrase(detail: WebhookDeliveryDetail): string {
+/** One sentence on where the delivery stands, avoiding verbatim repetition of its status badge. */
+export function deliveryPhrase(detail: WebhookDeliveryDetail, attempts: readonly WebhookAttempt[] = []): string {
   const status = detail.delivery.status;
-  if (deliveryState(detail).confirmationRevoked) return status === "ACKNOWLEDGED" ? "对方已返回有效确认回执；原付款确认现已撤销" : "原付款确认已撤销，成功通知已终止";
-  if (!detail.is_latest) return status === "ACKNOWLEDGED" ? "历史发送 · 对方已返回有效确认回执" : "历史发送";
-  if (status === "DEAD_LETTER") return "已停止重试，需要处理";
-  if (status === "RETRY_WAIT") return "等待自动重试";
+  if (deliveryState(detail).confirmationRevoked) {
+    return status === "ACKNOWLEDGED" ? "对方曾返回确认回执，但原付款确认已撤销" : "原付款确认已撤销，已停止发送";
+  }
+  if (!detail.is_latest) return status === "ACKNOWLEDGED" ? "历史发送 · 对方已返回确认回执" : "历史发送记录";
   if (status === "ACKNOWLEDGED") return "对方已返回有效确认回执";
-  return "等待发送结果";
+  const last = latestAttempt(attempts);
+  const errorCode = detail.delivery.last_error_code ?? last?.error_code ?? last?.ack_code ?? null;
+  if (status === "DEAD_LETTER" || status === "RETRY_WAIT") {
+    if (last?.http_status != null && errorCode === "http_status_not_ack") {
+      return `返回 HTTP ${last.http_status}，状态不符合确认要求`;
+    }
+    if (errorCode) return notificationErrorName(errorCode);
+    if (last?.http_status != null) return `返回 HTTP ${last.http_status}，未收到有效确认回执`;
+    return status === "DEAD_LETTER" ? "多次发送未确认，需人工处理" : "上次发送未确认，将自动重试";
+  }
+  if (status === "LEASED") return "正在向业务网站发送通知";
+  return "已排入发送队列";
 }
 
 /** What to do about a delivery that failed or was ended; nothing when it needs no action. */

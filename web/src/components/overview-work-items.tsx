@@ -18,11 +18,11 @@ const workActions = {
   NOTIFICATION_FAILURE: "查看通知",
 } as const;
 const notificationTitles = {
-  PENDING: "通知待发送",
-  LEASED: "通知发送中",
-  RETRY_WAIT: "通知等待重试",
-  ACKNOWLEDGED: "通知已确认",
-  DEAD_LETTER: "通知已停止重试",
+  PENDING: "收款回调通知",
+  LEASED: "收款回调通知",
+  RETRY_WAIT: "收款通知发送失败",
+  ACKNOWLEDGED: "收款回调通知",
+  DEAD_LETTER: "收款通知发送失败",
 } as const;
 
 function itemReason(item: AdminWorkItem) {
