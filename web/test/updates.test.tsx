@@ -232,12 +232,12 @@ describe("automatic official update checks", () => {
     expect(view.fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it("honors long Retry-After for both automatic and manual checks without a background alert", async () => {
+  it("honors long Retry-After for automatic checks while keeping manual checks enabled without a background alert", async () => {
     vi.useFakeTimers();
     const view = mountPanel(() => json({ error: { code: "update_check_unavailable", message: "failed" } }, 503, { "Retry-After": "28800" }));
     await advance();
     expect(view.fetchMock).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole("button", { name: "检查更新" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "检查更新" })).toBeEnabled();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     await advance(sixHours);
     expect(view.fetchMock).toHaveBeenCalledTimes(1);
@@ -547,14 +547,13 @@ describe("automatic official update checks", () => {
   });
 
   it.each([
-    ["network", null, null],
-    ["server", 300, "5 分钟"],
-    ["server", 3600, "1 小时"],
-    ["server", 301, "301 秒"],
+    ["network", null],
+    ["server", 300],
+    ["server", 3600],
+    ["server", 301],
   ] as const)(
-    "keeps an update %s failure non-blocking and never silently retries (%s seconds)",
-    async (failure, retryAfter, waitText) => {
-      // Navigation must not consume part of the exact initial Retry-After value.
+    "keeps an update %s failure non-blocking, keeps manual checks enabled, and never silently retries (%s seconds)",
+    async (failure, retryAfter) => {
       vi.useFakeTimers({ toFake: ["Date"] });
       vi.setSystemTime(new Date("2026-10-31T03:00:00Z"));
       const view = mount((request) =>
@@ -597,44 +596,39 @@ describe("automatic official update checks", () => {
       const panel = within(screen.getByRole("region", { name: "官方更新" }));
       expect(await panel.findByText("v0.2.0")).toBeVisible();
       expect(panel.queryByRole("link", { name: "查看发布说明" })).not.toBeInTheDocument();
-      if (waitText !== null) {
-        expect(panel.getByText(`请至少等待 ${waitText}后重试。`)).toBeVisible();
-        expect(panel.getByRole("button", { name: "检查更新" })).toBeDisabled();
-      }
+      expect(panel.queryByText(/请至少等待/)).not.toBeInTheDocument();
+      expect(panel.getByRole("button", { name: "检查更新" })).toBeEnabled();
       expect(
         view.fetchMock.mock.calls.filter(([request]) => isUpdate(request)),
       ).toHaveLength(1);
     },
   );
 
-  it("enables a manual retry exactly after a 301-second failure deadline without submitting it automatically", async () => {
+  it("allows an immediate manual retry after a failure with Retry-After while keeping automatic checks backed off", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-10-31T03:00:00Z"));
-    const view = mountPanel(() => json(
-      { error: { code: "update_check_unavailable", message: "更新检查失败" } },
-      503,
-      { "Retry-After": "301" },
-    ));
+    let calls = 0;
+    const view = mountPanel(() => {
+      calls++;
+      return calls === 1
+        ? json({ error: { code: "update_check_unavailable", message: "更新检查失败" } }, 503, { "Retry-After": "301" })
+        : json({ data: update });
+    });
     await advance(0);
     const button = screen.getByRole("button", { name: "检查更新" });
-    expect(button).toBeDisabled();
-    expect(button).toHaveAccessibleDescription("请至少等待 301 秒后重试。");
+    expect(button).toBeEnabled();
+    expect(screen.queryByText(/请至少等待/)).not.toBeInTheDocument();
     expect(view.fetchMock).toHaveBeenCalledTimes(1);
 
-    await advance(300_999);
-    expect(button).toBeDisabled();
-    expect(button).toHaveAccessibleDescription("请至少等待 1 秒后重试。");
-    act(() => fireEvent.click(button));
-    expect(view.fetchMock).toHaveBeenCalledTimes(1);
-    await advance(1);
-    expect(button).toBeEnabled();
+    await advance(100_000);
     expect(view.fetchMock).toHaveBeenCalledTimes(1);
 
     act(() => fireEvent.click(button));
     await advance(0);
     expect(view.fetchMock).toHaveBeenCalledTimes(2);
-    expect(button).toBeDisabled();
-    expect(button).toHaveAccessibleDescription("请至少等待 301 秒后重试。");
+    expect(new URL(view.fetchMock.mock.calls[1]![0].url).searchParams.get("refresh")).toBe("true");
+    expect(screen.getByText("有可用更新：v0.2.1")).toBeVisible();
+    expect(button).toBeEnabled();
   });
 
   it("clears pending checks on session expiry and never restores their old result", async () => {
@@ -833,36 +827,35 @@ describe("manual official update refresh", () => {
     expect(view.fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it("disables manual checks for the server's successful-refresh interval without queuing a retry", async () => {
+  it("keeps manual checks immediately available after a successful check and only disables while fetching", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-10-31T03:00:00Z"));
     preferences(false);
     const data = { ...update, status: "up_to_date", latest_version: update.current_version,
       release_url: `https://github.com/Mashiro0619/PerPay/releases/tag/v${update.current_version}` };
-    const view = mountPanel(() => json({ data }, 200, { "X-PerPay-Update-Refresh-After": "60" }));
+    const resolvers: Array<(response: Response) => void> = [];
+    const view = mountPanel(() => new Promise<Response>((resolve) => { resolvers.push(resolve); }));
     const button = screen.getByRole("button", { name: "检查更新" });
     act(() => fireEvent.click(button));
     await advance(0);
-    expect(view.fetchMock).toHaveBeenCalledTimes(1);
-    expect(button).toBeDisabled();
-    expect(button).toHaveAccessibleDescription("请至少等待 1 分钟后重试。");
-    expect(screen.getByText("请至少等待 1 分钟后重试。").closest('[role="status"]')).toBeNull();
-
-    await advance(59_999);
     expect(button).toBeDisabled();
     act(() => fireEvent.click(button));
     expect(view.fetchMock).toHaveBeenCalledTimes(1);
-    await advance(1);
+
+    await act(async () => { resolvers.shift()!(json({ data }, 200, { "X-PerPay-Update-Refresh-After": "60" })); });
     expect(button).toBeEnabled();
-    expect(view.fetchMock).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText(/请至少等待/)).not.toBeInTheDocument();
+
     act(() => fireEvent.click(button));
     await advance(0);
     expect(view.fetchMock).toHaveBeenCalledTimes(2);
-    expect(view.fetchMock.mock.calls.every(([request]) => new URL(request.url).searchParams.get("refresh") === "true")).toBe(true);
     expect(button).toBeDisabled();
+    await act(async () => { resolvers.shift()!(json({ data }, 200, { "X-PerPay-Update-Refresh-After": "0" })); });
+    expect(button).toBeEnabled();
+    expect(view.fetchMock.mock.calls.every(([request]) => new URL(request.url).searchParams.get("refresh") === "true")).toBe(true);
   });
 
-  it("retains the successful result after a local 429 and keeps the original six-hour deadline", async () => {
+  it("retains the successful result after a 429, keeps manual button enabled, and keeps the original six-hour automatic deadline", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-10-31T03:00:00Z"));
     const startedAt = Date.now();
@@ -879,12 +872,11 @@ describe("manual official update refresh", () => {
     await advance(0);
     expect(view.fetchMock).toHaveBeenCalledTimes(2);
     expect(queryClient.getQueryData(officialUpdateKey)).toBe(previous);
-    expect(screen.getByRole("button", { name: "检查更新" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "检查更新" })).toBeEnabled();
     expect(notices).not.toHaveBeenCalled();
 
     await advance(startedAt + sixHours - Date.now() - 1);
     expect(view.fetchMock).toHaveBeenCalledTimes(2);
-    expect(screen.getByRole("button", { name: "检查更新" })).toBeEnabled();
     await advance(1);
     expect(view.fetchMock).toHaveBeenCalledTimes(3);
     expect(new URL(view.fetchMock.mock.calls[2]![0].url).searchParams.has("refresh")).toBe(false);

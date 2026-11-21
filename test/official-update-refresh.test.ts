@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { setTimeout as delay } from "node:timers/promises";
 import { describe, it } from "node:test";
 
-import { OfficialUpdateChecker, UpdateCheckRateLimited, UpdateCheckUnavailable } from "../src/update/checker.ts";
+import { OfficialUpdateChecker, UpdateCheckUnavailable } from "../src/update/checker.ts";
 
 const initialTime = Date.UTC(2026, 9, 31, 8);
 const releasesApi = "https://api.github.com/repos/Mashiro0619/PerPay/releases";
@@ -12,32 +12,25 @@ function release(version = "0.2.3") {
 }
 
 describe("manual official update refreshes", () => {
-  it("requires a real check after 60 seconds and keeps early rejections out of the five-minute cache", async () => {
+  it("always permits manual checks while keeping automatic five-minute caching", async () => {
     let clock = initialTime, calls = 0, latest = "0.2.3";
     const checker = new OfficialUpdateChecker({ currentVersion: "0.2.2", clock: () => clock, fetch: async () => {
       calls++;
       return Response.json(release(latest));
     } });
     const original = await checker.check("stable");
-    assert.equal(checker.refreshAfterSeconds("stable"), 60);
+    assert.equal(checker.refreshAfterSeconds("stable"), 0);
     clock += 30_000;
     latest = "0.2.4";
-    for (let attempt = 0; attempt < 2; attempt++) {
-      await assert.rejects(checker.check("stable", { refresh: true }),
-        error => error instanceof UpdateCheckRateLimited && error.retryAfterSeconds === 30);
-    }
     assert.equal(await checker.check("stable", { refresh: false }), original);
-    assert.equal(checker.refreshAfterSeconds("stable"), 30);
-    clock += 29_999;
-    await assert.rejects(checker.check("stable", { refresh: true }),
-      error => error instanceof UpdateCheckRateLimited && error.retryAfterSeconds === 1);
     assert.equal(calls, 1);
-    clock++;
-    assert.equal(checker.refreshAfterSeconds("stable"), 0);
+
     const refreshed = await checker.check("stable", { refresh: true });
     assert.equal(refreshed.latest_version, latest);
     assert.equal(refreshed.checked_at, new Date(clock).toISOString());
+    assert.equal(checker.refreshAfterSeconds("stable"), 0);
     assert.equal(calls, 2);
+
     clock += 299_999;
     assert.equal(await checker.check("stable"), refreshed);
     assert.equal(calls, 2);
@@ -93,7 +86,7 @@ describe("manual official update refreshes", () => {
     assert.equal(calls, 3);
   });
 
-  it("replaces a still-fresh success after a manual network failure and recovers after its cooldown", async () => {
+  it("replaces a still-fresh success after a manual network failure, cools down automatic retries, and allows immediate manual retry", async () => {
     let clock = initialTime, calls = 0, unavailable = false;
     const checker = new OfficialUpdateChecker({ currentVersion: "0.2.2", clock: () => clock, fetch: async () => {
       calls++;
@@ -101,20 +94,19 @@ describe("manual official update refreshes", () => {
       return Response.json(release());
     } });
     await checker.check("stable");
-    clock += 60_000;
+    clock += 10_000;
     unavailable = true;
     await assert.rejects(checker.check("stable", { refresh: true }),
       error => error instanceof UpdateCheckUnavailable && error.reason === "network" &&
         error.retryAfterSeconds === 60 && !error.message.includes("private"));
-    await assert.rejects(checker.check("stable"), UpdateCheckUnavailable);
-    clock += 59_999;
-    await assert.rejects(checker.check("stable", { refresh: true }),
-      error => error instanceof UpdateCheckUnavailable && error.retryAfterSeconds === 1);
-    assert.equal(calls, 2);
-    clock++;
+    await assert.rejects(checker.check("stable"),
+      error => error instanceof UpdateCheckUnavailable && error.retryAfterSeconds === 60);
+    assert.equal(calls, 2, "automatic check stays backed off during the 60s failure cooldown");
+
     unavailable = false;
-    assert.equal((await checker.check("stable", { refresh: true })).checked_at, new Date(clock).toISOString());
-    assert.equal(calls, 3);
+    const recovered = await checker.check("stable", { refresh: true });
+    assert.equal(recovered.checked_at, new Date(clock).toISOString());
+    assert.equal(calls, 3, "manual retry is allowed immediately without waiting for cooldown");
   });
 
   it("rejects non-boolean refresh options before consulting cache or network", async () => {
@@ -168,30 +160,33 @@ describe("GitHub update cooldowns", () => {
     { name: "past reset", headers: { "x-ratelimit-remaining": "0", "x-ratelimit-reset": String(initialTime / 1_000 - 1) }, seconds: 60 },
   ];
   for (const { name, status = 429, headers, seconds } of cases) {
-    it("shares " + name + " across channels and permits a check only after the deadline", async () => {
+    it("shares " + name + " across channels for automatic checks while permitting manual retries", async () => {
       let clock = initialTime, calls = 0, limited = true;
-      const checker = new OfficialUpdateChecker({ currentVersion: "0.2.2", clock: () => clock, fetch: async () => {
+      const checker = new OfficialUpdateChecker({ currentVersion: "0.2.2", clock: () => clock, fetch: async url => {
         calls++;
-        return limited ? new Response("private rate-limit diagnostics", { status, headers }) : Response.json(release());
+        if (limited) return new Response("private rate-limit diagnostics", { status, headers });
+        return Response.json(String(url).includes("?per_page=") ? [release()] : release());
       } });
       await assert.rejects(checker.check("stable"),
         error => error instanceof UpdateCheckUnavailable && error.reason === "rate_limited" &&
           error.retryAfterSeconds === seconds && !error.message.includes("private"));
-      assert.equal(checker.refreshAfterSeconds("prerelease"), seconds);
-      await assert.rejects(checker.check("prerelease", { refresh: true }),
+      assert.equal(checker.refreshAfterSeconds("prerelease"), 0);
+      await assert.rejects(checker.check("prerelease"),
         error => error instanceof UpdateCheckUnavailable && error.retryAfterSeconds === seconds);
       clock += seconds * 1_000 - 1;
-      await assert.rejects(checker.check("stable", { refresh: true }),
+      await assert.rejects(checker.check("stable"),
         error => error instanceof UpdateCheckUnavailable && error.retryAfterSeconds === 1);
-      assert.equal(calls, 1);
-      clock++;
+      assert.equal(calls, 1, "automatic checks stay backed off across channels until deadline");
+
       limited = false;
       await checker.check("stable", { refresh: true });
-      assert.equal(calls, 2);
+      assert.equal(calls, 2, "manual check can retry immediately and clear stale rate-limit backoff");
+      await checker.check("prerelease");
+      assert.equal(calls, 4, "automatic check recovers once a manual check succeeds with healthy quota");
     });
   }
 
-  it("preserves another channel's valid automatic cache while blocking its manual refresh", async () => {
+  it("preserves another channel's valid automatic cache while allowing manual refresh", async () => {
     let clock = initialTime, calls = 0;
     const checker = new OfficialUpdateChecker({ currentVersion: "0.2.2", clock: () => clock, fetch: async () => {
       calls++;
@@ -201,13 +196,13 @@ describe("GitHub update cooldowns", () => {
     clock += 20_000;
     await assert.rejects(checker.check("prerelease"), UpdateCheckUnavailable);
     assert.equal(await checker.check("stable"), stable);
-    assert.equal(checker.refreshAfterSeconds("stable"), 3_600);
+    assert.equal(checker.refreshAfterSeconds("stable"), 0);
     await assert.rejects(checker.check("stable", { refresh: true }),
       error => error instanceof UpdateCheckUnavailable && error.reason === "rate_limited" && error.retryAfterSeconds === 3_600);
-    assert.equal(calls, 2);
+    assert.equal(calls, 3, "manual refresh hits upstream rather than returning cached cooldown");
   });
 
-  it("does not let an in-flight success clear another channel's new cooldown", async () => {
+  it("does not let an in-flight success clear another channel's new automatic cooldown", async () => {
     let calls = 0;
     let resolve!: (response: Response) => void;
     const checker = new OfficialUpdateChecker({ currentVersion: "0.2.2", clock: () => initialTime, fetch: async () => {
@@ -215,13 +210,13 @@ describe("GitHub update cooldowns", () => {
       return calls === 1 ? new Promise<Response>(done => { resolve = done; })
         : new Response(null, { status: 429, headers: { "retry-after": "3600" } });
     } });
-    const stable = checker.check("stable");
+    const stable = checker.check("stable", { refresh: true });
     await assert.rejects(checker.check("prerelease"), UpdateCheckUnavailable);
     resolve(Response.json(release()));
     const success = await stable;
     assert.equal(await checker.check("stable"), success);
-    assert.equal(checker.refreshAfterSeconds("stable"), 3_600);
-    await assert.rejects(checker.check("stable", { refresh: true }), UpdateCheckUnavailable);
+    await assert.rejects(checker.check("prerelease"),
+      error => error instanceof UpdateCheckUnavailable && error.reason === "rate_limited" && error.retryAfterSeconds === 3_600);
     assert.equal(calls, 2);
   });
 
@@ -236,7 +231,8 @@ describe("GitHub update cooldowns", () => {
     clock += 30_000;
     responses[0]!(new Response(null, { status: 429, headers: { "retry-after": "60" } }));
     await assert.rejects(stable, error => error instanceof UpdateCheckUnavailable && error.retryAfterSeconds === 3_570);
-    assert.equal(checker.refreshAfterSeconds("prerelease"), 3_570);
+    await assert.rejects(checker.check("prerelease"),
+      error => error instanceof UpdateCheckUnavailable && error.retryAfterSeconds === 3_570);
   });
 
   it("stops before the next prerelease page when a successful response exhausts the quota", async () => {
@@ -252,11 +248,18 @@ describe("GitHub update cooldowns", () => {
     assert.equal(calls, 1);
   });
 
-  it("keeps a quota-exhausting stable success and advertises the full upstream wait", async () => {
+  it("keeps a quota-exhausting stable success and backs off automatic checks on other channels", async () => {
+    let calls = 0;
     const checker = new OfficialUpdateChecker({ currentVersion: "0.2.2", clock: () => initialTime,
-      fetch: async () => Response.json(release(), { headers: { "x-ratelimit-remaining": "0", "x-ratelimit-reset": nextHour } }) });
+      fetch: async () => {
+        calls++;
+        return Response.json(release(), { headers: { "x-ratelimit-remaining": "0", "x-ratelimit-reset": nextHour } });
+      } });
     assert.equal((await checker.check("stable")).status, "update_available");
-    assert.equal(checker.refreshAfterSeconds("stable"), 3_600);
+    assert.equal(checker.refreshAfterSeconds("stable"), 0);
+    await assert.rejects(checker.check("prerelease"),
+      error => error instanceof UpdateCheckUnavailable && error.reason === "rate_limited" && error.retryAfterSeconds === 3_600);
+    assert.equal(calls, 1);
   });
 
   it("stops after a quota-exhausting missing stable release before fetching prereleases", async () => {
@@ -268,11 +271,11 @@ describe("GitHub update cooldowns", () => {
       });
       return Response.json(url === releasesApi + "/latest" ? release() : [release("0.3.0-rc.1")]);
     } });
-    await assert.rejects(checker.check("prerelease"),
+    await assert.rejects(checker.check("prerelease", { refresh: true }),
       error => error instanceof UpdateCheckUnavailable && error.reason === "rate_limited" && error.retryAfterSeconds === 3_600);
-    assert.equal(calls, 1, "the exhausted quota must stop the following release-list request");
-    assert.equal(checker.refreshAfterSeconds("stable"), 3_600);
-    await assert.rejects(checker.check("stable", { refresh: true }), UpdateCheckUnavailable);
+    assert.equal(calls, 1, "the exhausted quota must stop the following release-list request within the same attempt");
+    await assert.rejects(checker.check("stable"), UpdateCheckUnavailable);
+    assert.equal(calls, 1, "automatic check stays backed off until reset");
     clock += 3_600_000;
     assert.equal((await checker.check("prerelease")).latest_version, "0.3.0-rc.1");
     assert.equal(calls, 3);

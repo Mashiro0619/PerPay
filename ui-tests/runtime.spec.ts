@@ -25,13 +25,14 @@ test("runtime keeps healthy diagnostics collapsed and version check failures con
   await expect(healthy).toBeVisible();
   await expect(page.locator(".runtime-service-row[data-attention]")).toHaveCount(0);
   await expect(page.getByRole("region", { name: "官方更新", exact: true })).toContainText(/暂时无法检查(?:官方)?更新/);
+  await expect(page.getByRole("region", { name: "官方更新", exact: true })).not.toContainText(/请至少等待/);
   await expect(page.locator("body")).not.toContainText(/只读演示|演示模式/);
   const update = page.getByRole("button", { name: "检查更新", exact: true });
-  await expect(update).toBeDisabled();
+  await expect(update).toBeEnabled();
   await manifest.setTime(manifest.epoch + 3_000);
   await page.clock.setFixedTime(new Date(manifest.epoch + 3_000));
   await page.clock.fastForward(3_000);
-  await expect(update).toBeDisabled();
+  await expect(update).toBeEnabled();
   expect(updateRequests).toBe(2);
   confirmationFailed = true;
   await page.reload();

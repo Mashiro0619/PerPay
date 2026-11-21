@@ -53,7 +53,7 @@ test("official update checks require a session and never gate login or collectio
     const response = await app.request("/api/admin/v1/system/update", { headers });
     assert.equal(response.status, 200);
     assert.equal(response.headers.get("cache-control"), "no-store");
-    assert.equal(response.headers.get("x-perpay-update-refresh-after"), "60");
+    assert.equal(response.headers.get("x-perpay-update-refresh-after"), "0");
     const result = await response.json() as { data: OfficialUpdate };
     assert.equal(result.data.status, "update_available");
     assert.equal(result.data.current_version, CURRENT_VERSION);
@@ -88,25 +88,19 @@ test("official update checks require a session and never gate login or collectio
     assert.equal(requests, 3);
 
     clock += 30_000;
-    const early = await app.request("/api/admin/v1/system/update?channel=stable&refresh=true", { headers });
-    assert.equal(early.status, 429);
-    assert.equal(early.headers.get("retry-after"), "30");
-    const earlyError = await early.json() as { error: { code: string; message: string; request_id: string } };
-    assert.equal(earlyError.error.code, "update_check_rate_limited");
-    assert.deepEqual(Object.keys(earlyError.error).sort(), ["code", "message", "request_id"]);
-    assert.equal(requests, 3);
     const cached = await app.request("/api/admin/v1/system/update?channel=stable&refresh=false", { headers });
     assert.equal(cached.status, 200);
-    assert.equal(cached.headers.get("x-perpay-update-refresh-after"), "30");
+    assert.equal(cached.headers.get("x-perpay-update-refresh-after"), "0");
     assert.deepEqual(await cached.json(), stableResult);
-    clock += 30_000;
+    assert.equal(requests, 3);
+
     const refreshed = await app.request("/api/admin/v1/system/update?channel=stable&refresh=true", { headers });
     assert.equal(refreshed.status, 200);
-    assert.equal(refreshed.headers.get("x-perpay-update-refresh-after"), "60");
+    assert.equal(refreshed.headers.get("x-perpay-update-refresh-after"), "0");
     const refreshedResult = await refreshed.json() as { data: OfficialUpdate };
     assert.equal(refreshedResult.data.checked_at, new Date(clock).toISOString());
     assert.deepEqual(Object.keys(refreshedResult.data).sort(), Object.keys(result.data).sort());
-    assert.equal(requests, 4, "manual refresh must visit the source before the five-minute cache expires");
+    assert.equal(requests, 4, "manual refresh must visit the source immediately without cooldown");
 
     unavailable = true; clock += 300_000;
     const failed = await app.request("/api/admin/v1/system/update", { headers });
@@ -114,7 +108,11 @@ test("official update checks require a session and never gate login or collectio
     assert.equal(failed.headers.get("retry-after"), "60");
     assert.equal((await failed.json() as { error: { code: string } }).error.code, "update_check_unavailable");
     assert.equal(requests, 5);
-    unavailable = false; rateLimited = true; clock += 60_000;
+    const failedCached = await app.request("/api/admin/v1/system/update", { headers });
+    assert.equal(failedCached.status, 503);
+    assert.equal(requests, 5, "automatic checks remain backed off during failure cooldown");
+
+    unavailable = false; rateLimited = true;
     const limited = await app.request("/api/admin/v1/system/update?refresh=true", { headers });
     assert.equal(limited.status, 503);
     assert.equal(limited.headers.get("retry-after"), "3600");
@@ -123,10 +121,15 @@ test("official update checks require a session and never gate login or collectio
     assert.match(limitedError.error.message, /限制.*请求频率/);
     assert.ok(!limitedError.error.message.includes("private"));
     assert.deepEqual(Object.keys(limitedError.error).sort(), ["code", "message", "request_id"]);
-    const otherChannel = await app.request("/api/admin/v1/system/update?channel=stable&refresh=true", { headers });
-    assert.equal(otherChannel.status, 503);
-    assert.equal(otherChannel.headers.get("retry-after"), "3600");
-    assert.equal(requests, 6, "changing channels must not bypass the GitHub cooldown");
+    assert.equal(requests, 6, "manual refresh immediately hits upstream even during prior failure cooldown");
+    const otherChannelAuto = await app.request("/api/admin/v1/system/update?channel=stable", { headers });
+    assert.equal(otherChannelAuto.status, 503);
+    assert.equal(otherChannelAuto.headers.get("retry-after"), "3600");
+    assert.equal(requests, 6, "automatic checks on other channels respect the shared GitHub cooldown");
+    rateLimited = false;
+    const manualRecovered = await app.request("/api/admin/v1/system/update?channel=stable&refresh=true", { headers });
+    assert.equal(manualRecovered.status, 200);
+    assert.equal(requests, 7, "manual check can retry immediately after rate-limit failure");
 
     const fixtureApp = createApp({ config, database, identity, settings, orders, startedAt: new Date(), updateChecker: {
       check: async (channel, options) => {
@@ -145,7 +148,7 @@ test("official update checks require a session and never gate login or collectio
     assert.deepEqual(settings.instanceView(), before);
     identity.revokeAllSessions(identity.authenticate(cookie.match(/perpay_session=([^;]+)/)![1]!)!);
     assert.equal((await app.request("/api/admin/v1/system/update", { headers })).status, 401);
-    assert.equal(requests, 6);
+    assert.equal(requests, 7);
   } finally {
     database.close();
     assert.equal(dirname(resolve(directory)), resolve(tmpdir()));

@@ -473,7 +473,7 @@ test("only the focused tab announces a release and ignore changes synchronize", 
   } finally { await other.close(); await fixture.close(); }
 });
 
-test("real checker headers enforce the manual interval and the shared upstream retry deadline", async ({ page }) => {
+test("real checker keeps automatic cooldown across channels while allowing immediate manual retries", async ({ page }) => {
   const epoch = Date.now();
   let clock = epoch, upstreamRequests = 0, limited = false;
   const checker = new OfficialUpdateChecker({ currentVersion: APP_VERSION, clock: () => clock, fetch: async url => {
@@ -488,24 +488,21 @@ test("real checker headers enforce the manual interval and the shared upstream r
     await open(page, fixture);
     await acknowledge(page);
     const manual = panel(page).getByRole("button", { name: "检查更新", exact: true });
-    await expect(manual).toBeDisabled();
-    expect(upstreamRequests).toBe(2);
-    clock += 60_000;
-    await page.clock.fastForward(60_000);
     await expect(manual).toBeEnabled();
+    await expect(panel(page)).not.toContainText(/请至少等待/);
+    expect(upstreamRequests).toBe(2);
+
     await manual.click();
     await acknowledge(page);
     expect(upstreamRequests).toBe(4);
-    await expect(manual).toBeDisabled();
-    await expect(page.locator("#main-content")).toBeFocused();
+    await expect(manual).toBeEnabled();
+    await expect(manual).toBeFocused();
 
     limited = true;
-    clock += 60_000;
-    await page.clock.fastForward(60_000);
-    await expect(manual).toBeEnabled();
     await manual.click();
     await expect(panel(page)).toContainText(/频率|限流/);
-    await expect(manual).toBeDisabled();
+    await expect(panel(page)).not.toContainText(/请至少等待/);
+    await expect(manual).toBeEnabled();
     expect(upstreamRequests).toBe(5);
     await panel(page).getByRole("combobox", { name: "检查通道", exact: true }).click();
     await page.getByRole("option", { name: "仅稳定版", exact: true }).click();
@@ -514,11 +511,6 @@ test("real checker headers enforce the manual interval and the shared upstream r
 
     clock += 60_000;
     await page.clock.fastForward(60_000);
-    await expect(manual).toBeDisabled();
-    expect(upstreamRequests).toBe(5);
-    clock += 3_540_000;
-    await page.clock.fastForward(3_540_000);
-    await expect(manual).toBeEnabled();
     expect(upstreamRequests).toBe(5);
     limited = false;
     await manual.click();

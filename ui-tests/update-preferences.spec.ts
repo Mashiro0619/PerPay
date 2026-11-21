@@ -173,11 +173,11 @@ test("the preview keeps manual version checks available without explanatory bann
   } finally { await fixture.close(); }
 });
 
-test("manual update checks respect a failed request's retry delay and recover", async ({ page }) => {
+test("manual update checks can retry immediately after a failure while automatic checks stay backed off", async ({ page }) => {
   const epoch = Date.now();
   let checks = 0;
   const fixture = await createSettingsServer(epoch, { updateChecker: { check: async (channel = "prerelease") => {
-    if (++checks === 1) throw new UpdateCheckUnavailable(2);
+    if (++checks === 1) throw new UpdateCheckUnavailable(3600);
     return updateFor(channel, epoch);
   } } });
   try {
@@ -187,10 +187,10 @@ test("manual update checks respect a failed request's retry delay and recover", 
     const panel = page.getByRole("region", { name: "官方更新", exact: true });
     const manual = panel.getByRole("button", { name: "检查更新", exact: true });
     await expect(panel).toContainText(/暂时无法检查(?:官方)?更新/);
-    await expect(manual).toBeDisabled();
-    expect(checks).toBe(1);
-    await page.clock.fastForward(3_000);
+    await expect(panel).not.toContainText(/请至少等待/);
     await expect(manual).toBeEnabled();
+    expect(checks).toBe(1);
+    await page.clock.fastForward(10_000);
     expect(checks).toBe(1);
     await manual.click();
     await acknowledgeUpdate(page);
