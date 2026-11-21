@@ -9,7 +9,7 @@ import { Link, useDetailBack } from "@/navigation";
 import { useWorkspace, useWorkspaceApi } from "@/workspace";
 import { OrderStatusBadge } from "@/components/business-status";
 import { DetailNavigation, DetailPage } from "@/components/detail/DetailPrimitives";
-import { attemptEntries, deliveryAdvice, deliveryFields, deliveryPhrase, deliveryState, DeliveryStatus, nextAttemptLabel, useRedelivery } from "@/components/detail/NotificationEvidence";
+import { attemptEntries, deliveryAdvice, deliveryFields, deliveryPhrase, deliveryState, DeliveryStatus, nextAttemptLabel, useRedelivery, useRetryDelivery } from "@/components/detail/NotificationEvidence";
 import { OverlaySummary } from "@/components/overlay-actions";
 import { PageHeaderActions } from "@/components/page-header-actions";
 import { PageHeading } from "@/components/page-heading";
@@ -35,7 +35,7 @@ function DeliveryDetail({ deliveryId }: { deliveryId: string }) {
     queryFn: ({ signal }) => result(api.getWebhookDelivery({ path: { deliveryId }, signal })),
     refetchInterval: query => {
       const status = query.state.data?.data.delivery.status;
-      return status && ["PENDING", "LEASED", "RETRY_WAIT"].includes(status) ? 5_000 : false;
+      return status === "LEASED" ? 1_500 : status && ["PENDING", "RETRY_WAIT"].includes(status) ? 5_000 : false;
     },
   });
   // Read again whenever the delivery reports another attempt or a new status.
@@ -74,7 +74,8 @@ function DeliveryRecord({ detail, attempts, order }: {
   const delivery = detail.delivery;
   const made = attempts.data?.data ?? [];
   const redelivery = useRedelivery({ ...detail, attempts: made });
-  const { confirmationRevoked, resendable, nextAttemptAt } = deliveryState(detail);
+  const retry = useRetryDelivery(detail);
+  const { confirmationRevoked, retryable, resendable, nextAttemptAt } = deliveryState(detail);
   const advice = deliveryAdvice(detail, made);
   const site = detail.target.site_name ?? "业务网站名称暂不可用";
   // Until the attempts are read, the delivery's own counter says how many there are.
@@ -117,7 +118,10 @@ function DeliveryRecord({ detail, attempts, order }: {
       <RelatedOrder query={order} />
     </Sections>
     <ActionBar menuLabel="更多操作，通知记录操作"
-      primary={resendable && delivery.status === "DEAD_LETTER" && { label: "重新发送", disabled: redelivery.sent, onSelect: redelivery.open }}
+      primary={
+        (retryable && { label: retry.pending ? "正在重试…" : "立即重试", disabled: retry.pending, onSelect: retry.run }) ||
+        (resendable && delivery.status === "DEAD_LETTER" && { label: "重新发送", disabled: redelivery.sent, onSelect: redelivery.open })
+      }
       // Sending a confirmed notification again is rare, so it stays out of the way.
       menu={resendable && delivery.status === "ACKNOWLEDGED" ? [{ label: "重新发送", disabled: redelivery.sent, onSelect: redelivery.open }] : []}
       technical={[{ title: "通知技术信息", data: { ...detail, attempts: made }, identifiers: [

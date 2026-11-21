@@ -11,7 +11,7 @@ import { FieldList } from "@/components/record/FieldList";
 import { Section } from "@/components/record/Sections";
 import { SubRecord } from "@/components/record/SubRecord";
 import { Timeline } from "@/components/record/Timeline";
-import { attemptEntries, deliveryAdvice, deliveryFields, deliveryPhrase, deliveryState, DeliveryStatus, useRedelivery } from "./NotificationEvidence";
+import { attemptEntries, deliveryAdvice, deliveryFields, deliveryPhrase, deliveryState, DeliveryStatus, useRedelivery, useRetryDelivery } from "./NotificationEvidence";
 import type { DatedTechnicalEntry } from "@/components/record/ActionBar";
 
 /** One page of the order's deliveries. The record reads it once for its section, navigation and technical data. */
@@ -25,6 +25,7 @@ export function useOrderNotifications(orderId: string) {
       signal,
       query: { limit: 10, ...(pagination.cursor ? { cursor: pagination.cursor } : {}) },
     })),
+    refetchInterval: state => state.state.data?.data.some(item => item.delivery.status === "LEASED") ? 1_500 : false,
   });
   // A count is only true when this page holds every delivery.
   const complete = !!query.data && pagination.page === 1 && !query.data.page.next_cursor;
@@ -34,15 +35,21 @@ export function useOrderNotifications(orderId: string) {
 /** One delivery of an order event: its result once, in the badge, then the address and each attempt. */
 function OrderDeliveryRecord({ detail }: { detail: OrderWebhookDeliveryDetail }) {
   const redelivery = useRedelivery(detail);
-  const { confirmationRevoked, resendable } = deliveryState(detail);
+  const retry = useRetryDelivery(detail);
+  const { confirmationRevoked, retryable, resendable } = deliveryState(detail);
   const advice = deliveryAdvice(detail, detail.attempts);
+  const actions = retryable
+    ? [{ label: retry.pending ? "正在重试…" : "立即重试", disabled: retry.pending, onSelect: retry.run }]
+    : resendable
+      ? [{ label: "重新发送", disabled: redelivery.sent, onSelect: redelivery.open }]
+      : [];
   return <SubRecord title={label(detail.event.event_type)}
     status={<DeliveryStatus detail={detail} />}
     description={confirmationRevoked ? deliveryPhrase(detail) : undefined}
     href={"/notifications/" + detail.delivery.delivery_id}
-    actions={resendable ? [{ label: "重新发送", disabled: redelivery.sent, onSelect: redelivery.open }] : []}
+    actions={actions}
     actionsLabel="更多操作，通知记录操作">
-    {advice && <p className="text-[0.8125rem] leading-5 text-muted-foreground">{advice}</p>}
+    {advice && <div className="text-[0.8125rem] leading-5 text-muted-foreground">{advice}</div>}
     <FieldList items={deliveryFields(detail, detail.attempts)} />
     <Timeline label={"投递尝试（" + detail.attempts.length + "）"} entries={attemptEntries(detail.attempts)} initial={3} empty={attemptResult(undefined)} />
     {redelivery.dialog}

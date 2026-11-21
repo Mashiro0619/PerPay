@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { ExternalLink } from "lucide-react";
 import { result, type WebhookAttempt, type WebhookDeliveryDetail } from "@/api/client";
 import { attemptResult, latestAttempt, notificationErrorName, notificationRecoveryHint } from "@/lib/detail-summary";
 import { label } from "@/lib/labels";
@@ -6,7 +7,7 @@ import { refreshNotificationRecords } from "@/lib/record-refresh";
 import { Link, useNavigate } from "@/navigation";
 import { useWorkspaceApi } from "@/workspace";
 import { StatusBadge } from "@/components/business-status";
-import { useSuccessToast } from "@/components/Feedback";
+import { useErrorToast, useSuccessToast } from "@/components/Feedback";
 import { ReasonDialog } from "@/components/ReasonDialog";
 import { FieldList, type Field } from "@/components/record/FieldList";
 import { RecordTime, type TimelineEntry } from "@/components/record/Timeline";
@@ -67,6 +68,45 @@ export function useRedelivery(detail: DeliveryContext) {
   );
   return { sent, open, dialog };
 }
+
+/** Triggers an immediate retry attempt for a waiting delivery without creating a duplicate generation. */
+export function useRetryDelivery(detail: WebhookDeliveryDetail) {
+  const api = useWorkspaceApi();
+  const [pending, setPending] = useState(false);
+  const inflight = useRef(false);
+  const mounted = useRef(true);
+  const setSuccess = useSuccessToast();
+  const setError = useErrorToast();
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
+  const run = () => {
+    if (inflight.current) return;
+    inflight.current = true;
+    setPending(true);
+    void result(
+      api.retryWebhookDelivery({
+        path: { deliveryId: detail.delivery.delivery_id },
+        body: {},
+      }),
+    ).then(
+      () => {
+        setSuccess("已发起立即重试");
+        void refreshNotificationRecords(detail.event.order_id, detail.delivery.delivery_id);
+      },
+      (error: unknown) => {
+        setError(error instanceof Error && error.message ? error.message : "立即重试失败，请刷新后重试");
+        void refreshNotificationRecords(detail.event.order_id, detail.delivery.delivery_id);
+      },
+    ).finally(() => {
+      inflight.current = false;
+      if (mounted.current) setPending(false);
+    });
+  };
+  return { pending, run };
+}
+
 /** A revoked payment confirmation ends a delivery whatever its own status says. */
 export function deliveryState(detail: WebhookDeliveryDetail) {
   const status = detail.delivery.status;
@@ -79,6 +119,8 @@ export function deliveryState(detail: WebhookDeliveryDetail) {
     terminal,
     /** Ended by the revocation before the other side confirmed it. */
     terminated: confirmationRevoked && status !== "ACKNOWLEDGED",
+    /** A waiting delivery can be retried immediately instead of waiting for backoff. */
+    retryable: detail.is_latest && status === "RETRY_WAIT" && !confirmationRevoked,
     /** Only the current delivery can be sent again, once it has ended. The server refuses one whose confirmation was revoked. */
     resendable: detail.is_latest && terminal && !confirmationRevoked,
     /** When the next attempt is due, while one is still coming. */
@@ -106,9 +148,11 @@ export function deliveryPhrase(detail: WebhookDeliveryDetail): string {
 export function deliveryAdvice(detail: WebhookDeliveryDetail, attempts: readonly WebhookAttempt[]) {
   if (deliveryState(detail).confirmationRevoked) return notificationRecoveryHint("payment_confirmation_revoked");
   if (!detail.is_latest || !["DEAD_LETTER", "RETRY_WAIT"].includes(detail.delivery.status)) return null;
-  return <span className="flex min-w-0 flex-col gap-1">
+  return <span className="flex min-w-0 flex-col gap-1.5">
     <span>{notificationRecoveryHint(detail.delivery.last_error_code ?? latestAttempt(attempts)?.error_code ?? null)}</span>
-    <a data-external-link className="inline-flex w-fit items-center underline underline-offset-4 pointer-coarse:min-h-11" href="https://github.com/Mashiro0619/PerPay/blob/main/USAGE.md#5-回调通知" target="_blank" rel="noopener noreferrer">通知接入说明</a>
+    <a data-external-link className="inline-flex w-fit items-center gap-1 rounded-xs text-[0.8125rem] leading-5 font-medium text-foreground/90 underline decoration-current/40 underline-offset-4 transition-colors hover:text-foreground hover:decoration-current pointer-coarse:min-h-11" href="https://github.com/Mashiro0619/PerPay/blob/main/USAGE.md#5-回调通知" target="_blank" rel="noopener noreferrer">
+      通知接入说明<ExternalLink aria-hidden="true" className="size-3.5 shrink-0 opacity-75" />
+    </a>
   </span>;
 }
 

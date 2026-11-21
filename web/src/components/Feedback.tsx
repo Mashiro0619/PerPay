@@ -11,3 +11,14 @@ export function useSuccessToast(): (message: string) => void {
     }
   }, [id]);
 }
+
+export function useErrorToast(): (message: string) => void {
+  const id = useId();
+  return useCallback((message: string) => {
+    if (message) {
+      toast.add({ id, title: message, type: "error", timeout: 5000 });
+    } else {
+      toast.close(id);
+    }
+  }, [id]);
+}
