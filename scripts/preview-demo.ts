@@ -476,12 +476,58 @@ export async function createPreviewDemo(options: { port?: number; now?: number; 
         recorder = currentActivity;
         activity = currentActivity;
         currentActivity.start();
+        const pendingRetryTimers = new Set<NodeJS.Timeout>();
+        const retryWebhookDelivery: AppDependencies["retryWebhookDelivery"] = options.interactive ? (input) => {
+          const claimed = currentWebhooks.claimDeliveryForRetry({
+            ...input,
+            activeAllowedOrigin: null,
+            now: liveNow(),
+            leaseMilliseconds: 30_000,
+            maximumAttempts: 12,
+          });
+          const site = currentSites.get(claimed.target.apiClientId);
+          const policy = site?.configuration.policy.notification_delivery;
+          const ackBody = Buffer.from(
+            claimed.attempt.protocol && claimed.attempt.protocol !== "native"
+              ? "success"
+              : JSON.stringify({ ack: "acknowledged", event_id: claimed.event.eventId, delivery_id: claimed.delivery.deliveryId }),
+            "utf8",
+          );
+          const timer = setTimeout(() => {
+            pendingRetryTimers.delete(timer);
+            try {
+              const hash = (value: string | Uint8Array) => createHash("sha256").update(value).digest("hex");
+              currentWebhooks.completeAttempt({
+                deliveryId: claimed.delivery.deliveryId,
+                attemptId: claimed.attempt.attemptId,
+                leaseToken: claimed.attempt.leaseToken,
+                outcome: "ACKNOWLEDGED",
+                now: liveNow(),
+                maximumAttempts: policy?.maximum_attempts ?? 12,
+                retryBaseMilliseconds: (policy?.retry_base_seconds ?? 5) * 1000,
+                retryMaximumMilliseconds: (policy?.retry_maximum_seconds ?? 3600) * 1000,
+                resolvedAddressesFingerprint: hash("203.0.113.10"),
+                connectedAddress: "203.0.113.10",
+                httpStatus: 200,
+                responseBytes: ackBody.byteLength,
+                responseFingerprint: hash(ackBody),
+                ackCode: "acknowledged",
+                errorCode: null,
+              });
+            } catch {
+              // Preview disposed or lease superseded.
+            }
+          }, 700);
+          timer.unref();
+          pendingRetryTimers.add(timer);
+          return claimed.delivery;
+        } : undefined;
         // Health is explicitly simulated; no scheduler, provider client or webhook transport runs.
         const healthy = () => ({ enabled: true, state: "healthy" as const, inFlight: false, lastAttemptAt: liveNow() - 3000, lastSuccessAt: liveNow() - 2000, lastErrorCode: null, consecutiveFailures: 0, paymentRevision: currentSettings.instanceSnapshot().paymentRevision });
         const dependencies: AppDependencies = {
           config, database: currentDb, activity: currentActivity, identity: currentIdentity, settings: currentSettings,
           sites: currentSites, orders: currentOrders, ledger: currentLedger, reconciliation: currentReconciliation,
-          webhookStore: currentWebhooks, maintenance,
+          webhookStore: currentWebhooks, retryWebhookDelivery, maintenance,
           backupHealth: createAsyncBackupHealthProvider({
             backupDirectory: config.backupDir,
             dataDirectory: config.dataDir,
@@ -530,6 +576,8 @@ export async function createPreviewDemo(options: { port?: number; now?: number; 
         });
         preview.all("*", context => (context.req.path.startsWith("/checkout/") || context.req.path.startsWith("/api/public/") ? publicApp : app).fetch(context.req.raw, context.env));
         return { app: preview, activity: currentActivity, close: async () => {
+          for (const timer of pendingRetryTimers) clearTimeout(timer);
+          pendingRetryTimers.clear();
           currentActivity.stop();
           currentDb.close();
           activity = undefined;

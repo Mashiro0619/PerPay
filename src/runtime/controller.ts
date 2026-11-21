@@ -1,5 +1,5 @@
 import type { EpayStore } from "../epay/store.ts";
-import { SiteWebhookProcessor } from "../notifications/site-processor.ts";
+import { SiteWebhookProcessor, type SiteRetryWebhookInput } from "../notifications/site-processor.ts";
 import type { AlipayAccountSnapshot } from "../alipay-accounts/model.ts";
 import type { SiteStore } from "../sites/store.ts";
 import { CheckoutVerifier } from "./checkout-verification.ts";
@@ -26,6 +26,8 @@ import {
   NodeWebhookTransport,
   WebhookDeliveryService,
   WebhookScheduler,
+  WebhookStoreError,
+  type WebhookDelivery,
   type WebhookSchedulerHealth,
   type WebhookStore,
 } from "../notifications/index.ts";
@@ -131,6 +133,9 @@ export class RuntimeController {
   #ledgerScheduler: LedgerIngestScheduler | null = null;
   #reconciliationScheduler: ReconciliationScheduler | null = null;
   #webhookScheduler: WebhookScheduler | null = null;
+  #webhookService: WebhookDeliveryService | SiteWebhookProcessor | null = null;
+  #webhookRetryAbort: AbortController | null = null;
+  readonly #webhookRetries = new Set<Promise<unknown>>();
   #snapshot: PaymentRuntimeSnapshot | null = null;
   #ledgerRevision: number | null = null;
   #reconciliationRevision: number | null = null;
@@ -360,6 +365,43 @@ export class RuntimeController {
 
   async triggerWebhook(reason: string): Promise<void> {
     await this.#webhookScheduler?.trigger(reason);
+  }
+
+  retryWebhookDelivery(input: SiteRetryWebhookInput): WebhookDelivery {
+    if (this.#stopped || this.#transitioning || !this.#webhookService || !this.#webhookRetryAbort) {
+      throw new WebhookStoreError("webhook_disabled", "通知投递服务未运行");
+    }
+    const signal = this.#webhookRetryAbort.signal;
+    const launch = (deliveryId: string, run: () => Promise<unknown>) => {
+      const task = run()
+        .catch((error: unknown) => {
+          this.#logError("webhook_manual_retry_failed", error, { delivery_id: deliveryId });
+        })
+        .finally(() => {
+          this.#webhookRetries.delete(task);
+        });
+      this.#webhookRetries.add(task);
+    };
+    if (this.#webhookService instanceof SiteWebhookProcessor) {
+      const { delivery, execute } = this.#webhookService.retryDelivery(input);
+      launch(delivery.deliveryId, () => execute(signal));
+      return delivery;
+    }
+    const snapshot = this.#snapshot;
+    if (!snapshot || !isWebhookConfigured(snapshot)) {
+      throw new WebhookStoreError("webhook_disabled", "通知功能未启用");
+    }
+    const claimed = this.#webhooks.claimDeliveryForRetry({
+      ...input,
+      activeAllowedOrigin: snapshot.webhook.allowedOrigin,
+      now: safeNow(this.#clock()),
+      leaseMilliseconds: 30_000,
+      maximumAttempts: snapshot.webhook.maximumAttempts,
+      secretFingerprint: snapshot.webhook.signingKeyFingerprint,
+    });
+    const service = this.#webhookService;
+    launch(claimed.delivery.deliveryId, () => service.deliverClaimed(claimed, signal));
+    return claimed.delivery;
   }
 
   assertProviderSwitchAllowed(
@@ -635,8 +677,13 @@ export class RuntimeController {
 
   async #stopWebhookScheduler(): Promise<void> {
     const webhook = this.#webhookScheduler;
+    const abort = this.#webhookRetryAbort;
+    const retries = [...this.#webhookRetries];
     this.#webhookScheduler = null;
-    await webhook?.stop();
+    this.#webhookService = null;
+    this.#webhookRetryAbort = null;
+    abort?.abort();
+    await Promise.allSettled([webhook?.stop() ?? Promise.resolve(), ...retries]);
   }
 
   async #installPaymentSchedulers(
@@ -664,14 +711,18 @@ export class RuntimeController {
 
   async #installWebhookScheduler(snapshot: PaymentRuntimeSnapshot): Promise<void> {
     if (!this.#started || this.#stopped || (this.#sites === null && !isWebhookConfigured(snapshot))) return;
-    const webhook = this.#createWebhookScheduler(snapshot);
+    const { scheduler: webhook, service } = this.#createWebhookScheduler(snapshot);
     this.#webhookScheduler = webhook;
+    this.#webhookService = service;
+    this.#webhookRetryAbort = new AbortController();
     try {
       void webhook.start().catch((error: unknown) => {
         this.#logError("webhook_scheduler_startup_failed", error);
       });
     } catch (error) {
       this.#webhookScheduler = null;
+      this.#webhookService = null;
+      this.#webhookRetryAbort = null;
       await webhook.stop().catch(() => undefined);
       throw error;
     }
@@ -810,7 +861,10 @@ export class RuntimeController {
     });
   }
 
-  #createWebhookScheduler(snapshot: PaymentRuntimeSnapshot): WebhookScheduler {
+  #createWebhookScheduler(snapshot: PaymentRuntimeSnapshot): {
+    readonly scheduler: WebhookScheduler;
+    readonly service: WebhookDeliveryService | SiteWebhookProcessor;
+  } {
     let service: WebhookDeliveryService | SiteWebhookProcessor;
     if (this.#sites) {
       service = new SiteWebhookProcessor({ sites: this.#sites, webhooks: this.#webhooks, epay: this.#epay, clock: this.#clock, activity: this.#activity });
@@ -840,7 +894,7 @@ export class RuntimeController {
       clock: this.#clock,
     });
     }
-    return new WebhookScheduler({
+    const scheduler = new WebhookScheduler({
       activity: this.#activity,
       service,
       store: this.#webhooks,
@@ -862,6 +916,7 @@ export class RuntimeController {
       },
       onUnexpectedError: (error) => this.#logError("webhook_scheduler_failed", error),
     });
+    return { scheduler, service };
   }
 
   #logError(event: string, error: unknown, details: Readonly<Record<string, unknown>> = {}): void {

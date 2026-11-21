@@ -94,6 +94,10 @@ export class WebhookDeliveryService {
         errorCode: null,
       };
     }
+    return this.deliverClaimed(claimed, signal);
+  }
+
+  deliverClaimed(claimed: ClaimedWebhookAttempt, signal?: AbortSignal): Promise<WebhookProcessResult> {
     return this.#activity ? this.#activity.runTask("webhook.delivery", {
       subjectType: "webhook_delivery", subjectId: claimed.delivery.deliveryId, siteId: this.#siteId, siteName: this.#siteName,
       details: { order_id: claimed.event.orderId, attempt_number: claimed.attempt.attemptNumber },

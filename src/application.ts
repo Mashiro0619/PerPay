@@ -154,6 +154,7 @@ export async function startApplication(
       webhookStore: webhooks,
       webhookHealth: () => controller.webhookHealth(),
       onWebhookAvailable: () => controller.triggerWebhook("http"),
+      retryWebhookDelivery: input => controller.retryWebhookDelivery(input),
       checkoutVerification: orderId => controller.checkoutVerification(orderId),
       requestCheckoutVerification: orderId => controller.requestCheckoutVerification(orderId),
       onOrderAvailable: orderId => {

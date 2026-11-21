@@ -97,6 +97,7 @@ import {
 } from "../reconciliation/index.ts";
 import {
   webhookReplayRequestSchema,
+  webhookRetryRequestSchema,
   WebhookStoreError,
   type WebhookAttempt,
   type WebhookDelivery,
@@ -108,6 +109,7 @@ import {
   type WebhookSchedulerHealth,
   type WebhookStore,
 } from "../notifications/index.ts";
+import type { SiteRetryWebhookInput } from "../notifications/site-processor.ts";
 import { verifyApiRequestSignature, type ApiRequestAuthentication } from "../security/api-signature.ts";
 import type {
   PaymentRuntimeStatus,
@@ -286,6 +288,7 @@ export interface AppDependencies {
   readonly webhookStore?: WebhookStore | undefined;
   readonly webhookHealth?: (() => WebhookSchedulerHealth) | undefined;
   readonly onWebhookAvailable?: (() => void | Promise<void>) | undefined;
+  readonly retryWebhookDelivery?: ((input: SiteRetryWebhookInput) => WebhookDelivery) | undefined;
   readonly checkoutVerification?: ((orderId: string) => CheckoutVerification | undefined) | undefined;
   readonly requestCheckoutVerification?: ((orderId: string) => CheckoutVerification | undefined) | undefined;
   readonly onOrderAvailable?: ((orderId: string) => void) | undefined;
@@ -1875,6 +1878,54 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
           },
         },
         result.replayed ? 200 : 201,
+      );
+    },
+  );
+
+  app.post(
+    "/api/admin/v1/webhooks/deliveries/:deliveryId/actions/retry",
+    adminSession,
+    financialWrite,
+    async (context) => {
+      const deliveryId = requireResourceId(
+        context.req.param("deliveryId"),
+        "webhook_delivery_not_found",
+        "通知投递不存在",
+      );
+      await readJson(context, webhookRetryRequestSchema, MAX_JSON_BODY_BYTES);
+      const session = requireCurrentSession(context, dependencies.identity);
+      const retryInput: SiteRetryWebhookInput = {
+        expectedClientId: context.get("adminSiteId"),
+        deliveryId,
+        actorId: session.session.username,
+        requestId: context.get("requestId"),
+        remoteAddressHash: dependencies.identity.sourceHash(
+          remoteAddress(context, dependencies.config.trustedProxy),
+        ),
+      };
+      let delivery: WebhookDelivery;
+      if (dependencies.retryWebhookDelivery) {
+        delivery = dependencies.retryWebhookDelivery(retryInput);
+      } else {
+        const store = requireWebhookStore(dependencies);
+        const webhook = dependencies.sites ? undefined : dependencies.settings?.snapshot().webhook;
+        const claimed = store.claimDeliveryForRetry({
+          ...retryInput,
+          activeAllowedOrigin: webhook?.enabled === true ? webhook.allowedOrigin : null,
+          now: (dependencies.clock ?? Date.now)(),
+          leaseMilliseconds: 30_000,
+          maximumAttempts: webhook?.maximumAttempts ?? 12,
+        });
+        delivery = claimed.delivery;
+        notifyWebhookAvailable(dependencies, context);
+      }
+      return context.json(
+        {
+          data: {
+            delivery: serializeWebhookDelivery(delivery),
+          },
+        },
+        202,
       );
     },
   );

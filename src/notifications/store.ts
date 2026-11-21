@@ -83,6 +83,21 @@ export interface WebhookReplayResult {
   readonly replayed: boolean;
 }
 
+export interface ClaimDeliveryForRetryInput {
+  readonly expectedClientId?: string | undefined;
+  readonly deliveryId: string;
+  readonly actorId: string;
+  readonly activeAllowedOrigin: string | null;
+  readonly now: number;
+  readonly leaseMilliseconds: number;
+  readonly maximumAttempts: number;
+  readonly siteRevision?: number | undefined;
+  readonly secretFingerprint?: string | undefined;
+  readonly epayCredentials?: EpayCredentials | null | undefined;
+  readonly requestId?: string | undefined;
+  readonly remoteAddressHash?: string | undefined;
+}
+
 export interface WebhookDeliveryPage {
   readonly deliveries: readonly WebhookDeliverySummary[];
   readonly nextCursor: WebhookDeliveryCursor | null;
@@ -759,6 +774,190 @@ export class WebhookStore {
         .get(input.redeliveryId) as DeliveryRow | undefined;
       if (!created) throw new Error("created webhook replay cannot be read");
       return { delivery: mapDelivery(created), replayed: false };
+    });
+  }
+
+  claimDeliveryForRetry(input: ClaimDeliveryForRetryInput): ClaimedWebhookAttempt {
+    assertUuid(input.deliveryId, "webhook delivery ID");
+    assertIdentifier(input.actorId, "webhook actor ID");
+    assertActiveAllowedOrigin(input.activeAllowedOrigin);
+    assertTime(input.now, "webhook retry time");
+    if (
+      !Number.isSafeInteger(input.leaseMilliseconds) ||
+      input.leaseMilliseconds < 1 ||
+      input.leaseMilliseconds > MAX_LEASE_MILLISECONDS
+    ) {
+      throw new RangeError("webhook lease duration is invalid");
+    }
+    assertPositiveInteger(input.maximumAttempts, "webhook maximum attempts");
+    return this.#database.write((connection) => {
+      recoverExpiredLeases(connection, input.now);
+      assertSiteResource(connection, input.expectedClientId, "delivery", input.deliveryId);
+      const row = connection
+        .prepare(
+          `SELECT delivery.delivery_id, delivery.outbox_event_id, delivery.target_id,
+                  delivery.generation, delivery.predecessor_delivery_id,
+                  delivery.request_key, delivery.request_fingerprint,
+                  delivery.requested_by_type, delivery.requested_by_actor_id,
+                  delivery.reason, delivery.status, delivery.attempt_count,
+                  delivery.next_attempt_at, delivery.acknowledged_at,
+                  delivery.dead_lettered_at, delivery.last_error_code,
+                  delivery.created_at, delivery.updated_at,
+                  outbox.event_type, outbox.aggregate_id, outbox.aggregate_version,
+                  outbox.payload_json, outbox.payload_fingerprint,
+                  outbox.created_at AS event_created_at,
+                  target.order_id, target.api_client_id, target.target_format,
+                  target.target_url, target.allowed_origin, target.url_fingerprint,
+                  target.created_at AS target_created_at,
+                  ${LIVE_NOTIFICATION_TARGET} AS live
+             FROM webhook_deliveries AS delivery
+             JOIN outbox_events AS outbox ON outbox.outbox_event_id = delivery.outbox_event_id
+             JOIN webhook_targets AS target ON target.target_id = delivery.target_id
+            WHERE delivery.delivery_id = ?`,
+        )
+        .get(input.deliveryId) as (ClaimRow & { readonly live: bigint | number }) | undefined;
+      if (!row) {
+        throw new WebhookStoreError("webhook_delivery_not_found", "通知投递不存在");
+      }
+      if (!Number(row.live)) {
+        throw new WebhookStoreError("webhook_delivery_state_conflict", "历史沙箱订单不支持立即重试通知。");
+      }
+      if (redeliveryBlockedReason(connection, row.target_format, row.outbox_event_id)) {
+        throw new WebhookStoreError("webhook_payment_confirmation_revoked", "原付款确认已撤销，不能重新发送成功通知，请核对订单当前状态。");
+      }
+      const siteMode = connection.prepare("SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'sites'").get() !== undefined;
+      const site = siteMode ? readSite(connection, row.api_client_id) : null;
+      if (siteMode && input.siteRevision !== undefined && site?.revision !== input.siteRevision) {
+        throw new WebhookStoreError("webhook_delivery_state_conflict", "网站通知配置已变化，请刷新后重试");
+      }
+      const allowedOrigin = siteMode
+        ? (site?.configuration.notifications_enabled ? site.configuration.notification_origin : null)
+        : input.activeAllowedOrigin;
+      if (allowedOrigin === null) {
+        throw new WebhookStoreError("webhook_disabled", "通知功能未启用");
+      }
+      if (row.allowed_origin !== allowedOrigin) {
+        throw new WebhookStoreError("webhook_target_inactive", "通知目标不再属于当前允许的 origin");
+      }
+      const latest = connection
+        .prepare(
+          `SELECT status, delivery_id FROM webhook_deliveries
+            WHERE outbox_event_id = ? AND target_id = ?
+            ORDER BY generation DESC LIMIT 1`,
+        )
+        .get(row.outbox_event_id, row.target_id) as { status: string; delivery_id: string } | undefined;
+      if (!latest || latest.delivery_id !== row.delivery_id || latest.status !== "RETRY_WAIT") {
+        throw new WebhookStoreError("webhook_delivery_state_conflict", "只有等待重试的最新通知才能立即重试");
+      }
+      const effectiveMaximumAttempts = site
+        ? site.configuration.policy.notification_delivery.maximum_attempts
+        : input.maximumAttempts;
+      const previousAttempts = toSafeInteger(row.attempt_count, "webhook attempt count");
+      if (previousAttempts >= effectiveMaximumAttempts) {
+        throw new WebhookStoreError("webhook_delivery_state_conflict", "该通知已达到最大重试次数，请刷新后重新发送");
+      }
+      const compatible = row.target_format !== "NATIVE_JSON_V1";
+      const retryTime = Math.max(input.now, toSafeInteger(row.updated_at, "webhook delivery update time"));
+      const epay = compatible && input.epayCredentials
+        ? prepareEpayAttempt(connection, { orderId: row.order_id, targetUrl: row.target_url, credentials: input.epayCredentials, now: retryTime })
+        : null;
+      if (compatible && !epay) {
+        throw new WebhookStoreError("webhook_signing_key_unavailable", "易支付通知签名密钥不可用");
+      }
+      const nativeKey = readActiveSigningKey(connection, siteMode ? row.api_client_id : undefined);
+      const key = epay?.key ?? nativeKey;
+      if (!key || (!compatible && input.secretFingerprint !== undefined && key.secretFingerprint !== input.secretFingerprint)) {
+        throw new WebhookStoreError("webhook_signing_key_unavailable", "通知签名密钥不可用");
+      }
+      const attemptNumber = previousAttempts + 1;
+      const leaseToken = randomUUID();
+      const leaseExpiresAt = retryTime + input.leaseMilliseconds;
+      assertTime(leaseExpiresAt, "webhook lease expiry time");
+      const claimed = connection
+        .prepare(
+          `UPDATE webhook_deliveries
+              SET status = 'LEASED', attempt_count = ?, lease_token = ?,
+                  lease_expires_at = ?, updated_at = ?
+            WHERE delivery_id = ? AND status = 'RETRY_WAIT'`,
+        )
+        .run(attemptNumber, leaseToken, leaseExpiresAt, retryTime, row.delivery_id);
+      assertChangedOnce(claimed.changes, "webhook manual retry lease");
+      const attemptId = randomUUID();
+      const epaySchema = hasEpayAttemptSchema(connection);
+      const attemptInsert = connection
+        .prepare(
+          `INSERT INTO webhook_attempts(
+             attempt_id, delivery_id, attempt_number, lease_token, key_version,
+             request_timestamp, request_body_fingerprint, outcome,
+             resolved_addresses_fingerprint, connected_address, http_status,
+             response_bytes, response_fingerprint, ack_code, error_code,
+             started_at, finished_at${epaySchema ? ", protocol, epay_key_id, request_method, request_url, request_fingerprint" : ""}
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, 'STARTED', NULL, NULL, NULL,
+                     NULL, NULL, NULL, NULL, ?, NULL${epaySchema ? ", ?, ?, ?, ?, ?" : ""})`,
+        )
+        .run(
+          attemptId,
+          row.delivery_id,
+          attemptNumber,
+          leaseToken,
+          epay ? null : key.keyVersion,
+          retryTime,
+          epay ? EMPTY_WEBHOOK_BODY_FINGERPRINT : row.payload_fingerprint,
+          retryTime,
+          ...(epaySchema ? [epay?.protocol ?? "native", epay ? key.keyId : null, epay ? "GET" : "POST",
+            epay?.requestUrl ?? null, epay?.requestFingerprint ?? null] : []),
+        );
+      assertChangedOnce(attemptInsert.changes, "webhook manual retry attempt start");
+      appendAuditEvent(connection, {
+        occurredAt: retryTime,
+        actorType: "ADMIN",
+        actorId: input.actorId,
+        action: "webhook.delivery_retried",
+        outcome: "SUCCESS",
+        subjectType: "webhook_delivery",
+        subjectId: row.delivery_id,
+        requestId: input.requestId,
+        remoteAddressHash: input.remoteAddressHash,
+        details: {
+          delivery_id: row.delivery_id,
+          event_id: row.outbox_event_id,
+          order_id: row.order_id,
+          attempt_number: attemptNumber,
+          site_id: row.api_client_id,
+        },
+      });
+      const delivery = mapDelivery({
+        ...row,
+        status: "LEASED",
+        attempt_count: attemptNumber,
+        lease_token: leaseToken,
+        lease_expires_at: leaseExpiresAt,
+        updated_at: retryTime,
+      });
+      const event = mapEvent(row);
+      const target = mapTarget(row);
+      const attempt: WebhookAttempt = {
+        attemptId,
+        deliveryId: row.delivery_id,
+        attemptNumber,
+        leaseToken,
+        keyVersion: key.keyVersion,
+        keyId: key.keyId,
+        requestTimestamp: retryTime,
+        requestBodyFingerprint: epay ? EMPTY_WEBHOOK_BODY_FINGERPRINT : row.payload_fingerprint,
+        ...(epay ? { protocol: epay.protocol, requestMethod: "GET" as const, requestUrl: epay.requestUrl, requestFingerprint: epay.requestFingerprint } : {}),
+        outcome: "STARTED",
+        resolvedAddressesFingerprint: null,
+        connectedAddress: null,
+        httpStatus: null,
+        responseBytes: null,
+        responseFingerprint: null,
+        ackCode: null,
+        errorCode: null,
+        startedAt: retryTime,
+        finishedAt: null,
+      };
+      return { delivery, event, target, attempt, key, ...(epay?.preparationError ? { preparationError: epay.preparationError } : {}) };
     });
   }
 

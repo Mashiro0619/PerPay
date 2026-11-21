@@ -3789,6 +3789,47 @@ paths:
         '415': { $ref: '#/components/responses/UnsupportedMediaType' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
         '503': { $ref: '#/components/responses/WebhookUnavailable' }
+  /api/admin/v1/webhooks/deliveries/{deliveryId}/actions/retry:
+    post:
+      tags: [Notifications]
+      operationId: retryWebhookDelivery
+      summary: Immediately retry a waiting webhook delivery
+      description: |
+        Claims the latest `RETRY_WAIT` delivery immediately and dispatches its next attempt
+        without creating a duplicate delivery generation. Returns HTTP 202 with the leased
+        delivery. Non-latest deliveries, non-`RETRY_WAIT` deliveries, disabled notifications,
+        inactive target origins, and revoked payment confirmations return HTTP 409.
+      x-perpay-requires-same-origin: true
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/AdminOrigin'
+        - $ref: '#/components/parameters/WebhookDeliveryId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebhookRetryRequest'
+      responses:
+        '202':
+          description: The waiting delivery was leased for an immediate retry attempt
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookRetryEnvelope'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '403': { $ref: '#/components/responses/FinancialWriteForbidden' }
+        '404': { $ref: '#/components/responses/WebhookDeliveryNotFound' }
+        '409': { $ref: '#/components/responses/WebhookConflict' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/WebhookUnavailable' }
   /api/v1/orders:
     post:
       tags: [Orders]
@@ -6470,6 +6511,70 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/WebhookRedeliveryEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "403":
+          $ref: "#/components/responses/FinancialWriteForbidden"
+        "404":
+          description: "通知投递记录不存在，或不属于当前业务网站。"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: 请求范围不匹配或资源不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "413":
+          $ref: "#/components/responses/TooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "503":
+          $ref: "#/components/responses/WebhookUnavailable"
+  /api/admin/v1/sites/{clientId}/webhooks/deliveries/{deliveryId}/actions/retry:
+    post:
+      tags:
+        - Notifications
+      operationId: siteRetryWebhookDelivery
+      summary: 本站：Immediately retry a waiting webhook delivery
+      description: >
+        Claims the latest `RETRY_WAIT` delivery immediately and dispatches its next attempt
+        without creating a duplicate delivery generation. Returns HTTP 202 with the leased
+        delivery. Non-latest deliveries, non-`RETRY_WAIT` deliveries, disabled notifications,
+        inactive target origins, and revoked payment confirmations return HTTP 409.
+      x-perpay-requires-same-origin: true
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - name: clientId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/AdminOrigin"
+        - $ref: "#/components/parameters/WebhookDeliveryId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebhookRetryRequest"
+      responses:
+        "202":
+          description: The waiting delivery was leased for an immediate retry attempt
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookRetryEnvelope"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -12237,6 +12342,21 @@ components:
           properties:
             delivery: { $ref: '#/components/schemas/WebhookDelivery' }
             replayed: { type: boolean }
+    WebhookRetryRequest:
+      type: object
+      additionalProperties: false
+      properties: {}
+    WebhookRetryEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [delivery]
+          properties:
+            delivery: { $ref: '#/components/schemas/WebhookDelivery' }
     Sha256Fingerprint:
       type: string
       pattern: '^[0-9a-f]{64}$'

@@ -1,10 +1,20 @@
 import { fingerprintSecret } from "../settings/model.ts";
+import type { SiteSnapshot } from "../sites/model.ts";
 import type { SiteStore } from "../sites/store.ts";
+import type { WebhookDelivery } from "./model.ts";
 import { WebhookDeliveryService, type WebhookProcessResult } from "./service.ts";
-import type { WebhookStore } from "./store.ts";
+import { WebhookStoreError, type ClaimDeliveryForRetryInput, type WebhookStore } from "./store.ts";
 import { NodeWebhookTransport, type WebhookTransport } from "./transport.ts";
 import type { ActivityRecorder } from "../audit/activity.ts";
-import type { EpayStore } from "../epay/store.ts";
+import type { EpayCredentials, EpayStore } from "../epay/store.ts";
+
+export interface SiteRetryWebhookInput {
+  readonly expectedClientId?: string | undefined;
+  readonly deliveryId: string;
+  readonly actorId: string;
+  readonly requestId?: string | undefined;
+  readonly remoteAddressHash?: string | undefined;
+}
 
 /** One processor for the existing serial scheduler, not one worker per website. */
 export class SiteWebhookProcessor {
@@ -41,9 +51,67 @@ export class SiteWebhookProcessor {
     const secret = this.#sites.notificationSecret(clientId);
     if (!origin) throw new Error("website notification settings are incomplete");
     const epayCredentials = this.#epay?.credentialsForSite(clientId);
+    return this.#serviceForSite(site, origin, secret, epayCredentials).processOne(signal);
+  }
+
+  retryDelivery(input: SiteRetryWebhookInput): {
+    readonly delivery: WebhookDelivery;
+    readonly execute: (signal?: AbortSignal) => Promise<WebhookProcessResult>;
+  } {
+    const now = this.#clock();
+    const detail = this.#webhooks.delivery(input.deliveryId);
+    if (!detail || (input.expectedClientId && detail.target.apiClientId !== input.expectedClientId)) {
+      // Delegate to the store so site-scope and missing-delivery errors stay identical to replay().
+      this.#webhooks.claimDeliveryForRetry({
+        ...input,
+        activeAllowedOrigin: null,
+        now,
+        leaseMilliseconds: 30_000,
+        maximumAttempts: 1,
+      });
+      throw new Error("unreachable");
+    }
+    const clientId = detail.target.apiClientId;
+    const site = this.#sites.get(clientId);
+    if (!site || !site.configuration.notifications_enabled) {
+      throw new WebhookStoreError("webhook_disabled", "通知功能未启用");
+    }
+    const origin = site.configuration.notification_origin;
+    if (!origin) {
+      throw new WebhookStoreError("webhook_disabled", "通知功能未启用");
+    }
+    const secret = this.#sites.notificationSecret(clientId);
+    const epayCredentials = this.#epay?.credentialsForSite(clientId);
     const policy = site.configuration.policy.notification_delivery;
     const secretFingerprint = secret ? fingerprintSecret(secret, "webhook-signing-key") : undefined;
-    const service = new WebhookDeliveryService({
+    const claimInput: ClaimDeliveryForRetryInput = {
+      ...input,
+      activeAllowedOrigin: origin,
+      now,
+      leaseMilliseconds: 30_000,
+      maximumAttempts: policy.maximum_attempts,
+      siteRevision: site.revision,
+      ...(secretFingerprint ? { secretFingerprint } : {}),
+      ...(epayCredentials ? { epayCredentials } : {}),
+    };
+    const claimed = this.#webhooks.claimDeliveryForRetry(claimInput);
+    const service = this.#serviceForSite(site, origin, secret, epayCredentials);
+    return {
+      delivery: claimed.delivery,
+      execute: (signal?: AbortSignal) => service.deliverClaimed(claimed, signal),
+    };
+  }
+
+  #serviceForSite(
+    site: SiteSnapshot,
+    origin: string,
+    secret: string | null,
+    epayCredentials: EpayCredentials | null | undefined,
+  ): WebhookDeliveryService {
+    const clientId = site.clientId;
+    const policy = site.configuration.policy.notification_delivery;
+    const secretFingerprint = secret ? fingerprintSecret(secret, "webhook-signing-key") : undefined;
+    return new WebhookDeliveryService({
       activity: this.#activity,
       siteId: clientId,
       siteName: site.configuration.name,
@@ -64,7 +132,6 @@ export class SiteWebhookProcessor {
       transport: this.#transport(clientId, origin),
       clock: this.#clock,
     });
-    return service.processOne(signal);
   }
 }
 function idle(): WebhookProcessResult {

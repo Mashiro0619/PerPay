@@ -47,6 +47,7 @@ export const SITE_ADMIN_ROUTES = [
     ["GET", "/orders/:orderId/checkout"], ["GET", "/orders/:orderId/notifications/deliveries"], ["PUT", "/orders/:orderId/refund-mark"],
     ["GET", "/webhooks/deliveries"], ["GET", "/webhooks/deliveries/:deliveryId"],
     ["GET", "/webhooks/deliveries/:deliveryId/attempts"], ["POST", "/webhooks/deliveries/:deliveryId/actions/redeliver"],
+    ["POST", "/webhooks/deliveries/:deliveryId/actions/retry"],
     ["GET", "/reconciliation/candidates/:candidateId"], ["GET", "/reconciliation/matches/:paymentMatchId"],
     ["GET", "/reconciliation/exceptions/:exceptionId"], ["GET", "/reconciliation/ledger-entries/:ledgerEntryId"],
     ["GET", "/reconciliation/ledger-entries/:ledgerEntryId/candidates"],

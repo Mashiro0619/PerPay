@@ -123,6 +123,8 @@ export const webhookReplayRequestSchema = z
 
 export type WebhookReplayRequest = z.infer<typeof webhookReplayRequestSchema>;
 
+export const webhookRetryRequestSchema = z.object({}).strict();
+
 export function isValidWebhookReason(value: string): boolean {
   const characters = Array.from(value).length;
   return value === value.trim() &&
