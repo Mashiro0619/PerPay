@@ -173,7 +173,7 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
           !ended && { label: "收银台状态", value: <StatusBadge value={order.checkout.status} /> },
           { label: "收银台有效期至", kind: "time", value: <RecordTime value={order.checkout.expires_at} /> },
           !!order.note && { label: "订单备注", value: order.note },
-          order.refund.status !== "NONE" && { label: "历史退款（只读）", value: <StatusBadge value={order.refund.status} /> },
+          order.refund.status !== "NONE" && { label: "历史退款记录", value: <StatusBadge value={order.refund.status} />, hint: "旧版历史留档，不可编辑" },
         ]} />
         <RefundMarkStatus order={order} />
       </Section>

@@ -74,7 +74,7 @@ export function useReverseMatch(match: PaymentMatchDetail | undefined, movesOnSu
   const setMessage = useSuccessToast();
   const action: RecordAction | null = match?.status === "SETTLED"
     ? {
-        label: "撤销错误关联",
+        label: "撤销收款关联",
         danger: true,
         disabled: saved,
         onSelect: (trigger) => {

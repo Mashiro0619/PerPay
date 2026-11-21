@@ -328,8 +328,8 @@ function OrderPage({
                         }
                       >
                         {pagination.page > 1
-                          ? pagination.previousLabel === "返回首页"
-                            ? "返回首页"
+                          ? pagination.previousLabel === "返回第 1 页"
+                            ? "返回第 1 页"
                             : "返回上一页"
                           : "查看全部订单"}
                       </Button>

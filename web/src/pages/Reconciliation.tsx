@@ -184,7 +184,7 @@ function RelatedRecord({ item, compact = false }: { item: ReconciliationRow; com
   return (
     <div className="reconciliation-related-record">
       <span className="reconciliation-related-title">
-        {(item.rawPageId ? "支付宝流水页 #" : "记录 #") + (item.rawPageId ?? item.id).slice(0, 8)}
+        {(item.rawPageId ? "查账批次 #" : "记录 #") + (item.rawPageId ?? item.id).slice(0, 8)}
       </span>
       <span className="reconciliation-related-meta">暂无可关联的订单或单笔流水</span>
     </div>

@@ -56,7 +56,7 @@ export function CandidateRecord({
       time: candidate.decided_at,
       tone: candidate.status === "SELECTED" ? "success" as const : "muted" as const,
     }] : []),
-    { id: "created", title: "形成匹配建议", time: candidate.created_at },
+    { id: "created", title: "生成匹配建议", time: candidate.created_at },
   ];
 
   return <>

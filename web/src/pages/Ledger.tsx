@@ -39,7 +39,7 @@ const sortOptions = [
   { value: "associated_at", label: "最近关联时间" },
   { value: "handled_at", label: "最近处理时间" },
   { value: "amount_cents", label: "交易金额" },
-  { value: "event_sequence", label: "关联事件顺序" },
+  { value: "event_sequence", label: "最近关联顺序" },
 ];
 
 /** Kept as a composition for callers that render the list outside the reconciliation tabs. */

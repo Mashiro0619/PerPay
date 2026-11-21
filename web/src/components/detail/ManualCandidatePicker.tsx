@@ -1,5 +1,5 @@
 import { useQuery } from '@/lib/workspace-query';
-import { useWorkspace, useWorkspaceApi } from "@/workspace";
+import { useWorkspaceApi } from "@/workspace";
 import { useState } from "react";
 
 import { Search } from "lucide-react";
@@ -54,8 +54,7 @@ export function ManualCandidatePicker({
   onSelect: (id: string, title: string) => void;
 }) {
   const api = useWorkspaceApi();
-  const { clientId } = useWorkspace();
-  const noun = kind === "orders" ? "订单" : clientId ? "共享收入流水" : "收入流水";
+  const noun = kind === "orders" ? "订单" : "收入流水";
   const candidateNoun = kind === "orders" ? "订单" : "流水";
   const [draft, setDraft] = useState("");
   const [q, setQ] = useState("");

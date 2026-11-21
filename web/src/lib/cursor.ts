@@ -54,7 +54,7 @@ export function useCursor(key = "cursor") {
     pageKey: page + ":" + (cursor ?? ""),
     canStepPrevious: page > 1 && (trail.cursors.length > 1 || page === 2),
     previousLabel:
-      trail.cursors.length === 1 && page > 2 ? "返回首页" : "上一页",
+      trail.cursors.length === 1 && page > 2 ? "返回第 1 页" : "上一页",
     previous: () =>
       go(
         trail.cursors.length > 1

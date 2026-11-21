@@ -235,10 +235,9 @@ export function RefundMarkDialog({
             {context.marked ? "标记已退款" : "撤销退款标记"}
           </DialogTitle>
           <DialogDescription>
-            {`仅记录外部已完成的退款。${systemName} 不执行实际退款，也未验证退款。`}
             {context.marked
-              ? "不改变订单资金状态，也不会通知业务网站。"
-              : "只撤销标记，不改变实际退款或订单资金。"}
+              ? `仅用于后台备注已在外部完成的退款。${systemName} 不会发起或验证实际退款，也不会变更订单资金状态或通知业务网站。`
+              : "仅撤销此条后台退款标记，不会影响实际退款及订单资金状态。"}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={submit} className="contents">

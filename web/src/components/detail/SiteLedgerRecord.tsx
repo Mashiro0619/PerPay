@@ -134,8 +134,8 @@ function SiteLedgerCandidate({ candidate, entry }: { candidate: MatchCandidate; 
         { label: "订单收款状态", value: <OrderStatusBadge payment={orderPaymentStatus(order)} checkout={"checkout" in order ? order.checkout.status : order.checkout_status} refundMarked={"refund_mark" in order && order.refund_mark.marked} /> },
       ] : []),
       ...candidateFactsBeyondLedger(candidate, entry, order).map(([name, value]) => ({ label: name, value })),
-      { label: "形成时间", kind: "time", value: <RecordTime value={candidate.created_at} /> },
-      !!candidate.decided_at && { label: "决定时间", kind: "time", value: <RecordTime value={candidate.decided_at} /> },
+      { label: "生成时间", kind: "time", value: <RecordTime value={candidate.created_at} /> },
+      !!candidate.decided_at && { label: "处理时间", kind: "time", value: <RecordTime value={candidate.decided_at} /> },
     ]} />
     {candidateFacts(candidate).length < 3 && <p className={evidenceNoteClass}>匹配信息不完整</p>}
     {associate.dialog}

@@ -286,7 +286,7 @@ function BusinessTableView<T extends RowData>({
   const columnMenu = columnsMenu && !isSummary && (inlineColumns ? (
     <FieldSet data-list-columns-panel>
       <FieldLegend variant="label">
-        {isSummary ? "显示信息（标识与操作固定）" : "显示列（标识与操作固定）"}
+        {isSummary ? "显示信息（首项与操作固定）" : "显示列（首列与操作列固定）"}
       </FieldLegend>
       <FieldGroup>
         {table.getAllLeafColumns().map((column) => (

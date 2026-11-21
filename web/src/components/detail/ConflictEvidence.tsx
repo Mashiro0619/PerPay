@@ -93,7 +93,7 @@ export function ConflictRecord({ detail }: { detail: LedgerConflictDetail }) {
       technical={[{ title: "冲突记录技术信息", data: detail, identifiers: [
         ["冲突编号", conflict.conflict_id],
         ["关联内部流水编号", existing?.ledger_entry_id ?? null],
-        ["原始查账页编号", conflict.raw_page_id],
+        ["查账批次编号", conflict.raw_page_id],
         ["原始事件编号", conflict.raw_event_id],
       ] }]} />
     {confirm && (
@@ -102,7 +102,7 @@ export function ConflictRecord({ detail }: { detail: LedgerConflictDetail }) {
         description={
           action === "KEEP_EXISTING"
             ? "保留已有流水，拒绝本次冲突记录。"
-            : "保留隔离记录，不计入收款。"
+            : "保持该异常流水处于隔离状态，不参与收款对账，并关闭此冲突。"
         }
         action="确认处理冲突"
         onClose={() => setConfirm(false)}

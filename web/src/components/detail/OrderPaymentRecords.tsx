@@ -45,7 +45,7 @@ function Evidence({ extra, candidate, ledger, order, anchor }: {
   const facts = candidate ? candidateFactsBeyondLedger(candidate, ledger, order) : [];
   const incomplete = !!candidate && candidateFacts(candidate).length < 3;
   if (!extra.length && !facts.length && !incomplete) return null;
-  return <Disclosure label="核对凭据" count={extra.length + facts.length}>
+  return <Disclosure label="更多流水与匹配信息" count={extra.length + facts.length}>
     <FieldList items={extra} />
     {candidate && (facts.length > 0 || incomplete) && <div id={anchor ? "candidate-" + candidate.candidate_id : undefined} tabIndex={anchor ? -1 : undefined} data-match-evidence
       className="flex min-w-0 flex-col gap-1 rounded-md outline-none transition-colors duration-1000 data-anchor-hit:bg-accent data-anchor-hit:duration-0">

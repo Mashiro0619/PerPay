@@ -393,8 +393,8 @@ function LedgerCandidateRecord({ candidate, source, number, settled }: {
       ] : []),
       ...candidateFactsBeyondLedger(candidate, source, order).map(([name, value]) => ({ label: name, value })),
       !!number && { label: "采集记录", value: <SourceLink id={source.ledger_entry_id} number={number} /> },
-      { label: "形成时间", kind: "time", value: <RecordTime value={candidate.created_at} /> },
-      !!candidate.decided_at && { label: "决定时间", kind: "time", value: <RecordTime value={candidate.decided_at} /> },
+      { label: "生成时间", kind: "time", value: <RecordTime value={candidate.created_at} /> },
+      !!candidate.decided_at && { label: "处理时间", kind: "time", value: <RecordTime value={candidate.decided_at} /> },
     ]} />
     {candidateFacts(candidate).length < 3 && <p className={note}>匹配信息不完整</p>}
     {associate.dialog}
