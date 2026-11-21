@@ -61,24 +61,24 @@ export const checkoutCopy: Record<
     detail: "",
   },
   CONFIRMED: {
-    badge: "收款已确认",
-    heading: "收款已确认",
+    badge: "已付款",
+    heading: "付款成功",
     detail: "",
   },
   DISPUTED: {
-    badge: "付款待核实",
-    heading: "付款待核实",
-    detail: "请联系商家核实，勿重复付款。",
+    badge: "核实中",
+    heading: "付款待商家核实",
+    detail: "请勿重复付款，联系商家核对付款记录即可。",
   },
   CLOSED: {
-    badge: "订单已关闭",
+    badge: "已关闭",
     heading: "订单已关闭",
-    detail: "",
+    detail: "该订单已关闭，请勿向此二维码付款。",
   },
   EXPIRED: {
-    badge: "订单已过期",
-    heading: "订单已过期",
-    detail: "已付款请查询付款状态；若仍未确认，请联系商家，勿重复付款。",
+    badge: "已过期",
+    heading: "付款时间已过",
+    detail: "如已完成付款，请点击下方“刷新付款状态”；若仍未确认，请联系商家，勿重复付款。",
   },
   NOT_FOUND: {
     badge: "订单不可用",
@@ -87,13 +87,13 @@ export const checkoutCopy: Record<
   },
   RATE_LIMITED: {
     badge: "稍后自动重试",
-    heading: "请求过于频繁",
-    detail: "请稍等，页面会自动重试。",
+    heading: "当前访问较多",
+    detail: "请稍候片刻，页面会自动重新加载。",
   },
   UNAVAILABLE: {
-    badge: "收款暂不可用",
-    heading: "暂时无法确认付款",
-    detail: "收款服务暂不可用，请勿付款。页面会自动重试。",
+    badge: "暂不可用",
+    heading: "收银台暂不可用",
+    detail: "服务暂时维护或异常，请暂勿付款，页面会自动重新加载。",
   },
 };
 export function checkoutState(order: CheckoutViewOrder): CheckoutViewState {

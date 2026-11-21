@@ -55,7 +55,7 @@ export function useQrDownload(
     const failed = () => {
       if (!valid()) return;
       cancel();
-      setMessage("无法生成 PNG，请重试或截图保存二维码。");
+      setMessage("二维码图片保存失败，请重试或直接截图保存。");
     };
     const img = image.current;
     if (
@@ -103,7 +103,7 @@ export function useQrDownload(
           target.height = 0;
           canvas.current = null;
           setBusy(false);
-          setMessage("已发起 PNG 下载。手机付款请将图片保存到相册，或截图后在支付宝扫一扫中从相册选择。");
+          setMessage("二维码已开始下载，请保存到相册后打开支付宝“扫一扫”相册识别付款。");
           timer.current = setTimeout(() => {
             if (url.current) URL.revokeObjectURL(url.current);
             url.current = null;

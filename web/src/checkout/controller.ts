@@ -101,7 +101,7 @@ export function createCheckoutController(initial: CheckoutInitial) {
       manualDeadline = 0;
       emit({
         busy: false,
-        feedback: "核实仍可能继续，页面会自动更新；请勿重复付款。",
+        feedback: "仍在查询付款结果，页面会自动更新，请勿重复付款。",
       });
     }
     const now = currentServerTime();
@@ -136,13 +136,13 @@ export function createCheckoutController(initial: CheckoutInitial) {
     abort();
     emit({
       unavailable: true,
-      message: "网络已断开，恢复连接后会继续刷新订单状态。",
+      message: "网络已断开，恢复连接后会自动刷新订单状态。",
     });
   }
   function online() {
     if (!alive) return;
     failures = 0;
-    emit({ unavailable: false, message: "网络已恢复，正在刷新订单状态。" });
+    emit({ unavailable: false, message: "网络已恢复，正在刷新订单状态…" });
     if (interval() !== null) void refresh();
   }
   function hide() {
@@ -210,7 +210,7 @@ export function createCheckoutController(initial: CheckoutInitial) {
     if (manual) {
       manualTracking = checking;
       manualDeadline = mono() + 30000;
-      emit({ busy: true, feedback: checking ? "正在提交付款核实请求…" : "" });
+      emit({ busy: true, feedback: checking ? "正在查询付款结果…" : "" });
     }
     const timeout = setTimeout(() => {
       timedOut = true;
@@ -236,7 +236,7 @@ export function createCheckoutController(initial: CheckoutInitial) {
           manualDeadline = 0;
           emit({
             busy: false,
-            feedback: "本次核实未完成，页面会继续自动更新。",
+            feedback: "本次查询未完成，页面会自动继续刷新，请勿重复付款。",
           });
         }
         if (response.status === 404) {
@@ -258,7 +258,7 @@ export function createCheckoutController(initial: CheckoutInitial) {
           const delay = retryDelay(response.headers.get("retry-after"), 1000);
           emit({
             retryAt: Date.now() + delay,
-            message: "刷新过于频繁，页面会在稍后继续获取订单状态。",
+            message: "查询过于频繁，请稍候，页面会自动刷新。",
             ...(!state.order ? { visual: "RATE_LIMITED" as const } : {}),
           });
           schedule(delay);
@@ -318,10 +318,10 @@ export function createCheckoutController(initial: CheckoutInitial) {
             emit({
               feedback:
                 progress.state === "WAITING"
-                  ? `等待核实，预计至少 ${progress.retry_after_seconds} 秒后开始。`
+                  ? `正在排队查询，约 ${progress.retry_after_seconds} 秒后自动刷新，请稍候。`
                   : progress.state === "SCANNING"
-                    ? "正在查询支付宝付款记录…"
-                    : "正在核对付款结果…",
+                    ? "正在查询付款记录，请稍候…"
+                    : "正在确认付款结果，请稍候…",
             });
         } else {
           manualTracking = false;
@@ -330,10 +330,10 @@ export function createCheckoutController(initial: CheckoutInitial) {
             busy: false,
             feedback:
               progress?.state === "COMPLETED"
-                ? "目前还没有确认这笔付款，页面会继续更新。"
+                ? "暂未查到付款，支付宝到账可能有几秒延迟，页面会自动刷新，请勿重复付款。"
                 : progress?.state === "FAILED"
-                  ? "本次核实未完成或查账暂有延迟，页面会继续自动更新。"
-                  : "核实进度暂不可用，页面会继续自动更新。",
+                  ? "暂未查到付款或同步稍有延迟，页面会自动刷新，请勿重复付款。"
+                  : "付款结果同步中，页面会自动刷新，请勿重复付款。",
           });
         }
       }
@@ -352,12 +352,12 @@ export function createCheckoutController(initial: CheckoutInitial) {
         manualDeadline = 0;
         emit({
           busy: false,
-          feedback: "核实结果暂时无法获取，页面会继续自动更新。",
+          feedback: "查询暂时失败，页面会自动继续刷新，请勿重复付款。",
         });
       }
       emit({
         message: timedOut
-          ? "订单状态刷新超时，页面会自动重试。"
+          ? "刷新超时，页面会自动重试。"
           : "订单状态暂时无法刷新，当前显示的是上次获取的结果。",
       });
       schedule(Math.min(30000, 1000 * 2 ** Math.min(failures, 5)));

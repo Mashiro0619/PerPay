@@ -105,8 +105,12 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
   const amountLabel = order?.payment_instructions
     ? "应付金额"
     : order && order.payment.status !== "UNPAID"
-      ? "已收金额"
-      : "下单金额";
+      ? "实付金额"
+      : "订单金额";
+  const hasAmountAdjustment =
+    !!order?.payment_instructions &&
+    order.payment_instructions.payable_amount_cents !==
+      order.requested_amount_cents;
   const remaining = order
     ? Math.max(
         0,
@@ -152,7 +156,7 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
         data-status-heading
       >
         <AlipayLogo />
-        {awaitingStartup || state.suspended ? "请暂勿付款" : copy.heading}
+        {awaitingStartup ? "正在加载收银台…" : state.suspended ? "请暂勿付款" : copy.heading}
       </h1>
     </CardTitle>
   );
@@ -216,7 +220,7 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
             ) : (
               <RefreshCw data-icon="inline-start" />
             )}
-            {order ? "查询付款状态" : "重新获取订单"}
+            {!order ? "重新获取订单" : canPay ? "我已付款，查询状态" : "刷新付款状态"}
           </Button>
         ) : (
           <a
@@ -309,9 +313,9 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
               {(awaitingStartup || state.suspended || copy.detail) && (
                 <CardDescription className="text-center">
                   {awaitingStartup
-                    ? "请启用 JavaScript 或刷新页面后再付款。"
+                    ? "页面正在准备中，请稍候；如长时间未显示二维码，请刷新页面或更换浏览器打开。"
                     : state.suspended
-                      ? "付款期限已到，请重新检查订单状态。"
+                      ? "付款时间已到，请暂勿付款，正在为您确认订单状态。"
                       : copy.detail}
                 </CardDescription>
               )}
@@ -382,9 +386,14 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                           />
                         </div>
                         <p className="text-center text-sm text-muted-foreground" data-checkout-payment-instructions>
-                          <span className="sm:hidden">将二维码保存到相册或截图，在支付宝扫一扫中从相册选择，按 {formattedAmount} 付款。</span>
-                          <span className="hidden sm:inline">用支付宝扫描二维码，按 {formattedAmount} 付款。</span>
+                          <span className="sm:hidden">请保存二维码或截图，在支付宝“扫一扫”相册识别，严格按 {formattedAmount} 付款，切勿修改金额。</span>
+                          <span className="hidden sm:inline">请打开支付宝“扫一扫”，严格按 {formattedAmount} 付款，切勿修改金额。</span>
                         </p>
+                        {hasAmountAdjustment && (
+                          <p className="text-center text-xs text-muted-foreground" data-checkout-amount-hint>
+                            为自动确认收款，金额已加价微调，请务必按 {formattedAmount} 付款。
+                          </p>
+                        )}
                         <div className="flex flex-wrap justify-center gap-2">
                           <Dialog open={expanded} onOpenChange={setExpanded}>
                             <DialogTrigger render={<Button variant="outline" />}>
@@ -421,7 +430,7 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                                     {formattedAmount}
                                   </p>
                                   <DialogDescription>
-                                    核对金额，勿重复付款。
+                                    请严格按此金额付款，切勿修改金额或重复付款。
                                   </DialogDescription>
                                 </div>
                               </div>
@@ -501,11 +510,11 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                       <AlertCircle />
                       <AlertTitle>
                         {order.refund.status === "FULL"
-                          ? "历史退款记录：全额"
-                          : "历史退款记录：部分"}
+                          ? "订单已有全额退款记录"
+                          : "订单已有部分退款记录"}
                       </AlertTitle>
                       <AlertDescription>
-                        此为历史退款记录，具体金额请联系商家。
+                        具体退款金额与到账进度请联系商家确认。
                       </AlertDescription>
                     </Alert>
                   )}
@@ -528,9 +537,9 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
         )}
         <p className="sr-only" role="status" aria-live="polite">
           {awaitingStartup
-            ? "页面加载中，请暂勿付款。"
+            ? "收银台正在加载中，请稍候。"
             : state.suspended
-              ? "付款期限已到，请暂勿付款。"
+              ? "付款时间已到，请暂勿付款。"
               : copy.heading}
         </p>
       </main>
