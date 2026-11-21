@@ -96,6 +96,50 @@ describe("readable evidence without stronger financial claims", () => {
       "金额占用时间",
     ]);
   });
+  it("formats amount reservation intervals cleanly across snapshot and current order release states", () => {
+    const start = Date.parse("2026-09-06T00:00:00.000Z");
+    const released = "2026-09-06T00:30:00.000Z";
+    const slotValue = (
+      item: typeof candidate,
+      order?: Parameters<typeof candidateFacts>[1],
+    ) => candidateFacts(item, order).find(([name]) => name === "金额占用时间")?.[1];
+
+    expect(
+      slotValue({
+        ...candidate,
+        evidence: { ...candidate.evidence, slot_occupied_from: start, slot_released_at: Date.parse(released) },
+      }),
+    ).toBe("2026/09/06 08:00:00 至 2026/09/06 08:30:00");
+
+    expect(
+      slotValue(
+        { ...candidate, evidence: { ...candidate.evidence, slot_occupied_from: start, slot_released_at: null } },
+        { checkout: { status: "EXPIRED", closed_at: released } },
+      ),
+    ).toBe("2026/09/06 08:00:00 至 2026/09/06 08:30:00（匹配时尚未释放）");
+
+    expect(
+      slotValue(
+        { ...candidate, evidence: { ...candidate.evidence, slot_occupied_from: start, slot_released_at: null } },
+        { checkout_status: "CLOSED", closed_at: released },
+      ),
+    ).toBe("2026/09/06 08:00:00 至 2026/09/06 08:30:00（匹配时尚未释放）");
+
+    expect(
+      slotValue(
+        { ...candidate, evidence: { ...candidate.evidence, slot_occupied_from: start, slot_released_at: null } },
+        { checkout: { status: "OPEN", closed_at: null } },
+      ),
+    ).toBe("2026/09/06 08:00:00 起（当前仍在占用中）");
+
+    expect(
+      slotValue({ ...candidate, evidence: { ...candidate.evidence, slot_occupied_from: start, slot_released_at: null } }),
+    ).toBe("2026/09/06 08:00:00 起（匹配时尚未释放）");
+
+    expect(
+      slotValue({ ...candidate, evidence: { ...candidate.evidence, slot_occupied_from: start, slot_released_at: undefined } }),
+    ).toBe("2026/09/06 08:00:00 起（未记录释放时间）");
+  });
   it("does not mistake HTTP success for business acknowledgement", () => {
     expect(attemptResult(failedAttempt)).toBe("HTTP 200 · 对方的确认回执无效");
     expect(
