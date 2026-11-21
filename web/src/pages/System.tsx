@@ -384,10 +384,10 @@ function SystemSnapshot({
             }
           >
             {data.backup.recovery_required && (
-              <p>实例需要恢复。请按维护文档处理，不要覆盖运行中的数据库。</p>
+              <p>检测到上次备份或维护意外中断，请按维护文档排查恢复，切勿直接覆盖运行中的数据库。</p>
             )}
             {data.backup.configuration_mismatch && (
-              <p>备份配置与运行状态不一致，请检查服务器备份任务。</p>
+              <p>已保存的备份策略与当前运行配置不一致，请检查服务器备份任务是否已同步。</p>
             )}
             {data.backup.clock_moved_backwards && (
               <p>系统时钟发生回退，请检查主机时间同步。</p>

@@ -98,7 +98,7 @@ export function LedgerList({ onManual }: { onManual?: (trigger: HTMLButtonElemen
     { id: "other_account", label: "对方", layout: "text", summaryDefault: true, summaryPriority: "details", responsive: { minWidthRem: 58, basis: "container" }, cell: entry => <span className="wrap-anywhere">{ledgerFact(entry.other_account)}</span> },
     { id: "alipay_account", label: "收款账号", layout: "text", summaryDefault: true, responsive: { minWidthRem: 58, basis: "container" }, cell: entry => <AlipayAccountIdentity id={entry.alipay_account_id} name={entry.alipay_account_name} /> },
     { id: "memo", label: "备注", layout: "text", summaryDefault: false, responsive: { minWidthRem: 78, basis: "container" }, cell: entry => <span className="wrap-anywhere">{ledgerFact(entry.memo)}</span> },
-    { id: "state", label: "PerPay 处理状态", layout: "status", align: "center", summaryDefault: true, responsive: { minWidthRem: 78, basis: "container" }, cell: entry => <LedgerStates entry={entry} /> },
+    { id: "state", label: "PerPay 处理状态", layout: "status", align: "center", summaryDefault: true, responsive: { minWidthRem: 78, basis: "container" }, cell: entry => <LedgerStates entry={entry} showAnomaly={false} /> },
     { id: "associated_at", label: "最近关联时间", sortBy: "associated_at", layout: "datetime", align: "center", summaryDefault: false, responsive: { minWidthRem: 90, basis: "container" }, cell: entry => entry.last_associated_at ? <ListDateTime value={entry.last_associated_at} /> : "—" },
     { id: "handled_at", label: "最近处理时间", sortBy: "handled_at", layout: "datetime", align: "center", summaryDefault: false, responsive: { minWidthRem: 100, basis: "container" }, cell: entry => entry.last_handled_at ? <ListDateTime value={entry.last_handled_at} /> : "—" },
   ];

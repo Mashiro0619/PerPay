@@ -260,7 +260,7 @@ export function AccountOnboarding({
                     </CardHeader>
                     <CardContent className="flex flex-col items-start gap-4">
                       <Alert>
-                        <AlertTitle>配置已保存</AlertTitle>
+                        <AlertTitle>测试收款须知</AlertTitle>
                         <AlertDescription>
                           试收款会创建真实订单。请按收银台显示的实际应付金额付款，再查看确认结果。
                         </AlertDescription>

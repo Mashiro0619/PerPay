@@ -625,7 +625,7 @@ function RestoreReminder({
           : readAgain
             ? "刷新列表"
             : state?.error
-              ? "恢复提醒"
+              ? "重试恢复"
               : "恢复提醒"}
       </Button>
       {!!state?.error && (

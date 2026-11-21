@@ -2,12 +2,47 @@ import { BUSINESS_TIME_ZONE, dateTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useOptionalSystemStatus } from "@/features/system-status";
 
+const dayKey = new Intl.DateTimeFormat("zh-CN", {
+  timeZone: BUSINESS_TIME_ZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
 const time = new Intl.DateTimeFormat("zh-CN", {
   timeZone: BUSINESS_TIME_ZONE,
   hour: "2-digit",
   minute: "2-digit",
   hour12: false,
 });
+
+const monthDayTime = new Intl.DateTimeFormat("zh-CN", {
+  timeZone: BUSINESS_TIME_ZONE,
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
+
+const yearMonthDayTime = new Intl.DateTimeFormat("zh-CN", {
+  timeZone: BUSINESS_TIME_ZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
+
+function formatFreshnessTime(date: Date, now: Date): string {
+  const targetDay = dayKey.format(date);
+  const currentDay = dayKey.format(now);
+  if (targetDay === currentDay) return time.format(date);
+  return targetDay.slice(0, 4) === currentDay.slice(0, 4)
+    ? monthDayTime.format(date)
+    : yearMonthDayTime.format(date);
+}
 
 /** Undefined selects the global overview; null means a record has no known account. */
 export function AccountLedgerFreshness({ accountId, size }: { accountId?: string | null | undefined; size?: "sm" | "default" }) {
@@ -27,12 +62,12 @@ export function LedgerFreshness({ value, size = "sm", scope }: { value: number |
       {scope === "account" ? "本账号最近查账成功：" : "最近查账成功："}
       {valid ? (
         <time dateTime={date.toISOString()} title={dateTime(value)}>
-          {time.format(date)}
+          {formatFreshnessTime(date, new Date())}
         </time>
       ) : (
         <span>{value === null ? "暂无记录" : "暂不可用"}</span>
       )}
-      {scope === "all" && <span>（任一账号）</span>}
+      {valid && scope === "all" && <span>（多账号取最新）</span>}
     </p>
   );
 }

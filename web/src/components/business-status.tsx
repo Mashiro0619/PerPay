@@ -38,6 +38,10 @@ const states = {
   SUPERSEDED: ["已替代", "secondary"],
 } as const;
 
+export function statusLabel(value: string): string {
+  return states[value as keyof typeof states]?.[0] ?? value;
+}
+
 export function StatusBadge({
   value,
   label,

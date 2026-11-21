@@ -30,7 +30,7 @@ export function MaintenanceJobNotice({ title, message, running, failed, startedA
     <AlertTitle>{title}</AlertTitle>
     <AlertDescription className="flex min-w-0 flex-col gap-2">
       <span>{message}</span>
-      <span>{finishedAt === null ? "开始于 " + dateTime(startedAt) : "完成于 " + dateTime(finishedAt)}</span>
+      <span>{finishedAt === null ? "开始于 " + dateTime(startedAt) : (failed ? "失败于 " : "完成于 ") + dateTime(finishedAt)}</span>
       {children}
     </AlertDescription>
   </Alert>;

@@ -21,7 +21,7 @@ export function auditFilterOptions(filters: AuditFilters, metadata?: AuditMetada
   const definitions: Array<{ key: keyof AuditFilters; label: string; options: Option[] }> = [
     { key: "category", label: "操作类别", options: [{ value: "", label: "全部类别" }, ...AUDIT_CATEGORIES.map(value => ({ value, label: AUDIT_CATEGORY_LABELS[value] }))] },
     { key: "outcome", label: "操作结果", options: [{ value: "", label: "全部结果" }, { value: "SUCCESS", label: "成功" }, { value: "FAILURE", label: "失败" }] },
-    { key: "site_id", label: "关联网站", options: [{ value: "", label: "全部活动" }, { value: AUDIT_UNASSOCIATED_SITE, label: "未关联网站" }, ...sites.map(site => ({
+    { key: "site_id", label: "关联网站", options: [{ value: "", label: "全部网站" }, { value: AUDIT_UNASSOCIATED_SITE, label: "未关联网站" }, ...sites.map(site => ({
       value: site.site_id,
       label: (site.site_name || site.site_id) + (site.site_name && (names.get(site.site_name) ?? 0) > 1 ? ` · ${site.site_id}` : "") + (site.deleted ? "（已删除）" : ""),
     }))] },

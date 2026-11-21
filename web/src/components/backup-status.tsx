@@ -19,9 +19,9 @@ import { DatabaseBackup } from "lucide-react";
 
 function backupStatusMessage(backup: BackupHealth): string {
   if (backup.backup_in_progress) return "正在备份";
-  if (backup.recovery_required) return "上次备份中断，等待任务恢复。";
+  if (backup.recovery_required) return "检测到上次备份或维护意外中断，请按维护文档排查恢复，切勿直接覆盖运行中的数据库。";
   if (backup.clock_moved_backwards) return "系统时钟发生回退，请检查主机时间同步。";
-  if (backup.configuration_mismatch) return "备份策略等待同步。";
+  if (backup.configuration_mismatch) return "已保存的备份策略与当前运行配置不一致，请检查服务器备份任务是否已同步。";
   if (backup.instance_matches === false) return "备份与当前实例不匹配，请检查备份目录。";
   if (backup.last_error_stage) return "最近备份失败（" + backupFailureStageName(backup.last_error_stage) + "）。";
   if (!backup.enabled) return "定时备份未运行，可立即创建备份。";

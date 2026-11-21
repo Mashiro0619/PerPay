@@ -32,7 +32,7 @@ export function LedgerMoney({ entry }: { entry: Pick<AdminLedgerSummary, "amount
 }
 
 export function LedgerOrderLink({ match }: { match: AdminLedgerMatch | null }) {
-  return match ? <Link global className="list-code reconciliation-order-link ledger-order-line" to={"/orders/" + match.order_id} aria-label={"查看订单：" + match.merchant_order_no} title={match.merchant_order_no}>{match.merchant_order_no}</Link> : <span className="text-muted-foreground">未关联</span>;
+  return match ? <Link global className="list-code reconciliation-order-link ledger-order-line" to={"/orders/" + match.order_id} aria-label={"查看订单：" + match.merchant_order_no} title={match.merchant_order_no}>{match.merchant_order_no}</Link> : <span className="text-muted-foreground">—</span>;
 }
 
 export function LedgerActiveOrder({ entry }: { entry: Pick<AdminLedgerSummary, "active_match" | "active_match_count"> }) {

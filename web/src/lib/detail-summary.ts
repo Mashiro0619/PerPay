@@ -290,6 +290,6 @@ export function notificationRecoveryHint(code: string | null): string {
   if (/dns|network|timeout|transport/i.test(code)) return "检查通知域名解析、服务器网络及业务接口响应时间。";
   if (/ack_/i.test(code) || code === "INVALID_ACKNOWLEDGEMENT") return "业务网站已响应，但确认回执格式不正确；请核对通知接收程序返回的确认回执。";
   if (/http_/i.test(code)) return "检查业务接口的 HTTP 状态及服务日志，修复接收接口。";
-  if (/forbidden|target|address/i.test(code)) return "核对通知业务网站配置及目标地址是否符合公网安全要求。";
+  if (/forbidden|target|address/i.test(code)) return "请核对业务网站的回调通知配置，确认目标地址符合公网安全要求。";
   return "请查看发送记录，核对业务网站的接收日志和通知配置；确认处理结果后再操作。";
 }

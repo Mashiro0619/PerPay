@@ -13,7 +13,7 @@ import type { OrderSort } from "../../../src/shared/list-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogBody, DialogFooter } from "@/components/admin-dialog";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { label } from "@/lib/labels";
+import { statusLabel } from "@/components/business-status";
 export function OrderExport({
   query,
   payment,
@@ -147,8 +147,8 @@ export function OrderExport({
               <p className="text-sm">{[
                 clientId ? "当前网站" : "全部网站",
                 query.q ? "关键词：“" + query.q + "”" : "",
-                payment ? "付款：" + (payment === "UNPAID" ? "未付款" : label(payment)) : "",
-                checkout ? "收银台：" + label(checkout) : "",
+                payment ? "收款：" + statusLabel(payment) : "",
+                checkout ? "收银台：" + statusLabel(checkout) : "",
                 accountId ? "收款账号：" + (accountName ?? accountId) : "",
               ].filter(Boolean).join(" · ")}</p>
               <FieldGroup>
