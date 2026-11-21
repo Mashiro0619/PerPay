@@ -1527,6 +1527,82 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/admin/v1/system/update/status:
+    get:
+      tags: [System]
+      operationId: getSelfUpdateStatus
+      summary: 查询在线一键更新能力及当前执行状态
+      description: >-
+        查询伴生更新器（docker-compose.updater.yml）是否可用、当前是否可触发更新前在线备份，
+        以及当前正在执行或最近一次的在线更新任务状态。未启用伴生更新器时仍返回 200（enabled 为 false），
+        便于管理界面降级展示升级助手。
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+      responses:
+        '200':
+          description: 在线一键更新能力及任务状态
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SelfUpdateStatusEnvelope'
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+  /api/admin/v1/system/update/apply:
+    post:
+      tags: [System]
+      operationId: applySelfUpdate
+      summary: 发起官方版本在线一键更新
+      description: >-
+        仅当伴生更新器可用且目标版本号严格高于当前版本时受理，不支持降级。
+        默认先通过维护服务创建一份在线数据库备份；若备份失败则中止升级且不影响正在运行的服务。
+        备份完成后移交伴生更新器拉取 ghcr.io/mashiro0619/perpay:<target_version> 并重建服务容器，
+        若新容器健康检查失败则自动回滚至原容器。
+      x-perpay-requires-same-origin: true
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/AdminOrigin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SelfUpdateApplyRequest'
+      responses:
+        '202':
+          description: 更新任务已受理，或相同 operation_id 已有对应任务。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SelfUpdateJobEnvelope'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '403':
+          description: 来源或 CSRF 校验失败，或当前为只读演示模式（demo_read_only）。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+        '409':
+          description: update_in_progress、maintenance_in_progress 或 operation_conflict。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '422':
+          description: validation_failed；目标版本号格式无效、低于或等于当前版本，或操作编号无效。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+        '503':
+          description: self_update_unavailable；伴生更新器未启用或暂时不可达。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
   /api/admin/v1/system/analytics:
     get:
       tags: [System]
@@ -9577,6 +9653,71 @@ components:
           type: string
           format: date-time
           description: 服务端实际读取官方版本的时间，缓存命中不会改变此时间
+    SelfUpdateStatusEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data: { $ref: '#/components/schemas/SelfUpdateStatus' }
+    SelfUpdateStatus:
+      type: object
+      additionalProperties: false
+      required: [enabled, unavailable_reason, current_version, can_backup, active_job, latest_job]
+      properties:
+        enabled: { type: boolean }
+        unavailable_reason:
+          type: [string, 'null']
+          enum: [demo_read_only, not_configured, unreachable, null]
+        current_version: { type: string, maxLength: 64 }
+        can_backup: { type: boolean }
+        active_job:
+          oneOf:
+            - { $ref: '#/components/schemas/UpdateExecutionJob' }
+            - { type: 'null' }
+        latest_job:
+          oneOf:
+            - { $ref: '#/components/schemas/UpdateExecutionJob' }
+            - { type: 'null' }
+    SelfUpdateApplyRequest:
+      type: object
+      additionalProperties: false
+      required: [operation_id, target_version]
+      properties:
+        operation_id: { type: string, format: uuid }
+        target_version:
+          type: string
+          minLength: 1
+          maxLength: 64
+          pattern: '^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?$'
+        create_backup:
+          type: boolean
+          default: true
+    SelfUpdateJobEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data: { $ref: '#/components/schemas/UpdateExecutionJob' }
+    UpdateExecutionJob:
+      type: object
+      additionalProperties: false
+      required: [id, target_version, previous_version, status, stage, message, backup_name, rolled_back, started_at, finished_at, error]
+      properties:
+        id: { type: string, format: uuid }
+        target_version: { type: string, maxLength: 64 }
+        previous_version: { type: string, maxLength: 64 }
+        status:
+          type: string
+          enum: [QUEUED, RUNNING, SUCCEEDED, FAILED]
+        stage:
+          type: string
+          enum: [queued, backing_up, pulling, stopping_backup, recreating_app, verifying_health, recreating_backup, rolling_back, completed, failed]
+        message: { type: string }
+        backup_name: { type: [string, 'null'] }
+        rolled_back: { type: boolean }
+        started_at: { type: integer }
+        finished_at: { type: [integer, 'null'] }
+        error: { type: [string, 'null'] }
     AdminSessionEnvelope:
       type: object
       additionalProperties: false
@@ -12465,6 +12606,8 @@ components:
         - unsupported_media_type
         - update_check_rate_limited
         - update_check_unavailable
+        - self_update_unavailable
+        - update_in_progress
         - validation_failed
         - webhook_delivery_not_found
         - webhook_delivery_state_conflict

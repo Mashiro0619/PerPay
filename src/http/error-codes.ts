@@ -103,6 +103,8 @@ export const HTTP_ERROR_CODES = Object.freeze([
   "unsupported_media_type",
   "update_check_rate_limited",
   "update_check_unavailable",
+  "self_update_unavailable",
+  "update_in_progress",
   "validation_failed",
   "webhook_delivery_not_found",
   "webhook_delivery_state_conflict",

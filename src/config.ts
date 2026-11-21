@@ -45,7 +45,16 @@ const rawDeploymentConfigSchema = z.object({
     .min(60 * 60)
     .max(7 * 24 * 60 * 60)
     .default(24 * 60 * 60),
+  PERPAY_UPDATER_URL: z.string().trim().min(1).optional(),
+  PERPAY_UPDATER_TOKEN: z.string().trim().min(1).optional(),
+  PERPAY_UPDATER_TOKEN_FILE: z.string().trim().min(1).optional(),
 });
+
+export interface UpdaterConfig {
+  readonly url: string;
+  readonly token: string | null;
+  readonly tokenFile: string | null;
+}
 
 export interface DeploymentConfig {
   readonly host: string;
@@ -59,6 +68,7 @@ export interface DeploymentConfig {
   readonly setupTokenEnabled: boolean;
   readonly trustedProxy: TrustedProxyPolicy;
   readonly backupIntervalMilliseconds: number;
+  readonly updater?: UpdaterConfig | null;
 }
 
 /** Temporary name retained while callers migrate to DeploymentConfig. */
@@ -108,6 +118,11 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): Deploy
     secretsDirectory,
     resolve(dataDir, "perpay.sqlite3"),
   );
+  const updater = resolveUpdaterConfig(
+    parsed.data.PERPAY_UPDATER_URL,
+    parsed.data.PERPAY_UPDATER_TOKEN,
+    parsed.data.PERPAY_UPDATER_TOKEN_FILE,
+  );
 
   return Object.freeze({
     host: parsed.data.PERPAY_HOST,
@@ -121,6 +136,7 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): Deploy
     setupTokenEnabled: parsed.data.PERPAY_SETUP_TOKEN_ENABLED === "true",
     trustedProxy,
     backupIntervalMilliseconds: parsed.data.PERPAY_BACKUP_INTERVAL_SECONDS * 1_000,
+    ...(updater ? { updater } : {}),
   });
 }
 
@@ -218,4 +234,38 @@ function isLoopbackHostname(hostname: string): boolean {
   const family = isIP(address);
   if (family === 4) return address.startsWith("127.");
   return family === 6 && address === "::1";
+}
+
+function resolveUpdaterConfig(
+  rawUrl: string | undefined,
+  rawToken: string | undefined,
+  rawTokenFile: string | undefined,
+): UpdaterConfig | null {
+  if (rawUrl === undefined) return null;
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    throw new Error("configuration validation failed: PERPAY_UPDATER_URL must be an absolute URL");
+  }
+  if (parsed.protocol !== "http:") {
+    throw new Error("configuration validation failed: PERPAY_UPDATER_URL must use HTTP on the internal network");
+  }
+  if (
+    parsed.username !== "" ||
+    parsed.password !== "" ||
+    parsed.pathname !== "/" ||
+    parsed.search !== "" ||
+    parsed.hash !== ""
+  ) {
+    throw new Error("configuration validation failed: PERPAY_UPDATER_URL must contain only an origin");
+  }
+  if (rawToken === undefined && rawTokenFile === undefined) {
+    throw new Error("configuration validation failed: PERPAY_UPDATER_URL requires PERPAY_UPDATER_TOKEN or PERPAY_UPDATER_TOKEN_FILE");
+  }
+  return Object.freeze({
+    url: parsed.origin,
+    token: rawToken ?? null,
+    tokenFile: rawTokenFile ? resolve(rawTokenFile) : null,
+  });
 }

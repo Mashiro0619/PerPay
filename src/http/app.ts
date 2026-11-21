@@ -135,6 +135,7 @@ import { SettingsFieldError } from "../settings/validation.ts";
 import { collectionCodeError } from "../shared/collection-code.ts";
 import { APP_VERSION } from "../version.ts";
 import { OfficialUpdateChecker, UpdateCheckRateLimited, UpdateCheckUnavailable } from "../update/checker.ts";
+import { SelfUpdateError, SelfUpdateService, selfUpdateApplyRequestSchema } from "../update/self-update.ts";
 import { PublicCheckoutRateLimiter } from "./public-checkout-rate-limit.ts";
 import { parseStrictJson, StrictJsonError } from "./strict-json.ts";
 import {
@@ -269,6 +270,7 @@ export interface AppDependencies {
   readonly clock?: (() => number) | undefined;
   readonly demoMode?: boolean;
   readonly updateChecker?: (Pick<OfficialUpdateChecker, "check"> & Partial<Pick<OfficialUpdateChecker, "refreshAfterSeconds">>) | undefined;
+  readonly selfUpdate?: Pick<SelfUpdateService, "status" | "apply"> | undefined;
   readonly backupHealth?: (() => BackupHealth | PromiseLike<BackupHealth>) | undefined;
   readonly ledger?: LedgerStore | undefined;
   readonly ledgerNextRunAt?: (() => number | null) | undefined;
@@ -372,6 +374,12 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
   const probeOperations = new HealthProbeCache<OperationalSummaries>();
   const adminFrontend = loadAdminFrontend();
   const updateChecker = dependencies.updateChecker ?? new OfficialUpdateChecker();
+  const selfUpdate = dependencies.selfUpdate ?? new SelfUpdateService({
+    updaterConfig: dependencies.config.updater,
+    maintenance: dependencies.maintenance,
+    demoMode: dependencies.demoMode,
+    clock: dependencies.clock,
+  });
   const backupCatalog = createBackupCatalogProvider(dependencies.config.backupDir);
 
   app.use("*", async (context, next) => {
@@ -857,6 +865,36 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
       if (!(error instanceof UpdateCheckUnavailable)) throw error;
       throw new HttpApiError(503, "update_check_unavailable", error.message, error.retryAfterSeconds);
     }
+  });
+
+  app.get("/api/admin/v1/system/update/status", adminSession, async (context) =>
+    context.json({ data: await selfUpdate.status() }),
+  );
+
+  app.post("/api/admin/v1/system/update/apply", adminSession, async (context) => {
+    requireSameOrigin(context, dependencies.config.publicOrigin);
+    requireCsrf(context, dependencies.identity, dependencies.config.secureCookies);
+    requireJsonContentType(context);
+    const request = await readJson(context, selfUpdateApplyRequestSchema, MAX_JSON_BODY_BYTES);
+    const session = requireCurrentSession(context, dependencies.identity);
+    const job = await selfUpdate.apply(request, {
+      session,
+      address: remoteAddress(context, dependencies.config.trustedProxy),
+    });
+    dependencies.activity?.record({
+      action: "system.update_requested",
+      sourceType: "HTTP",
+      actorType: "ADMIN",
+      actorId: session.session.username,
+      subjectType: "instance",
+      subjectId: job.id,
+      details: {
+        target_version: job.target_version,
+        previous_version: job.previous_version,
+        create_backup: request.create_backup,
+      },
+    });
+    return context.json({ data: job }, 202);
   });
 
   app.get("/api/admin/v1/system/analytics", adminSession, (context) => {
@@ -2086,6 +2124,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
 
   app.onError((error, context) => {
     if (error instanceof MaintenanceError) return errorResponse(context, error.status, error.code, error.message);
+    if (error instanceof SelfUpdateError) return errorResponse(context, error.status, error.code, error.message);
     if (error instanceof HistoryArchiveError) return errorResponse(context,
       error.code === "archive_deleted" ? 410 : error.code === "archive_changed" || error.code === "archive_empty" || error.code === "archive_delete_pending" ? 409 : 404,
       error.code, error.message);
