@@ -1119,18 +1119,6 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   }
   [data-overlay-presentation="drawer"] > [data-overlay-primary] > [data-overlay-footer]:not(:empty) { padding: 0.75rem 1.5rem; }
   [data-overlay-presentation="drawer"] > [data-overlay-step-host]:not(:empty) { padding: var(--overlay-chrome-space, 1rem) 1.5rem; }
-  [data-overlay-presentation="drawer"] [data-overlay-step] > [data-slot="dialog-header"] {
-    margin: 0 -1.5rem;
-    padding: 0 3.5rem 0.75rem 1.5rem;
-    border-bottom: 1px solid var(--border);
-  }
-  [data-overlay-presentation="drawer"] [data-overlay-step] > [data-slot="dialog-footer"],
-  [data-overlay-presentation="drawer"] [data-overlay-step] > form > [data-slot="dialog-footer"] {
-    margin: 0 -1.5rem calc(var(--overlay-chrome-space, 1rem) * -1);
-    padding: 0.75rem 1.5rem;
-    border-radius: 0;
-    background: transparent;
-  }
   /* A lighter, unblurred scrim keeps the list legible behind the drawer. */
   .overlay-drawer-backdrop { background-color: rgb(0 0 0 / 0.2); backdrop-filter: none; }
 }
@@ -1155,18 +1143,6 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   [data-overlay-viewport="dialog"]:is([data-overlay-content], [data-admin-dialog="form"], [data-admin-dialog="technical"]) > [data-slot="dialog-close"] {
     top: max(0.5rem, env(safe-area-inset-top));
     right: max(0.5rem, env(safe-area-inset-right));
-  }
-  [data-overlay-presentation="drawer"] [data-overlay-step] > [data-slot="dialog-header"] {
-    margin: 0 calc(max(1rem, env(safe-area-inset-right)) * -1) 0 calc(max(1rem, env(safe-area-inset-left)) * -1);
-    padding: 0 max(3.5rem, env(safe-area-inset-right)) 0.75rem max(1rem, env(safe-area-inset-left));
-    border-bottom: 1px solid var(--border);
-  }
-  [data-overlay-presentation="drawer"] [data-overlay-step] > [data-slot="dialog-footer"],
-  [data-overlay-presentation="drawer"] [data-overlay-step] > form > [data-slot="dialog-footer"] {
-    margin: 0 calc(max(1rem, env(safe-area-inset-right)) * -1) calc(max(var(--overlay-chrome-space, 1rem), env(safe-area-inset-bottom)) * -1) calc(max(1rem, env(safe-area-inset-left)) * -1);
-    padding: 0.75rem max(1rem, env(safe-area-inset-right)) max(0.75rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
-    border-radius: 0;
-    background: transparent;
   }
 }
 /* One scroll region preserves natural header, field and action heights even
@@ -1217,6 +1193,9 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 [data-overlay-step]:has(> [data-slot="dialog-close"]) [data-overlay-step-scroll] [data-slot="dialog-header"] > [data-slot="dialog-title"] { padding-right: 3rem; }
 [data-overlay-step-scroll] > form > :is([data-admin-dialog-body], [data-slot="field-group"], .overflow-auto) { overflow: visible; }
 [data-overlay-step-scroll] [data-slot="dialog-footer"] { margin: 0; padding: var(--overlay-chrome-space, 1rem); border-radius: 0; }
+/* Record drawer steps share the record drawer's chrome: a top eyebrow+close bar,
+   full-width semibold title + description above a hairline rule, and a flush
+   transparent footer at the bottom edge. */
 [data-overlay-presentation="drawer"] [data-overlay-step] > [data-overlay-step-scroll] {
   flex: 1 1 auto;
   display: flex;
@@ -1226,11 +1205,71 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 [data-overlay-presentation="drawer"] [data-overlay-step] > [data-overlay-step-scroll] > form > * {
   flex-shrink: 0;
 }
-[data-overlay-presentation="drawer"] [data-overlay-step] > [data-overlay-step-scroll] [data-slot="dialog-footer"] {
-  margin: auto 0 0;
-  padding: 0.75rem 0 0;
+[data-overlay-presentation="drawer"] [data-overlay-step] > [data-slot="dialog-header"],
+[data-overlay-presentation="drawer"] [data-overlay-step] > [data-overlay-step-scroll] > [data-slot="dialog-header"] {
+  min-height: 0;
+  gap: 0.375rem;
+  border-bottom: 1px solid var(--border);
+}
+[data-overlay-presentation="drawer"] [data-overlay-step] > [data-slot="dialog-header"] > [data-slot="dialog-title"],
+[data-overlay-presentation="drawer"] [data-overlay-step] > [data-overlay-step-scroll] > [data-slot="dialog-header"] > [data-slot="dialog-title"] {
+  padding-right: 0;
+  font-size: 1rem;
+  line-height: 1.5;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+}
+[data-overlay-presentation="drawer"] [data-overlay-step] > [data-slot="dialog-header"] > [data-slot="dialog-description"],
+[data-overlay-presentation="drawer"] [data-overlay-step] > [data-overlay-step-scroll] > [data-slot="dialog-header"] > [data-slot="dialog-description"] {
+  font-size: 0.8125rem;
+  line-height: 1.25rem;
+}
+[data-overlay-presentation="drawer"] [data-overlay-step] [data-slot="dialog-footer"] {
   border-radius: 0;
   background: transparent;
+}
+@media (min-width: 48rem) {
+  [data-overlay-presentation="drawer"] [data-overlay-step-bar] {
+    margin-inline-end: -1.5rem;
+  }
+  [data-overlay-presentation="drawer"] [data-overlay-step] > [data-overlay-step-scroll] {
+    margin: 0 -1.5rem calc(var(--overlay-chrome-space, 1rem) * -1);
+    padding: 0 1.5rem;
+  }
+  [data-overlay-presentation="drawer"] [data-overlay-step] > [data-slot="dialog-header"],
+  [data-overlay-presentation="drawer"] [data-overlay-step] > [data-overlay-step-scroll] > [data-slot="dialog-header"] {
+    margin: 0 -1.5rem;
+    padding: 0 1.5rem 0.75rem;
+  }
+  [data-overlay-presentation="drawer"] [data-overlay-step] > [data-slot="dialog-footer"],
+  [data-overlay-presentation="drawer"] [data-overlay-step] > form > [data-slot="dialog-footer"] {
+    margin: 0 -1.5rem calc(var(--overlay-chrome-space, 1rem) * -1);
+    padding: 0.75rem 1.5rem;
+  }
+  [data-overlay-presentation="drawer"] [data-overlay-step] > [data-overlay-step-scroll] [data-slot="dialog-footer"] {
+    margin: auto -1.5rem 0;
+    padding: 0.75rem 1.5rem;
+  }
+}
+@media (max-width: 47.999rem) {
+  [data-overlay-presentation="drawer"] [data-overlay-step] > [data-overlay-step-scroll] {
+    margin: 0 calc(max(1rem, env(safe-area-inset-right)) * -1) calc(max(var(--overlay-chrome-space, 1rem), env(safe-area-inset-bottom)) * -1) calc(max(1rem, env(safe-area-inset-left)) * -1);
+    padding: 0 max(1rem, env(safe-area-inset-right)) 0 max(1rem, env(safe-area-inset-left));
+  }
+  [data-overlay-presentation="drawer"] [data-overlay-step] > [data-slot="dialog-header"],
+  [data-overlay-presentation="drawer"] [data-overlay-step] > [data-overlay-step-scroll] > [data-slot="dialog-header"] {
+    margin: 0 calc(max(1rem, env(safe-area-inset-right)) * -1) 0 calc(max(1rem, env(safe-area-inset-left)) * -1);
+    padding: 0 max(1rem, env(safe-area-inset-right)) 0.75rem max(1rem, env(safe-area-inset-left));
+  }
+  [data-overlay-presentation="drawer"] [data-overlay-step] > [data-slot="dialog-footer"],
+  [data-overlay-presentation="drawer"] [data-overlay-step] > form > [data-slot="dialog-footer"] {
+    margin: 0 calc(max(1rem, env(safe-area-inset-right)) * -1) calc(max(var(--overlay-chrome-space, 1rem), env(safe-area-inset-bottom)) * -1) calc(max(1rem, env(safe-area-inset-left)) * -1);
+    padding: 0.75rem max(1rem, env(safe-area-inset-right)) max(0.75rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+  }
+  [data-overlay-presentation="drawer"] [data-overlay-step] > [data-overlay-step-scroll] [data-slot="dialog-footer"] {
+    margin: auto calc(max(1rem, env(safe-area-inset-right)) * -1) 0 calc(max(1rem, env(safe-area-inset-left)) * -1);
+    padding: 0.75rem max(1rem, env(safe-area-inset-right)) max(0.75rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+  }
 }
 [data-overlay-viewport="sheet"]:has(> :is([data-list-filter-scroll], [data-list-display-scroll])) {
   display: flex;
@@ -1405,7 +1444,9 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 [data-overlay-detail] [data-slot="card"] > [data-slot="card-content"] { padding-bottom: 0; }
 [data-overlay-detail] [data-technical-information] { min-width: 0; max-width: 100%; }
 @media (max-width: 767px) {
-  [data-overlay-content] [data-overlay-primary] > [data-slot="dialog-header"] :is([data-page-header-actions] button, [data-overlay-record-pager] button, [data-slot="dialog-close"]) { min-width: 44px; min-height: 44px; margin: 0; }
+  [data-overlay-content] [data-overlay-step-bar] { min-height: 44px; }
+  [data-overlay-content] [data-overlay-primary] > [data-slot="dialog-header"] :is([data-page-header-actions] button, [data-overlay-record-pager] button, [data-slot="dialog-close"]),
+  [data-overlay-content] [data-overlay-step-bar] [data-slot="dialog-close"] { min-width: 44px; min-height: 44px; margin: 0; }
   [data-overlay-footer] :is(button, a) { min-height: 44px; }
 }
 

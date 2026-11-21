@@ -363,16 +363,23 @@ export function OverlayHost({ routes }: { routes?: ReactNode }) {
     if (overlay?.hasOverlay) restoreStepFocus();
     else pendingStepFocus.current = null;
   }, [activeStep?.id, overlay?.hasOverlay, restoreStepFocus]);
-  const stepContext = useMemo(() => ({ portal: stepPortal, activeId: activeStep?.id ?? null, register: registerStep, restoreFocus: requestStepFocus }), [stepPortal, activeStep?.id, registerStep, requestStepFocus]);
+  // Records open as a drawer beside the list they came from and keep one width
+  // through their steps. Editors stay centred and follow the step's size.
+  const drawer = isRecordDetailRoute(definition);
+  const stepContext = useMemo(() => ({
+    portal: stepPortal,
+    activeId: activeStep?.id ?? null,
+    presentation: drawer ? "drawer" as const : "dialog" as const,
+    sourceTitle: drawer ? (definition?.title ?? null) : null,
+    register: registerStep,
+    restoreFocus: requestStepFocus,
+  }), [stepPortal, activeStep?.id, drawer, definition?.title, registerStep, requestStepFocus]);
   const resourceScope = useMemo(() => workspaceScope(definition?.kind === "test-payment" ? backgroundLocation.pathname : target?.pathname ?? "/"), [definition?.kind, backgroundLocation.pathname, target?.pathname]);
   const priorTitle = useRef<string | null>(null);
   useEffect(() => {
     if (overlay?.hasOverlay) { priorTitle.current ??= document.title; return; }
     if (priorTitle.current !== null) { document.title = priorTitle.current; priorTitle.current = null; }
   }, [overlay?.hasOverlay]);
-  // Records open as a drawer beside the list they came from and keep one width
-  // through their steps. Editors stay centred and follow the step's size.
-  const drawer = isRecordDetailRoute(definition);
   const pagerActive = !!(drawer && overlay?.hasOverlay && target && !overlay.canGoBack);
   const pager = useMemo(() => {
     if (!pagerActive || !overlay || !target) return null;

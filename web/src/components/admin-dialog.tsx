@@ -1,8 +1,10 @@
 import { createContext, useContext, useId, useLayoutEffect, useRef, useState, type ComponentProps, type ReactNode, type RefObject } from "react";
+import { XIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useWorkspaceSwitching } from "@/lib/workspace-navigation-state";
 import { LocalRequestNotices } from "@/lib/request-notices";
 import { OverlayNestedModalContext, OverlayStepsContext, type OverlaySize } from "@/lib/overlay-context";
+import { Button } from "@/components/ui/button";
 import * as DialogUI from "@/components/ui/dialog";
 import * as AlertUI from "@/components/ui/alert-dialog";
 export { DialogTrigger, DialogClose, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -114,11 +116,13 @@ export function DialogContent({ className, kind = "form", size, scrollMode = "co
   }, [step?.id, register]);
   if (step && !steps?.portal) return null;
   const stepHidden = !!step && steps?.activeId !== step.id;
+  const drawerStep = !!step && steps?.presentation === "drawer";
+  const showStepClose = drawerStep && props.showCloseButton !== false;
   // Reset Tailwind's translation variables too: CSS minification can merge
   // `translate: none` into `transform: none`, leaving the separate translate active.
   const detailClass = "max-md:inset-0 max-md:h-[100dvh] max-md:max-h-none max-md:w-full max-md:max-w-none max-md:translate-x-0 max-md:translate-y-0 max-md:rounded-none md:max-h-[calc(100dvh-3rem)] md:w-[calc(100%-3rem)] " +
     (size === "xl" ? "md:max-w-6xl" : size === "lg" ? "md:max-w-4xl" : "md:max-w-[40rem]");
-  return <DialogUI.DialogContent {...props} aria-modal={step ? true : props["aria-modal"]} finalFocus={step && props.finalFocus !== false ? closeType => {
+  return <DialogUI.DialogContent {...props} showCloseButton={drawerStep ? false : props.showCloseButton} aria-modal={step ? true : props["aria-modal"]} finalFocus={step && props.finalFocus !== false ? closeType => {
     const readTarget = () => {
       const value = typeof props.finalFocus === "function" ? props.finalFocus(closeType) : props.finalFocus;
       if (value === undefined || value === true) return stepReturnFocus.current;
@@ -141,6 +145,26 @@ export function DialogContent({ className, kind = "form", size, scrollMode = "co
     hidden: switching || stepHidden || props.portalProps?.hidden, inert: switching || stepHidden || props.portalProps?.inert }} data-admin-dialog={kind} data-overlay-step={step ? step.id : undefined}
     className={cn(className, step ? "flex min-h-0 max-h-full w-full flex-1 flex-col overflow-hidden" : content,
       !step && (kind === "detail" ? detailClass : kind === "compact" ? "sm:max-w-md" : "max-md:translate-x-0 max-md:translate-y-0 " + (kind === "technical" ? "sm:max-w-3xl" : "sm:max-w-xl")))}>
+    {drawerStep && (
+      <div
+        data-overlay-step-bar
+        className="grid min-h-8 min-w-0 shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-1 pb-1 sm:gap-2 sm:pb-2"
+      >
+        <div data-overlay-eyebrow className="flex min-w-0 items-center gap-1">
+          {steps.sourceTitle && (
+            <p data-overlay-eyebrow-text className="min-w-0 truncate text-xs leading-5 font-medium text-muted-foreground">
+              {steps.sourceTitle}
+            </p>
+          )}
+        </div>
+        {showStepClose && (
+          <DialogUI.DialogClose render={<Button variant="ghost" size="icon" />}>
+            <XIcon />
+            <span className="sr-only">关闭对话框</span>
+          </DialogUI.DialogClose>
+        )}
+      </div>
+    )}
     <LocalRequestNotices>{scrollMode === "body" || kind === "detail" || (kind === "technical" && !step) ? children
       : <DialogScroll scrollRef={scrollRef} step={!!step}>{children}</DialogScroll>}</LocalRequestNotices>
   </DialogUI.DialogContent>;

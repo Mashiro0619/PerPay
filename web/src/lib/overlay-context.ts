@@ -60,6 +60,8 @@ export const OverlaySummaryContext = createContext<HTMLElement | null>(null);
 export interface OverlaySteps {
   readonly portal: HTMLElement | null;
   readonly activeId: string | null;
+  readonly presentation?: "drawer" | "dialog";
+  readonly sourceTitle?: string | null;
   register(id: string, open: boolean, size?: OverlaySize): void;
   restoreFocus(target: () => HTMLElement | null): void;
 }
