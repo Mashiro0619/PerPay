@@ -25,7 +25,6 @@ import { RecordTime } from "@/components/record/Timeline";
 import { RefreshButton } from "@/components/refresh-button";
 import { ErrorNotice, Loading, QueryView, ReadPausedNotice } from "@/components/request-state";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 
 type TextFact = "other_account" | "memo" | "provider_order_no" | "merchant_order_no";
 
@@ -265,8 +264,7 @@ function LedgerRecord({ entry }: { entry: AdminLedgerDetail }) {
       </Section>}
     </Sections>
     <ActionBar menuLabel="更多操作，流水操作"
-      primary={chosen && <Button className="h-auto min-h-8 min-w-0 max-w-full whitespace-normal py-1.5" disabled={associate.action.disabled}
-        onClick={event => associate.action.onSelect?.(event.currentTarget)}>{associate.action.label}</Button>}
+      primary={chosen && associate.action}
       technical={technicalEntries([
         { title: "流水技术信息", created: entry.created_at, data: entry, identifiers: [
           ["内部流水编号", entry.ledger_entry_id], ["支付宝流水号", entry.external_event_id],

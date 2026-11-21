@@ -13,7 +13,6 @@ import { FieldList } from "@/components/record/FieldList";
 import { RecordSummary } from "@/components/record/RecordSummary";
 import { Section, Sections } from "@/components/record/Sections";
 import { RecordTime, Timeline, type TimelineEntry } from "@/components/record/Timeline";
-import { Button } from "@/components/ui/button";
 import { ConflictComparison, conflictAttentionCount } from "./ConflictComparison";
 import { evidenceLinkClass } from "./EvidenceParts";
 
@@ -90,8 +89,7 @@ export function ConflictRecord({ detail }: { detail: LedgerConflictDetail }) {
       </Section>
     </Sections>
     <ActionBar menuLabel="更多操作，冲突记录操作"
-      primary={canResolve && <Button className="h-auto min-h-8 min-w-0 max-w-full whitespace-normal py-1.5" disabled={completed}
-        onClick={event => { finalFocus.current = event.currentTarget; setConfirm(true); }}>{label(action)}</Button>}
+      primary={canResolve && { label: label(action), disabled: completed, onSelect: trigger => { finalFocus.current = trigger; setConfirm(true); } }}
       technical={[{ title: "冲突记录技术信息", data: detail, identifiers: [
         ["冲突编号", conflict.conflict_id],
         ["关联内部流水编号", existing?.ledger_entry_id ?? null],

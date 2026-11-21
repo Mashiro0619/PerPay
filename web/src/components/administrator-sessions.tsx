@@ -169,8 +169,12 @@ export function AdministratorSessions({ detailSessionId }: { detailSessionId?: s
             </Disclosure>}
           </div>
         </> : !sessions.error && <Empty><EmptyHeader><EmptyTitle>此会话已结束</EmptyTitle><EmptyDescription>已失效的会话不再出现在有效会话列表中。</EmptyDescription></EmptyHeader></Empty>}
-        {selected && <ActionBar menuLabel="更多操作，会话操作" primary={<Button variant="destructive" disabled={operation.isPending}
-          onClick={event => open(selected.is_current ? { kind: "logout" } : { kind: "single", session: selected }, event.currentTarget)}>{selected.is_current ? "退出当前会话" : "撤销此会话"}</Button>} />}
+        {selected && <ActionBar menuLabel="更多操作，会话操作" primary={{
+          label: selected.is_current ? "退出当前会话" : "撤销此会话",
+          danger: true,
+          disabled: operation.isPending,
+          onSelect: trigger => open(selected.is_current ? { kind: "logout" } : { kind: "single", session: selected }, trigger),
+        }} />}
       </DetailPage> : <Card className="administrator-sessions-card" data-login-sessions>
         <CardHeader className="administrator-sessions-header">
           <CardTitle ref={heading} tabIndex={-1} role="heading" aria-level={2}>登录会话</CardTitle>

@@ -444,4 +444,47 @@ describe("record action bar", () => {
     expect(screen.queryByRole("button", { name: "更多操作，订单操作" })).not.toBeInTheDocument();
     expect(Array.from(document.querySelectorAll("[data-record-primary-actions] > *")).map(node => node.textContent)).toEqual(["查看收银台结果"]);
   });
+
+  it("renders a primary RecordAction as a button, workspace link, global link or external link, and folds secondary beside it on phones", async () => {
+    const media = mobileMedia(1280);
+    const select = vi.fn();
+    const view = at("/sites/site-a/orders/order-1", <ActionBar menuLabel="更多操作，记录操作"
+      primary={{ label: "人工关联收款", onSelect: select }}
+      secondary={{ label: "标记已退款", onSelect: vi.fn() }} />);
+    const button = screen.getByRole("button", { name: "人工关联收款" });
+    await userEvent.setup().click(button);
+    expect(select).toHaveBeenCalledWith(button);
+
+    media.resize(390);
+    expect(Array.from(document.querySelectorAll("[data-record-primary-actions] > *")).map(node => node.textContent)).toEqual(["人工关联收款"]);
+    await userEvent.setup().click(screen.getByRole("button", { name: "更多操作，记录操作" }));
+    expect(await screen.findByRole("menuitem", { name: "标记已退款" })).toBeVisible();
+
+    media.resize(1280);
+    view.rerender(<MemoryRouter initialEntries={["/sites/site-a/reconciliation/ledger/ledger-1"]}><ActionBar menuLabel="更多操作，记录操作"
+      primary={{ label: "到全部网站处理这笔流水", to: "/reconciliation/transactions/ledger-1", global: true }} /></MemoryRouter>);
+    const globalLink = screen.getByRole("link", { name: "到全部网站处理这笔流水" });
+    expect(new URL(globalLink.getAttribute("href")!, "http://perpay.test").pathname).toBe("/reconciliation/transactions/ledger-1");
+
+    view.rerender(<MemoryRouter initialEntries={["/sites/site-a/orders/order-1"]}><ActionBar menuLabel="更多操作，记录操作"
+      primary={{ label: "查看网站总览", to: "/orders/order-2" }} /></MemoryRouter>);
+    const scopedLink = screen.getByRole("link", { name: "查看网站总览" });
+    expect(new URL(scopedLink.getAttribute("href")!, "http://perpay.test").pathname).toBe("/sites/site-a/orders/order-2");
+
+    view.rerender(<MemoryRouter initialEntries={["/record"]}><ActionBar menuLabel="更多操作，记录操作"
+      primary={{ label: "查看外部页", href: "https://example.test/doc", title: "外部说明" }} /></MemoryRouter>);
+    const outside = screen.getByRole("link", { name: "查看外部页" });
+    expect(outside).toHaveAttribute("href", "https://example.test/doc");
+    expect(outside).toHaveAttribute("target", "_blank");
+    expect(outside).toHaveAttribute("rel", "noopener noreferrer");
+    expect(outside).toHaveAttribute("title", "外部说明");
+
+    view.rerender(<MemoryRouter initialEntries={["/record"]}><ActionBar menuLabel="更多操作，记录操作"
+      primary={{ label: "不可跳转", to: "/orders/order-2", disabled: true }} /></MemoryRouter>);
+    expect(screen.getByRole("button", { name: "不可跳转" })).toBeDisabled();
+
+    view.rerender(<MemoryRouter initialEntries={["/record"]}><ActionBar menuLabel="更多操作，记录操作"
+      primary={{ label: "撤销此会话", danger: true, onSelect: select }} /></MemoryRouter>);
+    expect(screen.getByRole("button", { name: "撤销此会话" })).toHaveAttribute("data-danger", "true");
+  });
 });

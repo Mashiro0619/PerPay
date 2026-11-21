@@ -26,7 +26,6 @@ import { FieldList } from "@/components/record/FieldList";
 import { RecordNotice, RecordSummary } from "@/components/record/RecordSummary";
 import { Section, Sections } from "@/components/record/Sections";
 import { RecordTime, Timeline, type TimelineEntry } from "@/components/record/Timeline";
-import { Button } from "@/components/ui/button";
 import { RefundMarkStatus, useRefundMark } from "./RefundMark";
 
 export function OrderDetail() {
@@ -182,7 +181,7 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
       </Section>
     </Sections>
     <ActionBar menuLabel="更多操作，订单操作"
-      primary={(unpaid || unresolved) && <Button className="h-auto min-h-8 min-w-0 max-w-full whitespace-normal py-1.5" disabled={associate.action.disabled} onClick={event => associate.action.onSelect?.(event.currentTarget)}>{associate.action.label}</Button>}
+      primary={(unpaid || unresolved) && associate.action}
       secondary={unresolved
         ? { label: "标记已退款", onSelect: trigger => refund.open(true, trigger, true) }
         : checkout}

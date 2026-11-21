@@ -21,7 +21,6 @@ import { SubRecord } from "@/components/record/SubRecord";
 import { RecordTime, Timeline } from "@/components/record/Timeline";
 import { RefreshButton } from "@/components/refresh-button";
 import { ErrorNotice, Loading, QueryView } from "@/components/request-state";
-import { Button } from "@/components/ui/button";
 
 export default function NotificationDetail() {
   const { deliveryId = "" } = useParams();
@@ -118,8 +117,7 @@ function DeliveryRecord({ detail, attempts, order }: {
       <RelatedOrder query={order} />
     </Sections>
     <ActionBar menuLabel="更多操作，通知记录操作"
-      primary={resendable && delivery.status === "DEAD_LETTER" &&
-        <Button disabled={redelivery.sent} onClick={event => redelivery.open(event.currentTarget)}>重新发送</Button>}
+      primary={resendable && delivery.status === "DEAD_LETTER" && { label: "重新发送", disabled: redelivery.sent, onSelect: redelivery.open }}
       // Sending a confirmed notification again is rare, so it stays out of the way.
       menu={resendable && delivery.status === "ACKNOWLEDGED" ? [{ label: "重新发送", disabled: redelivery.sent, onSelect: redelivery.open }] : []}
       technical={[{ title: "通知技术信息", data: { ...detail, attempts: made }, identifiers: [

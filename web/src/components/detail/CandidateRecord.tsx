@@ -4,13 +4,12 @@ import { candidateFacts, candidateFactsBeyondLedger, candidateGuidance } from "@
 import { dateTime, money } from "@/lib/format";
 import { StatusBadge } from "@/components/business-status";
 import { OverlaySummary } from "@/components/overlay-actions";
-import { ActionBar, recordActionButtonClass } from "@/components/record/ActionBar";
+import { ActionBar } from "@/components/record/ActionBar";
 import { FieldList } from "@/components/record/FieldList";
 import { RecordSummary } from "@/components/record/RecordSummary";
 import { Section, Sections } from "@/components/record/Sections";
 import { Timeline, type TimelineEntry } from "@/components/record/Timeline";
 import { ErrorNotice } from "@/components/request-state";
-import { Button } from "@/components/ui/button";
 import { useAssociateIncome } from "./FinancialActions";
 import { useRelatedOrder } from "./DetailPrimitives";
 import {
@@ -94,10 +93,7 @@ export function CandidateRecord({
       </Section>
     </Sections>
     <ActionBar menuLabel="更多操作，可能匹配记录操作"
-      primary={canAssociate && entry && (associate.action.to
-        ? <Link global to={associate.action.to} className={recordActionButtonClass()}>{associate.action.label}</Link>
-        : <Button className="h-auto min-h-8 min-w-0 max-w-full whitespace-normal py-1.5" disabled={associate.action.disabled}
-          onClick={event => associate.action.onSelect?.(event.currentTarget)}>{associate.action.label}</Button>)}
+      primary={canAssociate && entry && associate.action}
       technical={[{ title: "匹配记录技术信息", data: candidate, identifiers: [
         ["可能匹配记录编号", candidate.candidate_id],
         ["内部订单编号", candidate.order_id],

@@ -1,5 +1,4 @@
 import type { UseQueryResult } from "@tanstack/react-query";
-import { Link } from "@/navigation";
 import type { MatchCandidate, MatchCandidateListEnvelope, ReconciliationLedgerEntry } from "@/api/client";
 import { candidateFacts, candidateFactsBeyondLedger, candidateGuidance } from "@/lib/detail-summary";
 import { dateTime, money } from "@/lib/format";
@@ -7,7 +6,7 @@ import { AlipayAccountIdentity } from "@/components/alipay-account-identity";
 import { OrderStatusBadge, StatusBadge } from "@/components/business-status";
 import { LedgerState } from "@/components/ledger-record";
 import { OverlaySummary } from "@/components/overlay-actions";
-import { ActionBar, recordActionButtonClass, technicalEntries } from "@/components/record/ActionBar";
+import { ActionBar, technicalEntries } from "@/components/record/ActionBar";
 import { FieldList } from "@/components/record/FieldList";
 import { RecordSummary } from "@/components/record/RecordSummary";
 import { Section, Sections } from "@/components/record/Sections";
@@ -83,7 +82,7 @@ export function SiteLedgerRecord({
       </Section>
     </Sections>
     <ActionBar menuLabel="更多操作，流水记录操作"
-      primary={canAssociate && !!handOff.to && <Link global to={handOff.to} className={recordActionButtonClass()}>{handOff.label}</Link>}
+      primary={canAssociate && !!handOff.to && handOff}
       technical={technicalEntries([
         { title: "流水技术信息", created: entry.created_at, data: entry, identifiers: [
           ["内部流水编号", entry.ledger_entry_id],

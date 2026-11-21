@@ -32,17 +32,17 @@ function isRecordAction(value: ReactNode | RecordAction | undefined): value is R
 
 const wrappingAction = "h-auto min-h-8 min-w-0 max-w-full whitespace-normal py-1.5";
 
-/** Wrappable button styling for footer links and secondary actions so narrow/zoomed drawers never overflow. */
-export function recordActionButtonClass(variant: "default" | "outline" = "default") {
+function actionButtonClass(variant: "default" | "outline" = "default") {
   return cn(buttonVariants({ variant }), wrappingAction);
 }
 
-function SecondaryAction({ action }: { action: RecordAction }) {
-  if (action.href && !action.disabled) return <a className={recordActionButtonClass("outline")} href={action.href} target="_blank" rel="noopener noreferrer" title={action.title}>
+function BarAction({ action, variant }: { action: RecordAction; variant: "default" | "outline" }) {
+  if (action.href && !action.disabled) return <a className={actionButtonClass(variant)} href={action.href} target="_blank" rel="noopener noreferrer" title={action.title}>
     {action.label}<ExternalLink data-icon="inline-end" aria-hidden="true" />
   </a>;
-  if (action.to && !action.disabled) return <Link to={action.to} global={action.global ?? false} className={recordActionButtonClass("outline")}>{action.label}</Link>;
-  return <Button type="button" variant="outline" className={wrappingAction} disabled={action.disabled} onClick={event => action.onSelect?.(event.currentTarget)}>{action.label}</Button>;
+  if (action.to && !action.disabled) return <Link to={action.to} global={action.global ?? false} className={actionButtonClass(variant)}>{action.label}</Link>;
+  return <Button type="button" variant={action.danger ? "destructive" : variant} data-danger={action.danger || undefined} className={wrappingAction} disabled={action.disabled}
+    onClick={event => action.onSelect?.(event.currentTarget)}>{action.label}</Button>;
 }
 
 export type TechnicalEntry = {
@@ -73,7 +73,7 @@ export function technicalEntries(entries: readonly DatedTechnicalEntry[]): Techn
  * keeps full breathing room.
  */
 export function ActionBar({ primary, secondary, menu = [], menuLabel, technical = [] }: {
-  primary?: ReactNode;
+  primary?: ReactNode | RecordAction;
   secondary?: ReactNode | RecordAction;
   menu?: readonly RecordAction[];
   /** Accessible name of the menu, such as "更多操作，订单操作". */
@@ -88,8 +88,9 @@ export function ActionBar({ primary, secondary, menu = [], menuLabel, technical 
   const secondaryAction = isRecordAction(secondary) ? secondary : null;
   const foldSecondary = !!secondaryAction && !!primary && compact;
   const effectiveMenu = foldSecondary ? [secondaryAction, ...menu] : menu;
+  const visiblePrimary: ReactNode = isRecordAction(primary) ? <BarAction action={primary} variant="default" /> : primary;
   const visibleSecondary: ReactNode = isRecordAction(secondary)
-    ? (foldSecondary ? null : <SecondaryAction action={secondary} />)
+    ? (foldSecondary ? null : <BarAction action={secondary} variant="outline" />)
     : secondary;
   const key = (entry: TechnicalEntry) => entry.id ?? entry.title;
   return <OverlayActions className="justify-start">
@@ -97,7 +98,7 @@ export function ActionBar({ primary, secondary, menu = [], menuLabel, technical 
       extra={technical.map(entry => <DropdownMenuItem key={key(entry)} onClick={() => setShown(key(entry))}>
         <Code aria-hidden="true" />{entry.title}{entry.note && <> · <span className="text-muted-foreground">{entry.note}</span></>}
       </DropdownMenuItem>)} />
-    {(primary || visibleSecondary) && <div data-record-primary-actions className="ml-auto flex min-w-0 flex-wrap justify-end gap-2 max-md:flex-1 max-md:[&>*]:flex-1">{visibleSecondary}{primary}</div>}
+    {(visiblePrimary || visibleSecondary) && <div data-record-primary-actions className="ml-auto flex min-w-0 flex-wrap justify-end gap-2 max-md:flex-1 max-md:[&>*]:flex-1">{visibleSecondary}{visiblePrimary}</div>}
     {technical.map(entry => <TechnicalDetailsDialog key={key(entry)} open={shown === key(entry)} onOpenChange={open => setShown(open ? key(entry) : null)}
       finalFocus={() => trigger.current} data={entry.data} identifiers={entry.identifiers ?? []} title={entry.title} />)}
   </OverlayActions>;
