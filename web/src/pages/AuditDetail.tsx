@@ -112,7 +112,7 @@ function AuditRecord({ event, siteDeleted }: { event: AuditEventDetail; siteDele
         subject_type: event.subject_type, subject_id: event.subject_id, context_recorded: event.context_recorded, duration_ms: event.duration_ms,
         request: { source_address: event.source_address, user_agent: event.user_agent, http_method: event.http_method, route: event.route, http_status: event.http_status }, details: event.details,
         changes: event.changes.map(change => change.kind === "redacted_change" ? { field: change.field, kind: change.kind, configured_before: change.configured_before, configured_after: change.configured_after } : change) }}
-      identifiers={[["日志编号", event.event_id], ["对象编号", event.subject_id], ["请求编号", event.request_id], [event.is_aggregate ? "汇总组编号" : "关联活动编号", event.activity_id], ["事件哈希", event.event_hash], ["前一事件哈希", event.previous_hash], ["请求上下文指纹", event.context_fingerprint], ["历史来源哈希", event.remote_address_hash]]}>
+      identifiers={[["日志编号", event.event_id], ["对象编号", event.subject_id], ["请求编号", event.request_id], [event.is_aggregate ? "汇总组编号" : "关联活动编号", event.activity_id], ["事件哈希", event.event_hash], ["前一事件哈希", event.previous_hash], ["请求上下文标识", event.context_fingerprint], ["历史来源哈希", event.remote_address_hash]]}>
       <div className="flex flex-col gap-2 text-xs text-muted-foreground">
         {event.is_aggregate && <p>同类合并记录，不对应单次请求。</p>}
         <p>客户端名称根据 User-Agent 识别，原文保留于下方请求信息。</p>

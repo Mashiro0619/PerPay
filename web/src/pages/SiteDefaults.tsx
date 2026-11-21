@@ -92,7 +92,7 @@ function DefaultsEditor({ initial }: { initial: DefaultsSnapshot }) {
     mutationFn: () => {
       if (timeoutError) throw new Error(timeoutError);
       if (!onlineManager.isOnline() || !navigator.onLine)
-        throw new Error("网络已断开，模板未提交。恢复连接后请重新提交。");
+        throw new Error("网络已断开，默认设置未提交。恢复连接后请重新提交。");
       void queryClient.invalidateQueries({ queryKey: defaultsKey, exact: true, refetchType: "none" });
       return run(signal => result(api.updateSiteDefaults({ body: { revision: saved.revision, policy: draft }, signal })));
     },
@@ -107,7 +107,7 @@ function DefaultsEditor({ initial }: { initial: DefaultsSnapshot }) {
       setReview(null);
       setChoices({});
       clearDraft();
-      setFeedback("模板已保存");
+      setFeedback("默认设置已保存");
     },
     onError: error => {
       if (!isOperationResultUnknown(error) &&
@@ -133,7 +133,7 @@ function DefaultsEditor({ initial }: { initial: DefaultsSnapshot }) {
     setChoices({});
     save.reset();
     const aligned = JSON.stringify(policy) === JSON.stringify(snapshot.policy) && (timeoutResolved || !siteTimeoutError(timeoutRaw));
-    setFeedback(aligned ? "已重新读取，当前模板与服务器一致。" : "最新模板已合并，尚未保存");
+    setFeedback(aligned ? "已重新读取，当前默认设置与服务器一致。" : "最新默认设置已合并，尚未保存");
   }
 
   const reload = useMutation({
@@ -141,7 +141,7 @@ function DefaultsEditor({ initial }: { initial: DefaultsSnapshot }) {
     retry: false,
     mutationFn: async () => {
       if (!onlineManager.isOnline() || !navigator.onLine)
-        throw new Error("网络已断开，尚未重新读取模板。恢复连接后请重试。");
+        throw new Error("网络已断开，尚未重新读取默认设置。恢复连接后请重试。");
       const controller = new AbortController();
       reloadController.current = controller;
       try {
@@ -196,8 +196,8 @@ function DefaultsEditor({ initial }: { initial: DefaultsSnapshot }) {
       <PageHeading title="新网站默认设置" />
       <p className="text-sm text-muted-foreground">仅用于新网站，已有网站不变。</p>
       <Tabs value={section} onValueChange={value => { if (value) setSection(value); }}>
-        <ScrollingTabs selection={{ items: sections, value: section, onValueChange: setSection, label: "模板分组" }}>
-          <TabsList className="min-w-max" aria-label="模板分组" activateOnFocus={false}>
+        <ScrollingTabs selection={{ items: sections, value: section, onValueChange: setSection, label: "默认设置分组" }}>
+          <TabsList className="min-w-max" aria-label="默认设置分组" activateOnFocus={false}>
             {sections.map(item => <TabsTrigger key={item.value} value={item.value}>{item.label}</TabsTrigger>)}
           </TabsList>
         </ScrollingTabs>
@@ -220,10 +220,10 @@ function DefaultsEditor({ initial }: { initial: DefaultsSnapshot }) {
           <AlertTitle>{writeResultUnknown ? "默认设置保存结果待确认" : "默认设置已变更"}</AlertTitle>
           <AlertDescription>
             <p>{writeResultUnknown
-              ? "输入和操作前的版本已保留。请读取最新模板核对保存结果，再继续修改。"
-              : "你的修改已保留。读取最新模板将合并无冲突项，冲突需核对；不会自动保存。"}</p>
+              ? "输入和操作前的版本已保留。请读取最新默认设置核对保存结果，再继续修改。"
+              : "你的修改已保留。读取最新默认设置将合并无冲突项，冲突需核对；不会自动保存。"}</p>
             <Button variant="outline" className="h-auto min-h-8 max-w-full whitespace-normal py-1.5" disabled={busy} onClick={() => reload.mutate()}>
-              {reload.isPending ? "正在读取…" : "读取最新模板并核对"}
+              {reload.isPending ? "正在读取…" : "读取最新默认设置并核对"}
             </Button>
           </AlertDescription>
         </Alert>

@@ -1,5 +1,5 @@
 import { useEffect, useId, useState, useSyncExternalStore, type ReactNode } from "react";
-import { CircleCheck } from "lucide-react";
+import { AlertCircle, CircleCheck } from "lucide-react";
 import { maintenanceJobRequiresLogin, type MaintenanceJob } from "@/api/maintenance";
 import { getRestoreSessionHold, subscribeRestoreSessionHold } from "@/api/client";
 import { dateTime } from "@/lib/format";
@@ -26,11 +26,11 @@ export function MaintenanceJobNotice({ title, message, running, failed, startedA
   children?: ReactNode;
 }) {
   return <Alert variant={failed ? "destructive" : "default"} role={failed ? "alert" : "status"}>
-    {running ? <Spinner /> : !failed ? <CircleCheck /> : null}
+    {running ? <Spinner /> : failed ? <AlertCircle /> : <CircleCheck />}
     <AlertTitle>{title}</AlertTitle>
     <AlertDescription className="flex min-w-0 flex-col gap-2">
       <span>{message}</span>
-      <span>{finishedAt === null ? "开始于 " + dateTime(startedAt) : (failed ? "失败于 " : "完成于 ") + dateTime(finishedAt)}</span>
+      <span>{running || finishedAt === null ? "开始于 " + dateTime(startedAt) : (failed ? "失败于 " : "完成于 ") + dateTime(finishedAt)}</span>
       {children}
     </AlertDescription>
   </Alert>;

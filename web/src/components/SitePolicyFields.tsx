@@ -88,7 +88,7 @@ export function SitePolicyFields({
           />
           <NumberField
             label="最大加价金额（分）"
-            hint="同时存在多笔同金额订单时，系统自动微调加价以区分付款，单位为分（1～99 分）。"
+            hint="每笔订单默认在原金额上加价 1 分起以区分付款，同金额并发时依次递增，上限为此处设定值（1～99 分）。"
             error={error("orders.amount_offset_maximum_cents")}
             value={value.orders.amount_offset_maximum_cents}
             min={1}
@@ -119,9 +119,9 @@ export function SitePolicyFields({
               id={limitId}
               aria-invalid={!!error("orders.pending_order_limit")}
               aria-describedby={
-                error("orders.pending_order_limit")
-                  ? limitId + "-error"
-                  : undefined
+                [limitId + "-hint", error("orders.pending_order_limit") ? limitId + "-error" : ""]
+                  .filter(Boolean)
+                  .join(" ")
               }
               aria-label="待付款订单上限（笔）"
               type="number"
@@ -135,7 +135,7 @@ export function SitePolicyFields({
                 })
               }
             />
-            <FieldDescription>同时允许处于待付款状态的订单总数上限，留空表示不限。</FieldDescription>
+            <FieldDescription id={limitId + "-hint"}>单个网站同时允许处于待付款状态的订单总数上限，留空表示不限。</FieldDescription>
             {error("orders.pending_order_limit") && (
               <FieldError id={limitId + "-error"}>
                 {error("orders.pending_order_limit")}

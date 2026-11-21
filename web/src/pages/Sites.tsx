@@ -1004,7 +1004,7 @@ function SiteEditor({
           <AlertDialogHeader>
             <AlertDialogTitle>
               {isSecretConfirmation ? secretActionName(confirmation) + "？"
-                : confirmation === "delete" ? "确认删除业务网站？" : "确认保存配置？"}
+                : confirmation === "delete" ? "确认删除网站？" : "确认保存配置？"}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {confirmation === "delete"

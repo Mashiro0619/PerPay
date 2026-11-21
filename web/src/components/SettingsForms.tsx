@@ -369,7 +369,7 @@ export function SettingsEditor({
         }
         min={5}
         max={3600}
-        hint="有待付款订单时使用，不能大于常规间隔。"
+        hint="有待付款订单时使用，不能大于常规查账间隔。"
       />
       <NumberField
         name="minimum_scan_interval_seconds"
@@ -418,7 +418,7 @@ export function SettingsEditor({
         <NumberField
           name="keep_count"
           error={fieldErrors.keep_count}
-          label="保留备份数量"
+          label="保留备份数量（份）"
           value={initialSettings.backup.keep_count}
           min={1}
           max={365}
@@ -504,7 +504,7 @@ export function SettingsEditor({
         <NumberField
           name="checkout_key_rotation_days"
           error={fieldErrors.checkout_key_rotation_days}
-          label="收银台链接密钥轮换周期（天）"
+          label="收银台链接密钥更换周期（天）"
           value={initialSettings.advanced.checkout_key_rotation_days}
           min={1}
           max={3650}

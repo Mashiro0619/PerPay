@@ -19,7 +19,8 @@ import { DatabaseBackup } from "lucide-react";
 
 function backupStatusMessage(backup: BackupHealth): string {
   if (backup.backup_in_progress) return "正在备份";
-  if (backup.recovery_required) return "检测到上次备份或维护意外中断，请按维护文档排查恢复，切勿直接覆盖运行中的数据库。";
+  if (backup.status === "unavailable") return "备份状态暂不可用，请检查备份目录及权限。";
+  if (backup.recovery_required) return "检测到上次备份或维护异常中断或锁状态异常，请按维护文档排查恢复，切勿直接覆盖运行中的数据库。";
   if (backup.clock_moved_backwards) return "系统时钟发生回退，请检查主机时间同步。";
   if (backup.configuration_mismatch) return "已保存的备份策略与当前运行配置不一致，请检查服务器备份任务是否已同步。";
   if (backup.instance_matches === false) return "备份与当前实例不匹配，请检查备份目录。";
@@ -64,11 +65,11 @@ export function BackupOverview({ settings }: { settings: RuntimeSettings }) {
   const rows: SettingsSummaryRow[] = [["任务状态", status.isPending ? "正在读取…" : !current ? "当前状态待确认" : backupStatusMessage(backup)]];
   if (backup && !notStarted) rows.push(
     ["最近成功", backup.last_success_at === null ? "尚未成功备份" : dateTime(backup.last_success_at)],
-    ["恢复校验", !current ? "待确认" : backup.backup_available ? "最近备份文件已验证可用" : "暂无已验证的可恢复备份文件"],
+    ["恢复校验", !current || backup.status === "unavailable" ? "待确认" : backup.backup_available ? "最近备份文件已验证可用" : "暂无已验证的可恢复备份文件"],
     ["最近内容校验", backup.content_verified_at === null ? "尚未通过校验" : dateTime(backup.content_verified_at)],
     ["已保留备份", backup.retained_count === null ? "未记录数量" : backup.retained_count + " 份"],
     ...(current && backup.backup_available && backup.backup_name ? [["最近可用备份", <CopyValue value={backup.backup_name} label="复制备份文件名" />] as const] : []),
-    ["下次计划", !current ? "待确认" : !backup.enabled ? "未启用" : backup.backup_in_progress ? "正在执行"
+    ["下次计划", !current || backup.status === "unavailable" ? "待确认" : !backup.enabled ? "未启用" : backup.backup_in_progress ? "正在执行"
       : backup.configuration_mismatch || backup.recovery_required || backup.clock_moved_backwards || backup.last_error_stage ? "等待任务恢复"
         : backup.backup_required || backup.last_success_at === null ? "等待下一次备份执行"
           : dateTime(backup.last_success_at + (backup.interval_milliseconds ?? settings.backup.interval_seconds * 1000))],
@@ -95,7 +96,7 @@ function BackupNowButton({ blocked }: { blocked: boolean }) {
       setOpen(true);
     }}><DatabaseBackup data-icon="inline-start" />{operation.unknown ? "查询备份任务" : "立即备份"}</Button>
     <MaintenanceConfirmation open={open} onOpenChange={setOpen} title="立即创建一份备份？"
-      description="系统会备份当前业务数据和配置，并校验副本是否可用。进度和结果会显示在本页。"
+      description="系统会备份当前业务数据和配置，并校验备份文件是否可用。进度和结果会显示在本页。"
       confirmLabel="确认立即备份" pending={operation.pending} error={operation.error} unknown={operation.unknown}
       refreshing={operation.refreshing} onRefresh={operation.refresh}
       onConfirm={() => { if (request) operation.submit(request); }} />
@@ -115,7 +116,7 @@ export function BackupStatus() {
       <RuntimeErrorDetails title="备份错误诊断" items={[["原始失败阶段", backup?.last_error_stage]]} />
       {backup && (
         <FieldDescription>
-          最近成功 {dateTime(backup.last_success_at)} · 保留记录{" "}
+          最近成功 {dateTime(backup.last_success_at)} · 已保留备份{" "}
           {backup.retained_count === null ? "数量未知" : backup.retained_count + " 份"}
         </FieldDescription>
       )}

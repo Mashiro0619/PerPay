@@ -61,7 +61,7 @@ export function workspaceSiteQuery(clientId: string | null) {
         response.data.client_id !== clientId ||
         response.data.deleted_at
       )
-        throw new Error("网站身份不匹配，请重新加载。");
+        throw new Error("网站 ID 不匹配，请重新加载。");
       return response;
     },
     enabled: !!clientId,

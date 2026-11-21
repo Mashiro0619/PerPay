@@ -385,7 +385,7 @@ function ArchiveRecords({ archiveId }: { archiveId: string }) {
               <SelectContent align="start"><SelectGroup>{choices.map(choice => <SelectItem key={choice.value} value={choice.value}>{choice.label}</SelectItem>)}</SelectGroup></SelectContent>
             </Select>
           </Field></FieldGroup>
-          {records.isPlaceholderData ? <Loading label="正在读取归档记录…" /> : data.records.length ? <BusinessTable id="archive-records" items={data.records} columns={recordColumns} rowId={record => record.table + ":" + record.key} columnsMenu={false} density="compact" embedded aria-label="全部归档记录列表" /> : <Empty><EmptyHeader><EmptyTitle>没有归档记录</EmptyTitle><EmptyDescription>当前数据表中没有记录。</EmptyDescription></EmptyHeader></Empty>}
+          {records.isPlaceholderData ? <Loading label="正在读取归档记录…" /> : data.records.length ? <BusinessTable id="archive-records" items={data.records} columns={recordColumns} rowId={record => record.table + ":" + record.key} columnsMenu={false} density="compact" embedded aria-label="全部归档记录列表" /> : <Empty><EmptyHeader><EmptyTitle>没有归档记录</EmptyTitle><EmptyDescription>当前类型下没有记录。</EmptyDescription></EmptyHeader></Empty>}
           <CursorPagination page={cursor.page} count={data.records.length} hasNext={data.next_cursor !== null} pending={records.isFetching} previousLabel={cursor.previousLabel} onPrevious={cursor.previous} onNext={() => cursor.next(data.next_cursor)} />
         </div>;
       }}</QueryView>}

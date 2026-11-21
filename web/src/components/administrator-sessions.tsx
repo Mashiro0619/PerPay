@@ -65,9 +65,9 @@ function confirmation(action: SessionAction) {
   }
 }
 
-/** When the session was last used and from where: what tells one session from another. */
+/** When the session was last used: what tells active sessions apart at a glance. */
 function conclusion(session: AdminLoginSession) {
-  return <>最近活跃：<RecordTime value={session.last_seen_at} /> · 登录 IP：{session.ip_address ?? "未记录"}</>;
+  return <>最近活跃：<RecordTime value={session.last_seen_at} /></>;
 }
 
 export function AdministratorSessions({ detailSessionId }: { detailSessionId?: string } = {}) {
@@ -137,7 +137,7 @@ export function AdministratorSessions({ detailSessionId }: { detailSessionId?: s
       <Link data-row-link to={"/settings/security/sessions/" + encodeURIComponent(row.session_id)}>{sessionDevice(row.user_agent).label}</Link>
       {row.is_current && <Badge variant="secondary">当前</Badge>}
     </div> },
-    { id: "ip", label: "登录 IP", summaryDefault: true, cell: row => row.ip_address ?? "未知" },
+    { id: "ip", label: "登录 IP", summaryDefault: true, cell: row => row.ip_address ?? "未记录" },
     { id: "activity", label: "最近活跃", layout: "datetime", summaryDefault: true, cell: row => <time dateTime={row.last_seen_at} title={dateTime(row.last_seen_at) + "（北京时间）"}>{sessionActivity(row.last_seen_at)}</time> },
     { id: "actions", label: "操作", layout: "actions", hideable: false, cell: row => <Button variant={row.is_current ? "outline" : "ghost"} size="sm" disabled={operation.isPending}
       aria-label={row.is_current ? "退出当前登录" : `强制下线 ${sessionDevice(row.user_agent).label}`}
@@ -152,10 +152,11 @@ export function AdministratorSessions({ detailSessionId }: { detailSessionId?: s
         <ErrorNotice error={sessions.error} retry={() => { void sessions.refetch(); }} />
         {sessions.isPending ? <Loading label="正在读取登录会话…" /> : selected ? <>
           <OverlaySummary>
-            <RecordSummary label="会话概况" status={<Badge variant={selected.is_current ? "secondary" : "outline"}>{selected.is_current ? "当前会话" : "其他设备"}</Badge>} meta={[conclusion(selected)]} />
+            <RecordSummary label="会话概况" status={<Badge variant={selected.is_current ? "secondary" : "outline"}>{selected.is_current ? "当前设备" : "其他设备"}</Badge>} meta={[conclusion(selected)]} />
           </OverlaySummary>
           <div className="flex min-w-0 flex-col gap-3">
             <FieldList items={[
+              { label: "登录 IP", value: selected.ip_address ?? "未记录", kind: selected.ip_address ? "id" : undefined, copy: selected.ip_address ?? undefined },
               { label: "登录方式", value: "密码" },
               { label: "到期时间", value: <RecordTime value={selected.expires_at} />, kind: "time" },
               !selected.user_agent && { label: "设备信息", value: "未记录" },

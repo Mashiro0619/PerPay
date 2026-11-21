@@ -76,6 +76,9 @@ export default function Audit() {
   const baseControl = useListQuery(timeSort, "occurred_at", "desc", true);
   const update = (values: Record<string, string | null>) => {
     const changes = { ...values };
+    if (typeof changes.source_address === "string") {
+      changes.source_address = changes.source_address.trim() || null;
+    }
     const next = new URLSearchParams(search);
     for (const [key, value] of Object.entries(changes)) {
       if (value) next.set(key, value);
@@ -137,7 +140,7 @@ export default function Audit() {
 
   return <div className="flex min-w-0 flex-col gap-3" data-audit-page>
     <PageHeading title="审计日志" />
-    <PageHeaderActions><PageHeaderActionLink><Link global to={statusHref} className={buttonVariants({ variant: "ghost", size: "sm" })} data-audit-status-trigger aria-label={captureLabel + "，查看日志记录状态"}>{captureLabel}</Link></PageHeaderActionLink></PageHeaderActions>
+    <PageHeaderActions><PageHeaderActionLink><Link global to={statusHref} className={buttonVariants({ variant: "ghost", size: "sm" })} data-audit-status-trigger aria-label={captureLabel.includes("日志记录状态") ? "查看" + captureLabel : captureLabel + "，查看日志记录状态"}>{captureLabel}</Link></PageHeaderActionLink></PageHeaderActions>
     {metadata.data && <AuditCaptureNotice capture={metadata.data.data.capture} compact />}
     <ErrorNotice error={metadata.error} retry={() => { void metadata.refetch(); }} retainedData={!!metadata.data} />
     <ListColumnsProvider>

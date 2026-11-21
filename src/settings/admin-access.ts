@@ -12,7 +12,7 @@ export const adminAccessSchema = z
       context.addIssue({
         code: "custom",
         path: ["cidrs"],
-        message: "白名单不能超过 8192 字节（8 KiB）",
+        message: "白名单内容不能超过 8 KB",
       });
     try {
       createAdminAccessPolicy(value.cidrs);
@@ -20,7 +20,7 @@ export const adminAccessSchema = z
       context.addIssue({
         code: "custom",
         path: ["cidrs"],
-        message: "请输入有效 IP 或 CIDR，不能使用 /0 全网规则",
+        message: "请输入有效的 IP 或网段（例如 192.0.2.10 或 192.0.2.0/24），不支持放行全部地址",
       });
     }
     if (value.enabled && value.cidrs.length === 0)

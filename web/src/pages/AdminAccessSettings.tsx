@@ -106,7 +106,7 @@ export function AdminAccessSettings({
     },
     onSuccess: (response) => {
       setDraft(null);
-      onSaved(response.data, "管理员 IP 白名单已保存");
+      onSaved(response.data, "IP 白名单已保存");
       void source.refetch();
     },
     onError: (error) => {
@@ -218,13 +218,17 @@ export function AdminAccessSettings({
               disabled={busy || requiresReview}
               onChange={(event) => edit(enabled, event.target.value)}
               aria-invalid={Boolean(fieldError)}
-              aria-describedby="admin-access-help"
+              aria-describedby={
+                fieldError
+                  ? "admin-access-help admin-access-error"
+                  : "admin-access-help"
+              }
               placeholder={"192.0.2.10\n2001:db8::/64"}
             />
             <FieldDescription id="admin-access-help">
               每行填写一个 IP 地址或网段（如 192.0.2.10 或 2001:db8::/64），最多 100 条（总大小不超过 8 KB），不支持放行全部地址（如 0.0.0.0/0）。启用时须包含当前 IP；关闭时保留已填规则。
             </FieldDescription>
-            {fieldError && <FieldError>{fieldError}</FieldError>}
+            {fieldError && <FieldError id="admin-access-error">{fieldError}</FieldError>}
           </Field>
           <Field>
             <FieldDescription>

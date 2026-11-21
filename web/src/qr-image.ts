@@ -46,7 +46,7 @@ export async function decodeQrImage(file: File, signal: AbortSignal): Promise<st
           payload !== payload.trim() || /[\u0000-\u001f\u007f]/.test(payload)) {
           throw new Error("二维码内容格式不正确，请换一张收款码图片。");
         }
-        if (new TextEncoder().encode(payload).length > 2331) throw new Error("二维码内容超过 2331 个 UTF-8 字节，请换一张收款码图片。");
+        if (new TextEncoder().encode(payload).length > 2331) throw new Error("收款码链接过长，请换一张收款码图片。");
         return payload;
       }
       if (longestEdge <= edge) break;

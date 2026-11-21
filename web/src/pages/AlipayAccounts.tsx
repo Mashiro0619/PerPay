@@ -441,7 +441,7 @@ export function AlipayAccountEditor({
     },
     onSuccess: ({ data }) => {
       setSaved(account => account ? { ...account, last_check: data } : account);
-      if (data.ok) successToast("查账连接检查通过");
+      if (data.ok) successToast("查账连接测试通过");
     },
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: alipayAccountsKey });
@@ -488,7 +488,7 @@ export function AlipayAccountEditor({
         });
       } catch (error) {
         checkFailure =
-          error instanceof Error ? error.message : "连接检查暂不可用";
+          error instanceof Error ? error.message : "连接测试暂不可用";
       }
     }
     if (created && mounted.current && !onBack) {
@@ -824,15 +824,15 @@ export function AlipayAccountEditor({
         >
           <AlertTitle>
             {check.isPending
-              ? "正在检查查账连接…"
+              ? "正在测试查账连接…"
               : checkFailure || checkResult?.ok === false
-                ? "连接检查未通过"
-                : "连接检查通过"}
+                ? "连接测试未通过"
+                : "连接测试通过"}
           </AlertTitle>
           {!check.isPending && <AlertDescription>
             {checkFailure ?? checkResult?.message}
             {(checkFailure || checkResult?.ok === false) && (
-              <p>账号配置已保留。修正应用信息后保存，或直接重试检查。</p>
+              <p>账号配置已保留。修正应用信息后保存，或直接重新测试连接。</p>
             )}
           </AlertDescription>}
         </Alert>
@@ -1125,7 +1125,7 @@ export function AlipayAccountEditor({
             </dl>
             {lastCheck && <div className="flex min-w-0 flex-col gap-1">
               <dl className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
-                <dt className="text-sm text-muted-foreground">最近连接检查</dt>
+                <dt className="text-sm text-muted-foreground">最近连接测试</dt>
                 <dd><Badge variant={lastCheck.ok ? "outline" : "destructive"}>{lastCheck.ok ? "通过" : "未通过"}</Badge></dd>
                 <dd className="text-sm text-muted-foreground"><time dateTime={lastCheck.checked_at}>{dateTime(lastCheck.checked_at)}</time></dd>
               </dl>

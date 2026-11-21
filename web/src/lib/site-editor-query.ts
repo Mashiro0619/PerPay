@@ -19,10 +19,10 @@ export function siteEditorQueryOptions(clientId: string | undefined) {
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
     queryFn: async ({ signal }): Promise<SiteEditorSnapshot> => {
-      if (!clientId) throw new Error("缺少业务网站身份");
+      if (!clientId) throw new Error("缺少网站 ID");
       const response = await result(api.getSite({ path: { clientId }, signal }));
       if (response.data.client_id !== clientId || response.data.deleted_at) {
-        throw new Error("网站身份不匹配，请重新加载。");
+        throw new Error("网站 ID 不匹配，请重新加载。");
       }
       return latestEditorSnapshot(response.data);
     },

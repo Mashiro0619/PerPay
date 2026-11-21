@@ -50,7 +50,7 @@ const messages: Record<string, string> = {
   ledger_conflict_action_not_allowed:
     "当前冲突不允许此操作，请重新核对处理方式。",
   ledger_conflict_operation_conflict:
-    "该操作编号已被其他操作使用，请刷新后核对账本处理结果。",
+    "操作请求与已有冲突处理记录不一致，请刷新页面核对冲突处理结果。",
   operation_conflict: "操作请求与已执行的记录不一致，请刷新页面核对已有处理结果。",
   admin_operation_conflict: "操作请求已过期或与之前记录冲突，请刷新页面后重新操作。",
   work_item_not_found: "找不到提醒对应的记录，请刷新列表。",

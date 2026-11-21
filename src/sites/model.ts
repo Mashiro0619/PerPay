@@ -48,7 +48,7 @@ export const siteNotificationPolicySchema = z.object({
   retry_maximum_seconds: webhookSettingsInputSchema.shape.retry_maximum_seconds,
 }).strict().superRefine((input, context) => {
   if (input.retry_maximum_seconds < input.retry_base_seconds) {
-    context.addIssue({ code: "custom", path: ["retry_maximum_seconds"], message: "最大重试间隔不能小于基础重试间隔。" });
+    context.addIssue({ code: "custom", path: ["retry_maximum_seconds"], message: "最大重试间隔不能小于首次重试间隔。" });
   }
 });
 
@@ -63,7 +63,7 @@ const originSchema = z.string().transform((value, context) => {
   try {
     return parseWebhookOrigin(value);
   } catch {
-    context.addIssue({ code: "custom", message: "请填写有效的公网 HTTPS 来源，不包含路径、端口或通配符。" });
+    context.addIssue({ code: "custom", message: "请填写有效的公网 HTTPS 域名，不包含路径、端口或通配符。" });
     return z.NEVER;
   }
 }).nullable();
@@ -79,16 +79,16 @@ export const siteConfigurationSchema = z.object({
   policy: sitePolicySchema,
 }).strict().superRefine((input, context) => {
   if (input.notifications_enabled && input.notification_origin === null) {
-    context.addIssue({ code: "custom", path: ["notification_origin"], message: "开启通知前必须配置通知来源。" });
+    context.addIssue({ code: "custom", path: ["notification_origin"], message: "开启通知前必须配置通知域名。" });
   }
 });
 
 const creationClientIdSchema = z.string()
   .refine(value => siteClientIdSchema.safeParse(value).success, {
-    message: "客户端 ID 须为 3–64 位英文字母、数字、点、下划线或连字符，并以字母或数字开头。",
+    message: "网站 ID 须为 3–64 位英文字母、数字、点、下划线或连字符，并以字母或数字开头。",
   })
   .refine(value => !["default", "new", "defaults", "overview"].includes(value.toLowerCase()), {
-    message: "该客户端 ID 为系统保留名称，请使用其他名称。",
+    message: "该网站 ID 为系统保留名称，请使用其他名称。",
   });
 
 export const createSiteInputSchema = z.object({

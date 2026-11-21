@@ -293,9 +293,9 @@ function SystemSnapshot({
               !data.webhook.enabled
                 ? "业务网站需主动查单"
                 : data.webhook.pending_deliveries > 0
-                  ? "待投递 " + count(data.webhook.pending_deliveries)
+                  ? "待发送 " + count(data.webhook.pending_deliveries)
                   : data.webhook.in_flight
-                    ? "正在投递"
+                    ? "发送中"
                     : undefined
             }
             action={
@@ -304,7 +304,7 @@ function SystemSnapshot({
                   className={buttonVariants({ variant: "ghost", size: "sm" })}
                   to="/notifications"
                 >
-                  查看投递
+                  查看通知
                 </Link>
               )
             }
@@ -383,8 +383,11 @@ function SystemSnapshot({
               ) : undefined
             }
           >
+            {data.backup.status === "unavailable" && (
+              <p>备份状态暂不可用，请检查备份目录及权限。</p>
+            )}
             {data.backup.recovery_required && (
-              <p>检测到上次备份或维护意外中断，请按维护文档排查恢复，切勿直接覆盖运行中的数据库。</p>
+              <p>检测到上次备份或维护异常中断或锁状态异常，请按维护文档排查恢复，切勿直接覆盖运行中的数据库。</p>
             )}
             {data.backup.configuration_mismatch && (
               <p>已保存的备份策略与当前运行配置不一致，请检查服务器备份任务是否已同步。</p>
@@ -392,9 +395,26 @@ function SystemSnapshot({
             {data.backup.clock_moved_backwards && (
               <p>系统时钟发生回退，请检查主机时间同步。</p>
             )}
-            {!data.backup.backup_available && data.backup.enabled && (
+            {data.backup.instance_matches === false && (
+              <p>备份与当前实例不匹配，请检查备份目录。</p>
+            )}
+            {data.backup.status !== "unavailable" && !data.backup.backup_available && data.backup.enabled && (
               <p>暂无可用备份。</p>
             )}
+            {data.backup.status !== "unavailable" && data.backup.backup_available && data.backup.backup_required && (
+              <p>当前数据需要重新备份。</p>
+            )}
+            {data.backup.status !== "unavailable" &&
+              data.backup.enabled &&
+              data.backup.backup_available &&
+              !data.backup.ok &&
+              !data.backup.recovery_required &&
+              !data.backup.configuration_mismatch &&
+              !data.backup.clock_moved_backwards &&
+              data.backup.instance_matches !== false &&
+              !data.backup.backup_required && (
+                <p>当前备份未通过健康检查，请查看备份设置或重新备份。</p>
+              )}
           </RuntimeService>
           </RuntimeServices>
         </TableBody>
@@ -408,7 +428,7 @@ function SystemSnapshot({
           ["实例编号", data.instance_id],
           ["查账来源标识", data.provider_account_key],
           ["备份文件", data.backup.backup_name],
-          ["备份 SHA-256", data.backup.backup_sha256],
+          ["备份摘要（SHA-256）", data.backup.backup_sha256],
         ]}
       />
       <LedgerDiagnosis data={data} open={ledgerDiagnosticsOpen} onOpenChange={setLedgerDiagnosticsOpen} finalFocus={() => diagnosticTrigger.current} />
@@ -428,8 +448,8 @@ function LedgerDiagnosis({ data, open, onOpenChange, finalFocus }: { data: Syste
       <DialogBody>
         <Alert variant={data.ledger.collection_ready ? "default" : "destructive"}>
           <AlertTitle>{data.ledger.collection_ready ? "查账已就绪" : "查账尚未就绪"}</AlertTitle>
-          <AlertDescription>{!data.configured ? "先补齐支付宝账号配置，再检查连接。" : data.ledger.last_error_code
-            ? runtimeErrorMessage("查账", data.ledger.last_error_code) : data.ledger.in_flight ? "正在查询支付宝账单，请等待本轮结果。" : "核对下方账号的配置、连接检查和最近查账结果。"}</AlertDescription>
+          <AlertDescription>{!data.configured ? "先补齐支付宝账号配置，再测试连接。" : data.ledger.last_error_code
+            ? runtimeErrorMessage("查账", data.ledger.last_error_code) : data.ledger.in_flight ? "正在查询支付宝账单，请等待本轮结果。" : "核对下方账号的配置、连接测试和最近查账结果。"}</AlertDescription>
         </Alert>
         <FieldList items={[
           { label: "最近成功查账", kind: "time", value: dateTime(data.ledger.last_success_at) },
@@ -440,8 +460,8 @@ function LedgerDiagnosis({ data, open, onOpenChange, finalFocus }: { data: Syste
           <h3 className="text-sm font-medium">{account.name}</h3>
           <FieldList items={[
             { label: "配置状态", value: accountState(account) },
-            { label: "连接检查", value: account.last_check ? account.last_check.message : "尚未检查" },
-            { label: "最近检查", kind: "time", value: dateTime(account.last_check?.checked_at) },
+            { label: "连接测试", value: account.last_check ? account.last_check.message : "尚未测试" },
+            { label: "最近测试", kind: "time", value: dateTime(account.last_check?.checked_at) },
             { label: "查账状态", value: accountHealth(account) },
             { label: "最近成功", kind: "time", value: dateTime(account.health?.last_success_at) },
           ]} />

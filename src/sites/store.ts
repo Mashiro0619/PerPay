@@ -346,7 +346,7 @@ function requireUnusedClientId(connection: DatabaseSync, clientId: string): void
     UNION ALL SELECT 1 FROM api_client_idempotency_namespaces WHERE namespace_id = ?
     ${mapping ? "UNION ALL SELECT 1 FROM site_api_client_ids WHERE api_client_id = ?" : ""} LIMIT 1`)
     .get(clientId, clientId, clientId, ...(mapping ? [clientId] : []));
-  if (occupied) throw new SiteError("site_client_id_conflict", "该客户端 ID 已被使用，请换一个。");
+  if (occupied) throw new SiteError("site_client_id_conflict", "该网站 ID 已被使用，请换一个。");
 }
 function resolveSiteCollection(connection: DatabaseSync, configuration: SiteConfiguration): SiteConfiguration {
   if (!connection.prepare("SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'alipay_accounts'").get()) return configuration;

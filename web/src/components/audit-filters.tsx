@@ -18,6 +18,12 @@ export function auditFilterOptions(filters: AuditFilters, metadata?: AuditMetada
   const sites = metadata?.sites ?? [];
   const names = new Map<string, number>();
   for (const site of sites) if (site.site_name) names.set(site.site_name, (names.get(site.site_name) ?? 0) + 1);
+  const actions = metadata?.actions ?? [];
+  const actionLabelCounts = new Map<string, number>();
+  for (const { action } of actions) {
+    const text = auditActionLabel(action);
+    actionLabelCounts.set(text, (actionLabelCounts.get(text) ?? 0) + 1);
+  }
   const definitions: Array<{ key: keyof AuditFilters; label: string; options: Option[] }> = [
     { key: "category", label: "操作类别", options: [{ value: "", label: "全部类别" }, ...AUDIT_CATEGORIES.map(value => ({ value, label: AUDIT_CATEGORY_LABELS[value] }))] },
     { key: "outcome", label: "操作结果", options: [{ value: "", label: "全部结果" }, { value: "SUCCESS", label: "成功" }, { value: "FAILURE", label: "失败" }] },
@@ -27,7 +33,10 @@ export function auditFilterOptions(filters: AuditFilters, metadata?: AuditMetada
     }))] },
     { key: "source", label: "日志类型", options: [{ value: "", label: "全部记录" }, { value: "core", label: "核心审计" }, { value: "activity", label: "活动记录" }] },
     { key: "actor_type", label: "执行者类型", options: [{ value: "", label: "全部执行者" }, ...AUDIT_ACTOR_TYPES.map(value => ({ value, label: AUDIT_ACTOR_LABELS[value] }))] },
-    { key: "action", label: "具体操作", options: [{ value: "", label: "全部操作" }, ...(metadata?.actions ?? []).map(({ action }) => ({ value: action, label: auditActionLabel(action) }))] },
+    { key: "action", label: "具体操作", options: [{ value: "", label: "全部操作" }, ...actions.map(({ action }) => {
+      const text = auditActionLabel(action);
+      return { value: action, label: (actionLabelCounts.get(text) ?? 0) > 1 ? `${text}（${action}）` : text };
+    })] },
   ];
   return definitions.map(definition => ({
     ...definition,
@@ -77,6 +86,8 @@ export function AuditAddressFilter({ control, value, staged = false }: { control
   </FieldGroup>;
   return staged ? fields : <form className="min-w-0 flex-[0_1_22rem]" aria-label="来源 IP 筛选" onSubmit={event => {
     event.preventDefault();
-    control.update({ source_address: draft.trim() || null });
+    const trimmed = draft.trim();
+    setDraft(trimmed);
+    control.update({ source_address: trimmed || null });
   }}>{fields}</form>;
 }
