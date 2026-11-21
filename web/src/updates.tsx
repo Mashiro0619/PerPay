@@ -5,7 +5,10 @@ import { api, ApiError, queryClient, result, sessionKey, type OfficialUpdate } f
 import { isUpdateChannel, setUpdatePreferences, useUpdatePreferences, type UpdateChannel } from "@/lib/update-preferences";
 import { dismissUpdateVersion, restoreUpdateReminders, useUpdateReminder } from "@/lib/update-reminders";
 import { UpdateDialog, type UpdateDialogRequest } from "@/components/update-dialog";
+import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -268,61 +271,92 @@ function UpdatePanel({ currentVersion }: { currentVersion?: string | undefined }
       : data?.status === "update_available"
         ? "有可用更新：v" + data.latest_version + (latestIsPrerelease ? "（预发布）" : "") + (reminder.ignored ? "（已忽略）" : "")
         : null;
+  const hasUpdate = data?.status === "update_available";
+  const hasNotice = Boolean(status || remaining > 0 || hasUpdate);
   return (
-    <section className="system-update-strip" aria-label="官方更新" data-update-state={checking ? "checking" : failed ? "unavailable" : data?.status ?? "idle"}>
-        <div className="system-update-main">
-          <div className="system-update-summary">
-            <h2>官方更新</h2>
-              <span className="system-update-current">
-                <span>当前版本</span>{" "}
-                <span className="font-mono">{knownVersion ? `v${knownVersion}` : "未知"}</span>
-                {isPrereleaseVersion(knownVersion) && <span>（预发布）</span>}
-              </span>
-            {(status || remaining > 0) && <p className="system-update-status">
-              {status && <span role="status" aria-label="更新状态">{status}</span>}
-              {!checking && remaining > 0 && (
-                <span id="official-update-wait"> 请至少等待 {retryWait(remaining)}后重试。</span>
+    <section
+      className="system-update-strip"
+      aria-label="官方更新"
+      data-update-state={checking ? "checking" : failed ? "unavailable" : data?.status ?? "idle"}
+    >
+      <Card size="sm" className="system-update-card">
+        <CardHeader className="system-update-header">
+          <CardTitle role="heading" aria-level={2}>官方更新</CardTitle>
+          <CardDescription className="system-update-current">
+            <span>当前版本</span>
+            {isPrereleaseVersion(knownVersion) && <span>（预发布）</span>}
+          </CardDescription>
+          <CardAction>
+            <Badge variant={hasUpdate ? "warning" : "secondary"} className="font-mono">
+              {knownVersion ? `v${knownVersion}` : "未知"}
+            </Badge>
+          </CardAction>
+        </CardHeader>
+        <CardContent className="system-update-body">
+          {hasNotice && (
+            <div className="system-update-notice" data-highlight={hasUpdate ? "true" : undefined}>
+              {(status || remaining > 0) && (
+                <p className="system-update-status">
+                  {status && <span role="status" aria-label="更新状态">{status}</span>}
+                  {!checking && remaining > 0 && (
+                    <span id="official-update-wait"> 请至少等待 {retryWait(remaining)}后重试。</span>
+                  )}
+                </p>
               )}
-            </p>}
-            {data?.status === "update_available" && <div className="flex min-w-0 flex-col gap-1 text-sm">
-              <span>目标镜像</span>
-              <CopyValue value={"ghcr.io/mashiro0619/perpay:" + data.latest_version} label="复制目标镜像" />
-              <span className="text-muted-foreground">将部署配置中的 x-perpay-image 改为此标签，再拉取并重启。</span>
-            </div>}
-          </div>
-        </div>
-        <FieldGroup className="system-update-preferences" role="group" aria-label="更新检查设置">
-          <Field orientation="horizontal" className="system-update-auto">
-            <FieldLabel htmlFor="official-update-automatic">自动检查更新</FieldLabel>
-            <Switch id="official-update-automatic" checked={preferences.automatic} onCheckedChange={(automatic) => setUpdatePreferences({ automatic })} />
-          </Field>
-          <Field orientation="horizontal" className="system-update-channel">
-            <FieldLabel htmlFor="official-update-channel">检查通道</FieldLabel>
-            <Select items={channels} value={preferences.channel} onValueChange={(channel) => { if (isUpdateChannel(channel)) setUpdatePreferences({ channel }); }}>
-              <SelectTrigger id="official-update-channel" size="sm"><SelectValue /></SelectTrigger>
-              <SelectContent><SelectGroup>{channels.map(({ value, label }) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectGroup></SelectContent>
-            </Select>
-          </Field>
-          <Button variant="outline" size="sm" className="system-update-check"
-            aria-describedby={remaining > 0 ? "official-update-wait" : undefined}
-            disabled={update.isFetching || remaining > 0} onClick={(event) => { void check(true, event.currentTarget); }}>
-            {update.isFetching && <Spinner aria-hidden="true" data-icon="inline-start" />}
-            检查更新
-          </Button>
-          {data && <div className="system-update-actions">
-            {data.status === "update_available" && <Button variant="ghost" size="sm" onClick={(event) => showDetails(data, event.currentTarget)}>查看更新</Button>}
-            {data.status === "update_available" && <Button variant="ghost" size="sm" onClick={() => {
-              if (reminder.ignored) restoreUpdateReminders(preferences.channel);
-              else dismissUpdateVersion(preferences.channel, data.latest_version);
-            }}>{reminder.ignored ? "恢复此通道更新提醒" : "忽略此版本"}</Button>}
-            <a data-external-link aria-label="查看发布说明"
-              className={buttonVariants({ variant: "ghost", size: "sm" })}
-              href={data.release_url} target="_blank" rel="noopener noreferrer">发布说明</a>
-            <a data-external-link className={buttonVariants({ variant: "ghost", size: "sm" })}
-              href={"https://github.com/Mashiro0619/PerPay/blob/v" + data.latest_version + "/README.md#更新"} target="_blank" rel="noopener noreferrer">更新方法</a>
-          </div>}
-          {reminder.dismissedVersion !== null && (data?.status !== "update_available" || !reminder.ignored) && <Button variant="ghost" size="sm" onClick={() => restoreUpdateReminders(preferences.channel)}>恢复此通道更新提醒</Button>}
-        </FieldGroup>
+              {hasUpdate && (
+                <div className="flex min-w-0 flex-col gap-1.5 text-xs">
+                  <span className="font-medium text-foreground">目标镜像</span>
+                  <CopyValue value={"ghcr.io/mashiro0619/perpay:" + data.latest_version} label="复制目标镜像" />
+                  <span className="text-muted-foreground">将部署配置中的 x-perpay-image 改为此标签，再拉取并重启。</span>
+                </div>
+              )}
+            </div>
+          )}
+          {hasNotice && <Separator />}
+          <FieldGroup className="system-update-preferences" role="group" aria-label="更新检查设置">
+            <Field orientation="horizontal" className="system-update-auto">
+              <FieldLabel htmlFor="official-update-automatic">自动检查更新</FieldLabel>
+              <Switch id="official-update-automatic" checked={preferences.automatic} onCheckedChange={(automatic) => setUpdatePreferences({ automatic })} />
+            </Field>
+            <Field orientation="horizontal" className="system-update-channel">
+              <FieldLabel htmlFor="official-update-channel">检查通道</FieldLabel>
+              <Select items={channels} value={preferences.channel} onValueChange={(channel) => { if (isUpdateChannel(channel)) setUpdatePreferences({ channel }); }}>
+                <SelectTrigger id="official-update-channel" size="sm"><SelectValue /></SelectTrigger>
+                <SelectContent><SelectGroup>{channels.map(({ value, label }) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectGroup></SelectContent>
+              </Select>
+            </Field>
+            <Button variant="outline" size="sm" className="system-update-check"
+              aria-describedby={remaining > 0 ? "official-update-wait" : undefined}
+              disabled={update.isFetching || remaining > 0} onClick={(event) => { void check(true, event.currentTarget); }}>
+              {update.isFetching && <Spinner aria-hidden="true" data-icon="inline-start" />}
+              检查更新
+            </Button>
+          </FieldGroup>
+          {(data || (reminder.dismissedVersion !== null && (!hasUpdate || !reminder.ignored))) && (
+            <div className="system-update-actions">
+              {hasUpdate && <Button variant="ghost" size="sm" onClick={(event) => showDetails(data, event.currentTarget)}>查看更新</Button>}
+              {hasUpdate && <Button variant="ghost" size="sm" onClick={() => {
+                if (reminder.ignored) restoreUpdateReminders(preferences.channel);
+                else dismissUpdateVersion(preferences.channel, data.latest_version);
+              }}>{reminder.ignored ? "恢复此通道更新提醒" : "忽略此版本"}</Button>}
+              {data && (
+                <>
+                  <a data-external-link aria-label="查看发布说明"
+                    className={buttonVariants({ variant: "ghost", size: "sm" })}
+                    href={data.release_url} target="_blank" rel="noopener noreferrer">发布说明</a>
+                  <a data-external-link className={buttonVariants({ variant: "ghost", size: "sm" })}
+                    href={"https://github.com/Mashiro0619/PerPay/blob/v" + data.latest_version + "/README.md#更新"} target="_blank" rel="noopener noreferrer">更新方法</a>
+                </>
+              )}
+              {reminder.dismissedVersion !== null && (!hasUpdate || !reminder.ignored) && (
+                <Button variant="ghost" size="sm" onClick={() => restoreUpdateReminders(preferences.channel)}>
+                  恢复此通道更新提醒
+                </Button>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </section>
   );
 }

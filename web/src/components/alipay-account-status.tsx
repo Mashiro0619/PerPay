@@ -1,4 +1,5 @@
 import { useMutation } from "@tanstack/react-query";
+import { ArrowRight } from "lucide-react";
 import {
   api,
   refreshOperationalData,
@@ -7,13 +8,15 @@ import {
 } from "@/api/client";
 import { accountHealth, accountState } from "@/lib/alipay-accounts";
 import { manualScanActive } from "@/lib/manual-ledger-scan";
+import { Link } from "@/navigation";
 import { AlipayAccountIdentity } from "@/components/alipay-account-identity";
 import { ListDateTime } from "@/components/list-primitives";
 import { ErrorNotice } from "@/components/request-state";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Card,
+  CardAction,
   CardContent,
   CardDescription,
   CardHeader,
@@ -26,38 +29,49 @@ export function AlipayAccountStatus({
   accounts: readonly AlipayAccount[];
 }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>支付宝账号查账</CardTitle>
+    <Card size="sm" className="runtime-accounts-card">
+      <CardHeader className="runtime-accounts-header">
+        <CardTitle role="heading" aria-level={2}>支付宝账号查账</CardTitle>
         <CardDescription>
           各账号独立查账，暂停新订单的账号仍继续处理原有订单。
         </CardDescription>
+        <CardAction>
+          <Link to="/settings/provider" className={buttonVariants({ variant: "ghost", size: "sm" })}>
+            账号管理<ArrowRight data-icon="inline-end" />
+          </Link>
+        </CardAction>
       </CardHeader>
       <CardContent>
         <div className="flex flex-col divide-y">
-          {accounts.map((account) => (
-            <div
-              key={account.id}
-              className="flex min-w-0 flex-col gap-3 py-3 first:pt-0 last:pb-0"
-              data-account-runtime={account.id}
-            >
-              <div className="flex min-w-0 flex-wrap items-center justify-between gap-2" data-account-runtime-heading>
-                <AlipayAccountIdentity id={account.id} name={account.name} />
-                <div className="flex min-w-0 flex-wrap items-center gap-2">
-                  <Badge variant="outline">{accountState(account)}</Badge>
-                  <Badge variant={account.health?.last_error_code ? "destructive" : "outline"}>
-                    {accountHealth(account)}
-                  </Badge>
+          {accounts.map((account) => {
+            const healthy = !account.health?.last_error_code && Boolean(account.health?.last_success_at);
+            const receiving = account.environment === "PRODUCTION" && account.configured && account.enabled;
+            return (
+              <div
+                key={account.id}
+                className="account-runtime-row flex min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-2.5 py-3.5 first:pt-0 last:pb-0"
+                data-account-runtime={account.id}
+              >
+                <div className="flex min-w-0 flex-1 basis-56 flex-col gap-1">
+                  <div className="flex min-w-0 flex-wrap items-center gap-2" data-account-runtime-heading>
+                    <AlipayAccountIdentity id={account.id} name={account.name} />
+                    <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                      <Badge variant={receiving ? "secondary" : "outline"}>{accountState(account)}</Badge>
+                      <Badge variant={account.health?.last_error_code ? "destructive" : healthy ? "success" : "outline"}>
+                        {accountHealth(account)}
+                      </Badge>
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground tabular-nums" data-account-runtime-time>
+                    {account.health?.last_success_at
+                      ? <>最近成功查账：<ListDateTime value={account.health.last_success_at} inline /></>
+                      : "尚无成功查账记录"}
+                  </p>
                 </div>
+                <AccountScan account={account} />
               </div>
-              <p className="text-sm text-muted-foreground" data-account-runtime-time>
-                {account.health?.last_success_at
-                  ? <>最近成功查账：<ListDateTime value={account.health.last_success_at} inline /></>
-                  : "尚无成功查账记录"}
-              </p>
-              <AccountScan account={account} />
-            </div>
-          ))}
+            );
+          })}
           {accounts.length === 0 && (
             <p className="text-sm text-muted-foreground">
               尚未添加支付宝账号。

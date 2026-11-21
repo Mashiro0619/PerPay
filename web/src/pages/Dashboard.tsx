@@ -201,6 +201,12 @@ function DashboardContent() {
       </Card>
     </div>
   </div>;
+  const hero = (
+    <div key="hero" className="overview-hero">
+      {trend}
+      {sites}
+    </div>
+  );
   return (
     <div
       className="flex w-full min-w-0 flex-col gap-4"
@@ -244,11 +250,13 @@ function DashboardContent() {
       <SectionCards
         analytics={metricsUnavailable ? undefined : data}
         clientId={clientId}
+        range={range}
         workItems={workTotal}
+        workBreakdown={!checking && !unavailable && !clientId ? state?.work_items : undefined}
         pending={!analytics.isPaused && (analytics.isPending || analytics.isPlaceholderData)}
       />
       {clientId && <ErrorNotice scope="page" error={workSummary.error} retry={() => { void workSummary.refetch(); }} />}
-      {mobile ? [records, trend, sites] : [trend, sites, records]}
+      {mobile ? [records, hero] : [hero, records]}
     </div>
   );
 }
