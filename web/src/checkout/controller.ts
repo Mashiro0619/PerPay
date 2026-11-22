@@ -55,7 +55,8 @@ export function createCheckoutController(initial: CheckoutInitial) {
     listening = false,
     generation = 0,
     failures = 0,
-    active: AbortController | undefined;
+    active: AbortController | undefined,
+    inflight: Promise<void> | undefined;
   let manualDeadline = 0;
   let manualTracking = false;
   let timer: ReturnType<typeof setTimeout> | undefined,
@@ -114,6 +115,7 @@ export function createCheckoutController(initial: CheckoutInitial) {
     generation++;
     active?.abort();
     active = undefined;
+    inflight = undefined;
     manualDeadline = 0;
     emit({ busy: false });
     stopTimer();
@@ -216,6 +218,7 @@ export function createCheckoutController(initial: CheckoutInitial) {
       timedOut = true;
       controller.abort();
     }, 10000);
+    const task = (async () => {
     try {
       const response = await fetch(target, {
         method: checking ? "POST" : "GET",
@@ -371,12 +374,24 @@ export function createCheckoutController(initial: CheckoutInitial) {
       clearTimeout(timeout);
       if (active === controller) {
         active = undefined;
+        inflight = undefined;
         if (manual && !checking && !state.order?.verification) {
           manualDeadline = 0;
           emit({ busy: false });
         }
       }
     }
+    })();
+    inflight = task;
+    return task;
+  }
+  async function ensureLatest(): Promise<CheckoutSnapshot> {
+    if (inflight) {
+      await inflight;
+      return state;
+    }
+    await refresh(false);
+    return state;
   }
   return {
     getSnapshot: () => state,
@@ -388,6 +403,7 @@ export function createCheckoutController(initial: CheckoutInitial) {
       };
     },
     refresh,
+    ensureLatest,
     start() {
       if (state.visual === "NOT_FOUND" || !initial.apiUrl) return () => {};
       alive = true;

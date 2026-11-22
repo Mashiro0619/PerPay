@@ -41,7 +41,6 @@ import {
   checkoutCopy,
   checkoutMoney,
   merchantReturnUrl,
-  parseCheckoutPayload,
   type CheckoutInitial,
 } from "../../../src/shared/checkout-view";
 import {
@@ -107,6 +106,15 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
     }
     wasExpanded.current = expanded;
   }, [canPay, expanded, qrFailed]);
+  useEffect(() => {
+    if (state.unavailable) {
+      launchToken.current += 1;
+      setLaunchingAlipay(false);
+    }
+  }, [state.unavailable]);
+  useEffect(() => () => {
+    launchToken.current += 1;
+  }, []);
   useEffect(() => {
     if (state.feedback) setLaunchHint("");
   }, [state.feedback]);
@@ -217,7 +225,12 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
   );
   const exactPayableText = (cents / 100).toFixed(2);
   function handleDirectAlipayLaunch(event: MouseEvent<HTMLAnchorElement>) {
+    if (state.unavailable) {
+      event.preventDefault();
+      return;
+    }
     const token = ++launchToken.current;
+    setLaunchingAlipay(false);
     if (isAlipaySchemeBlockedBrowser(navigator.userAgent)) {
       event.preventDefault();
       void copyCheckoutAmount(exactPayableText);
@@ -239,37 +252,44 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
       setLaunchHint("微信或 QQ 内置浏览器不支持直接唤起支付宝，请点击右上角选择“在浏览器打开”，或保存二维码扫码付款。");
       return;
     }
+    // Start clipboard copy synchronously while transient user activation is still live.
+    const copyPromise = copyCheckoutAmount(exactPayableText);
     setLaunchingAlipay(true);
     try {
-      const target = new URL(initial.apiUrl, location.origin);
-      if (target.origin !== location.origin) return;
-      const response = await fetch(target, {
-        headers: { accept: "application/json" },
-        cache: "no-store",
-        credentials: "same-origin",
-        redirect: "error",
-      });
+      const latestSnapshot = await controller.ensureLatest();
       if (launchToken.current !== token) return;
-      if (!response.ok) {
-        setLaunchHint("暂时无法获取支付宝跳转链接，请保存二维码后扫码付款。");
-        return;
-      }
-      const latest = parseCheckoutPayload(await response.json(), initial.internalReturnUrl);
-      if (launchToken.current !== token) return;
-      if (latest.checkout.status !== "OPEN" || latest.payment.status !== "UNPAID") {
+      const latest = latestSnapshot.order;
+      if (
+        latestSnapshot.visual !== "UNPAID" ||
+        latestSnapshot.suspended ||
+        latestSnapshot.unavailable ||
+        !latestSnapshot.qrAvailable ||
+        !latest ||
+        latest.checkout.status !== "OPEN" ||
+        latest.payment.status !== "UNPAID"
+      ) {
         setLaunchHint("");
-        void controller.refresh(false);
         return;
       }
       const url = latest.payment_instructions?.collection_code_payload
         ? alipayQrLaunchUrl(latest.payment_instructions.collection_code_payload)
         : null;
       if (!url) {
-        setLaunchHint("当前订单暂不支持直接唤起支付宝，请保存二维码后扫码付款。");
+        const refreshFailed =
+          Boolean(latestSnapshot.message) || latestSnapshot.retryAt > Date.now();
+        setLaunchHint(
+          refreshFailed
+            ? "暂时无法获取支付宝跳转链接，请保存二维码后扫码付款。"
+            : "当前订单暂不支持直接唤起支付宝，请保存二维码后扫码付款。",
+        );
         return;
       }
       const latestCents = latest.payment_instructions!.payable_amount_cents;
-      const copied = await copyCheckoutAmount((latestCents / 100).toFixed(2));
+      const latestExact = (latestCents / 100).toFixed(2);
+      const copied =
+        latestExact === exactPayableText
+          ? await copyPromise
+          : await copyCheckoutAmount(latestExact);
       if (launchToken.current !== token) return;
       const latestFormatted = checkoutMoney(latestCents);
       setLaunchHint(
@@ -280,7 +300,12 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
       navigateToAlipayScheme(url);
     } catch {
       if (launchToken.current === token) {
-        setLaunchHint("暂时无法获取支付宝跳转链接，请保存二维码后扫码付款。");
+        const current = controller.getSnapshot();
+        if (current.visual === "UNPAID" && !current.suspended && !current.unavailable && current.qrAvailable) {
+          setLaunchHint("暂时无法获取支付宝跳转链接，请保存二维码后扫码付款。");
+        } else {
+          setLaunchHint("");
+        }
       }
     } finally {
       if (launchToken.current === token) setLaunchingAlipay(false);
@@ -309,12 +334,12 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
           )}
         >
           {canLaunchAlipay &&
-            (directLaunchUrl ? (
+            (directLaunchUrl && !state.unavailable ? (
               <a
                 href={directLaunchUrl}
                 className={buttonVariants({
                   variant: "default",
-                  className: "checkout-query-action shrink-0 lg:hidden",
+                  className: "checkout-query-action flex-auto lg:hidden",
                 })}
                 data-alipay-launch
                 onClick={handleDirectAlipayLaunch}
@@ -325,8 +350,9 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
             ) : (
               <Button
                 variant="default"
-                className="checkout-query-action shrink-0 lg:hidden"
+                className="checkout-query-action flex-auto lg:hidden"
                 disabled={launchingAlipay || state.unavailable}
+                aria-busy={launchingAlipay || undefined}
                 data-alipay-launch
                 onClick={() => void handleDeferredAlipayLaunch()}
               >
@@ -344,11 +370,15 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                 variant="outline"
                 className={cn(
                   "checkout-query-action",
-                  canLaunchAlipay ? "min-w-0 flex-1 lg:w-full" : "w-full",
+                  canLaunchAlipay
+                    ? "min-w-0 flex-[1_1_9.5rem] lg:w-full lg:flex-none"
+                    : "w-full",
                 )}
                 disabled={blocked}
+                aria-busy={state.busy || undefined}
                 onClick={() => {
                   launchToken.current += 1;
+                  setLaunchingAlipay(false);
                   setLaunchHint("");
                   void controller.refresh(true);
                 }}
@@ -375,15 +405,16 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
             ))}
         </div>
       )}
-      {(launchHint || state.feedback) && (
-        <p
-          className="text-center text-sm text-muted-foreground lg:text-left"
-          role="status"
-          data-checkout-action-feedback
-        >
-          {launchHint || state.feedback}
-        </p>
-      )}
+      <p
+        className={cn(
+          "text-center text-sm text-muted-foreground lg:text-left",
+          !(launchHint || state.feedback) && "sr-only",
+        )}
+        role="status"
+        data-checkout-action-feedback
+      >
+        {launchHint || state.feedback}
+      </p>
     </CardFooter>
   );
   // Balanced tracks center the content; intrinsic height keeps short screens scrollable.
@@ -527,12 +558,12 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                           />
                         </div>
                         <p className="text-center text-sm text-muted-foreground" data-checkout-payment-instructions>
-                          <span className="sm:hidden">
+                          <span className="lg:hidden">
                             {canLaunchAlipay
                               ? `点“打开支付宝”或扫码，严格按 ${formattedAmount} 付款，勿改金额。`
                               : `保存或截图后用支付宝扫码，严格按 ${formattedAmount} 付款，勿改金额。`}
                           </span>
-                          <span className="hidden sm:inline">请打开支付宝“扫一扫”，严格按 {formattedAmount} 付款，切勿修改金额。</span>
+                          <span className="hidden lg:inline">请打开支付宝“扫一扫”，严格按 {formattedAmount} 付款，切勿修改金额。</span>
                         </p>
                         {adjustmentCents > 0 && (
                           <p className="hidden text-center text-xs text-muted-foreground sm:block" data-checkout-amount-hint>

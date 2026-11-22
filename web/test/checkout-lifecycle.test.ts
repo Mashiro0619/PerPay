@@ -1311,4 +1311,95 @@ describe("mobile one-click Alipay launch", () => {
     expect(screen.queryByRole("button", { name: "打开支付宝" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "打开支付宝" })).not.toBeInTheDocument();
   });
+
+  it("routes deferred launch through controller.ensureLatest, copies synchronously, and fails closed on 503", async () => {
+    const writeText = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
+    const pending = pendingFetch();
+    const { container } = render(
+      createElement(CheckoutApp, {
+        initial: initial({ alipayLaunchAvailable: true }),
+      }),
+    );
+
+    const launchButton = screen.getByRole("button", { name: "打开支付宝" });
+    fireEvent.click(launchButton);
+    // Clipboard copy starts synchronously inside the click handler before network settlement.
+    expect(writeText).toHaveBeenCalledWith("10.01");
+    expect(launchButton).toBeDisabled();
+    expect(launchButton).toHaveAttribute("aria-busy", "true");
+
+    await act(async () => {
+      pending.finish(new Response("", { status: 503 }));
+      await Promise.resolve();
+    });
+
+    expect(container.querySelector("[data-qr-image]")).toBeNull();
+    expect(screen.queryByRole("button", { name: "打开支付宝" })).not.toBeInTheDocument();
+    expect(container.querySelector("[data-checkout-action-feedback]")).not.toHaveTextContent("保存二维码");
+  });
+
+  it("resets launchingAlipay when preempted by manual query and disables launch while offline", async () => {
+    const writeText = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
+    const orderWithCode: CheckoutViewOrder = {
+      ...initial().checkout!,
+      payment_instructions: {
+        payable_amount_cents: 1001,
+        currency: "CNY",
+        collection_code_payload: "https://qr.alipay.com/fkx12345",
+      },
+    };
+    let resolveFirst!: (res: Response) => void;
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolveFirst = resolve;
+          }),
+      )
+      .mockResolvedValueOnce(response(initial().checkout!))
+      .mockResolvedValueOnce(response(orderWithCode));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      createElement(CheckoutApp, {
+        initial: initial({ alipayLaunchAvailable: true }),
+      }),
+    );
+
+    const launchButton = screen.getByRole("button", { name: "打开支付宝" });
+    fireEvent.click(launchButton);
+    expect(launchButton).toBeDisabled();
+
+    // Clicking manual status check preempts the deferred launch and immediately clears launchingAlipay.
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "我已付款，查询状态" }));
+      resolveFirst(response(initial().checkout!));
+      await Promise.resolve();
+    });
+    const recoveredButton = screen.getByRole("button", { name: "打开支付宝" });
+    expect(recoveredButton).toBeEnabled();
+    expect(recoveredButton).not.toHaveAttribute("aria-busy");
+
+    // Once upgraded to a direct link, going offline replaces the active <a> with a disabled button.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2500);
+    });
+    expect(screen.getByRole("link", { name: "打开支付宝" })).toBeVisible();
+
+    await act(async () => {
+      online = false;
+      window.dispatchEvent(new Event("offline"));
+    });
+    expect(screen.queryByRole("link", { name: "打开支付宝" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "打开支付宝" })).toBeDisabled();
+  });
 });
