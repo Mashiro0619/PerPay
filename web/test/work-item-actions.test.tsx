@@ -394,3 +394,42 @@ it("captures the keyword in the batch receipt and reuses it after a lost respons
   expect(bodies[1]).toEqual(bodies[0]);
   expect(bodies[0]).toMatchObject({ q: "精确%_", type: "FINANCIAL_EXCEPTION" });
 });
+
+it("triggers immediate notification retry inline from active work items", async () => {
+  const retryDeliveryId = "77777777-7777-4777-8777-777777777777";
+  const retryItem: AdminWorkItem = {
+    type: "NOTIFICATION_FAILURE",
+    status: "RETRY_WAIT",
+    event_type: "PAYMENT_CONFIRMED",
+    attempt_count: 2,
+    next_attempt_at: "2026-09-06T12:15:00Z",
+    last_error_code: "http_status_not_ack",
+    dead_lettered_at: null,
+    updated_at: "2026-09-06T12:05:00Z",
+    resource_id: retryDeliveryId,
+    provider_account_key: "primary",
+    order_id: "88888888-8888-4888-8888-888888888888",
+    ledger_entry_id: null,
+    created_at: "2026-09-06T12:00:00Z",
+    actionable_at: "2026-09-06T12:05:00Z",
+    ignored_at: null,
+    ignored_by: null,
+    ended: false,
+    detail_url: "/api/admin/v1/webhooks/deliveries/" + retryDeliveryId,
+  };
+  const posts: string[] = [];
+  vi.stubGlobal("fetch", vi.fn(async (request: Request) => {
+    const path = new URL(request.url).pathname;
+    if (request.method === "POST") {
+      posts.push(path);
+      return json({ data: { delivery: { delivery_id: retryDeliveryId, status: "LEASED" } } }, 202);
+    }
+    return json({ data: [retryItem], page: { next_cursor: null } });
+  }));
+  const user = userEvent.setup();
+  renderPage("?type=NOTIFICATION_FAILURE");
+  const retryButton = await screen.findByRole("button", { name: "立即重试" });
+  await user.click(retryButton);
+  expect(await screen.findByText("已发起立即重试")).toBeVisible();
+  expect(posts).toEqual(["/api/admin/v1/webhooks/deliveries/" + retryDeliveryId + "/actions/retry"]);
+});

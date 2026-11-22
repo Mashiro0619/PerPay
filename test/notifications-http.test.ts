@@ -351,10 +351,12 @@ describe("notification HTTP contract", () => {
       const ackedId = fixture.deliveries[0]!.deliveryId;
       const ackedRetryPath = `/api/admin/v1/webhooks/deliveries/${ackedId}/actions/retry`;
 
-      // Delivery 0 starts as ACKNOWLEDGED: retry must be rejected with 409.
+      // Delivery 0 starts as ACKNOWLEDGED: retry must be rejected with 409 and specific Chinese message.
       const ackConflict = await postAdmin(fixture.app, ackedRetryPath, auth, {});
       assert.equal(ackConflict.status, 409);
-      assert.equal(await responseErrorCode(ackConflict), "webhook_delivery_state_conflict");
+      const ackBody = (await ackConflict.json()) as { error: { code: string; message: string } };
+      assert.equal(ackBody.error.code, "webhook_delivery_state_conflict");
+      assert.equal(ackBody.error.message, "只有等待重试的最新通知才能立即重试");
 
       // Create a fresh generation and fail attempt 1 into RETRY_WAIT.
       const redeliver = await postAdmin(
@@ -391,6 +393,21 @@ describe("notification HTTP contract", () => {
       });
 
       const waitingRetryPath = `/api/admin/v1/webhooks/deliveries/${pending.delivery_id}/actions/retry`;
+      // List endpoint exposes is_latest and redelivery_blocked_reason so the list UI can offer inline actions safely.
+      const listResponse = await fixture.app.request("http://perpay.test/api/admin/v1/webhooks/deliveries?limit=20", {
+        headers: { cookie: auth.cookie },
+      });
+      assert.equal(listResponse.status, 200);
+      const listBody = (await listResponse.json()) as {
+        data: Array<{ delivery_id: string; is_latest: boolean; redelivery_blocked_reason: string | null }>;
+      };
+      const oldItem = listBody.data.find((item) => item.delivery_id === ackedId);
+      const newItem = listBody.data.find((item) => item.delivery_id === pending.delivery_id);
+      assert.equal(oldItem?.is_latest, false);
+      assert.equal(oldItem?.redelivery_blocked_reason, null);
+      assert.equal(newItem?.is_latest, true);
+      assert.equal(newItem?.redelivery_blocked_reason, null);
+
       // Without a wired retry dispatcher, the endpoint fails closed with 503 and never creates a ghost lease.
       const unwired = createApp({
         config: fixture.config,

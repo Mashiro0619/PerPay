@@ -29,6 +29,7 @@ export function ReasonDialog<Output>({
   intent = "default",
   description,
   action,
+  quickReasons,
   children,
   execute,
   onClose,
@@ -39,6 +40,7 @@ export function ReasonDialog<Output>({
   intent?: "default" | "destructive";
   description: string;
   action: string;
+  quickReasons?: readonly string[] | undefined;
   children?: ReactNode;
   execute: (
     reason: string,
@@ -55,6 +57,7 @@ export function ReasonDialog<Output>({
     intent,
     description,
     action,
+    quickReasons,
     children,
     execute,
   }));
@@ -163,6 +166,27 @@ export function ReasonDialog<Output>({
                   if (!mutation.conflict) mutation.reset();
                 }}
               />
+              {!mutation.recovery && snapshot.quickReasons && snapshot.quickReasons.length > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5 pt-1" role="group" aria-label="快捷填写操作理由">
+                  {snapshot.quickReasons.map((preset) => (
+                    <Button
+                      key={preset}
+                      type="button"
+                      size="xs"
+                      variant="outline"
+                      disabled={mutation.isPending}
+                      onClick={() => {
+                        if (mutation.isBusy() || mutation.recovery) return;
+                        setReason(preset);
+                        setValidation(null);
+                        if (!mutation.conflict) mutation.reset();
+                      }}
+                    >
+                      {preset}
+                    </Button>
+                  ))}
+                </div>
+              )}
               {mutation.recovery ? (
                 <FieldDescription id={hintId}>
                   重试沿用原理由与证据。

@@ -104,6 +104,8 @@ export interface WebhookDeliveryPage {
 }
 
 export interface WebhookDeliverySummary {
+  readonly isLatest: boolean;
+  readonly redeliveryBlockedReason: "payment_confirmation_revoked" | null;
   readonly delivery: WebhookDelivery;
   readonly eventType: string;
   readonly orderId: string;
@@ -1145,7 +1147,10 @@ export class WebhookStore {
       const rows = connection
         .prepare(
           `SELECT delivery.*, outbox.event_type, outbox.aggregate_id,
-                  target.target_format, target.url_fingerprint
+                  target.target_format, target.url_fingerprint,
+                  (SELECT newer.delivery_id FROM webhook_deliveries AS newer
+                    WHERE newer.outbox_event_id = delivery.outbox_event_id
+                      AND newer.target_id = delivery.target_id ORDER BY newer.generation DESC LIMIT 1) AS latest_delivery_id
              FROM webhook_deliveries AS delivery
              JOIN outbox_events AS outbox
                ON outbox.outbox_event_id = delivery.outbox_event_id
@@ -1161,6 +1166,8 @@ export class WebhookStore {
       const last = pageRows.at(-1);
       return {
         deliveries: pageRows.map((row) => ({
+          isLatest: row.latest_delivery_id === row.delivery_id,
+          redeliveryBlockedReason: redeliveryBlockedReason(connection, row.target_format, row.outbox_event_id),
           delivery: mapDelivery(row),
           eventType: row.event_type,
           orderId: row.aggregate_id,
@@ -1234,6 +1241,7 @@ interface DeliveryRow {
 }
 
 interface DeliverySummaryRow extends DeliveryRow {
+  readonly latest_delivery_id: string;
   readonly event_type: string;
   readonly aggregate_id: string;
   readonly target_format: WebhookTargetFormat;

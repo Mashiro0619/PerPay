@@ -8,6 +8,7 @@ import { Toaster } from "../src/components/ui/toast";
 import { RequestNoticeBanner } from "../src/components/request-notice-banner";
 import { RequestNoticeProvider } from "../src/lib/request-notices";
 import NotificationDetail from "../src/pages/NotificationDetail";
+import Notifications from "../src/pages/Notifications";
 import { WorkspaceProvider } from "../src/workspace";
 import { delivery, deliveryId, failedAttempt, paidOrder } from "./detail-fixtures";
 import { apiError, json } from "./fixtures";
@@ -421,5 +422,145 @@ describe("readable delivery attempts", () => {
       } else expect(earlier).not.toBeInTheDocument();
     }
     expect(attempts).toEqual(original);
+  });
+
+  it("offers quick-fill reason chips for DEAD_LETTER redelivery while keeping submit disabled until chosen", async () => {
+    const writes: Array<{ path: string; body: Record<string, unknown> }> = [];
+    const terminal = {
+      ...delivery,
+      delivery: { ...delivery.delivery, status: "DEAD_LETTER" as const, next_attempt_at: null },
+    };
+    const nextId = "66666666-6666-4666-8666-666666666666";
+    vi.stubGlobal("fetch", vi.fn(async (request: Request) => {
+      const path = new URL(request.url).pathname;
+      if (request.method === "POST") {
+        writes.push({ path, body: await request.json() as Record<string, unknown> });
+        return json({ data: { ...terminal, delivery: { ...terminal.delivery, delivery_id: nextId, status: "PENDING", generation: 2 } } }, 201);
+      }
+      if (path.endsWith("/attempts")) return json({ data: terminal.attempts });
+      if (path.includes("/orders/")) return json({ data: paidOrder });
+      return json({ data: terminal });
+    }));
+    mountDetail();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "重新发送" }));
+    const dialog = await screen.findByRole("dialog", { name: "重新发送通知" });
+    const submit = within(dialog).getByRole("button", { name: "确认重新发送" });
+    expect(submit).toBeDisabled();
+    await user.click(within(dialog).getByRole("button", { name: "回调修复后手动重发" }));
+    expect(within(dialog).getByRole("textbox", { name: "操作理由" })).toHaveValue("回调修复后手动重发");
+    expect(submit).toBeEnabled();
+    await user.click(submit);
+    await waitFor(() => expect(writes).toHaveLength(1));
+    expect(writes[0]!.body.reason).toBe("回调修复后手动重发");
+  });
+
+  it("supports inline retry and dead-letter redelivery on the notifications list while hiding actions on superseded rows", async () => {
+    const writes: Array<{ path: string; body: unknown }> = [];
+    const waitingId = "11111111-1111-4111-8111-111111111111";
+    const deadId = "22222222-2222-4222-8222-222222222222";
+    const oldId = "33333333-3333-4333-8333-333333333333";
+    let waitingRetried = false;
+    vi.stubGlobal("fetch", vi.fn(async (request: Request) => {
+      const path = new URL(request.url).pathname;
+      if (request.method === "POST") {
+        const body = await request.json();
+        writes.push({ path, body });
+        if (path.endsWith("/actions/retry")) {
+          waitingRetried = true;
+          return json({ data: { delivery: { ...delivery.delivery, delivery_id: waitingId, status: "LEASED" } } }, 202);
+        }
+        return json({ data: { delivery: { ...delivery.delivery, delivery_id: "44444444-4444-4444-8444-444444444444", status: "PENDING" } } }, 201);
+      }
+      return json({
+        data: [
+          {
+            ...delivery.delivery,
+            delivery_id: waitingId,
+            status: waitingRetried ? "LEASED" : "RETRY_WAIT",
+            is_latest: true,
+            redelivery_blocked_reason: null,
+            event: { event_type: "PAYMENT_CONFIRMED", order_id: paidOrder.order_id },
+            target: { format: "NATIVE_JSON_V1", url_fingerprint: delivery.target.url_fingerprint },
+            order_summary: {
+              api_client_id: "site_a",
+              site_name: "站点 A",
+              product_name: "等待重试商品",
+              merchant_order_no: "M-WAIT",
+              payable_amount_cents: 1001,
+            },
+          },
+          {
+            ...delivery.delivery,
+            delivery_id: deadId,
+            status: "DEAD_LETTER",
+            next_attempt_at: null,
+            is_latest: true,
+            redelivery_blocked_reason: null,
+            event: { event_type: "PAYMENT_CONFIRMED", order_id: paidOrder.order_id },
+            target: { format: "NATIVE_JSON_V1", url_fingerprint: delivery.target.url_fingerprint },
+            order_summary: {
+              api_client_id: "site_a",
+              site_name: "站点 A",
+              product_name: "死信商品",
+              merchant_order_no: "M-DEAD",
+              payable_amount_cents: 2001,
+            },
+          },
+          {
+            ...delivery.delivery,
+            delivery_id: oldId,
+            status: "DEAD_LETTER",
+            next_attempt_at: null,
+            is_latest: false,
+            redelivery_blocked_reason: null,
+            event: { event_type: "PAYMENT_CONFIRMED", order_id: paidOrder.order_id },
+            target: { format: "NATIVE_JSON_V1", url_fingerprint: delivery.target.url_fingerprint },
+            order_summary: {
+              api_client_id: "site_a",
+              site_name: "站点 A",
+              product_name: "历史死信商品",
+              merchant_order_no: "M-OLD",
+              payable_amount_cents: 3001,
+            },
+          },
+        ],
+        page: { next_cursor: null },
+      });
+    }));
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={["/notifications"]}>
+          <WorkspaceProvider>
+            <Toaster>
+              <Notifications />
+            </Toaster>
+          </WorkspaceProvider>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    const waitRow = (await screen.findByText("等待重试商品")).closest<HTMLElement>("[data-business-row]")!;
+    const deadRow = screen.getByText("死信商品").closest<HTMLElement>("[data-business-row]")!;
+    const oldRow = screen.getByText("历史死信商品").closest<HTMLElement>("[data-business-row]")!;
+
+    expect(within(oldRow).getByText("已有新发送")).toBeVisible();
+    expect(within(oldRow).queryByRole("button", { name: /立即重试|重新发送/ })).not.toBeInTheDocument();
+
+    const user = userEvent.setup();
+    await user.click(within(waitRow).getByRole("button", { name: "立即重试" }));
+    expect(await screen.findByText("已发起立即重试")).toBeVisible();
+    expect(writes[0]).toEqual({
+      path: "/api/admin/v1/webhooks/deliveries/" + waitingId + "/actions/retry",
+      body: {},
+    });
+
+    await user.click(within(deadRow).getByRole("button", { name: "重新发送" }));
+    const dialog = await screen.findByRole("dialog", { name: "重新发送通知" });
+    await user.click(within(dialog).getByRole("button", { name: "网络恢复后手动补发" }));
+    await user.click(within(dialog).getByRole("button", { name: "确认重新发送" }));
+    expect(await screen.findByText("已创建新通知，等待发送")).toBeVisible();
+    expect(writes[1]!.path).toBe("/api/admin/v1/webhooks/deliveries/" + deadId + "/actions/redeliver");
   });
 });

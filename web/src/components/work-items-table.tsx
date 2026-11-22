@@ -88,11 +88,13 @@ function ReminderStatus({ item }: { item: AdminWorkItem }) {
 export function WorkItemsTable({
   items,
   actions,
+  inlineAction,
   control,
   emptyTitle = "暂无待处理提醒",
 }: {
   items: AdminWorkItem[];
   actions?: ((item: AdminWorkItem) => ReactNode) | undefined;
+  inlineAction?: ((item: AdminWorkItem) => ReactNode) | undefined;
   control?: ListQueryControl;
   emptyTitle?: string | undefined;
 }) {
@@ -234,7 +236,7 @@ export function WorkItemsTable({
       cell: (item) => (
         <div className="business-cell-stack flex flex-col items-end gap-2">
           <ReminderStatus item={item} />
-          {actions?.(item)}
+          {actions?.(item) ?? inlineAction?.(item)}
         </div>
       ),
     },
@@ -260,7 +262,7 @@ export function WorkItemsTable({
           layout={control ? "activity" : undefined}
           identity={columns[0]!.cell(item, context)}
           aside={control ? <ReminderStatus item={item} /> : columns.find((column) => column.id === "actions")!.cell(item, context)}
-          actions={control && actions?.(item)}
+          actions={control && (actions?.(item) ?? inlineAction?.(item))}
           metadata={control && <dl className="activity-summary-context">
             {!clientId && <div><dt className="sr-only">网站</dt><dd><SiteIdentity clientId={item.order_summary?.api_client_id} name={item.order_summary?.site_name} /></dd></div>}
             <div><dt>提醒时间</dt><dd><ListDateTime value={item.actionable_at} inline /></dd></div>

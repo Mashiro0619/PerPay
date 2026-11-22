@@ -27,9 +27,18 @@ export function useOrderNotifications(orderId: string) {
       signal,
       query: { limit: 10, ...(pagination.cursor ? { cursor: pagination.cursor } : {}) },
     })),
-    refetchInterval: state => state.state.data?.data.some(item => item.delivery.status === "LEASED") ? 1_500 : false,
+    refetchInterval: state => {
+      const items = state.state.data?.data ?? [];
+      if (items.some(item => item.delivery.status === "LEASED")) return 1_500;
+      if (items.some(item => item.is_latest && (item.delivery.status === "PENDING" || item.delivery.status === "RETRY_WAIT"))) return 5_000;
+      return false;
+    },
   });
   const deliveries = query.data?.data ?? [];
+  const actionable = deliveries.find(item => {
+    const state = deliveryState(item);
+    return state.retryable || (state.resendable && item.delivery.status === "DEAD_LETTER");
+  }) ?? null;
   const statusSignature = deliveries.map(item => `${item.delivery.delivery_id}:${item.delivery.status}`).join(",");
   const previousStatuses = useRef<{ orderId: string; statuses: Map<string, string> }>({ orderId, statuses: new Map() });
   useEffect(() => {
@@ -50,7 +59,7 @@ export function useOrderNotifications(orderId: string) {
   }, [orderId, statusSignature]);
   // A count is only true when this page holds every delivery.
   const complete = !!query.data && pagination.page === 1 && !query.data.page.next_cursor;
-  return { query, pagination, deliveries, count: complete ? query.data!.data.length : undefined };
+  return { query, pagination, deliveries, actionable, count: complete ? query.data!.data.length : undefined };
 }
 
 /** One delivery of an order event: its result once, in the badge, then the address and each attempt. */

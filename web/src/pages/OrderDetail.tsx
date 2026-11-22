@@ -17,6 +17,7 @@ import { QueryView } from "@/components/request-state";
 import { DetailNavigation, DetailPage } from "@/components/detail/DetailPrimitives";
 import { disputeState } from "@/components/detail/disputed-order-actions";
 import { useAssociateIncome } from "@/components/detail/FinancialActions";
+import { deliveryState, useRedelivery, useRetryDelivery } from "@/components/detail/NotificationEvidence";
 import { notificationTechnical, OrderNotificationsSection, useOrderNotifications } from "@/components/detail/OrderNotificationRecords";
 import { OrderExceptionRecord, OrderMatchRecord, paymentTechnical } from "@/components/detail/OrderPaymentRecords";
 import { ActionBar, technicalEntries } from "@/components/record/ActionBar";
@@ -100,6 +101,9 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
   const pending = `${exceptions.length} 项待核对`;
 
   const notifications = useOrderNotifications(order.order_id);
+  const notificationRetry = useRetryDelivery(notifications.actionable);
+  const notificationRedelivery = useRedelivery(notifications.actionable);
+  const actionableNotificationState = notifications.actionable ? deliveryState(notifications.actionable) : null;
   const refund = useRefundMark(order);
   const associate = useAssociateIncome({ orderId: order.order_id, orderLabel: order.product_name, ...(dispute ? { actionLabel: "重新核对并确认收款" } : {}) });
 
@@ -120,6 +124,22 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
     title: "在新标签页查看收银台",
   };
   const paymentCount = active.length + exceptions.length;
+  const notificationPrimary: RecordAction | false =
+    !unpaid && !unresolved && notifications.actionable && actionableNotificationState
+      ? actionableNotificationState.retryable
+        ? {
+            label: notificationRetry.pending ? "正在重试…" : "立即重试通知",
+            disabled: notificationRetry.pending,
+            onSelect: notificationRetry.run,
+          }
+        : actionableNotificationState.resendable && notifications.actionable.delivery.status === "DEAD_LETTER"
+          ? {
+              label: "重新发送通知",
+              disabled: notificationRedelivery.sent,
+              onSelect: notificationRedelivery.open,
+            }
+          : false
+      : false;
 
   return <>
     <OverlaySummary>
@@ -154,9 +174,18 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
     </OverlaySummary>
     {dispute ? <RecordNotice tone="danger" {...(exceptions.length ? { jump: { section: "payments", label: pending } } : {})}>
       <p>{dispute.notice(!active.length && !unassociated)}</p>
-    </RecordNotice> : exceptions.length > 0 && <RecordNotice tone="warning" jump={{ section: "payments", label: pending }}>
+    </RecordNotice> : exceptions.length > 0 ? <RecordNotice tone="warning" jump={{ section: "payments", label: pending }}>
       该订单存在待核对异常：{[...new Set(exceptions.map(exception => label(exception.exception_type)))].join("、")}
-    </RecordNotice>}
+    </RecordNotice> : notifications.actionable && actionableNotificationState && (
+      <RecordNotice
+        tone={notifications.actionable.delivery.status === "DEAD_LETTER" ? "danger" : "warning"}
+        jump={{ section: "notifications", label: "查看通知" }}
+      >
+        {notifications.actionable.delivery.status === "DEAD_LETTER"
+          ? "该订单付款通知已停止重试，核对回调后可手动重新发送。"
+          : "该订单付款通知暂未确认，当前等待自动重试，可直接发起立即重试。"}
+      </RecordNotice>
+    )}
     <Sections label="订单详情内容">
       <Section id="overview" title="订单信息">
         <FieldList items={[
@@ -190,7 +219,7 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
       </Section>
     </Sections>
     <ActionBar menuLabel="更多操作，订单操作"
-      primary={(unpaid || unresolved) && associate.action}
+      primary={(unpaid || unresolved) ? associate.action : notificationPrimary}
       secondary={unresolved
         ? { label: "标记已退款", onSelect: trigger => refund.open(true, trigger, true) }
         : checkout}
@@ -202,5 +231,6 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
       ])} />
     {refund.dialog}
     {associate.dialog}
+    {notificationRedelivery.dialog}
   </>;
 }

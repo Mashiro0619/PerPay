@@ -2193,7 +2193,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
         context,
         webhookStoreStatus(error.code),
         error.code,
-        webhookStoreMessage(error.code),
+        webhookStoreMessage(error),
       );
     }
     if (error instanceof SettingsError) {
@@ -3265,8 +3265,11 @@ function webhookStoreStatus(
   }
 }
 
-function webhookStoreMessage(code: WebhookStoreError["code"]): string {
-  switch (code) {
+function webhookStoreMessage(error: WebhookStoreError): string {
+  if (/[\u3400-\u9fff]/u.test(error.message)) {
+    return error.message;
+  }
+  switch (error.code) {
     case "webhook_delivery_not_found":
       return "通知投递不存在";
     case "webhook_event_not_found":
@@ -4072,6 +4075,8 @@ function serializeWebhookEvent(event: WebhookEvent) {
 function serializeWebhookDeliverySummary(summary: WebhookDeliverySummary) {
   return {
     ...serializeWebhookDelivery(summary.delivery),
+    is_latest: summary.isLatest,
+    redelivery_blocked_reason: summary.redeliveryBlockedReason,
     event: {
       event_type: summary.eventType,
       order_id: summary.orderId,

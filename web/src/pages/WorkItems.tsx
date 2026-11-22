@@ -25,6 +25,7 @@ import { restoreMessages, type RestoreOutcome } from "@/lib/reminder-restore";
 import { useCursor } from "@/lib/cursor";
 import { workItemHref } from "@/lib/labels";
 import { WorkItemsTable } from "@/components/work-items-table";
+import { useQuickRetryDelivery } from "@/components/detail/NotificationEvidence";
 import { ErrorNotice, QueryView } from "@/components/request-state";
 import { CursorPagination } from "@/components/cursor-pagination";
 import { OverlayRecordList } from "@/components/overlay-record-list";
@@ -317,6 +318,7 @@ function WorkItemPage({
     };
   }, []);
   const work = useQuery(workItemsQuery(clientId, listQuery, pagination.cursor, type, visibility));
+  const quickRetry = useQuickRetryDelivery();
   const setRestoredMessage = useSuccessToast();
   function restore(item: AdminWorkItem, trigger: HTMLElement) {
     if (item.ended || restores.get(item)?.status === "pending") return;
@@ -576,6 +578,28 @@ function WorkItemPage({
                           onRestore={(trigger) => restore(item, trigger)}
                         />
                       )
+                    : undefined
+                }
+                inlineAction={
+                  visibility === "ACTIVE"
+                    ? (item) => {
+                        if (item.type !== "NOTIFICATION_FAILURE" || item.ended || item.status !== "RETRY_WAIT") {
+                          return null;
+                        }
+                        const pending = quickRetry.pendingId === item.resource_id;
+                        return (
+                          <Button
+                            type="button"
+                            size="xs"
+                            variant="outline"
+                            disabled={pending}
+                            onClick={() => quickRetry.run(item.resource_id, item.order_id)}
+                          >
+                            {pending && <Spinner aria-hidden="true" data-icon="inline-start" />}
+                            {pending ? "正在重试…" : "立即重试"}
+                          </Button>
+                        );
+                      }
                     : undefined
                 }
               />

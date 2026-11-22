@@ -893,4 +893,37 @@ describe("payment provenance", () => {
     expect(within(screen.getByRole("region", { name: "订单信息" })).getByText("业务网站传入的备注")).toBeVisible();
     expect(screen.queryByText(/数据截至/)).not.toBeInTheDocument();
   });
+
+  it("surfaces a top notice and primary footer action on paid orders with an actionable failed notification", async () => {
+    let retried = false;
+    const { state } = mockData(paidOrder, [delivery], async (request) => {
+      expect(new URL(request.url).pathname).toBe("/api/admin/v1/webhooks/deliveries/" + delivery.delivery.delivery_id + "/actions/retry");
+      retried = true;
+      state.deliveries = [{ ...delivery, delivery: { ...delivery.delivery, status: "LEASED", attempt_count: 2 } }];
+      return json({ data: { delivery: state.deliveries[0]!.delivery } }, 202);
+    });
+    mount();
+    expect(await screen.findByText(/该订单付款通知暂未确认，当前等待自动重试/)).toBeVisible();
+    const footerAction = await screen.findByRole("button", { name: "立即重试通知" });
+    await userEvent.setup().click(footerAction);
+    expect(await screen.findByText("已发起立即重试")).toBeVisible();
+    expect(retried).toBe(true);
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: "立即重试通知" })).not.toBeInTheDocument();
+    });
+  });
+
+  it("surfaces a danger notice and primary redelivery action on paid orders with a DEAD_LETTER notification", async () => {
+    const deadDelivery: OrderWebhookDeliveryDetail = {
+      ...delivery,
+      delivery: { ...delivery.delivery, status: "DEAD_LETTER", next_attempt_at: null },
+    };
+    mockData(paidOrder, [deadDelivery]);
+    mount();
+    expect(await screen.findByText(/该订单付款通知已停止重试/)).toBeVisible();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "重新发送通知" }));
+    const dialog = await screen.findByRole("dialog", { name: "重新发送通知" });
+    expect(within(dialog).getByRole("button", { name: "回调修复后手动重发" })).toBeVisible();
+  });
 });

@@ -33,7 +33,13 @@ import { QueryView } from "@/components/request-state";
 import { notificationStatus, notificationsQuery } from "@/api/workspace-queries";
 import { CursorPagination } from "@/components/cursor-pagination";
 import { OverlayRecordList } from "@/components/overlay-record-list";
-import { buttonVariants } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
+import {
+  summaryDeliveryState,
+  useQuickRetryDelivery,
+  useSummaryRedelivery,
+} from "@/components/detail/NotificationEvidence";
 import {
   Select,
   SelectContent,
@@ -121,6 +127,39 @@ function DeliveryPage({
     true,
   );
   const deliveries = useQuery(notificationsQuery(clientId, listQuery, pagination.cursor, status));
+  const quickRetry = useQuickRetryDelivery();
+  const summaryRedelivery = useSummaryRedelivery();
+  function renderRowAction(delivery: WebhookDeliverySummary) {
+    const state = summaryDeliveryState(delivery);
+    if (state.retryable) {
+      const pending = quickRetry.pendingId === delivery.delivery_id;
+      return (
+        <Button
+          type="button"
+          size="xs"
+          variant="outline"
+          disabled={pending}
+          onClick={() => quickRetry.run(delivery.delivery_id, delivery.event.order_id)}
+        >
+          {pending && <Spinner aria-hidden="true" data-icon="inline-start" />}
+          {pending ? "正在重试…" : "立即重试"}
+        </Button>
+      );
+    }
+    if (state.resendable && delivery.status === "DEAD_LETTER") {
+      return (
+        <Button
+          type="button"
+          size="xs"
+          variant="outline"
+          onClick={(event) => summaryRedelivery.open(delivery, event.currentTarget)}
+        >
+          重新发送
+        </Button>
+      );
+    }
+    return null;
+  }
   const columns: BusinessColumn<WebhookDeliverySummary>[] = [
     {
       id: "identity",
@@ -190,21 +229,31 @@ function DeliveryPage({
       align: "center",
       layout: "status",
       summaryDefault: true,
-      cell: (delivery, context) => (
-        <div className="business-cell-stack flex flex-col items-start gap-1.5">
-          <StatusBadge value={delivery.status} />
-          {context.isSummary && delivery.last_error_code && (
-            <span className="text-xs text-muted-foreground">
-              {notificationErrorName(delivery.last_error_code)}
-            </span>
-          )}
-          {delivery.next_attempt_at && context.showInSummary("next_attempt_at") && (
-            <ListMeta>
-              <span>下次 <ListDateTime value={delivery.next_attempt_at} inline /></span>
-            </ListMeta>
-          )}
-        </div>
-      ),
+      cell: (delivery, context) => {
+        const state = summaryDeliveryState(delivery);
+        return (
+          <div className="business-cell-stack flex flex-col items-start gap-1.5">
+            <StatusBadge
+              value={state.terminated ? "REVERSED" : delivery.status}
+              label={state.terminated ? "已终止" : undefined}
+            />
+            {!state.isLatest && (
+              <span className="text-xs text-muted-foreground">已有新发送</span>
+            )}
+            {context.isSummary && delivery.last_error_code && (
+              <span className="text-xs text-muted-foreground">
+                {notificationErrorName(delivery.last_error_code)}
+              </span>
+            )}
+            {delivery.next_attempt_at && context.showInSummary("next_attempt_at") && (
+              <ListMeta>
+                <span>下次 <ListDateTime value={delivery.next_attempt_at} inline /></span>
+              </ListMeta>
+            )}
+            {!context.isSummary && renderRowAction(delivery)}
+          </div>
+        );
+      },
     },
     {
       id: "attempt_count",
@@ -335,16 +384,20 @@ function DeliveryPage({
                   rowId={(item) => item.delivery_id}
                   control={listQuery}
                   columns={columns}
-                  renderSummary={(delivery, context) => (
+                  renderSummary={(delivery, context) => {
+                    const state = summaryDeliveryState(delivery);
+                    return (
                     <ListSummary
                       layout="activity"
                       identity={columns[0]!.cell(delivery, context)}
-                      aside={<div data-summary-status><StatusBadge value={delivery.status} /></div>}
+                      aside={<div data-summary-status><StatusBadge value={state.terminated ? "REVERSED" : delivery.status} label={state.terminated ? "已终止" : undefined} /></div>}
                       context={<div className="activity-summary-context">
                         {!clientId && <SiteIdentity clientId={delivery.order_summary?.api_client_id} name={delivery.order_summary?.site_name} />}
                         <span>通知类型：<span>{label(delivery.event.event_type)}</span></span>
+                        {!state.isLatest && <span>已有新发送</span>}
                       </div>}
                       message={delivery.last_error_code ? notificationErrorName(delivery.last_error_code) : undefined}
+                      actions={renderRowAction(delivery)}
                       details={columns.filter((column) =>
                         context.isColumnVisible(column.id) && !context.isSummaryPrimary(column.id),
                       ).map((column) => (
@@ -367,7 +420,8 @@ function DeliveryPage({
                         </ListSummaryField>
                       ))}
                     </ListSummary>
-                  )}
+                    );
+                  }}
                 />
               ) : (
                 <Empty kind="filtered">
@@ -392,6 +446,7 @@ function DeliveryPage({
         )}
       </QueryView>
       </OverlayRecordList>
+      {summaryRedelivery.dialog}
     </ListLayout>
     </ListColumnsProvider>
   );

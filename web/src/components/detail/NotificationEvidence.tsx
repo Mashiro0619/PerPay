@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { ExternalLink } from "lucide-react";
-import { result, type WebhookAttempt, type WebhookDeliveryDetail } from "@/api/client";
+import { result, type WebhookAttempt, type WebhookDeliveryDetail, type WebhookDeliverySummary } from "@/api/client";
 import { attemptResult, latestAttempt, notificationErrorName, notificationRecoveryHint } from "@/lib/detail-summary";
 import { label } from "@/lib/labels";
 import { refreshNotificationRecords } from "@/lib/record-refresh";
@@ -12,22 +12,32 @@ import { ReasonDialog } from "@/components/ReasonDialog";
 import { FieldList, type Field } from "@/components/record/FieldList";
 import { RecordTime, type TimelineEntry } from "@/components/record/Timeline";
 
+export const DEAD_LETTER_QUICK_REASONS = [
+  "回调修复后手动重发",
+  "网络恢复后手动补发",
+] as const;
+
 type DeliveryContext = WebhookDeliveryDetail & {
   attempts: readonly WebhookAttempt[];
 };
 /** The redelivery confirmation and the call that opens it; a created delivery is opened afterwards. */
-export function useRedelivery(detail: DeliveryContext) {
+export function useRedelivery(detail: DeliveryContext | null) {
   const api = useWorkspaceApi();
   const navigate = useNavigate();
   const [snapshot, setSnapshot] = useState<DeliveryContext | null>(null);
   const [sent, setSent] = useState(false);
   const [newDeliveryId, setNewDeliveryId] = useState<string | null>(null);
+  const deliveryId = detail?.delivery.delivery_id ?? null;
+  useEffect(() => {
+    setSent(false);
+  }, [deliveryId]);
   useEffect(() => {
     if (newDeliveryId) navigate("/notifications/" + newDeliveryId);
   }, [newDeliveryId, navigate]);
   const setMessage = useSuccessToast();
   const finalFocus = useRef<HTMLElement | null>(null);
   const open = (trigger: HTMLElement | null) => {
+    if (!detail) return;
     finalFocus.current = trigger;
     setSnapshot(detail);
   };
@@ -37,6 +47,7 @@ export function useRedelivery(detail: DeliveryContext) {
           title="重新发送通知"
           description="再次发送同一事件，业务方需避免重复处理。"
           action="确认重新发送"
+          quickReasons={snapshot.delivery.status === "DEAD_LETTER" ? DEAD_LETTER_QUICK_REASONS : undefined}
           onClose={() => setSnapshot(null)}
           execute={(reason, operationId, signal) =>
             result(
@@ -55,7 +66,7 @@ export function useRedelivery(detail: DeliveryContext) {
             setSent(true);
             setNewDeliveryId(data.delivery.delivery_id);
             setMessage("已创建新通知，等待发送");
-            void refreshNotificationRecords(detail.event.order_id, detail.delivery.delivery_id);
+            void refreshNotificationRecords(snapshot.event.order_id, snapshot.delivery.delivery_id);
           }}
         >
           <FieldList
@@ -70,7 +81,7 @@ export function useRedelivery(detail: DeliveryContext) {
 }
 
 /** Triggers an immediate retry attempt for a waiting delivery without creating a duplicate generation. */
-export function useRetryDelivery(detail: WebhookDeliveryDetail) {
+export function useRetryDelivery(detail: WebhookDeliveryDetail | null) {
   const api = useWorkspaceApi();
   const [pending, setPending] = useState(false);
   const inflight = useRef(false);
@@ -82,22 +93,24 @@ export function useRetryDelivery(detail: WebhookDeliveryDetail) {
     return () => { mounted.current = false; };
   }, []);
   const run = () => {
-    if (inflight.current) return;
+    if (!detail || inflight.current) return;
+    const deliveryId = detail.delivery.delivery_id;
+    const orderId = detail.event.order_id;
     inflight.current = true;
     setPending(true);
     void result(
       api.retryWebhookDelivery({
-        path: { deliveryId: detail.delivery.delivery_id },
+        path: { deliveryId },
         body: {},
       }),
     ).then(
       () => {
         setSuccess("已发起立即重试");
-        void refreshNotificationRecords(detail.event.order_id, detail.delivery.delivery_id);
+        void refreshNotificationRecords(orderId, deliveryId);
       },
       (error: unknown) => {
         setError(error instanceof Error && error.message ? error.message : "立即重试失败，请刷新后重试");
-        void refreshNotificationRecords(detail.event.order_id, detail.delivery.delivery_id);
+        void refreshNotificationRecords(orderId, deliveryId);
       },
     ).finally(() => {
       inflight.current = false;
@@ -105,6 +118,109 @@ export function useRetryDelivery(detail: WebhookDeliveryDetail) {
     });
   };
   return { pending, run };
+}
+
+/** Shared immediate retry runner for list rows (notifications list and active work items). */
+export function useQuickRetryDelivery() {
+  const api = useWorkspaceApi();
+  const [pendingId, setPendingId] = useState<string | null>(null);
+  const inflight = useRef<string | null>(null);
+  const mounted = useRef(true);
+  const setSuccess = useSuccessToast();
+  const setError = useErrorToast();
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
+  const run = (deliveryId: string, orderId: string | null) => {
+    if (inflight.current) return;
+    inflight.current = deliveryId;
+    setPendingId(deliveryId);
+    void result(
+      api.retryWebhookDelivery({
+        path: { deliveryId },
+        body: {},
+      }),
+    ).then(
+      () => {
+        setSuccess("已发起立即重试");
+        void refreshNotificationRecords(orderId ?? "", deliveryId);
+      },
+      (error: unknown) => {
+        setError(error instanceof Error && error.message ? error.message : "立即重试失败，请刷新后重试");
+        void refreshNotificationRecords(orderId ?? "", deliveryId);
+      },
+    ).finally(() => {
+      inflight.current = null;
+      if (mounted.current) setPendingId(null);
+    });
+  };
+  return { pendingId, run };
+}
+
+/** Shared redelivery dialog for dead-lettered rows in the notifications list without leaving the list. */
+export function useSummaryRedelivery() {
+  const api = useWorkspaceApi();
+  const [snapshot, setSnapshot] = useState<WebhookDeliverySummary | null>(null);
+  const finalFocus = useRef<HTMLElement | null>(null);
+  const setMessage = useSuccessToast();
+  const open = (summary: WebhookDeliverySummary, trigger: HTMLElement | null) => {
+    finalFocus.current = trigger;
+    setSnapshot(summary);
+  };
+  const dialog = snapshot && (
+    <ReasonDialog
+      finalFocus={() => finalFocus.current}
+      title="重新发送通知"
+      description="再次发送同一事件，业务方需避免重复处理。"
+      action="确认重新发送"
+      quickReasons={snapshot.status === "DEAD_LETTER" ? DEAD_LETTER_QUICK_REASONS : undefined}
+      onClose={() => setSnapshot(null)}
+      execute={(reason, operationId, signal) =>
+        result(
+          api.redeliverWebhookDelivery({
+            signal,
+            path: { deliveryId: snapshot.delivery_id },
+            body: { reason, redelivery_id: operationId },
+          }),
+        )
+      }
+      onSuccess={() => {
+        finalFocus.current = document.getElementById("main-content");
+        const orderId = snapshot.event.order_id;
+        const deliveryId = snapshot.delivery_id;
+        setSnapshot(null);
+        setMessage("已创建新通知，等待发送");
+        void refreshNotificationRecords(orderId, deliveryId);
+      }}
+    >
+      <FieldList
+        items={[
+          { label: "事件", value: label(snapshot.event.event_type) },
+          snapshot.order_summary && { label: "商品", value: snapshot.order_summary.product_name },
+          snapshot.order_summary && { label: "商户订单号", kind: "id", value: snapshot.order_summary.merchant_order_no },
+        ]}
+      />
+    </ReasonDialog>
+  );
+  return { open, dialog };
+}
+
+/** Actionability state for a list-level delivery summary. */
+export function summaryDeliveryState(summary: WebhookDeliverySummary) {
+  const isLatest = summary.is_latest !== false;
+  const confirmationRevoked =
+    summary.redelivery_blocked_reason === "payment_confirmation_revoked" ||
+    summary.last_error_code === "payment_confirmation_revoked";
+  const terminal = summary.status === "ACKNOWLEDGED" || summary.status === "DEAD_LETTER";
+  return {
+    isLatest,
+    confirmationRevoked,
+    terminal,
+    terminated: confirmationRevoked && summary.status !== "ACKNOWLEDGED",
+    retryable: isLatest && summary.status === "RETRY_WAIT" && !confirmationRevoked,
+    resendable: isLatest && terminal && !confirmationRevoked,
+  };
 }
 
 /** A revoked payment confirmation ends a delivery whatever its own status says. */
