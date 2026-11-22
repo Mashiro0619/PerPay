@@ -1,3 +1,4 @@
+import { useId } from "react";
 import { Bar, CartesianGrid, ComposedChart, Line, XAxis, YAxis } from "recharts";
 import type { TrendDay, TrendMetric } from "@/lib/trend-analytics";
 import { money, count } from "@/lib/format";
@@ -34,6 +35,7 @@ export function CombinedTrendChart({
   tooltipPortal: HTMLDivElement | null;
   legendId: string;
 }) {
+  const gradientId = "combined-bar-" + useId().replace(/[^a-zA-Z0-9_-]/g, "");
   const amountMaximum = Math.max(...data.map(day => day.amount), 0);
   const ordersMaximum = Math.max(...data.map(day => day.orders), 0);
   const activeOrderDays = data.filter(day => day.orders > 0).length;
@@ -48,7 +50,7 @@ export function CombinedTrendChart({
   const dot = ({ cx, cy, payload }: { cx?: number; cy?: number; payload?: TrendDay }) => (
     <circle cx={cx} cy={cy}
       r={payload && (data.length <= 7 || (activeOrderDays <= 7 && payload.orders > 0)) ? 3.5 : 0}
-      fill="var(--card)" stroke="var(--chart-2)" strokeWidth={2}
+      fill="var(--card)" stroke="var(--chart-1)" strokeWidth={2}
       data-trend-point={payload && payload.orders > 0 ? payload.date : undefined}
     />
   );
@@ -59,8 +61,15 @@ export function CombinedTrendChart({
       style={{ minWidth: minimumWidth }} aria-describedby={legendId}
       aria-label="每日确认金额与新建订单，左轴为元，右轴为笔数，左右方向键查看日期">
       <ComposedChart key={layout.fontSize} accessibilityLayer data={data}
+        barCategoryGap="24%"
         margin={{ top: layout.fontSize, right: 0, bottom: layout.fontSize / 2, left: 0 }}>
-        <CartesianGrid vertical={false} strokeDasharray="2 4" strokeOpacity={0.55} yAxisId="amount" />
+        <defs>
+          <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="var(--chart-1)" stopOpacity={0.38} />
+            <stop offset="100%" stopColor="var(--chart-1)" stopOpacity={0.12} />
+          </linearGradient>
+        </defs>
+        <CartesianGrid vertical={false} strokeDasharray="2 4" strokeOpacity={0.42} yAxisId="amount" />
         <XAxis xAxisId={0} dataKey="date" tickLine={false} axisLine={false}
           tickMargin={8} minTickGap={layout.fontSize * 3} padding={{ left: 8, right: 8 }}
           height={layout.xHeight} fontSize={layout.fontSize}
@@ -85,7 +94,7 @@ export function CombinedTrendChart({
             position: "absolute", top: 0, left: 0, width: "max-content",
             maxWidth: "min(20rem, 100%)", pointerEvents: "none",
           } : { maxWidth: "100%" }} isAnimationActive={false}
-          cursor={{ fill: "var(--muted-foreground)", fillOpacity: 0.08 }}
+          cursor={{ fill: "var(--muted)", fillOpacity: 0.45 }}
           content={
             <ChartTooltipContent className="trend-tooltip trend-combined-tooltip"
               labelFormatter={value => {
@@ -105,12 +114,12 @@ export function CombinedTrendChart({
               )} />
           } />
         <Bar dataKey="amount" xAxisId={0} yAxisId="amount"
-          fill="var(--chart-1)" fillOpacity={0.18} stroke="var(--chart-1)" strokeOpacity={0.75}
-          radius={[3, 3, 0, 0]} maxBarSize={28} minPointSize={value => Number(value) > 0 ? 3 : 0}
-          activeBar={{ fillOpacity: 0.3 }} isAnimationActive={false} />
+          fill={"url(#" + gradientId + ")"} stroke="none"
+          radius={[4, 4, 0, 0]} maxBarSize={22} minPointSize={value => Number(value) > 0 ? 3 : 0}
+          activeBar={{ fill: "var(--chart-1)", fillOpacity: 0.56 }} isAnimationActive={false} />
         <Line dataKey="orders" xAxisId={0} yAxisId="orders" type="monotone"
-          stroke="var(--chart-2)" strokeWidth={2.5} strokeDasharray="6 4"
-          dot={dot} activeDot={{ r: 5, fill: "var(--card)", stroke: "var(--chart-2)", strokeWidth: 2 }}
+          stroke="var(--chart-1)" strokeWidth={2}
+          dot={dot} activeDot={{ r: 4.5, fill: "var(--card)", stroke: "var(--chart-1)", strokeWidth: 2.25 }}
           isAnimationActive={false} />
       </ComposedChart>
     </ChartContainer>

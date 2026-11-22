@@ -18,7 +18,19 @@ type DailyAnalyticsProps = {
   scopeKey?: string;
 };
 
-function DailyDate({ day, today, includeYear }: { day: DailyDay; today: string; includeYear: boolean }) {
+function DailyDate({
+  day,
+  today,
+  peakDate,
+  includeYear,
+}: {
+  day: DailyDay;
+  today: string;
+  peakDate: string | null;
+  includeYear: boolean;
+}) {
+  const isToday = day.date === today;
+  const isPeak = peakDate === day.date && day.confirmed_amount_cents > 0 && !isToday;
   return (
     <div className="daily-date">
       <time dateTime={day.date} title={day.date}>
@@ -26,7 +38,8 @@ function DailyDate({ day, today, includeYear }: { day: DailyDay; today: string; 
         {dailyDateLabel(day.date, includeYear)}
       </time>
       <span className="daily-date-weekday">{dailyWeekday(day.date)}</span>
-      {day.date === today && <Badge variant="secondary">今日</Badge>}
+      {isToday && <Badge variant="secondary" className="daily-day-badge">今日</Badge>}
+      {isPeak && <Badge variant="outline" className="daily-day-badge">最高</Badge>}
     </div>
   );
 }
@@ -48,6 +61,8 @@ export function DailyAnalytics({ analytics, pending }: DailyAnalyticsProps) {
   const totalDays = days.length;
   const hasDays = totalDays > 0;
   const includeYear = !!report && report.days[0]?.date.slice(0, 4) !== report.days.at(-1)?.date.slice(0, 4);
+  const peakDate = report?.peak?.date ?? null;
+  const activeDays = days.filter((day) => day.confirmed_amount_cents > 0).length;
 
   return (
     <div ref={ref} className="daily-report" role="region" aria-label="每日数据" aria-busy={pending}>
@@ -55,30 +70,44 @@ export function DailyAnalytics({ analytics, pending }: DailyAnalyticsProps) {
         <div className="daily-report-summary" aria-hidden="true">
           {Array.from({ length: 3 }, (_, index) => (
             <div className="daily-summary-metric" key={index}>
-              <Skeleton className="h-4 w-24" />
-              <Skeleton className="h-7 w-32" />
+              <Skeleton className="h-3.5 w-20" />
+              <Skeleton className="h-7 w-28" />
+              <Skeleton className="h-3.5 w-24" />
             </div>
           ))}
         </div>
       ) : hasDays && report && analytics ? (
         <dl className="daily-report-summary" aria-label="每日数据汇总">
-          <div className="daily-summary-metric" data-daily-summary="total">
+          <div className="daily-summary-metric daily-summary-total" data-daily-summary="total">
             <dt>区间确认金额</dt>
             <dd><ListMoney value={analytics.confirmations.amount_cents} /></dd>
+            <dd className="daily-summary-note">含今天 · 按确认时间</dd>
           </div>
           <div className="daily-summary-metric" data-daily-summary="average">
             <dt>日均确认金额</dt>
             <dd><ListMoney value={report.averageCents} /></dd>
+            <dd className="daily-summary-note">按已结束日期计算</dd>
           </div>
           <div className="daily-summary-metric" data-daily-summary="peak">
             <dt>单日最高金额</dt>
             <dd><ListMoney value={report.peak?.confirmed_amount_cents} /></dd>
-            {report.peak && <dd className="daily-summary-note"><time dateTime={report.peak.date}>{dailyDateLabel(report.peak.date, includeYear)}</time></dd>}
+            <dd className="daily-summary-note">
+              {report.peak ? (
+                <time dateTime={report.peak.date}>{dailyDateLabel(report.peak.date, includeYear)}</time>
+              ) : (
+                "不含今天"
+              )}
+            </dd>
           </div>
         </dl>
       ) : null}
 
-      <div className="daily-report-rows" tabIndex={totalDays > 10 ? 0 : undefined} aria-label="每日收款记录">
+      <div
+        className="daily-report-rows"
+        data-daily-surface={hasDays && !pending ? "true" : undefined}
+        tabIndex={totalDays > 10 ? 0 : undefined}
+        aria-label="每日收款记录"
+      >
         {pending ? (
           <div className="daily-report-loading" aria-hidden="true">
             {Array.from({ length: LOADING_ROWS }, (_, index) => <Skeleton key={index} className="h-9 w-full" />)}
@@ -86,17 +115,28 @@ export function DailyAnalytics({ analytics, pending }: DailyAnalyticsProps) {
         ) : hasDays && report ? (
           isSummary ? (
             <ItemGroup className="record-list daily-mobile-list" role="list" aria-label="每日收款数据">
-              {days.map((day) => (
-                <Item key={day.date} className="record-list-row" size="sm" role="listitem">
-                  <ListSummary
-                    identity={<ListIdentity><DailyDate day={day} today={report.today} includeYear={includeYear} /></ListIdentity>}
-                    aside={<ListMoney value={day.confirmed_amount_cents} label="确认金额" />}
+              {days.map((day) => {
+                const isPeak = peakDate === day.date && day.confirmed_amount_cents > 0 && day.date !== report.today;
+                return (
+                  <Item
+                    key={day.date}
+                    className="record-list-row"
+                    data-daily-today={day.date === report.today || undefined}
+                    data-daily-peak={isPeak || undefined}
+                    data-daily-zero={day.confirmed_amount_cents === 0 || undefined}
+                    size="sm"
+                    role="listitem"
                   >
-                    <ListSummaryField label="确认笔数">{count(day.confirmations)}</ListSummaryField>
-                    <ListSummaryField label="新建订单">{count(day.orders_created)}</ListSummaryField>
-                  </ListSummary>
-                </Item>
-              ))}
+                    <ListSummary
+                      identity={<ListIdentity><DailyDate day={day} today={report.today} peakDate={peakDate} includeYear={includeYear} /></ListIdentity>}
+                      aside={<ListMoney value={day.confirmed_amount_cents} label="确认金额" />}
+                    >
+                      <ListSummaryField label="确认笔数">{count(day.confirmations)}</ListSummaryField>
+                      <ListSummaryField label="新建订单">{count(day.orders_created)}</ListSummaryField>
+                    </ListSummary>
+                  </Item>
+                );
+              })}
             </ItemGroup>
           ) : (
             <Table className="daily-report-table" aria-label="每日收款数据">
@@ -105,14 +145,22 @@ export function DailyAnalytics({ analytics, pending }: DailyAnalyticsProps) {
                 <TableRow><TableHead scope="col">日期</TableHead><TableHead scope="col">确认金额</TableHead><TableHead scope="col">确认笔数</TableHead><TableHead scope="col">新建订单</TableHead></TableRow>
               </TableHeader>
               <TableBody>
-                {days.map((day) => (
-                  <TableRow key={day.date}>
-                    <TableCell><DailyDate day={day} today={report.today} includeYear={includeYear} /></TableCell>
-                    <TableCell><div className="daily-amount"><DailyAmountBar day={day} maximum={report.maximum} /><ListMoney value={day.confirmed_amount_cents} /></div></TableCell>
-                    <TableCell>{count(day.confirmations)}</TableCell>
-                    <TableCell>{count(day.orders_created)}</TableCell>
-                  </TableRow>
-                ))}
+                {days.map((day) => {
+                  const isPeak = peakDate === day.date && day.confirmed_amount_cents > 0 && day.date !== report.today;
+                  return (
+                    <TableRow
+                      key={day.date}
+                      data-daily-today={day.date === report.today || undefined}
+                      data-daily-peak={isPeak || undefined}
+                      data-daily-zero={day.confirmed_amount_cents === 0 || undefined}
+                    >
+                      <TableCell><DailyDate day={day} today={report.today} peakDate={peakDate} includeYear={includeYear} /></TableCell>
+                      <TableCell><div className="daily-amount"><DailyAmountBar day={day} maximum={report.maximum} /><ListMoney value={day.confirmed_amount_cents} /></div></TableCell>
+                      <TableCell data-zero={day.confirmations === 0 || undefined}>{count(day.confirmations)}</TableCell>
+                      <TableCell data-zero={day.orders_created === 0 || undefined}>{count(day.orders_created)}</TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           )
@@ -125,6 +173,11 @@ export function DailyAnalytics({ analytics, pending }: DailyAnalyticsProps) {
         <p role="status" aria-live="polite" aria-atomic="true" className="daily-report-status">
           {pending ? "正在读取每日数据…" : !analytics ? "等待统计数据" : `共 ${totalDays} 天`}
         </p>
+        {!pending && hasDays && report && analytics && (
+          <p className="daily-report-meta">
+            有收款 {count(activeDays)} 天 · 确认 {count(analytics.confirmations.count)} 笔 · 新建 {count(analytics.orders.created)} 笔
+          </p>
+        )}
       </div>
     </div>
   );

@@ -298,6 +298,13 @@ export function ChartAreaInteractive({
               <dl className="trend-summary trend-summary-combined" aria-label="金额与订单汇总">
                 {individualMetrics.map(({ value, label }) => {
                   const formatted = !report ? "—" : value === "amount" ? money(report.amount.total) : count(report.orders.total);
+                  const avgText = !report || !hasDays
+                    ? null
+                    : value === "amount"
+                      ? report.amount.average != null ? `日均 ${money(report.amount.average)}` : null
+                      : report.orders.average != null
+                        ? `日均 ${new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 1 }).format(report.orders.average)} 笔`
+                        : null;
                   return (
                   <div className="trend-total" key={value}>
                     <dt className="flex items-center gap-2">
@@ -308,7 +315,9 @@ export function ChartAreaInteractive({
                       data-value-length={pending ? undefined : formatted.length} className="trend-value leading-tight">
                       {pending ? <Skeleton className="h-9 w-32" /> : formatted}
                     </dd>
-                    <dd className="trend-summary-note">含今天 · {value === "amount" ? "按确认时间" : "按创建时间"}</dd>
+                    <dd className="trend-summary-note">
+                      {avgText ? `${avgText} · ` : ""}含今天 · {value === "amount" ? "按确认时间" : "按创建时间"}
+                    </dd>
                   </div>
                 );})}
               </dl>
@@ -412,7 +421,9 @@ export function ChartAreaInteractive({
                 )}
                 <div className="trend-caption">
                   <p>
-                    {metric === "combined" ? `共 ${data.length} 天` : summary?.activeDays
+                    {metric === "combined"
+                      ? `共 ${data.length} 天 · 有收款 ${report.amount.activeDays} 天 · 有新订单 ${report.orders.activeDays} 天`
+                      : summary?.activeDays
                       ? `${metric === "amount" ? "有收款" : "有新订单"} ${summary.activeDays} 天 / 共 ${data.length} 天`
                       : metric === "amount"
                         ? "这段时间暂无确认收款"

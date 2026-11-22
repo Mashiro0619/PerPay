@@ -72,7 +72,7 @@ export function CombinedTrendPlot({ data, today }: { data: TrendDay[]; today: st
   return (
     <div className="flex min-w-0 flex-col gap-3" data-combined-trend>
       <div id={legendId} role="list" aria-label="混合图图例"
-        className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
+        className="flex min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-1.5 text-xs text-muted-foreground">
         <span role="listitem" className="flex min-w-0 max-w-full items-center gap-2">
           <TrendSeriesSymbol metric="amount" />
           <span>确认金额（左轴 · 元）</span>
