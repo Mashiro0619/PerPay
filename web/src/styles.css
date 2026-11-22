@@ -508,7 +508,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 }
 @container main (min-width: 68rem) {
   .overview-hero:has(> .site-overview-section) .site-overview-grid {
-    max-height: 25.25rem;
+    max-height: 23.5rem;
     overflow-y: auto;
     overscroll-behavior-y: contain;
   }
@@ -1439,19 +1439,49 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 .trend-header {
   display: flex;
   min-width: 0;
-  flex-direction: column;
-  gap: 0.75rem;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.625rem 1rem;
 }
-.trend-heading { display: flex; min-width: 0; width: 100%; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.75rem 1.5rem; }
-.trend-identity { display: flex; min-width: 0; max-width: 100%; flex-wrap: wrap; align-items: center; gap: 0.125rem 0.75rem; }
+.trend-identity {
+  display: flex;
+  min-width: 0;
+  max-width: 100%;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.125rem;
+}
 .trend-title { display: flex; min-width: 0; align-items: center; gap: 0.25rem; }
+.trend-actions {
+  display: flex;
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+.trend-toolbar {
+  display: flex;
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.trend-controls-divider {
+  height: 1rem;
+  align-self: center;
+  background: var(--console-hairline, var(--border));
+}
 .trend-controls { display: flex; min-width: 0; max-width: 100%; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
-.trend-tabs { min-width: 0; max-width: 100%; width: fit-content; height: auto; }
-.trend-tabs [data-slot="tabs-trigger"] { min-width: 0; height: auto; min-height: 1.75rem; flex: 1 1 auto; white-space: normal; }
+.trend-tabs { min-width: 0; max-width: 100%; width: fit-content; height: 2rem; }
+.trend-tabs [data-slot="tabs-trigger"] { min-width: 0; height: auto; min-height: 1.625rem; flex: 1 1 auto; font-size: 0.75rem; white-space: nowrap; }
 .trend-period { min-width: 0; max-width: 100%; }
-.trend-period [data-slot="select-trigger"] { max-width: 100%; min-height: 2rem; }
-.trend-toolbar { display: flex; min-width: 0; width: 100%; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 1rem; }
-.trend-dates { min-width: 0; font-size: 0.75rem; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.trend-period [data-slot="select-trigger"] { max-width: 100%; height: 2rem; min-height: 2rem; font-size: 0.75rem; }
+.trend-dates { min-width: 0; font-size: 0.75rem; line-height: 1.35; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .trend-dates time { white-space: nowrap; }
 .trend-content { display: flex; min-width: 0; flex-direction: column; gap: 1.125rem; }
 @media (max-width: 767px) {
@@ -1463,7 +1493,21 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   }
 }
 .trend-header [data-slot="toggle-group"] { min-width: 0; max-width: 100%; align-items: stretch; }
-.trend-header [data-slot="toggle-group-item"] { min-width: 0; height: auto; min-height: 2rem; flex: 0 1 auto; flex-wrap: wrap; white-space: normal; }
+.trend-header [data-slot="toggle-group-item"] {
+  min-width: 0;
+  height: 1.625rem;
+  min-height: 1.625rem;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  padding-inline: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
+.trend-header [data-slot="toggle-group-item"]:is([aria-pressed="true"], [data-state="on"]) {
+  color: var(--foreground);
+  font-weight: 500;
+}
 .trend-metrics,
 .trend-types {
   padding: 2px;
@@ -1471,7 +1515,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   border: 1px solid var(--console-hairline, var(--border));
 }
 .trend-metrics { flex-wrap: wrap; }
-.trend-types [data-slot="toggle-group-item"] { width: 2rem; padding-inline: 0; flex: 0 1 2rem; }
+.trend-types [data-slot="toggle-group-item"] { width: 1.75rem; padding-inline: 0; flex: 0 1 1.75rem; }
 .trend-summary { display: grid; min-width: 0; grid-template-columns: minmax(0, 1.3fr) repeat(2, minmax(0, 1fr)); gap: 1rem; align-items: start; }
 .trend-summary > div { display: flex; min-width: 0; flex-direction: column; gap: 0.25rem; container-type: inline-size; }
 .trend-summary dt, .trend-summary-note { color: var(--muted-foreground); font-size: 0.75rem; }
@@ -1600,16 +1644,38 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 }
 
 @media (pointer: coarse) and (min-width: 768px) {
-  .trend-header :is([data-slot="toggle-group-item"], [data-slot="tabs-trigger"]) { min-width: 40px; min-height: 40px; }
-  .trend-period [data-slot="select-trigger"] { min-height: max(2rem, 40px); }
+  .trend-header :is([data-slot="toggle-group-item"], [data-slot="tabs-trigger"]) { min-width: 40px; min-height: 40px; height: auto; }
+  .trend-tabs { height: auto; }
+  .trend-period [data-slot="select-trigger"] { height: auto; min-height: max(2rem, 40px); }
+}
+@container card (max-width: 44.999rem) {
+  .trend-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.625rem 1rem;
+  }
+  .trend-actions { display: contents; }
+  .trend-identity { grid-column: 1; grid-row: 1; }
+  .trend-controls { grid-column: 2; grid-row: 1; justify-self: end; }
+  .trend-controls-divider { display: none; }
+  .trend-toolbar { grid-column: 1 / -1; grid-row: 2; width: 100%; justify-content: space-between; }
 }
 @container card (max-width: 28rem) {
-  .trend-identity, .trend-controls { width: 100%; }
-  .trend-controls { justify-content: space-between; }
-  .trend-tabs { flex: 1 1 auto; }
+  .trend-header {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.625rem;
+  }
+  .trend-identity { width: 100%; order: 1; }
+  .trend-controls { width: 100%; order: 2; justify-content: space-between; }
+  .trend-toolbar { width: 100%; order: 3; justify-content: space-between; column-gap: 0.25rem; }
+  .trend-tabs { flex: 1 1 auto; height: auto; }
+  .trend-tabs [data-slot="tabs-trigger"] { white-space: normal; }
   .trend-tabs [data-slot="tabs-trigger"]:first-child { flex-shrink: 0; white-space: nowrap; }
-  .trend-toolbar { column-gap: 0.25rem; }
-  .trend-metrics [data-slot="toggle-group-item"] { padding-inline: 0.25rem; }
+  .trend-header [data-slot="toggle-group-item"] { height: auto; min-height: 2rem; white-space: normal; }
+  .trend-metrics [data-slot="toggle-group-item"] { padding-inline: 0.375rem; }
   .trend-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem 0.75rem; }
   .trend-total { grid-column: 1 / -1; }
   .trend-summary .trend-total > [data-metric-value] { font-size: min(1.875rem, calc(100cqi / var(--overview-value-units, 1))); }
@@ -1619,13 +1685,14 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 }
 @media (max-width: 767px) {
   .trend-controls { justify-content: flex-start; }
-  .trend-tabs { flex: 0 1 auto; flex-wrap: wrap; }
-  .trend-tabs [data-slot="tabs-trigger"] { min-width: 40px; min-height: 2rem; flex: 0 1 auto; padding-inline: 3px; }
+  .trend-tabs { flex: 0 1 auto; flex-wrap: wrap; height: auto; }
+  .trend-tabs [data-slot="tabs-trigger"] { min-width: 40px; min-height: 2rem; flex: 0 1 auto; padding-inline: 3px; white-space: normal; }
   .trend-tabs [data-slot="tabs-trigger"]:first-child { flex-shrink: 1; white-space: normal; }
-  .trend-metrics [data-slot="toggle-group-item"] { padding-inline: 0.1875rem; }
+  .trend-header [data-slot="toggle-group-item"] { height: auto; min-height: 2rem; white-space: normal; }
+  .trend-metrics [data-slot="toggle-group-item"] { padding-inline: 0.25rem; }
 }
 @media (max-width: 767px) and (pointer: coarse) {
-  .trend-period [data-slot="select-trigger"] { min-height: max(2rem, 40px); }
+  .trend-period [data-slot="select-trigger"] { height: auto; min-height: max(2rem, 40px); }
   .trend-types [data-slot="toggle-group-item"] { margin-inline: 4px; }
   body:not(:has(.trend-types [data-slot="toggle-group-item"]:focus-visible)) .trend-type-tooltip { display: none; }
   .trend-type-tooltip,

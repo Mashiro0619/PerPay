@@ -152,7 +152,7 @@ async function exerciseControls(page: Page, card: Locator, touch: boolean) {
 }
 
 for (const width of [1440, 1920]) {
-  test(`${width}px: the trend identity and time controls lead a separate chart toolbar`, async ({ page, manifest }, info) => {
+  test(`${width}px: the trend identity and controls share a single compact header row`, async ({ page, manifest }, info) => {
     await page.setViewportSize({ width, height: 1100 });
     await page.emulateMedia({ colorScheme: "dark" });
     await page.addInitScript(() => {
@@ -168,19 +168,18 @@ for (const width of [1440, 1920]) {
     await capture(card, info, `trend-card-${width}`);
     const controls = card.locator(".trend-controls");
     const groups = await sameRow([
+      card.getByRole("group", { name: "趋势指标", exact: true }),
+      card.getByRole("group", { name: "图表类型", exact: true }),
       controls.getByRole("combobox", { name: "统计周期", exact: true }),
       controls.getByRole("tablist", { name: "收款趋势视图", exact: true }),
     ]);
-    const identity = await sameRow([card.locator(".trend-title"), card.locator(".trend-dates")]);
-    const heading = await sameRow([card.locator(".trend-identity"), controls]);
-    const toolbar = await sameRow([
-      card.getByRole("group", { name: "趋势指标", exact: true }),
-      card.getByRole("group", { name: "图表类型", exact: true }),
-    ]);
-    expect(Math.min(...toolbar.map(box => box.y)), "chart choices follow the identity and time controls").toBeGreaterThanOrEqual(Math.max(...heading.map(box => box.bottom)) - 1);
+    const headerRow = await sameRow([card.locator(".trend-identity"), card.locator(".trend-actions")]);
+    const titleBox = await bounds(card.locator(".trend-title"));
+    const datesBox = await bounds(card.locator(".trend-dates"));
+    expect(datesBox.y, "the date range sits cleanly beneath the title").toBeGreaterThanOrEqual(titleBox.bottom - 1);
     const fit = await containedControls(card);
     expect(fit.controls.filter(control => control.textLines > 1), "wide controls retain their labels on one line instead of compressing the text").toEqual([]);
-    await record(page, info, { feature: "trend-header-and-chart-toolbar", width, groups, identity, heading, toolbar, fit });
+    await record(page, info, { feature: "trend-header-unified-row", width, groups, headerRow, titleBox, datesBox, fit });
 
     if (width === 1440) {
       const writes: string[] = [];
