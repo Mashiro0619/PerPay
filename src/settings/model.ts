@@ -43,6 +43,7 @@ export const DEFAULT_BACKUP_KEEP_COUNT = 7;
 export interface CollectionSettings {
   readonly codePayload: string;
   readonly orderTtlSeconds: number;
+  readonly allowZeroAmountOffset?: boolean;
   readonly amountOffsetMaximumCents: number;
   readonly amountReuseCooldownSeconds: number;
 }

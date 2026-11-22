@@ -41,7 +41,7 @@ const fieldLabels: Readonly<Record<string, string>> = {
   name: "名称", enabled: "启用状态", deleted: "删除状态", accepting_orders: "接收新订单", notifications_enabled: "付款通知",
   notification_origin: "通知域名", return_origin: "返回域名", "collection.mode": "支付宝账号分配方式", "collection.accounts": "参与收款的账号",
   system_name: "系统名称", checkout_name: "收银台名称", checkout_help_url: "收银台帮助链接", checkout_show_product_name: "显示商品名称", dashboard_chart_type: "收款趋势默认图形",
-  order_ttl_seconds: "收银台有效期（秒）", amount_offset_maximum_cents: "最大加价金额（分）", amount_reuse_cooldown_seconds: "同金额冷却时长（秒）", pending_order_limit: "待付款订单上限（笔）",
+  order_ttl_seconds: "收银台有效期（秒）", allow_zero_amount_offset: "允许原价起（从 ¥0.00 开始加价）", amount_offset_maximum_cents: "最大加价金额（分）", amount_reuse_cooldown_seconds: "同金额冷却时长（秒）", pending_order_limit: "待付款订单上限（笔）",
   app_id: "App ID", environment: "支付宝环境", code_payload: "收款码", collection_code_payload: "收款码",
   private_key: "应用私钥", provider_private_key: "应用私钥", public_key: "支付宝公钥", provider_public_key: "支付宝公钥", pending_private_key: "待启用应用私钥",
   api_secret: "API 密钥", webhook_secret: "通知签名密钥", cidrs: "管理员 IP 白名单", admin_access_enabled: "管理员 IP 白名单开关",

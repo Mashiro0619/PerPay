@@ -215,6 +215,7 @@ export class OrderService {
           idempotencyKeyDigest: digestIdempotencyKey(clientId, request.idempotency_key),
           requestFingerprint: fingerprintCreateOrderRequest(request),
           ttlMilliseconds: settings.collection.orderTtlSeconds * 1000,
+          allowZeroAmountOffset: settings.collection.allowZeroAmountOffset === true,
           amountOffsetMaximumCents: settings.collection.amountOffsetMaximumCents,
           amountReuseCooldownSeconds: settings.collection.amountReuseCooldownSeconds,
           checkoutKeyRotationMilliseconds: settings.advanced.checkoutKeyRotationDays *
@@ -449,7 +450,7 @@ export class OrderService {
     const policy = site?.configuration.policy;
     let collection: CollectionSettings;
     if (policy) {
-      collection = { codePayload: settings.collection?.codePayload ?? "", orderTtlSeconds: policy.orders.order_ttl_seconds, amountOffsetMaximumCents: policy.orders.amount_offset_maximum_cents, amountReuseCooldownSeconds: policy.orders.amount_reuse_cooldown_seconds };
+      collection = { codePayload: settings.collection?.codePayload ?? "", orderTtlSeconds: policy.orders.order_ttl_seconds, allowZeroAmountOffset: policy.orders.allow_zero_amount_offset === true, amountOffsetMaximumCents: policy.orders.amount_offset_maximum_cents, amountReuseCooldownSeconds: policy.orders.amount_reuse_cooldown_seconds };
     } else if ("webhook" in settings) {
       if (!settings.collection) throw new OrderError("system_not_configured", "收款配置未完成");
       collection = settings.collection;

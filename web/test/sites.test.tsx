@@ -714,4 +714,36 @@ describe("website field feedback", () => {
     expect(await screen.findByRole("heading", { name: "订单目标页" })).toBeVisible();
     expect(view.router.state.location.pathname).toBe("/orders");
   });
+
+  it("toggles allow_zero_amount_offset, allows 0 maximum offset when enabled, and resets 0 to 1 when disabled", async () => {
+    const view = mount("/sites/site_test/settings/orders"), user = userEvent.setup();
+    const toggle = await screen.findByRole("switch", { name: "允许原价起（从 ¥0.00 开始加价）" });
+    const maxOffset = screen.getByLabelText("最大加价金额（分）");
+    expect(toggle).not.toBeChecked();
+    expect(maxOffset).toHaveAttribute("min", "1");
+
+    await user.click(toggle);
+    expect(toggle).toBeChecked();
+    expect(maxOffset).toHaveAttribute("min", "0");
+    fireEvent.change(maxOffset, { target: { value: "0" } });
+    expect(maxOffset).toHaveValue(0);
+
+    await user.click(screen.getByRole("button", { name: "保存业务网站" }));
+    await waitFor(() => expect(view.writes).toHaveLength(1));
+    expect(view.writes[0]!.body).toMatchObject({
+      configuration: {
+        policy: {
+          orders: {
+            allow_zero_amount_offset: true,
+            amount_offset_maximum_cents: 0,
+          },
+        },
+      },
+    });
+
+    await user.click(toggle);
+    expect(toggle).not.toBeChecked();
+    expect(maxOffset).toHaveAttribute("min", "1");
+    expect(maxOffset).toHaveValue(1);
+  });
 });

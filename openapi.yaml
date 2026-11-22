@@ -1,7 +1,7 @@
 openapi: 3.1.1
 info:
   title: PerPay Native API
-  version: 1.0.0-rc.5
+  version: 1.0.0
   summary: Self-hosted collection-code payment and reconciliation API
   license:
     name: MIT
@@ -1415,7 +1415,7 @@ paths:
         - System
       operationId: requestLedgerScan
       summary: 请求一次手动查账并读取其真实执行进度
-      description: 复用当前查账调度器，提前普通等待至允许的最短间隔；保留持久化保护期限、失败退避、 支付宝 Retry-After 与存储恢复保护。运行中或等待中的请求复用同一标识。 202 仅表示已接受，实际结果由管理员 system/status 的 ledger.manual_scan 返回。 本轮结束可能为 PARTIAL 或 SKIPPED，并不表示已确认收款。最近一次终态保存在内存， 直到下一次请求或运行配置更换；进程重启后可为空。运行期切换会将未完成请求标记为 FAILED/runtime_changed。 只接受空 JSON 对象，不接受查询参数。只读演示禁止执行。
+      description: 复用当前查账调度器，管理员手动查账立即发起探测，不受常规等待、最小间隔或历史失败退避锁死，仅在已有查账执行中合并防连击并保留存储恢复保护；成功后立即清除历史退避并恢复正常轮询。后台自动查账与收银台公开核实仍严格遵守最小间隔、指数退避与支付宝 Retry-After。202 仅表示已接受，实际结果由管理员 system/status 的 ledger.manual_scan 返回。本轮结束可能为 PARTIAL 或 SKIPPED，并不表示已确认收款。最近一次终态保存在内存，直到下一次请求或运行配置更换；进程重启后可为空。运行期切换会将未完成请求标记为 FAILED/runtime_changed。可选传入 alipay_account_id，不接受查询参数。只读演示禁止执行。
       security:
         - AdminSessionCookie: []
           AdminCsrfCookie: []
@@ -10566,7 +10566,7 @@ components:
           maximum: 9999999998
         payable_amount_cents:
           type: integer
-          minimum: 2
+          minimum: 1
           maximum: 9999999999
         received_amount_cents:
           type:
@@ -10658,7 +10658,7 @@ components:
           maximum: 9999999998
         payable_amount_cents:
           type: integer
-          minimum: 2
+          minimum: 1
           maximum: 9999999999
         received_amount_cents:
           type:
@@ -10867,7 +10867,7 @@ components:
           maximum: 9999999998
         payable_amount_cents:
           type: integer
-          minimum: 2
+          minimum: 1
           maximum: 9999999999
         received_amount_cents:
           type:
@@ -11043,7 +11043,7 @@ components:
       additionalProperties: false
       required: [payable_amount_cents, currency, collection_code_payload]
       properties:
-        payable_amount_cents: { type: integer, minimum: 2, maximum: 9999999999 }
+        payable_amount_cents: { type: integer, minimum: 1, maximum: 9999999999 }
         currency: { const: CNY }
         collection_code_payload:
           type: string
@@ -11851,7 +11851,7 @@ components:
         site_name: { type: [string, 'null'], description: "Current owning site name; administrator responses only. Null for historical pre-site schema fixtures." }
         merchant_order_no: { type: string, minLength: 1, maxLength: 128 }
         requested_amount_cents: { type: integer, minimum: 1, maximum: 9999999999 }
-        payable_amount_cents: { type: integer, minimum: 2, maximum: 9999999999 }
+        payable_amount_cents: { type: integer, minimum: 1, maximum: 9999999999 }
         received_amount_cents: { type: [integer, 'null'], minimum: 1, maximum: 999999999999 }
         currency: { const: CNY }
         product_name: { type: string, minLength: 1, maxLength: 200 }
@@ -12086,7 +12086,7 @@ components:
         product_name: { type: string, minLength: 1, maxLength: 200 }
         note: { type: [string, 'null'], maxLength: 500 }
         requested_amount_cents: { type: integer, minimum: 1, maximum: 9999999998 }
-        payable_amount_cents: { type: integer, minimum: 2, maximum: 9999999999 }
+        payable_amount_cents: { type: integer, minimum: 1, maximum: 9999999999 }
         received_amount_cents: { type: integer, minimum: 1, maximum: 9999999999 }
         currency: { const: CNY }
         payment_status:
@@ -12224,6 +12224,10 @@ components:
         - type: object
           required: [event, target]
           properties:
+            is_latest: { type: boolean }
+            redelivery_blocked_reason:
+              type: [string, 'null']
+              enum: [payment_confirmation_revoked, null]
             order_summary:
               anyOf:
                 - { $ref: '#/components/schemas/OrderIdentitySummary' }
@@ -12660,10 +12664,15 @@ components:
               type: integer
               minimum: 60
               maximum: 1800
+            allow_zero_amount_offset:
+              type: boolean
+              default: false
+              description: 关闭时从 +0.01 起加价以避开个人日常整数收款；开启后允许首笔订单按原价（+0.00）收款，并在并发时依次递增。
             amount_offset_maximum_cents:
               type: integer
-              minimum: 1
+              minimum: 0
               maximum: 99
+              description: 未开启 allow_zero_amount_offset 时至少为 1；开启后允许设为 0（仅原价单槽位）。
             amount_reuse_cooldown_seconds:
               type: integer
               minimum: 60

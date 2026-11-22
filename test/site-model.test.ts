@@ -13,7 +13,7 @@ import {
 } from "../src/sites/model.ts";
 
 const policy = (): SitePolicy => ({
-  orders: { order_ttl_seconds: 300, amount_offset_maximum_cents: 99, amount_reuse_cooldown_seconds: 60, pending_order_limit: null },
+  orders: { order_ttl_seconds: 300, allow_zero_amount_offset: false, amount_offset_maximum_cents: 99, amount_reuse_cooldown_seconds: 60, pending_order_limit: null },
   display: { checkout_name: "PerPay", checkout_help_url: null, checkout_show_product_name: true },
   notification_delivery: { timeout_milliseconds: 5000, maximum_attempts: 12, retry_base_seconds: 5, retry_maximum_seconds: 3600 },
 });
@@ -90,6 +90,24 @@ describe("complete website configuration", () => {
       assert.equal(sitePolicySchema.safeParse({ ...policy(), orders: { ...policy().orders, ...patch } }).success, false);
     }
     assert.equal(sitePolicySchema.safeParse({ ...policy(), notification_delivery: { ...policy().notification_delivery, retry_base_seconds: 10, retry_maximum_seconds: 9 } }).success, false);
+  });
+  it("defaults allow_zero_amount_offset to false and allows 0 maximum offset only when opted in", () => {
+    const legacyOrders = { order_ttl_seconds: 300, amount_offset_maximum_cents: 99, amount_reuse_cooldown_seconds: 60, pending_order_limit: null };
+    const parsedLegacy = sitePolicySchema.parse({ ...policy(), orders: legacyOrders });
+    assert.equal(parsedLegacy.orders.allow_zero_amount_offset, false);
+
+    const zeroOnly = sitePolicySchema.parse({
+      ...policy(),
+      orders: { ...policy().orders, allow_zero_amount_offset: true, amount_offset_maximum_cents: 0 },
+    });
+    assert.equal(zeroOnly.orders.allow_zero_amount_offset, true);
+    assert.equal(zeroOnly.orders.amount_offset_maximum_cents, 0);
+
+    const zeroRejectedWhenDisabled = sitePolicySchema.safeParse({
+      ...policy(),
+      orders: { ...policy().orders, allow_zero_amount_offset: false, amount_offset_maximum_cents: 0 },
+    });
+    assert.equal(zeroRejectedWhenDisabled.success, false);
   });
   it("rejects unsafe display configuration", () => {
     for (const patch of [{ checkout_name: "" }, { checkout_name: "bad\u0000name" }, { checkout_help_url: "javascript:alert(1)" }, { checkout_help_url: "http://help.example.com" }]) {

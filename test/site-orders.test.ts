@@ -109,3 +109,27 @@ it("creates with explicit website policy after the migrated default website is d
     assert.throws(() => f.orders.forSite("default").create(request("deleted")), { code: "site_not_found" });
   } finally { f.close(); }
 });
+
+it("defaults to +0.01 offset and starts from 0.00 only when allow_zero_amount_offset is enabled on the site", async () => {
+  const f = await fixture();
+  try {
+    const defaultSite = f.createSite("默认加价");
+    const zeroSite = f.createSite("原价起");
+    const config = structuredClone(zeroSite.configuration);
+    config.policy.orders.allow_zero_amount_offset = true;
+    config.policy.orders.amount_offset_maximum_cents = 0;
+    f.sites.update(zeroSite.clientId, { revision: zeroSite.revision, configuration: config }, audit, f.now());
+
+    const defaultOrder = f.orders.forSite(defaultSite.clientId).create(request("default-offset")).order;
+    assert.equal(defaultOrder.payableAmountCents, 10001);
+
+    const exactOrder = f.orders.forSite(zeroSite.clientId).create(request("zero-offset-1")).order;
+    assert.equal(exactOrder.payableAmountCents, 10000);
+
+    // Second concurrent order on the 0..0 site is rejected with amount_slots_exhausted
+    assert.throws(
+      () => f.orders.forSite(zeroSite.clientId).create(request("zero-offset-2")),
+      (error: unknown) => typeof error === "object" && error !== null && "code" in error && (error as { code: unknown }).code === "amount_slots_exhausted",
+    );
+  } finally { f.close(); }
+});

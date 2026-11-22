@@ -9,6 +9,7 @@ const fields = [
   ["basic", "accepting_orders", "允许新订单"],
   ["collection", "collection", "收款账号与分配方式"],
   ["orders", "policy.orders.order_ttl_seconds", "收银台有效期（秒）"],
+  ["orders", "policy.orders.allow_zero_amount_offset", "允许原价起（从 ¥0.00 开始加价）"],
   ["orders", "policy.orders.amount_offset_maximum_cents", "最大加价金额（分）"],
   ["orders", "policy.orders.amount_reuse_cooldown_seconds", "同金额冷却时长（秒）"],
   ["orders", "policy.orders.pending_order_limit", "待付款订单上限（笔）"],

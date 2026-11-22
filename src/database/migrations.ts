@@ -12,6 +12,7 @@ import { DISPUTE_RECONFIRMATION_SCHEMA_SQL } from "../reconciliation/dispute-sch
 import { EVIDENCE_PAYLOAD_SCHEMA_SQL } from "../ledger/evidence-payload-schema.ts";
 import { HISTORY_ARCHIVE_SCHEMA_SQL } from "../archive/schema.ts";
 import { REQUEST_CHECKPOINT_ARCHIVE_SCHEMA_SQL } from "../ledger/request-checkpoint-archive-schema.ts";
+import { ZERO_AMOUNT_OFFSET_SCHEMA_SQL } from "../orders/zero-offset-schema.ts";
 
 export interface Migration {
   readonly version: number;
@@ -5045,4 +5046,5 @@ export const migrations: readonly Migration[] = [
   { version: 45, name: "shared_compressed_ledger_evidence", sql: EVIDENCE_PAYLOAD_SCHEMA_SQL },
   { version: 46, name: "manual_history_archives", sql: HISTORY_ARCHIVE_SCHEMA_SQL },
   { version: 47, name: "archived_request_checkpoint_watermarks", sql: REQUEST_CHECKPOINT_ARCHIVE_SCHEMA_SQL },
+  { version: 48, name: "allow_zero_amount_offset", sql: ZERO_AMOUNT_OFFSET_SCHEMA_SQL },
 ] as const;

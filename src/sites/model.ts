@@ -30,10 +30,19 @@ export type SiteCollection = z.infer<typeof siteCollectionSchema>;
 
 export const siteOrderPolicySchema = z.object({
   order_ttl_seconds: collectionSettingsInputSchema.shape.order_ttl_seconds,
-  amount_offset_maximum_cents: collectionSettingsInputSchema.shape.amount_offset_maximum_cents,
+  allow_zero_amount_offset: z.boolean().default(false),
+  amount_offset_maximum_cents: z.number().int().min(0).max(99),
   amount_reuse_cooldown_seconds: collectionSettingsInputSchema.shape.amount_reuse_cooldown_seconds.unwrap(),
   pending_order_limit: z.number().int().positive().nullable(),
-}).strict();
+}).strict().superRefine((input, context) => {
+  if (!input.allow_zero_amount_offset && input.amount_offset_maximum_cents < 1) {
+    context.addIssue({
+      code: "custom",
+      path: ["amount_offset_maximum_cents"],
+      message: "未开启允许原价起时，最大加价金额至少为 1 分。",
+    });
+  }
+});
 
 export const siteDisplaySchema = z.object({
   checkout_name: nameSchema,

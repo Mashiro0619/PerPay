@@ -10,6 +10,7 @@ import type { SitePolicy } from "@/api/client";
 import { integerUnits, siteTimeoutError, siteTimeoutSeconds } from "@/lib/site-timeout";
 import {
   Field,
+  FieldContent,
   FieldDescription,
   FieldError,
   FieldGroup,
@@ -41,6 +42,7 @@ export function SitePolicyFields({
   onSecondsDraftChange?: (raw: string) => void;
 }) {
   const limitId = useId();
+  const zeroOffsetId = useId();
   const timeoutId = useId();
   const timeoutRaw = secondsDraft ?? siteTimeoutSeconds(value.notification_delivery.timeout_milliseconds);
   const timeoutError = siteTimeoutError(timeoutRaw) ??
@@ -86,12 +88,36 @@ export function SitePolicyFields({
               })
             }
           />
+          <Field orientation="horizontal" data-disabled={disabled}>
+            <FieldContent>
+              <FieldLabel htmlFor={zeroOffsetId}>允许原价起（从 ¥0.00 开始加价）</FieldLabel>
+              <FieldDescription id={zeroOffsetId + "-hint"}>
+                关闭时默认从 +¥0.01 起加价，以避开个人日常整数收款撞单；开启后首笔订单按原价收款，同金额并发时再依次 +¥0.01 递增。
+              </FieldDescription>
+            </FieldContent>
+            <Switch
+              id={zeroOffsetId}
+              aria-describedby={zeroOffsetId + "-hint"}
+              disabled={disabled}
+              checked={Boolean(value.orders.allow_zero_amount_offset)}
+              onCheckedChange={(checked) =>
+                change((p) => {
+                  p.orders.allow_zero_amount_offset = checked;
+                  if (!checked && p.orders.amount_offset_maximum_cents < 1) {
+                    p.orders.amount_offset_maximum_cents = 1;
+                  }
+                })
+              }
+            />
+          </Field>
           <NumberField
             label="最大加价金额（分）"
-            hint="每笔订单默认在原金额上加价 1 分起以区分付款，同金额并发时依次递增，上限为此处设定值（1～99 分）。"
+            hint={value.orders.allow_zero_amount_offset
+              ? "已开启原价起：首笔按原价（+0 分）收款，同金额并发时依次递增至此处设定值（0～99 分；设为 0 表示完全不加价，同金额同时仅限 1 笔待付款）。"
+              : "每笔订单默认在原金额上加价 1 分起以区分付款，同金额并发时依次递增，上限为此处设定值（1～99 分）。"}
             error={error("orders.amount_offset_maximum_cents")}
             value={value.orders.amount_offset_maximum_cents}
-            min={1}
+            min={value.orders.allow_zero_amount_offset ? 0 : 1}
             max={99}
             onChange={(n) =>
               change((p) => {

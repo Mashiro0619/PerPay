@@ -96,6 +96,7 @@ function siteSummaryRows(site: Site, section: string): SettingsSummaryRow[] {
   ];
   if (section === "orders") return [
     ["收银台有效期", durationLabel(policy.orders.order_ttl_seconds)],
+    ["加价起点", policy.orders.allow_zero_amount_offset ? "¥0.00（允许原价起）" : "¥0.01（默认）"],
     ["最大加价金额", money(policy.orders.amount_offset_maximum_cents)],
     ["同金额冷却时长", durationLabel(policy.orders.amount_reuse_cooldown_seconds)],
     ["待付款订单上限", policy.orders.pending_order_limit === null ? "不限" : count(policy.orders.pending_order_limit) + " 笔"],

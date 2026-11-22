@@ -129,6 +129,7 @@ export interface CreateStoredOrderInput {
   readonly idempotencyKeyDigest: string;
   readonly requestFingerprint: string;
   readonly ttlMilliseconds: number;
+  readonly allowZeroAmountOffset?: boolean | undefined;
   readonly amountOffsetMaximumCents: number;
   readonly amountReuseCooldownSeconds?: number | undefined;
   /** Runtime checkout policy captured when this order is created. */
@@ -482,7 +483,7 @@ export class OrderStore {
       let retryAfterSeconds = Number.POSITIVE_INFINITY;
       for (const profile of profiles) {
         const allocation = allocateAmountSlot(connection, profile!.alipayAccountId,
-          input.request.amount_cents, input.amountOffsetMaximumCents, now);
+          input.request.amount_cents, input.amountOffsetMaximumCents, now, input.allowZeroAmountOffset === true);
         if (allocation.kind === "allocated") { selected = { profile: profile!, allocation }; break; }
         retryAfterSeconds = Math.min(retryAfterSeconds, allocation.retryAfterSeconds);
       }
@@ -949,10 +950,12 @@ function allocateAmountSlot(
   requestedAmountCents: number,
   maximumOffsetCents: number,
   now: number,
+  allowZeroAmountOffset = false,
 ): AmountAllocationResult {
   const accountColumn = hasAccountColumn(connection);
   let earliestAvailableAt: number | undefined;
-  for (let offset = 1; offset <= maximumOffsetCents; offset += 1) {
+  const startOffset = allowZeroAmountOffset ? 0 : 1;
+  for (let offset = startOffset; offset <= maximumOffsetCents; offset += 1) {
     const payableAmountCents = requestedAmountCents + offset;
     if (payableAmountCents > MAX_PAYABLE_AMOUNT_CENTS) break;
 

@@ -1648,6 +1648,8 @@ export type WebhookDeliveryFields = {
 };
 export type WebhookDelivery = WebhookDeliveryFields;
 export type WebhookDeliverySummary = WebhookDeliveryFields & {
+    is_latest?: boolean;
+    redelivery_blocked_reason?: 'payment_confirmation_revoked' | null;
     order_summary?: OrderIdentitySummary | null;
     event: {
         event_type: string;
@@ -1761,6 +1763,7 @@ export type ErrorEnvelope = {
 export type SitePolicy = {
     orders: {
         order_ttl_seconds: number;
+        allow_zero_amount_offset?: boolean;
         amount_offset_maximum_cents: number;
         amount_reuse_cooldown_seconds: number;
         pending_order_limit: number | null;

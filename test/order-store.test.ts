@@ -1180,6 +1180,69 @@ describe("OrderStore", () => {
       assert.equal(secondPage.nextCursor, null);
     });
   });
+
+  it("allocates zero offset from exact price when allowZeroAmountOffset is enabled and respects cross-base collisions and single-slot exhaustion", async () => {
+    await withStore(async ({ database, store, setNow }) => {
+      syncProfile(store, "https://qr.example.test/zero-offset");
+
+      // Exact ¥0.01 -> ¥0.01 when zero offset is opted in
+      const tiny = createdAggregate(store.createOrder({
+        ...createInput(requestFor("zero-tiny", "zero-tiny", 1), 0),
+        allowZeroAmountOffset: true,
+      }));
+      assert.equal(tiny.order.requestedAmountCents, 1);
+      assert.equal(tiny.order.payableAmountCents, 1);
+
+      // Single-slot (0..0) exhausts immediately on a second concurrent order, then reuses after close + cooldown
+      assert.deepEqual(
+        store.createOrder({
+          ...createInput(requestFor("zero-tiny-2", "zero-tiny-2", 1), 0),
+          allowZeroAmountOffset: true,
+        }),
+        { kind: "amount_slots_exhausted", retryAfterSeconds: 900 },
+      );
+      store.closeOrder(API_CLIENT_ID, tiny.order.orderId);
+      setNow(TEST_START_MS + 600_000);
+      const tinyReused = createdAggregate(store.createOrder({
+        ...createInput(requestFor("zero-tiny-2", "zero-tiny-2", 1), 0),
+        allowZeroAmountOffset: true,
+      }));
+      assert.equal(tinyReused.order.payableAmountCents, 1);
+
+      // Concurrent 0..2 range allocates 1000, 1001, 1002
+      const a0 = createdAggregate(store.createOrder({
+        ...createInput(requestFor("zero-a0", "zero-a0", 1_000), 2),
+        allowZeroAmountOffset: true,
+      }));
+      const a1 = createdAggregate(store.createOrder({
+        ...createInput(requestFor("zero-a1", "zero-a1", 1_000), 2),
+        allowZeroAmountOffset: true,
+      }));
+      const a2 = createdAggregate(store.createOrder({
+        ...createInput(requestFor("zero-a2", "zero-a2", 1_000), 2),
+        allowZeroAmountOffset: true,
+      }));
+      assert.deepEqual(
+        [a0.order.payableAmountCents, a1.order.payableAmountCents, a2.order.payableAmountCents],
+        [1_000, 1_001, 1_002],
+      );
+
+      // Cross-base collision: base 1001 with zero offset skips occupied 1001 & 1002 and allocates 1003
+      const crossBase = createdAggregate(store.createOrder({
+        ...createInput(requestFor("zero-cross", "zero-cross", 1_001), 2),
+        allowZeroAmountOffset: true,
+      }));
+      assert.equal(crossBase.order.payableAmountCents, 1_003);
+
+      // Default (allowZeroAmountOffset omitted / false) still starts from +1
+      const defaultOrder = createdAggregate(store.createOrder(
+        createInput(requestFor("default-start", "default-start", 2_000), 5),
+      ));
+      assert.equal(defaultOrder.order.payableAmountCents, 2_001);
+
+      assert.equal(database.integrityCheck().ok, true);
+    });
+  });
 });
 
 async function withStore(
