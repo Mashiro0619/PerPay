@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, CheckCircle2, Circle, CircleAlert, RotateCcw, ShieldCheck } from "lucide-react";
+import { Check, CheckCircle2, ChevronDown, Circle, CircleAlert, RotateCcw, ShieldCheck } from "lucide-react";
 import { ApiError } from "@/api/client";
 import { getMaintenanceJob, startMaintenance, type MaintenanceJob } from "@/api/maintenance";
 import {
@@ -28,6 +28,7 @@ import { CopyValue } from "@/components/copy-value";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
 
@@ -629,11 +630,21 @@ export function SelfUpdateDialog({
                 </div>
               </div>
 
-              <details className="rounded-lg border border-border bg-muted/20 p-3 text-xs">
-                <summary className="cursor-pointer select-none font-medium text-foreground">
-                  如何启用后台一键更新？
-                </summary>
-                <div className="mt-2.5 flex flex-col gap-2 text-muted-foreground">
+              <Collapsible className="rounded-lg border border-border bg-muted/20 p-3 text-xs">
+                <CollapsibleTrigger
+                  render={
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-auto w-full justify-between px-0 py-0 text-xs font-medium text-foreground hover:bg-transparent"
+                    />
+                  }
+                >
+                  <span>如何启用后台一键更新？</span>
+                  <ChevronDown aria-hidden="true" className="size-3.5 text-muted-foreground transition-transform [[data-panel-open]_&]:rotate-180" />
+                </CollapsibleTrigger>
+                <CollapsibleContent className="mt-2.5 flex flex-col gap-2 text-muted-foreground">
                   <p>
                     如需以后直接在网页后台一键完成更新，可在宿主机合并启动可选伴生更新器（主容器仍保持只读与非 root，不挂载 docker.sock）：
                   </p>
@@ -651,8 +662,8 @@ export function SelfUpdateDialog({
                       查看伴生更新器说明
                     </a>
                   </div>
-                </div>
-              </details>
+                </CollapsibleContent>
+              </Collapsible>
             </div>
           )}
         </DialogBody>
