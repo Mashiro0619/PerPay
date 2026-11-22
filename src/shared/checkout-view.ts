@@ -1,4 +1,5 @@
 import { checkoutHelpUrl } from "./checkout-help.ts";
+import { collectionCodeError } from "./collection-code.ts";
 import type { CheckoutVerification } from "./checkout-verification.ts";
 export type CheckoutViewState =
   | "UNPAID"
@@ -20,6 +21,7 @@ export interface CheckoutViewOrder {
   payment_instructions: {
     payable_amount_cents: number;
     currency: "CNY";
+    collection_code_payload?: string;
   } | null;
   checkout: {
     status: "OPEN" | "CLOSED" | "EXPIRED";
@@ -49,6 +51,7 @@ export interface CheckoutInitial {
   internalReturnUrl?: string;
   qrUrl: string;
   qrAvailable: boolean;
+  alipayLaunchAvailable?: boolean;
   serverTime: number;
 }
 export const checkoutCopy: Record<
@@ -187,6 +190,10 @@ export function parseCheckoutPayload(payload: unknown, internalReturnUrl?: strin
         : {
             payable_amount_cents: instructions.payable_amount_cents as number,
             currency: "CNY",
+            ...(typeof instructions.collection_code_payload === "string" &&
+            collectionCodeError(instructions.collection_code_payload) === null
+              ? { collection_code_payload: instructions.collection_code_payload }
+              : {}),
           },
     checkout: {
       status: checkout.status as CheckoutViewOrder["checkout"]["status"],

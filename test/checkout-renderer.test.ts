@@ -8,6 +8,7 @@ import {
   renderCheckoutPage,
 } from "../src/http/web/checkout.ts";
 import { initialCheckoutState } from "../src/shared/checkout-view.ts";
+import { alipayQrLaunchUrl } from "../src/shared/collection-code.ts";
 import type { PublicCheckoutProjection } from "../src/orders/model.ts";
 import { checkoutText, readCheckoutInitial } from "./checkout-view-fixture.ts";
 const checkout = Object.freeze({
@@ -312,5 +313,39 @@ describe("public checkout SSR", () => {
       checkoutQrPath("pct1_a/b?c"),
       "/api/public/v1/checkouts/pct1_a%2Fb%3Fc/qr.svg",
     );
+  });
+
+  it("advertises alipayLaunchAvailable only for validated Alipay QR payloads without leaking the raw payload into SSR HTML", () => {
+    const validHtml = renderCheckoutPage({
+      checkoutToken: "pct1_launch_ok",
+      checkout,
+      qrImageUrl: "/api/public/v1/checkouts/pct1_launch_ok/qr.svg",
+      initialError: null,
+    });
+    assert.equal(readCheckoutInitial(validHtml).alipayLaunchAvailable, true);
+    assert.equal(validHtml.includes("qr.alipay.com"), false);
+    assert.equal(validHtml.includes("alipays://"), false);
+    assert.equal(validHtml.includes("打开支付宝"), false);
+
+    const nonAlipayHtml = renderCheckoutPage({
+      checkoutToken: "pct1_launch_other",
+      checkout: {
+        ...checkout,
+        paymentInstructions: {
+          ...checkout.paymentInstructions,
+          collectionCodePayload: "https://example.invalid/not-alipay",
+        },
+      },
+      qrImageUrl: "/api/public/v1/checkouts/pct1_launch_other/qr.svg",
+      initialError: null,
+    });
+    assert.equal(readCheckoutInitial(nonAlipayHtml).alipayLaunchAvailable, false);
+
+    assert.equal(
+      alipayQrLaunchUrl("https://qr.alipay.com/fkx12345?t=1"),
+      "alipays://platformapi/startapp?saId=10000007&qrcode=https%3A%2F%2Fqr.alipay.com%2Ffkx12345%3Ft%3D1",
+    );
+    assert.equal(alipayQrLaunchUrl("javascript:alert(1)"), null);
+    assert.equal(alipayQrLaunchUrl("alipays://platformapi/startapp?appId=20000123"), null);
   });
 });

@@ -12,11 +12,14 @@ test("checkout keeps one query before order information on phones and scales the
         actions: rect("[data-checkout-actions]"), summary: rect("[data-checkout-summary]") };
     });
     expect(bounds.qr.width).toBe(width! >= 1280 ? 320 : width! >= 1024 ? 288 : Math.max(180, Math.min(height! - 360, 240)));
+    const alipayLaunch = page.locator("[data-alipay-launch]");
     if (width! < 1024) {
+      await expect(alipayLaunch).toBeVisible();
       expect(bounds.amount.y).toBeLessThan(bounds.qr.y);
       expect(bounds.actions.bottom).toBeLessThanOrEqual(bounds.summary.y);
       if (width === 360 && height === 560 || width === 390 && height === 664) expect((await query.boundingBox())!.y + (await query.boundingBox())!.height).toBeLessThanOrEqual(height!);
     } else {
+      await expect(alipayLaunch).toBeHidden();
       expect(bounds.summary.x).toBeGreaterThan(bounds.qr.x);
       expect(bounds.card.width).toBe(Math.min(width! >= 1280 ? 1152 : 1024, width!) - 48);
       expect(Math.abs(bounds.actions.bottom - bounds.card.bottom)).toBeLessThanOrEqual(1);
@@ -53,4 +56,23 @@ test("checkout copies the exact payable amount on phone and desktop", async ({ p
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(amount);
     await expect(page.getByText("已复制", { exact: true })).toHaveCount(1);
   }
+});
+
+test("mobile checkout upgrades to a direct alipays:// scheme link after payload sync", async ({ page, manifest }) => {
+  const apiPath = manifest.checkouts.open!.replace("/checkout/", "/api/public/v1/checkouts/");
+  await page.route("**" + apiPath, async (route) => {
+    const response = await route.fetch();
+    const headers = { ...response.headers(), date: new Date(manifest.epoch).toUTCString() };
+    await route.fulfill({ response, headers });
+  });
+  await page.setViewportSize({ width: 360, height: 560 });
+  await page.goto(manifest.origin + manifest.checkouts.open!);
+  await expect(page.locator("[data-alipay-launch]")).toBeVisible();
+  await page.clock.runFor(1_600);
+  const mobileLaunch = page.locator("a[data-alipay-launch]");
+  await expect(mobileLaunch).toBeVisible();
+  await expect(mobileLaunch).toHaveAttribute(
+    "href",
+    /^alipays:\/\/platformapi\/startapp\?saId=10000007&qrcode=https%3A%2F%2Fqr\.alipay\.com%2F/,
+  );
 });

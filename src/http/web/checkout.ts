@@ -1,4 +1,5 @@
 import { checkoutHelpUrl } from "../../shared/checkout-help.ts";
+import { alipayQrLaunchUrl } from "../../shared/collection-code.ts";
 import type { PublicCheckoutProjection } from "../../orders/model.ts";
 import { checkoutFrontend } from "./checkout-frontend.ts";
 import {
@@ -82,6 +83,9 @@ export function renderCheckoutPage(input: CheckoutPageInput): string {
       ? ""
       : (input.qrImageUrl ?? checkoutQrPath(input.checkoutToken)),
     qrAvailable: input.qrImageUrl !== null,
+    alipayLaunchAvailable: order?.paymentInstructions
+      ? alipayQrLaunchUrl(order.paymentInstructions.collectionCodePayload) !== null
+      : false,
     initialError: input.initialError,
     checkout: order
       ? {

@@ -123,3 +123,16 @@
   [data-checkout-payment] > [data-slot="card-header"],
   [data-checkout-payment] > [data-slot="card-content"] { gap: 0.5rem; }
 }
+
+@media (max-width: 359px) {
+  [data-checkout-root] { padding-inline: 0.75rem; }
+  .checkout-primary-actions .checkout-query-action {
+    gap: 0.25rem;
+    padding-inline: 0.5rem;
+    font-size: 0.8125rem;
+  }
+  .checkout-primary-actions .checkout-query-action svg {
+    width: 0.875rem;
+    height: 0.875rem;
+  }
+}

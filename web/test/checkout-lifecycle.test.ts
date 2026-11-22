@@ -1205,3 +1205,110 @@ it("rejects malformed dynamic display data and never accepts unsafe help navigat
   expect(() => parseCheckoutPayload({ data: { ...order, display: { name: "站点", help_url: null, show_product_name: "false" } } })).toThrow();
   expect(parseCheckoutPayload({ data: { ...order, display: { name: "站点", help_url: "javascript:alert(1)", show_product_name: true } } }).display?.help_url).toBeNull();
 });
+
+describe("mobile one-click Alipay launch", () => {
+  it("preserves only validated qr.alipay.com payloads in parseCheckoutPayload", () => {
+    const order = initial().checkout!;
+    const valid = parseCheckoutPayload({
+      data: {
+        ...order,
+        payment_instructions: {
+          payable_amount_cents: 1001,
+          currency: "CNY",
+          collection_code_payload: "https://qr.alipay.com/fkx98765",
+        },
+      },
+    });
+    expect(valid.payment_instructions?.collection_code_payload).toBe("https://qr.alipay.com/fkx98765");
+
+    const invalid = parseCheckoutPayload({
+      data: {
+        ...order,
+        payment_instructions: {
+          payable_amount_cents: 1001,
+          currency: "CNY",
+          collection_code_payload: "https://evil.example/phish",
+        },
+      },
+    });
+    expect(invalid.payment_instructions?.collection_code_payload).toBeUndefined();
+  });
+
+  it("renders a direct alipays:// link after payload sync, copies exact payable amount, and guides WeChat/QQ browsers", async () => {
+    const writeText = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
+    const orderWithCode: CheckoutViewOrder = {
+      ...initial().checkout!,
+      payment_instructions: {
+        payable_amount_cents: 1001,
+        currency: "CNY",
+        collection_code_payload: "https://qr.alipay.com/fkx12345",
+      },
+    };
+    vi.stubGlobal("fetch", vi.fn(async () => response(orderWithCode)));
+    const { container } = render(
+      createElement(CheckoutApp, {
+        initial: initial({ alipayLaunchAvailable: true }),
+      }),
+    );
+
+    // Before the first poll completes, a deferred button is rendered (lg:hidden for mobile)
+    const deferredButton = screen.getByRole("button", { name: "打开支付宝" });
+    expect(deferredButton).toHaveClass("lg:hidden");
+
+    // After the 1500ms initial poll returns collection_code_payload, it upgrades to a direct <a> scheme link
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500);
+    });
+    const link = screen.getByRole("link", { name: "打开支付宝" });
+    expect(link).toHaveClass("lg:hidden");
+    expect(link).toHaveAttribute(
+      "href",
+      "alipays://platformapi/startapp?saId=10000007&qrcode=https%3A%2F%2Fqr.alipay.com%2Ffkx12345",
+    );
+
+    // Clicking inside WeChat in-app browser prevents direct scheme jump and displays clear guidance
+    const uaSpy = vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) MicroMessenger/8.0.40",
+    );
+    try {
+      const clickEvent = new MouseEvent("click", { bubbles: true, cancelable: true });
+      await act(async () => {
+        link.dispatchEvent(clickEvent);
+      });
+      expect(clickEvent.defaultPrevented).toBe(true);
+      expect(writeText).toHaveBeenCalledWith("10.01");
+      expect(container.querySelector("[data-checkout-action-feedback]")).toHaveTextContent(
+        "微信或 QQ 内置浏览器不支持直接唤起支付宝",
+      );
+    } finally {
+      uaSpy.mockRestore();
+    }
+
+    // In a standard mobile browser, clicking copies the exact payable amount and shows launch feedback
+    const normalUaSpy = vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) Mobile/15E148 Safari/604.1",
+    );
+    try {
+      await act(async () => {
+        link.addEventListener("click", (event) => event.preventDefault(), { once: true });
+        fireEvent.click(link);
+        await Promise.resolve();
+      });
+      expect(container.querySelector("[data-checkout-action-feedback]")).toHaveTextContent(
+        "已复制应付金额 ¥10.01，正在打开支付宝",
+      );
+    } finally {
+      normalUaSpy.mockRestore();
+    }
+  });
+
+  it("omits the Alipay launch control when alipayLaunchAvailable is false or after order confirmation", () => {
+    render(createElement(CheckoutApp, { initial: initial({ alipayLaunchAvailable: false }) }));
+    expect(screen.queryByRole("button", { name: "打开支付宝" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "打开支付宝" })).not.toBeInTheDocument();
+  });
+});

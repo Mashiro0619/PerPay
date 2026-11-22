@@ -19,3 +19,9 @@ export function collectionCodeError(value: string): string | null {
 export function collectionCodeId(value: string): string | null {
   return COLLECTION_CODE_PATTERN.exec(value)?.[1] ?? null;
 }
+
+/** Build the Alipay scan-intent scheme URL for a validated qr.alipay.com payload. */
+export function alipayQrLaunchUrl(value: string): string | null {
+  if (collectionCodeError(value) !== null) return null;
+  return `alipays://platformapi/startapp?saId=10000007&qrcode=${encodeURIComponent(value)}`;
+}

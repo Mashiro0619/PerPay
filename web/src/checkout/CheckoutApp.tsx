@@ -1,10 +1,12 @@
 import { checkoutHelpUrl } from "../../../src/shared/checkout-help";
+import { alipayQrLaunchUrl } from "../../../src/shared/collection-code";
 import { cn } from "cn";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type MouseEvent } from "react";
 import {
   AlertCircle,
   CheckCircle2,
   Download,
+  ExternalLink,
   Maximize,
   RefreshCw,
   WalletCards,
@@ -39,8 +41,14 @@ import {
   checkoutCopy,
   checkoutMoney,
   merchantReturnUrl,
+  parseCheckoutPayload,
   type CheckoutInitial,
 } from "../../../src/shared/checkout-view";
+import {
+  copyCheckoutAmount,
+  isAlipaySchemeBlockedBrowser,
+  navigateToAlipayScheme,
+} from "./alipay-launch";
 import { createCheckoutController } from "./controller";
 import { useQrDownload } from "./use-qr-download";
 import { AlipayLogo } from "./AlipayLogo";
@@ -54,11 +62,14 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
   );
   const [expanded, setExpanded] = useState(false),
     [qrFailed, setQrFailed] = useState(false),
-    [qrRetry, setQrRetry] = useState(0);
+    [qrRetry, setQrRetry] = useState(0),
+    [launchingAlipay, setLaunchingAlipay] = useState(false),
+    [launchHint, setLaunchHint] = useState("");
   const qrImage = useRef<HTMLImageElement>(null),
     qrRetryButton = useRef<HTMLButtonElement>(null),
     heading = useRef<HTMLHeadingElement>(null),
-    wasExpanded = useRef(false);
+    wasExpanded = useRef(false),
+    launchToken = useRef(0);
   useEffect(() => controller.start(), [controller]);
   const order = state.order,
     copy = checkoutCopy[state.visual];
@@ -72,6 +83,11 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
     !!order?.payment_instructions &&
     state.qrAvailable &&
     !!initial.qrUrl;
+  const directLaunchUrl = order?.payment_instructions?.collection_code_payload
+    ? alipayQrLaunchUrl(order.payment_instructions.collection_code_payload)
+    : null;
+  const canLaunchAlipay =
+    canPay && (directLaunchUrl !== null || Boolean(initial.alipayLaunchAvailable));
   const qrSource =
     initial.qrUrl +
     (qrRetry
@@ -80,14 +96,20 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
   const download = useQrDownload(qrImage, canPay && !qrFailed, systemName);
   useEffect(() => {
     if (!canPay) {
+      launchToken.current += 1;
       setExpanded(false);
       setQrFailed(false);
+      setLaunchingAlipay(false);
+      setLaunchHint("");
       if (wasExpanded.current) heading.current?.focus();
     } else if (qrFailed && wasExpanded.current) {
       qrRetryButton.current?.focus();
     }
     wasExpanded.current = expanded;
   }, [canPay, expanded, qrFailed]);
+  useEffect(() => {
+    if (state.feedback) setLaunchHint("");
+  }, [state.feedback]);
   useEffect(() => {
     document.title =
       (order?.merchant_order_no ?? copy.heading) +
@@ -193,7 +215,78 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
       )}
     </Badge>
   );
-  const actions = (retryAllowed || returnUrl) && (
+  const exactPayableText = (cents / 100).toFixed(2);
+  function handleDirectAlipayLaunch(event: MouseEvent<HTMLAnchorElement>) {
+    const token = ++launchToken.current;
+    if (isAlipaySchemeBlockedBrowser(navigator.userAgent)) {
+      event.preventDefault();
+      void copyCheckoutAmount(exactPayableText);
+      setLaunchHint("微信或 QQ 内置浏览器不支持直接唤起支付宝，请点击右上角选择“在浏览器打开”，或保存二维码扫码付款。");
+      return;
+    }
+    setLaunchHint(`正在打开支付宝，请严格按 ${formattedAmount} 付款；如未自动跳转，请保存二维码后扫码。`);
+    void copyCheckoutAmount(exactPayableText).then((copied) => {
+      if (copied && launchToken.current === token) {
+        setLaunchHint(`已复制应付金额 ${formattedAmount}，正在打开支付宝；如未自动跳转，请保存二维码后扫码。`);
+      }
+    });
+  }
+  async function handleDeferredAlipayLaunch() {
+    if (launchingAlipay || !canLaunchAlipay || state.unavailable || !initial.apiUrl) return;
+    const token = ++launchToken.current;
+    if (isAlipaySchemeBlockedBrowser(navigator.userAgent)) {
+      void copyCheckoutAmount(exactPayableText);
+      setLaunchHint("微信或 QQ 内置浏览器不支持直接唤起支付宝，请点击右上角选择“在浏览器打开”，或保存二维码扫码付款。");
+      return;
+    }
+    setLaunchingAlipay(true);
+    try {
+      const target = new URL(initial.apiUrl, location.origin);
+      if (target.origin !== location.origin) return;
+      const response = await fetch(target, {
+        headers: { accept: "application/json" },
+        cache: "no-store",
+        credentials: "same-origin",
+        redirect: "error",
+      });
+      if (launchToken.current !== token) return;
+      if (!response.ok) {
+        setLaunchHint("暂时无法获取支付宝跳转链接，请保存二维码后扫码付款。");
+        return;
+      }
+      const latest = parseCheckoutPayload(await response.json(), initial.internalReturnUrl);
+      if (launchToken.current !== token) return;
+      if (latest.checkout.status !== "OPEN" || latest.payment.status !== "UNPAID") {
+        setLaunchHint("");
+        void controller.refresh(false);
+        return;
+      }
+      const url = latest.payment_instructions?.collection_code_payload
+        ? alipayQrLaunchUrl(latest.payment_instructions.collection_code_payload)
+        : null;
+      if (!url) {
+        setLaunchHint("当前订单暂不支持直接唤起支付宝，请保存二维码后扫码付款。");
+        return;
+      }
+      const latestCents = latest.payment_instructions!.payable_amount_cents;
+      const copied = await copyCheckoutAmount((latestCents / 100).toFixed(2));
+      if (launchToken.current !== token) return;
+      const latestFormatted = checkoutMoney(latestCents);
+      setLaunchHint(
+        copied
+          ? `已复制应付金额 ${latestFormatted}，正在打开支付宝；如未自动跳转，请保存二维码后扫码。`
+          : `正在打开支付宝，请严格按 ${latestFormatted} 付款；如未自动跳转，请保存二维码后扫码。`,
+      );
+      navigateToAlipayScheme(url);
+    } catch {
+      if (launchToken.current === token) {
+        setLaunchHint("暂时无法获取支付宝跳转链接，请保存二维码后扫码付款。");
+      }
+    } finally {
+      if (launchToken.current === token) setLaunchingAlipay(false);
+    }
+  }
+  const actions = (canLaunchAlipay || retryAllowed || returnUrl) && (
     <CardFooter
       className={cn(
         "flex flex-col items-stretch gap-3",
@@ -207,40 +300,88 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
           {state.visual === "CONFIRMED" ? "返回商家" : "返回商家处理"}
         </a>
       )}
-      {retryAllowed &&
-        (state.initialized ? (
-          <Button
-            variant="outline"
-            className="checkout-query-action w-full"
-            disabled={blocked}
-            onClick={() => void controller.refresh(true)}
-          >
-            {state.busy ? (
-              <Spinner aria-hidden="true" data-icon="inline-start" />
+      {(canLaunchAlipay || retryAllowed) && (
+        <div
+          className={cn(
+            canLaunchAlipay
+              ? "checkout-primary-actions flex w-full flex-wrap items-stretch gap-2 lg:flex-col"
+              : "flex w-full flex-col items-stretch",
+          )}
+        >
+          {canLaunchAlipay &&
+            (directLaunchUrl ? (
+              <a
+                href={directLaunchUrl}
+                className={buttonVariants({
+                  variant: "default",
+                  className: "checkout-query-action shrink-0 lg:hidden",
+                })}
+                data-alipay-launch
+                onClick={handleDirectAlipayLaunch}
+              >
+                <ExternalLink data-icon="inline-start" />
+                打开支付宝
+              </a>
             ) : (
-              <RefreshCw data-icon="inline-start" />
-            )}
-            {!order ? "重新获取订单" : canPay ? "我已付款，查询状态" : "刷新付款状态"}
-          </Button>
-        ) : (
-          <a
-            href={reloadPath}
-            className={buttonVariants({
-              variant: "outline",
-              className: "checkout-query-action w-full",
-            })}
-            data-checkout-reload
-          >
-            <RefreshCw data-icon="inline-start" />
-            刷新页面
-          </a>
-        ))}
-      {state.feedback && (
+              <Button
+                variant="default"
+                className="checkout-query-action shrink-0 lg:hidden"
+                disabled={launchingAlipay || state.unavailable}
+                data-alipay-launch
+                onClick={() => void handleDeferredAlipayLaunch()}
+              >
+                {launchingAlipay ? (
+                  <Spinner aria-hidden="true" data-icon="inline-start" />
+                ) : (
+                  <ExternalLink data-icon="inline-start" />
+                )}
+                打开支付宝
+              </Button>
+            ))}
+          {retryAllowed &&
+            (state.initialized ? (
+              <Button
+                variant="outline"
+                className={cn(
+                  "checkout-query-action",
+                  canLaunchAlipay ? "min-w-0 flex-1 lg:w-full" : "w-full",
+                )}
+                disabled={blocked}
+                onClick={() => {
+                  launchToken.current += 1;
+                  setLaunchHint("");
+                  void controller.refresh(true);
+                }}
+              >
+                {state.busy ? (
+                  <Spinner aria-hidden="true" data-icon="inline-start" />
+                ) : (
+                  <RefreshCw data-icon="inline-start" />
+                )}
+                {!order ? "重新获取订单" : canPay ? "我已付款，查询状态" : "刷新付款状态"}
+              </Button>
+            ) : (
+              <a
+                href={reloadPath}
+                className={buttonVariants({
+                  variant: "outline",
+                  className: "checkout-query-action w-full",
+                })}
+                data-checkout-reload
+              >
+                <RefreshCw data-icon="inline-start" />
+                刷新页面
+              </a>
+            ))}
+        </div>
+      )}
+      {(launchHint || state.feedback) && (
         <p
           className="text-center text-sm text-muted-foreground lg:text-left"
           role="status"
+          data-checkout-action-feedback
         >
-          {state.feedback}
+          {launchHint || state.feedback}
         </p>
       )}
     </CardFooter>
@@ -386,7 +527,11 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                           />
                         </div>
                         <p className="text-center text-sm text-muted-foreground" data-checkout-payment-instructions>
-                          <span className="sm:hidden">保存或截图后用支付宝扫码，严格按 {formattedAmount} 付款，勿改金额。</span>
+                          <span className="sm:hidden">
+                            {canLaunchAlipay
+                              ? `点“打开支付宝”或扫码，严格按 ${formattedAmount} 付款，勿改金额。`
+                              : `保存或截图后用支付宝扫码，严格按 ${formattedAmount} 付款，勿改金额。`}
+                          </span>
                           <span className="hidden sm:inline">请打开支付宝“扫一扫”，严格按 {formattedAmount} 付款，切勿修改金额。</span>
                         </p>
                         {adjustmentCents > 0 && (
