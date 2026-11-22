@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useInRouterContext } from "react-router";
-import { ArrowRight, Download, Star } from "lucide-react";
+import { ArrowRight, Star } from "lucide-react";
 import type { SystemAnalytics } from "@/api/client";
 import { Link } from "@/navigation";
 import { cn } from "@/lib/utils";
@@ -12,9 +12,7 @@ import {
   calendarCellDateLabel,
   calendarHeatLevel,
   compactCalendarMoney,
-  dailyDateLabel,
   dailyWeekday,
-  downloadDailyCsv,
 } from "@/lib/daily-analytics";
 import { ListMoney } from "@/components/list-primitives";
 import { Badge } from "@/components/ui/badge";
@@ -67,8 +65,8 @@ export function DailyAnalytics({
 
   const firstDate = chronologicalDates[0] ?? "";
   const lastDate = chronologicalDates.at(-1) ?? "";
-  const includeYear = Boolean(firstDate && lastDate && firstDate.slice(0, 4) !== lastDate.slice(0, 4));
   const peakDate = report?.peak?.date ?? null;
+  const hasPeakRevenue = Boolean(report?.peak && report.peak.confirmed_amount_cents > 0);
   const activeDays = days.filter((day) => day.confirmed_amount_cents > 0).length;
   const totalFailedNotifications = days.reduce(
     (sum, day) => sum + day.notifications_failed,
@@ -166,14 +164,6 @@ export function DailyAnalytics({
     <div className="daily-report" role="region" aria-label="每日数据" aria-busy={pending}>
       {pending ? (
         <div className="daily-cal-loading" aria-hidden="true">
-          <div className="daily-cal-top">
-            <div className="daily-cal-summary">
-              <Skeleton className="h-5 w-28" />
-              <Skeleton className="h-4 w-24" />
-              <Skeleton className="h-4 w-32" />
-            </div>
-            <Skeleton className="h-6 w-20" />
-          </div>
           <div className="daily-cal-surface">
             <div className="daily-cal-week daily-cal-loading-head">
               {CALENDAR_WEEKDAYS.map((weekday) => (
@@ -186,60 +176,23 @@ export function DailyAnalytics({
               ))}
             </div>
           </div>
-          <Skeleton className="h-16 w-full rounded-lg" />
+          <div className="daily-cal-detail">
+            <div className="daily-cal-detail-header">
+              <Skeleton className="h-4 w-36" />
+              <Skeleton className="h-7 w-28" />
+            </div>
+            <div className="daily-cal-detail-grid">
+              {Array.from({ length: 4 }, (_, index) => (
+                <div key={index} className="daily-cal-detail-cell">
+                  <Skeleton className="h-3.5 w-14" />
+                  <Skeleton className="h-5 w-20" />
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       ) : hasDays && report && analytics ? (
         <>
-          <div className="daily-cal-top">
-            <dl className="daily-cal-summary" aria-label="每日数据汇总">
-              <div className="daily-cal-summary-item" data-daily-summary="total">
-                <dt>区间实收</dt>
-                <dd className="daily-cal-summary-primary">
-                  <ListMoney value={analytics.confirmations.amount_cents} />
-                </dd>
-              </div>
-              <div className="daily-cal-summary-item" data-daily-summary="average">
-                <dt>日均</dt>
-                <dd>
-                  <ListMoney value={report.averageCents} />
-                </dd>
-              </div>
-              <div className="daily-cal-summary-item" data-daily-summary="peak">
-                <dt>单日最高</dt>
-                <dd>
-                  <ListMoney value={report.peak?.confirmed_amount_cents} />
-                  {report.peak && (
-                    <span className="daily-cal-summary-date">
-                      {" ("}
-                      <time dateTime={report.peak.date}>
-                        {dailyDateLabel(report.peak.date, includeYear)}
-                      </time>
-                      {")"}
-                    </span>
-                  )}
-                </dd>
-              </div>
-            </dl>
-            <div className="daily-cal-tools">
-              {totalFailedNotifications > 0 && (
-                <span className="daily-cal-legend">
-                  <span className="daily-cal-fail-dot" aria-hidden="true" />
-                  通知异常
-                </span>
-              )}
-              <Button
-                type="button"
-                variant="ghost"
-                size="xs"
-                className="daily-cal-export"
-                onClick={() => downloadDailyCsv(days)}
-              >
-                <Download aria-hidden="true" data-icon="inline-start" />
-                导出 CSV
-              </Button>
-            </div>
-          </div>
-
           <div className="daily-cal-surface" data-daily-surface="true">
             <div role="grid" aria-label="每日收款日历" className="daily-cal-grid-wrap">
               <div role="rowgroup" className="daily-cal-head">
@@ -354,8 +307,8 @@ export function DailyAnalytics({
 
           {selectedDay && (
             <div className="daily-cal-detail" data-daily-detail={selectedDay.date}>
-              <div className="daily-cal-detail-info">
-                <div className="daily-cal-detail-head">
+              <div className="daily-cal-detail-header">
+                <div className="daily-cal-detail-identity">
                   <time className="daily-cal-detail-date" dateTime={selectedDay.date}>
                     {selectedDay.date}
                   </time>
@@ -373,71 +326,78 @@ export function DailyAnalytics({
                     </Badge>
                   )}
                   {selectedDeltaPct !== null && (
-                    <span className="daily-cal-detail-delta">
+                    <Badge variant="outline" className="daily-day-badge daily-cal-delta-badge">
                       较日均 {selectedDeltaPct >= 0 ? `+${selectedDeltaPct}` : selectedDeltaPct}%
-                    </span>
+                    </Badge>
                   )}
                 </div>
 
-                <dl className="daily-cal-detail-metrics" aria-label="选中日期明细">
-                  <div className="daily-cal-detail-metric" data-detail-metric="amount">
-                    <dt>实收</dt>
-                    <dd className="daily-cal-detail-amount">
-                      <ListMoney value={selectedDay.confirmed_amount_cents} />
-                    </dd>
-                  </div>
-                  <div className="daily-cal-detail-metric" data-detail-metric="confirmations">
-                    <dt>确认</dt>
-                    <dd>{count(selectedDay.confirmations)} 笔</dd>
-                  </div>
-                  <div className="daily-cal-detail-metric" data-detail-metric="average">
-                    <dt>笔均</dt>
-                    <dd>
-                      {selectedAverageTicket !== null ? (
-                        <ListMoney value={selectedAverageTicket} />
-                      ) : (
-                        "—"
-                      )}
-                    </dd>
-                  </div>
-                  <div className="daily-cal-detail-metric" data-detail-metric="orders">
-                    <dt>新建</dt>
-                    <dd>{count(selectedDay.orders_created)} 笔</dd>
-                  </div>
-                  {selectedDay.notifications_failed > 0 && (
-                    <div className="daily-cal-detail-metric" data-detail-metric="notifications">
-                      <dt>通知</dt>
-                      <dd className="daily-cal-detail-warn">
-                        失败 {count(selectedDay.notifications_failed)} 次
-                      </dd>
-                    </div>
-                  )}
-                </dl>
-              </div>
-
-              {inRouter && (
-                <div className="daily-cal-detail-actions">
-                  {selectedDay.notifications_failed > 0 && (
+                {inRouter && (
+                  <div className="daily-cal-detail-actions">
+                    {selectedDay.notifications_failed > 0 && (
+                      <Link
+                        to={`/notifications?created_from=${selectedDay.date}&created_to=${selectedDay.date}`}
+                        className={cn(
+                          buttonVariants({ variant: "outline", size: "sm" }),
+                          "daily-cal-warn-action",
+                        )}
+                      >
+                        排查通知
+                        <ArrowRight aria-hidden="true" data-icon="inline-end" />
+                      </Link>
+                    )}
                     <Link
-                      to={`/notifications?created_from=${selectedDay.date}&created_to=${selectedDay.date}`}
-                      className={cn(
-                        buttonVariants({ variant: "outline", size: "sm" }),
-                        "daily-cal-warn-action",
-                      )}
+                      to={`/orders?created_from=${selectedDay.date}&created_to=${selectedDay.date}`}
+                      className={buttonVariants({ variant: "outline", size: "sm" })}
                     >
-                      排查通知
+                      查看当天订单
                       <ArrowRight aria-hidden="true" data-icon="inline-end" />
                     </Link>
-                  )}
-                  <Link
-                    to={`/orders?created_from=${selectedDay.date}&created_to=${selectedDay.date}`}
-                    className={buttonVariants({ variant: "outline", size: "sm" })}
-                  >
-                    查看当天订单
-                    <ArrowRight aria-hidden="true" data-icon="inline-end" />
-                  </Link>
+                  </div>
+                )}
+              </div>
+
+              <dl
+                className="daily-cal-detail-grid"
+                data-has-warning={selectedDay.notifications_failed > 0 || undefined}
+                aria-label="选中日期明细"
+              >
+                <div
+                  className="daily-cal-detail-cell daily-cal-detail-primary"
+                  data-detail-metric="amount"
+                >
+                  <dt>当日实收</dt>
+                  <dd>
+                    <ListMoney value={selectedDay.confirmed_amount_cents} />
+                  </dd>
                 </div>
-              )}
+                <div className="daily-cal-detail-cell" data-detail-metric="confirmations">
+                  <dt>确认笔数</dt>
+                  <dd>{count(selectedDay.confirmations)} 笔</dd>
+                </div>
+                <div className="daily-cal-detail-cell" data-detail-metric="average">
+                  <dt>笔均金额</dt>
+                  <dd>
+                    {selectedAverageTicket !== null ? (
+                      <ListMoney value={selectedAverageTicket} />
+                    ) : (
+                      "—"
+                    )}
+                  </dd>
+                </div>
+                <div className="daily-cal-detail-cell" data-detail-metric="orders">
+                  <dt>新建订单</dt>
+                  <dd>{count(selectedDay.orders_created)} 笔</dd>
+                </div>
+                {selectedDay.notifications_failed > 0 && (
+                  <div className="daily-cal-detail-cell" data-detail-metric="notifications">
+                    <dt>通知异常</dt>
+                    <dd className="daily-cal-detail-warn">
+                      失败 {count(selectedDay.notifications_failed)} 次
+                    </dd>
+                  </div>
+                )}
+              </dl>
             </div>
           )}
         </>
@@ -456,10 +416,24 @@ export function DailyAnalytics({
           {pending ? "正在读取每日数据…" : !analytics ? "等待统计数据" : `共 ${totalDays} 天`}
         </p>
         {!pending && hasDays && report && analytics && (
-          <p className="daily-report-meta">
-            有收款 {count(activeDays)} 天 · 确认 {count(analytics.confirmations.count)} 笔 · 新建{" "}
-            {count(analytics.orders.created)} 笔
-          </p>
+          <div className="daily-report-meta-group">
+            {hasPeakRevenue && (
+              <span className="daily-cal-legend">
+                <Star className="daily-cal-legend-star" aria-hidden="true" />
+                最高
+              </span>
+            )}
+            {totalFailedNotifications > 0 && (
+              <span className="daily-cal-legend">
+                <span className="daily-cal-fail-dot" aria-hidden="true" />
+                通知异常
+              </span>
+            )}
+            <p className="daily-report-meta">
+              有收款 {count(activeDays)} 天 · 确认 {count(analytics.confirmations.count)} 笔 · 新建{" "}
+              {count(analytics.orders.created)} 笔
+            </p>
+          </div>
         )}
       </div>
     </div>

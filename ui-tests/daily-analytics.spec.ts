@@ -80,8 +80,8 @@ test("daily data shows every date in a bill calendar with heat levels, detail st
     await expect(current.getByText("全部展开", { exact: true })).toHaveCount(0);
     await expect(current.getByText("全部收起", { exact: true })).toHaveCount(0);
     const expected = fixtures.get(days)!.daily;
-    const totals = await current.locator("[data-daily-summary]").allTextContents();
-    await expect(current.locator('[data-daily-summary="total"]')).toContainText("¥76,543.21");
+    await expect(page.getByRole("button", { name: "导出 CSV", exact: true })).toBeVisible();
+    await expect(current.locator("[data-daily-summary]")).toHaveCount(0);
     const beforeInspecting = reads;
     const observed = await visibleDates(page);
     const pager = current.getByRole("navigation", { name: "每日数据分页", exact: true });
@@ -108,7 +108,7 @@ test("daily data shows every date in a bill calendar with heat levels, detail st
     expect(observed).toHaveLength(days);
     expect(new Set(observed).size).toBe(days);
     expect(reads).toBe(beforeInspecting);
-    await record(page, info, { days, expectedDates: expected.map(day => day.date), observed, reads, totals });
+    await record(page, info, { days, expectedDates: expected.map(day => day.date), observed, reads });
   }
   await page.getByRole("button", { name: "统计口径", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "统计口径" })).not.toContainText("按周");
@@ -264,7 +264,7 @@ test("daily data separates loading, failures, empty series and valid zero days t
   await page.getByRole("option", { name: "近 90 天", exact: true }).click();
   await expect(current).toHaveAttribute("aria-busy", "true");
   await expect(current.locator(".daily-date time")).toHaveCount(0);
-  await expect(current.locator("[data-daily-summary]")).toHaveCount(0);
+  await expect(current.locator("[data-daily-detail]")).toHaveCount(0);
   await range(page, 7);
   release90();
   await expect(current.locator('[role="status"]')).toHaveText("共 7 天");
@@ -273,14 +273,14 @@ test("daily data separates loading, failures, empty series and valid zero days t
 
   const refresh = page.getByRole("button", { name: "刷新", exact: true });
   const retainedDates = await current.locator(".daily-date time").allTextContents();
-  const retainedSummary = await current.locator("[data-daily-summary]").allTextContents();
+  const retainedDetail = await current.locator("[data-daily-detail]").allTextContents();
   scenario = "error";
   await expect(refresh).toBeEnabled();
   await refresh.click();
   await expect(page.getByText("统计读取失败", { exact: true })).toBeVisible();
   await expect(page.getByText("更新未完成，以下保留上次成功读取的内容。", { exact: true })).toBeVisible();
   expect(await current.locator(".daily-date time").allTextContents()).toEqual(retainedDates);
-  expect(await current.locator("[data-daily-summary]").allTextContents()).toEqual(retainedSummary);
+  expect(await current.locator("[data-daily-detail]").allTextContents()).toEqual(retainedDetail);
   scenario = "empty";
   await page.getByRole("button", { name: "重试", exact: true }).click();
   await expect(current.getByText("暂无每日数据", { exact: true })).toBeVisible();

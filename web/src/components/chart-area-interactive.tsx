@@ -1,11 +1,11 @@
 import { lazy, Suspense, useId, useState } from "react";
-import { ChartArea, ChartColumn, Info, TrendingUp } from "lucide-react";
+import { ChartArea, ChartColumn, Download, Info, TrendingUp } from "lucide-react";
 import type { DashboardChartType, SystemAnalytics } from "@/api/client";
 import { useChartType } from "@/hooks/use-chart-type";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { money, count } from "@/lib/format";
 import { buildTrendReport, type TrendView } from "@/lib/trend-analytics";
-import { dailyDateLabel } from "@/lib/daily-analytics";
+import { dailyDateLabel, downloadDailyCsv } from "@/lib/daily-analytics";
 import { DailyAnalytics } from "@/components/daily-analytics";
 import { CombinedTrendPlot } from "@/components/combined-trend-plot";
 import { TrendSeriesSymbol } from "@/components/trend-series-symbol";
@@ -260,6 +260,21 @@ export function ChartAreaInteractive({
               />
             )}
             <div className="trend-controls">
+              {view === "daily" && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="trend-export-button"
+                  disabled={pending || !hasDays}
+                  onClick={() => {
+                    if (analytics?.daily.length) downloadDailyCsv(analytics.daily);
+                  }}
+                >
+                  <Download aria-hidden="true" data-icon="inline-start" />
+                  导出 CSV
+                </Button>
+              )}
               <div className="trend-period">
                 <Select
                   items={periods}
