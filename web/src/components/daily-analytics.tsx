@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useInRouterContext } from "react-router";
-import { ArrowRight, Star } from "lucide-react";
+import { ArrowDown, ArrowRight, ArrowUp } from "lucide-react";
 import type { SystemAnalytics } from "@/api/client";
 import { Link } from "@/navigation";
 import { cn } from "@/lib/utils";
@@ -65,18 +65,11 @@ export function DailyAnalytics({
 
   const firstDate = chronologicalDates[0] ?? "";
   const lastDate = chronologicalDates.at(-1) ?? "";
-  const peakDate = report?.peak?.date ?? null;
-  const hasPeakRevenue = Boolean(report?.peak && report.peak.confirmed_amount_cents > 0);
+  const peakDate = report?.peak && report.peak.confirmed_amount_cents > 0 ? report.peak.date : null;
+  const lowestDate = report?.lowest?.date ?? null;
   const activeDays = days.filter((day) => day.confirmed_amount_cents > 0).length;
-  const totalFailedNotifications = days.reduce(
-    (sum, day) => sum + day.notifications_failed,
-    0,
-  );
 
-  const defaultSelectedDate =
-    report?.peak && report.peak.confirmed_amount_cents > 0
-      ? report.peak.date
-      : (report?.days[0]?.date ?? null);
+  const defaultSelectedDate = peakDate ?? report?.days[0]?.date ?? null;
 
   const selectedDate =
     selection &&
@@ -140,11 +133,8 @@ export function DailyAnalytics({
   }
 
   const selectedIsToday = Boolean(selectedDay && report && selectedDay.date === report.today);
-  const selectedIsPeak = Boolean(
-    selectedDay &&
-    peakDate === selectedDay.date &&
-    selectedDay.confirmed_amount_cents > 0,
-  );
+  const selectedIsPeak = Boolean(selectedDay && peakDate === selectedDay.date);
+  const selectedIsLowest = Boolean(selectedDay && lowestDate === selectedDay.date);
   const selectedDeltaPct =
     selectedDay &&
     !selectedIsToday &&
@@ -164,18 +154,6 @@ export function DailyAnalytics({
     <div className="daily-report" role="region" aria-label="每日数据" aria-busy={pending}>
       {pending ? (
         <div className="daily-cal-loading" aria-hidden="true">
-          <div className="daily-cal-surface">
-            <div className="daily-cal-week daily-cal-loading-head">
-              {CALENDAR_WEEKDAYS.map((weekday) => (
-                <Skeleton key={weekday} className="mx-auto h-3.5 w-8" />
-              ))}
-            </div>
-            <div className="daily-cal-loading-grid">
-              {Array.from({ length: LOADING_WEEKS * 7 }, (_, index) => (
-                <Skeleton key={index} className="h-14 w-full rounded-lg" />
-              ))}
-            </div>
-          </div>
           <div className="daily-cal-detail">
             <div className="daily-cal-detail-header">
               <Skeleton className="h-4 w-36" />
@@ -190,121 +168,21 @@ export function DailyAnalytics({
               ))}
             </div>
           </div>
+          <div className="daily-cal-surface">
+            <div className="daily-cal-week daily-cal-loading-head">
+              {CALENDAR_WEEKDAYS.map((weekday) => (
+                <Skeleton key={weekday} className="mx-auto h-3.5 w-8" />
+              ))}
+            </div>
+            <div className="daily-cal-loading-grid">
+              {Array.from({ length: LOADING_WEEKS * 7 }, (_, index) => (
+                <Skeleton key={index} className="h-12 w-full rounded-lg" />
+              ))}
+            </div>
+          </div>
         </div>
       ) : hasDays && report && analytics ? (
         <>
-          <div className="daily-cal-surface" data-daily-surface="true">
-            <div role="grid" aria-label="每日收款日历" className="daily-cal-grid-wrap">
-              <div role="rowgroup" className="daily-cal-head">
-                <div role="row" className="daily-cal-week">
-                  {CALENDAR_WEEKDAYS.map((weekday) => (
-                    <div key={weekday} role="columnheader" className="daily-cal-weekday">
-                      {weekday}
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div
-                ref={scrollRef}
-                role="rowgroup"
-                className="daily-cal-body"
-                data-scrollable={isScrollable || undefined}
-                tabIndex={isScrollable ? 0 : undefined}
-                aria-label="每日收款记录"
-              >
-                {weeks.map((week) => (
-                  <div key={week[0]!.iso} role="row" className="daily-cal-week">
-                    {week.map((cell) => {
-                      if (!cell.day) {
-                        return <div key={cell.iso} role="gridcell" className="daily-cal-pad" />;
-                      }
-                      const day = cell.day;
-                      const isToday = day.date === report.today;
-                      const isPeak = peakDate === day.date && day.confirmed_amount_cents > 0;
-                      const level = calendarHeatLevel(day.confirmed_amount_cents, report.maximum);
-                      const isSelected = day.date === selectedDate;
-                      const cellLabel = calendarCellDateLabel(day.date, report.today, firstDate);
-                      const compactCellLabel = calendarCellDateLabel(
-                        day.date,
-                        report.today,
-                        firstDate,
-                        true,
-                      );
-                      const ariaParts = [
-                        `${day.date} ${dailyWeekday(day.date)}`,
-                        isToday ? "今日" : null,
-                        isPeak ? "单日最高" : null,
-                        `确认金额 ${money(day.confirmed_amount_cents)}`,
-                        `确认 ${count(day.confirmations)} 笔`,
-                        `新建订单 ${count(day.orders_created)} 笔`,
-                        day.notifications_failed > 0
-                          ? `通知失败 ${count(day.notifications_failed)} 次`
-                          : null,
-                      ].filter(Boolean);
-
-                      return (
-                        <div key={day.date} role="gridcell" className="daily-cal-slot">
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            ref={(node) => {
-                              if (node) cellRefs.current.set(day.date, node);
-                              else cellRefs.current.delete(day.date);
-                            }}
-                            className="daily-cal-cell"
-                            data-cal-date={day.date}
-                            data-cal-level={level}
-                            data-selected={isSelected || undefined}
-                            data-daily-today={isToday || undefined}
-                            data-daily-peak={isPeak || undefined}
-                            data-daily-zero={day.confirmed_amount_cents === 0 || undefined}
-                            aria-pressed={isSelected}
-                            aria-label={ariaParts.join("，")}
-                            onClick={() => setSelection({ scope: scopeKey, date: day.date })}
-                            onKeyDown={(event) => handleCellKeyDown(event, day.date)}
-                          >
-                            <span className="daily-cal-cell-head">
-                              <span className="daily-date daily-cal-date">
-                                <time dateTime={day.date} title={day.date}>
-                                  {compactCellLabel !== cellLabel ? (
-                                    <>
-                                      <span className="daily-cal-date-full">{cellLabel}</span>
-                                      <span className="daily-cal-date-short" aria-hidden="true">
-                                        {compactCellLabel}
-                                      </span>
-                                    </>
-                                  ) : (
-                                    cellLabel
-                                  )}
-                                </time>
-                              </span>
-                              {(isPeak || day.notifications_failed > 0) && (
-                                <span className="daily-cal-indicators" aria-hidden="true">
-                                  {isPeak && <Star className="daily-cal-peak-icon" />}
-                                  {day.notifications_failed > 0 && (
-                                    <span className="daily-cal-fail-dot" />
-                                  )}
-                                </span>
-                              )}
-                            </span>
-                            <span className="daily-cal-cell-body" aria-hidden="true">
-                              <span className="daily-cal-amount">
-                                {compactCalendarMoney(day.confirmed_amount_cents)}
-                              </span>
-                              <span className="daily-cal-count">
-                                {count(day.confirmations)} 笔
-                              </span>
-                            </span>
-                          </Button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
           {selectedDay && (
             <div className="daily-cal-detail" data-daily-detail={selectedDay.date}>
               <div className="daily-cal-detail-header">
@@ -323,6 +201,11 @@ export function DailyAnalytics({
                   {selectedIsPeak && (
                     <Badge variant="outline" className="daily-day-badge">
                       单日最高
+                    </Badge>
+                  )}
+                  {selectedIsLowest && (
+                    <Badge variant="outline" className="daily-day-badge">
+                      单日最低
                     </Badge>
                   )}
                   {selectedDeltaPct !== null && (
@@ -400,6 +283,128 @@ export function DailyAnalytics({
               </dl>
             </div>
           )}
+
+          <div className="daily-cal-surface" data-daily-surface="true">
+            <div role="grid" aria-label="每日收款日历" className="daily-cal-grid-wrap">
+              <div role="rowgroup" className="daily-cal-head">
+                <div role="row" className="daily-cal-week">
+                  {CALENDAR_WEEKDAYS.map((weekday) => (
+                    <div key={weekday} role="columnheader" className="daily-cal-weekday">
+                      {weekday}
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div
+                ref={scrollRef}
+                role="rowgroup"
+                className="daily-cal-body"
+                data-scrollable={isScrollable || undefined}
+                tabIndex={isScrollable ? 0 : undefined}
+                aria-label="每日收款记录"
+              >
+                {weeks.map((week) => (
+                  <div key={week[0]!.iso} role="row" className="daily-cal-week">
+                    {week.map((cell) => {
+                      if (!cell.day) {
+                        return <div key={cell.iso} role="gridcell" className="daily-cal-pad" />;
+                      }
+                      const day = cell.day;
+                      const isToday = day.date === report.today;
+                      const isPeak = peakDate === day.date;
+                      const isLowest = lowestDate === day.date;
+                      const level = calendarHeatLevel(day.confirmed_amount_cents, report.maximum);
+                      const isSelected = day.date === selectedDate;
+                      const cellLabel = calendarCellDateLabel(day.date, report.today, firstDate);
+                      const compactCellLabel = calendarCellDateLabel(
+                        day.date,
+                        report.today,
+                        firstDate,
+                        true,
+                      );
+                      const ariaParts = [
+                        `${day.date} ${dailyWeekday(day.date)}`,
+                        isToday ? "今日" : null,
+                        isPeak ? "单日最高" : null,
+                        isLowest ? "单日最低" : null,
+                        `确认金额 ${money(day.confirmed_amount_cents)}`,
+                        `确认 ${count(day.confirmations)} 笔`,
+                        `新建订单 ${count(day.orders_created)} 笔`,
+                      ].filter(Boolean);
+
+                      return (
+                        <div key={day.date} role="gridcell" className="daily-cal-slot">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            ref={(node) => {
+                              if (node) cellRefs.current.set(day.date, node);
+                              else cellRefs.current.delete(day.date);
+                            }}
+                            className="daily-cal-cell"
+                            data-cal-date={day.date}
+                            data-cal-level={level}
+                            data-selected={isSelected || undefined}
+                            data-daily-today={isToday || undefined}
+                            data-daily-peak={isPeak || undefined}
+                            data-daily-lowest={isLowest || undefined}
+                            data-daily-zero={day.confirmed_amount_cents === 0 || undefined}
+                            aria-pressed={isSelected}
+                            aria-label={ariaParts.join("，")}
+                            onClick={() => setSelection({ scope: scopeKey, date: day.date })}
+                            onKeyDown={(event) => handleCellKeyDown(event, day.date)}
+                          >
+                            <span className="daily-cal-cell-head">
+                              <span className="daily-date daily-cal-date">
+                                <time dateTime={day.date} title={day.date}>
+                                  {compactCellLabel !== cellLabel ? (
+                                    <>
+                                      <span className="daily-cal-date-full">{cellLabel}</span>
+                                      <span className="daily-cal-date-short" aria-hidden="true">
+                                        {compactCellLabel}
+                                      </span>
+                                    </>
+                                  ) : (
+                                    cellLabel
+                                  )}
+                                </time>
+                              </span>
+                              {(isPeak || isLowest) && (
+                                <span
+                                  className={cn(
+                                    "daily-cal-mark",
+                                    isPeak ? "daily-cal-mark-peak" : "daily-cal-mark-low",
+                                  )}
+                                  aria-hidden="true"
+                                >
+                                  <span className="daily-cal-mark-text">
+                                    {isPeak ? "最高" : "最低"}
+                                  </span>
+                                  {isPeak ? (
+                                    <ArrowUp className="daily-cal-mark-icon" />
+                                  ) : (
+                                    <ArrowDown className="daily-cal-mark-icon" />
+                                  )}
+                                </span>
+                              )}
+                            </span>
+                            <span className="daily-cal-cell-body" aria-hidden="true">
+                              <span className="daily-cal-amount">
+                                {compactCalendarMoney(day.confirmed_amount_cents)}
+                              </span>
+                              <span className="daily-cal-count">
+                                {count(day.confirmations)} 笔
+                              </span>
+                            </span>
+                          </Button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
         </>
       ) : (
         <div className="daily-cal-empty">
@@ -416,24 +421,10 @@ export function DailyAnalytics({
           {pending ? "正在读取每日数据…" : !analytics ? "等待统计数据" : `共 ${totalDays} 天`}
         </p>
         {!pending && hasDays && report && analytics && (
-          <div className="daily-report-meta-group">
-            {hasPeakRevenue && (
-              <span className="daily-cal-legend">
-                <Star className="daily-cal-legend-star" aria-hidden="true" />
-                最高
-              </span>
-            )}
-            {totalFailedNotifications > 0 && (
-              <span className="daily-cal-legend">
-                <span className="daily-cal-fail-dot" aria-hidden="true" />
-                通知异常
-              </span>
-            )}
-            <p className="daily-report-meta">
-              有收款 {count(activeDays)} 天 · 确认 {count(analytics.confirmations.count)} 笔 · 新建{" "}
-              {count(analytics.orders.created)} 笔
-            </p>
-          </div>
+          <p className="daily-report-meta">
+            有收款 {count(activeDays)} 天 · 确认 {count(analytics.confirmations.count)} 笔 · 新建{" "}
+            {count(analytics.orders.created)} 笔
+          </p>
         )}
       </div>
     </div>

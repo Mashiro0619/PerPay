@@ -80,8 +80,13 @@ test("daily data shows every date in a bill calendar with heat levels, detail st
     await expect(current.getByText("全部展开", { exact: true })).toHaveCount(0);
     await expect(current.getByText("全部收起", { exact: true })).toHaveCount(0);
     const expected = fixtures.get(days)!.daily;
-    await expect(page.getByRole("button", { name: "导出 CSV", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "导出 CSV", exact: true })).toHaveCount(0);
     await expect(current.locator("[data-daily-summary]")).toHaveCount(0);
+    await expect(current.locator('[data-daily-peak="true"]')).toHaveCount(1);
+    await expect(current.locator('[data-daily-lowest="true"]')).toHaveCount(1);
+    const detailBox = (await current.locator("[data-daily-detail]").boundingBox())!;
+    const gridBox = (await current.getByRole("grid", { name: "每日收款日历", exact: true }).boundingBox())!;
+    expect(detailBox.y, "selected day detail renders above the calendar grid").toBeLessThan(gridBox.y);
     const beforeInspecting = reads;
     const observed = await visibleDates(page);
     const pager = current.getByRole("navigation", { name: "每日数据分页", exact: true });

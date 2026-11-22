@@ -28,6 +28,7 @@ export interface DailyReport {
   readonly maximum: number;
   readonly averageCents: number | null;
   readonly peak: DailyDay | null;
+  readonly lowest: DailyDay | null;
 }
 
 function calendarDate(date: string): Date {
@@ -130,53 +131,6 @@ export function buildCalendarWeeks(days: readonly DailyDay[]): CalendarCell[][] 
   return weeks;
 }
 
-export function buildDailyCsv(days: readonly DailyDay[]): string {
-  const ordered = [...days].sort((a, b) => b.date.localeCompare(a.date));
-  const header = [
-    "日期",
-    "星期",
-    "确认金额(元)",
-    "确认笔数",
-    "笔均金额(元)",
-    "新建订单",
-    "通知已确认",
-    "通知失败",
-  ].join(",");
-  const rows = ordered.map((day) => {
-    const avgCents = day.confirmations > 0
-      ? Math.round(day.confirmed_amount_cents / day.confirmations)
-      : 0;
-    return [
-      day.date,
-      dailyWeekday(day.date),
-      (day.confirmed_amount_cents / 100).toFixed(2),
-      String(day.confirmations),
-      (avgCents / 100).toFixed(2),
-      String(day.orders_created),
-      String(day.notifications_acknowledged),
-      String(day.notifications_failed),
-    ].join(",");
-  });
-  return "\uFEFF" + [header, ...rows].join("\r\n");
-}
-
-export function downloadDailyCsv(days: readonly DailyDay[]): void {
-  if (!days.length) return;
-  const ordered = [...days].sort((a, b) => a.date.localeCompare(b.date));
-  const first = ordered[0]!.date;
-  const last = ordered.at(-1)!.date;
-  const filename = first === last
-    ? `perpay-daily-${first}.csv`
-    : `perpay-daily-${first}-to-${last}.csv`;
-  const blob = new Blob([buildDailyCsv(days)], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
 export function buildDailyReport(analytics: SystemAnalytics): DailyReport {
   const days = [...analytics.daily].sort((a, b) => b.date.localeCompare(a.date));
   // The response includes its current Beijing day and ends at the next midnight.
@@ -197,6 +151,19 @@ export function buildDailyReport(analytics: SystemAnalytics): DailyReport {
       : best,
     null,
   );
+  const lowestCandidate = completed.reduce<DailyDay | null>(
+    (best, day) => !best || day.confirmed_amount_cents < best.confirmed_amount_cents
+      ? day
+      : best,
+    null,
+  );
+  const lowest =
+    lowestCandidate &&
+    peak &&
+    lowestCandidate.date !== peak.date &&
+    lowestCandidate.confirmed_amount_cents < peak.confirmed_amount_cents
+      ? lowestCandidate
+      : null;
 
   return {
     days,
@@ -204,5 +171,6 @@ export function buildDailyReport(analytics: SystemAnalytics): DailyReport {
     maximum: days.reduce((maximum, day) => Math.max(maximum, day.confirmed_amount_cents), 0),
     averageCents,
     peak,
+    lowest,
   };
 }

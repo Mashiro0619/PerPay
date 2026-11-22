@@ -1481,18 +1481,6 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 .trend-tabs [data-slot="tabs-trigger"] { min-width: 0; height: auto; min-height: 1.625rem; flex: 1 1 auto; font-size: 0.75rem; white-space: nowrap; }
 .trend-period { min-width: 0; max-width: 100%; }
 .trend-period [data-slot="select-trigger"] { max-width: 100%; height: 2rem; min-height: 2rem; font-size: 0.75rem; }
-.trend-export-button {
-  height: 2rem;
-  min-height: 2rem;
-  padding-inline: 0.625rem;
-  font-size: 0.75rem;
-  font-weight: 400;
-  color: var(--muted-foreground);
-  border-color: var(--console-hairline, var(--border));
-}
-.trend-export-button:hover:not(:disabled) {
-  color: var(--foreground);
-}
 .trend-dates { min-width: 0; font-size: 0.75rem; line-height: 1.35; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .trend-dates time { white-space: nowrap; }
 .trend-content { display: flex; min-width: 0; flex-direction: column; gap: 1.125rem; }
@@ -1658,8 +1646,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 @media (pointer: coarse) and (min-width: 768px) {
   .trend-header :is([data-slot="toggle-group-item"], [data-slot="tabs-trigger"]) { min-width: 40px; min-height: 40px; height: auto; }
   .trend-tabs { height: auto; }
-  .trend-period [data-slot="select-trigger"],
-  .trend-export-button { height: auto; min-height: max(2rem, 40px); }
+  .trend-period [data-slot="select-trigger"] { height: auto; min-height: max(2rem, 40px); }
 }
 @container card (max-width: 44.999rem) {
   .trend-header {
@@ -1705,8 +1692,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   .trend-metrics [data-slot="toggle-group-item"] { padding-inline: 0.25rem; }
 }
 @media (max-width: 767px) and (pointer: coarse) {
-  .trend-period [data-slot="select-trigger"],
-  .trend-export-button { height: auto; min-height: max(2rem, 40px); }
+  .trend-period [data-slot="select-trigger"] { height: auto; min-height: max(2rem, 40px); }
   .trend-types [data-slot="toggle-group-item"] { margin-inline: 4px; }
   body:not(:has(.trend-types [data-slot="toggle-group-item"]:focus-visible)) .trend-type-tooltip { display: none; }
   .trend-type-tooltip,
@@ -1737,26 +1723,11 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 .daily-cal-loading-grid {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 0.375rem;
-}
-.daily-cal-legend {
-  display: inline-flex;
-  align-items: center;
   gap: 0.3125rem;
-  color: var(--muted-foreground);
-  font-size: 0.75rem;
-  white-space: nowrap;
-}
-.daily-cal-legend-star {
-  width: 0.6875rem;
-  height: 0.6875rem;
-  flex: none;
-  color: var(--foreground);
-  fill: currentColor;
 }
 .daily-cal-surface {
   min-width: 0;
-  padding: 0.75rem;
+  padding: 0.625rem;
   border-radius: var(--radius-lg);
   border: 1px solid var(--console-hairline, var(--border));
   background: color-mix(in oklch, var(--muted) 22%, var(--card));
@@ -1765,14 +1736,14 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   display: flex;
   min-width: 0;
   flex-direction: column;
-  gap: 0.375rem;
+  gap: 0.3125rem;
 }
 .daily-cal-head { min-width: 0; }
 .daily-cal-week {
   display: grid;
   min-width: 0;
   grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 0.375rem;
+  gap: 0.3125rem;
 }
 .daily-cal-weekday {
   padding-bottom: 0.125rem;
@@ -1785,10 +1756,10 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   display: flex;
   min-width: 0;
   flex-direction: column;
-  gap: 0.375rem;
+  gap: 0.3125rem;
 }
 .daily-cal-body[data-scrollable="true"] {
-  max-height: 22rem;
+  max-height: 20rem;
   overflow-y: auto;
   overscroll-behavior-y: contain;
   padding-right: 0.25rem;
@@ -1820,7 +1791,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   }
 }
 .daily-cal-pad {
-  min-height: 3.75rem;
+  min-height: 3.125rem;
   border-radius: var(--radius-md);
   border: 1px dashed color-mix(in oklch, var(--foreground) 7%, transparent);
   background: transparent;
@@ -1834,12 +1805,12 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   width: 100%;
   min-width: 0;
   height: auto;
-  min-height: 3.75rem;
+  min-height: 3.125rem;
   flex-direction: column;
   align-items: stretch;
   justify-content: space-between;
-  gap: 0.375rem;
-  padding: 0.4375rem 0.5rem;
+  gap: 0.1875rem;
+  padding: 0.3125rem 0.4375rem;
   border-radius: var(--radius-md);
   border: 1px solid var(--console-hairline, var(--border));
   background: var(--card);
@@ -1904,25 +1875,31 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   font-weight: 600;
   color: var(--foreground);
 }
-.daily-cal-indicators {
+.daily-cal-mark {
   display: inline-flex;
   flex: none;
   align-items: center;
-  gap: 0.25rem;
+  justify-content: center;
+  padding: 0.0625rem 0.25rem;
+  border-radius: calc(var(--radius-sm) - 1px);
+  font-size: 0.625rem;
+  line-height: 1.15;
+  font-weight: 500;
+  white-space: nowrap;
 }
-.daily-cal-peak-icon {
-  width: 0.6875rem;
-  height: 0.6875rem;
+.daily-cal-mark-peak {
+  background: var(--foreground);
+  color: var(--background);
+}
+.daily-cal-mark-low {
+  border: 1px solid color-mix(in oklch, var(--foreground) 24%, transparent);
+  background: var(--card);
   color: var(--foreground);
-  fill: currentColor;
 }
-.daily-cal-fail-dot {
-  display: inline-block;
-  width: 0.375rem;
-  height: 0.375rem;
-  flex: none;
-  border-radius: 999px;
-  background: var(--warning-foreground);
+.daily-cal-mark-icon {
+  display: none;
+  width: 0.5625rem;
+  height: 0.5625rem;
 }
 .daily-cal-cell-body {
   display: flex;
@@ -1936,7 +1913,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 0.75rem;
-  line-height: 1.25;
+  line-height: 1.2;
   font-weight: 600;
   color: var(--foreground);
 }
@@ -1949,7 +1926,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 0.6875rem;
-  line-height: 1.2;
+  line-height: 1.15;
   color: color-mix(in oklch, var(--foreground) 72%, var(--card));
 }
 .daily-cal-detail {
@@ -2076,17 +2053,6 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   padding-top: 0.75rem;
   border-top: 1px solid var(--console-hairline, var(--border));
 }
-.daily-report-meta-group {
-  display: flex;
-  min-width: 0;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.375rem 0.75rem;
-}
-.daily-cal-legend + .daily-report-meta::before {
-  content: "·";
-  margin-right: 0.625rem;
-}
 .daily-report-status,
 .daily-report-meta {
   color: var(--muted-foreground);
@@ -2101,13 +2067,14 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   .daily-cal-loading-grid { gap: 0.25rem; }
   .daily-cal-pad,
   .daily-cal-cell {
-    min-height: 3.125rem;
-    padding: 0.3125rem 0.25rem;
-    gap: 0.1875rem;
+    min-height: 2.875rem;
+    padding: 0.25rem;
+    gap: 0.125rem;
   }
   .daily-cal-date time,
   .daily-cal-amount { font-size: 0.6875rem; }
   .daily-cal-count { display: none; }
+  .daily-cal-mark { padding: 0.0625rem 0.1875rem; font-size: 0.5625rem; }
   .daily-cal-detail-header { padding: 0.625rem 0.75rem; }
   .daily-cal-detail-grid,
   .daily-cal-detail-grid[data-has-warning="true"] {
@@ -2134,7 +2101,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   .daily-cal-pad,
   .daily-cal-cell {
     position: relative;
-    min-height: 2.625rem;
+    min-height: 2.5rem;
     padding: 0.25rem 0.125rem;
     align-items: center;
     justify-content: center;
@@ -2144,14 +2111,17 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   .daily-cal-date-short { display: inline; }
   .daily-cal-date time { font-size: 0.6875rem; }
   .daily-cal-cell-head { justify-content: center; gap: 0; }
-  .daily-cal-indicators {
+  .daily-cal-mark {
     position: absolute;
-    top: 0.1875rem;
-    right: 0.1875rem;
-    gap: 0.125rem;
+    top: 0.125rem;
+    right: 0.125rem;
+    padding: 0.0625rem;
+    border: 0;
+    background: transparent;
+    color: var(--foreground);
   }
-  .daily-cal-peak-icon { width: 0.5rem; height: 0.5rem; }
-  .daily-cal-fail-dot { width: 0.3125rem; height: 0.3125rem; }
+  .daily-cal-mark-text { display: none; }
+  .daily-cal-mark-icon { display: block; }
   .daily-cal-cell-body { display: none; }
 }
 @media (pointer: coarse) {

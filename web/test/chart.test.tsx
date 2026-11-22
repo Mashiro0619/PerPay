@@ -579,7 +579,7 @@ describe("complete daily analytics report", () => {
     },
   );
 
-  it("picks the latest peak tie, exposes footer legend, and updates the structured detail panel on click and arrow keys", async () => {
+  it("marks peak and lowest days, places the detail panel above the calendar, and updates on click and arrow keys", async () => {
     const user = userEvent.setup();
     const data = analytics();
     data.confirmations.amount_cents = 123456;
@@ -595,8 +595,16 @@ describe("complete daily analytics report", () => {
       </MemoryRouter>,
     );
     expect(container.querySelector("[data-daily-summary]")).toBeNull();
-    // Latest peak tie (2026-06-04) is selected by default.
+    // Detail panel sits above the calendar grid.
     const detail = container.querySelector('[data-daily-detail="2026-06-04"]')!;
+    const surface = container.querySelector('[data-daily-surface="true"]')!;
+    expect(detail.compareDocumentPosition(surface) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    // Latest peak tie (2026-06-04) and latest lowest tie (2026-06-06) are marked on cells.
+    expect(container.querySelector('button[data-cal-date="2026-06-04"]')).toHaveTextContent("最高");
+    expect(container.querySelector('button[data-cal-date="2026-06-06"]')).toHaveTextContent("最低");
+    expect(container.querySelector(".daily-cal-fail-dot")).toBeNull();
+
     expect(detail).toHaveTextContent("2026-06-04");
     expect(detail).toHaveTextContent("单日最高");
     expect(detail).toHaveTextContent("¥2.02");
@@ -604,7 +612,11 @@ describe("complete daily analytics report", () => {
     expect(within(detail as HTMLElement).getByRole("link", { name: /查看当天订单/ }))
       .toHaveAttribute("href", "/sites/shop-a/orders?created_from=2026-06-04&created_to=2026-06-04");
 
-    // Clicking a day with notification failures exposes the notification troubleshooting link.
+    // Clicking the lowest day shows the 单日最低 badge in the detail panel.
+    await user.click(container.querySelector<HTMLButtonElement>('button[data-cal-date="2026-06-06"]')!);
+    expect(container.querySelector('[data-daily-detail="2026-06-06"]')).toHaveTextContent("单日最低");
+
+    // Clicking a day with notification failures exposes the notification troubleshooting link in detail.
     const failCell = container.querySelector<HTMLButtonElement>('button[data-cal-date="2026-06-02"]')!;
     await user.click(failCell);
     const failDetail = container.querySelector('[data-daily-detail="2026-06-02"]')!;
@@ -880,7 +892,7 @@ describe("shared trend and daily views", () => {
       <ChartAreaInteractive analytics={otherSite} range={30} pending={false} onRangeChange={onRangeChange} scopeKey="site-b" />,
     );
     await userEvent.click(screen.getByRole("tab", { name: "每日数据" }));
-    expect(screen.getByRole("button", { name: /导出 CSV/ })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: /导出 CSV/ })).not.toBeInTheDocument();
     expect(screen.getByRole("status")).toHaveTextContent("共 30 天");
     expect(dailyDates()).toHaveLength(30);
     expect(screen.getByRole("region", { name: "每日数据" })).toHaveTextContent("¥9,876.54");

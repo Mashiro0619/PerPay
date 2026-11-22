@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from "vitest";
 import type { SystemAnalytics } from "../src/api/client";
 import {
   buildCalendarWeeks,
-  buildDailyCsv,
   buildDailyReport,
   calendarCellDateLabel,
   calendarHeatLevel,
@@ -97,6 +96,7 @@ describe("daily report calendar and comparisons", () => {
     expect(report.averageCents).toBe(34);
     expect(report.maximum).toBe(10000);
     expect(report.peak).toMatchObject({ date: "2026-10-08", confirmed_amount_cents: 100 });
+    expect(report.lowest).toMatchObject({ date: "2026-10-11", confirmed_amount_cents: 0 });
   });
 
   it("preserves all-zero evidence and distinguishes no completed days from a zero average", () => {
@@ -106,14 +106,16 @@ describe("daily report calendar and comparisons", () => {
     expect(zero.averageCents).toBe(0);
     expect(zero.maximum).toBe(0);
     expect(zero.peak?.date).toBe("2026-10-11");
+    expect(zero.lowest).toBeNull();
 
     const todayOnly = buildDailyReport(analytics([day("2026-10-12", 125)], "2026-10-12T16:00:00Z"));
     expect(todayOnly.averageCents).toBeNull();
     expect(todayOnly.peak).toBeNull();
+    expect(todayOnly.lowest).toBeNull();
     expect(todayOnly.maximum).toBe(125);
 
     const empty = buildDailyReport(analytics([], "2026-10-12T16:00:00Z"));
-    expect(empty).toMatchObject({ days: [], maximum: 0, averageCents: null, peak: null });
+    expect(empty).toMatchObject({ days: [], maximum: 0, averageCents: null, peak: null, lowest: null });
   });
 
   it("sorts shuffled dates without toSorted or mutations to the response and its day records", () => {
@@ -179,7 +181,7 @@ describe("daily report calendar and comparisons", () => {
     expect(buildCalendarWeeks([])).toEqual([]);
   });
 
-  it("computes compact cell currency, heat levels, cell labels and UTF-8 BOM CSV", () => {
+  it("computes compact cell currency, heat levels and cell labels", () => {
     expect(compactCalendarMoney(0)).toBe("¥0");
     expect(compactCalendarMoney(1)).toBe("¥0.01");
     expect(compactCalendarMoney(9999)).toBe("¥99.99");
@@ -201,15 +203,5 @@ describe("daily report calendar and comparisons", () => {
     expect(calendarCellDateLabel("2026-11-01", "2026-11-23", "2026-10-25")).toBe("11月1日");
     expect(calendarCellDateLabel("2026-11-01", "2026-11-23", "2026-10-25", true)).toBe("11/1");
     expect(calendarCellDateLabel("2026-11-17", "2026-11-23", "2026-10-25")).toBe("17");
-
-    const csv = buildDailyCsv([
-      { ...day("2026-10-06", 10050, 2, 3), notifications_acknowledged: 2, notifications_failed: 0 },
-      { ...day("2026-10-07", 0, 0, 1), notifications_acknowledged: 0, notifications_failed: 1 },
-    ]);
-    expect(csv.startsWith("\uFEFF")).toBe(true);
-    const lines = csv.slice(1).split("\r\n");
-    expect(lines[0]).toBe("日期,星期,确认金额(元),确认笔数,笔均金额(元),新建订单,通知已确认,通知失败");
-    expect(lines[1]).toBe("2026-10-07,周三,0.00,0,0.00,1,0,1");
-    expect(lines[2]).toBe("2026-10-06,周二,100.50,2,50.25,3,2,0");
   });
 });
