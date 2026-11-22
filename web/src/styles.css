@@ -1893,6 +1893,9 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   width: 0.75rem;
   height: 0.75rem;
 }
+.daily-cal-mark-star {
+  fill: currentColor;
+}
 .daily-cal-cell-body {
   display: flex;
   min-width: 0;

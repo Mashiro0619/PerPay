@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useInRouterContext } from "react-router";
-import { ArrowDown, ArrowRight, ArrowUp } from "lucide-react";
+import { ArrowRight, Star, TrendingDown } from "lucide-react";
 import type { SystemAnalytics } from "@/api/client";
 import { Link } from "@/navigation";
 import { cn } from "@/lib/utils";
@@ -381,9 +381,9 @@ export function DailyAnalytics({
                                   aria-hidden="true"
                                 >
                                   {isPeak ? (
-                                    <ArrowUp className="daily-cal-mark-icon" strokeWidth={2.25} />
+                                    <Star className="daily-cal-mark-icon daily-cal-mark-star" />
                                   ) : (
-                                    <ArrowDown className="daily-cal-mark-icon" strokeWidth={2.25} />
+                                    <TrendingDown className="daily-cal-mark-icon" strokeWidth={2.25} />
                                   )}
                                 </span>
                               )}
@@ -436,13 +436,13 @@ export function DailyAnalytics({
           <div className="daily-report-meta-group">
             {peakDate && (
               <span className="daily-cal-legend">
-                <ArrowUp className="daily-cal-legend-icon" aria-hidden="true" />
+                <Star className="daily-cal-legend-icon daily-cal-mark-star" aria-hidden="true" />
                 最高
               </span>
             )}
             {lowestDate && (
               <span className="daily-cal-legend">
-                <ArrowDown className="daily-cal-legend-icon" aria-hidden="true" />
+                <TrendingDown className="daily-cal-legend-icon" aria-hidden="true" />
                 最低
               </span>
             )}
