@@ -17,6 +17,10 @@ export const DEAD_LETTER_QUICK_REASONS = [
   "网络恢复后手动补发",
 ] as const;
 
+function isAbortError(error: unknown): boolean {
+  return (error instanceof DOMException || error instanceof Error) && error.name === "AbortError";
+}
+
 type DeliveryContext = WebhookDeliveryDetail & {
   attempts: readonly WebhookAttempt[];
 };
@@ -32,7 +36,10 @@ export function useRedelivery(detail: DeliveryContext | null) {
     setSent(false);
   }, [deliveryId]);
   useEffect(() => {
-    if (newDeliveryId) navigate("/notifications/" + newDeliveryId);
+    if (!newDeliveryId) return;
+    const target = "/notifications/" + newDeliveryId;
+    setNewDeliveryId(null);
+    navigate(target);
   }, [newDeliveryId, navigate]);
   const setMessage = useSuccessToast();
   const finalFocus = useRef<HTMLElement | null>(null);
@@ -43,6 +50,7 @@ export function useRedelivery(detail: DeliveryContext | null) {
   };
   const dialog = snapshot && (
         <ReasonDialog
+          key={snapshot.delivery.delivery_id}
           finalFocus={() => finalFocus.current}
           title="重新发送通知"
           description="再次发送同一事件，业务方需避免重复处理。"
@@ -109,6 +117,7 @@ export function useRetryDelivery(detail: WebhookDeliveryDetail | null) {
         void refreshNotificationRecords(orderId, deliveryId);
       },
       (error: unknown) => {
+        if (isAbortError(error)) return;
         setError(error instanceof Error && error.message ? error.message : "立即重试失败，请刷新后重试");
         void refreshNotificationRecords(orderId, deliveryId);
       },
@@ -120,11 +129,11 @@ export function useRetryDelivery(detail: WebhookDeliveryDetail | null) {
   return { pending, run };
 }
 
-/** Shared immediate retry runner for list rows (notifications list and active work items). */
+/** Shared immediate retry runner tracked per delivery ID so independent rows never block each other. */
 export function useQuickRetryDelivery() {
   const api = useWorkspaceApi();
-  const [pendingId, setPendingId] = useState<string | null>(null);
-  const inflight = useRef<string | null>(null);
+  const [pendingIds, setPendingIds] = useState<ReadonlySet<string>>(() => new Set());
+  const inflight = useRef(new Set<string>());
   const mounted = useRef(true);
   const setSuccess = useSuccessToast();
   const setError = useErrorToast();
@@ -133,9 +142,13 @@ export function useQuickRetryDelivery() {
     return () => { mounted.current = false; };
   }, []);
   const run = (deliveryId: string, orderId: string | null) => {
-    if (inflight.current) return;
-    inflight.current = deliveryId;
-    setPendingId(deliveryId);
+    if (inflight.current.has(deliveryId)) return;
+    inflight.current.add(deliveryId);
+    setPendingIds((current) => {
+      const next = new Set(current);
+      next.add(deliveryId);
+      return next;
+    });
     void result(
       api.retryWebhookDelivery({
         path: { deliveryId },
@@ -144,32 +157,44 @@ export function useQuickRetryDelivery() {
     ).then(
       () => {
         setSuccess("已发起立即重试");
-        void refreshNotificationRecords(orderId ?? "", deliveryId);
+        void refreshNotificationRecords(orderId, deliveryId);
       },
       (error: unknown) => {
+        if (isAbortError(error)) return;
         setError(error instanceof Error && error.message ? error.message : "立即重试失败，请刷新后重试");
-        void refreshNotificationRecords(orderId ?? "", deliveryId);
+        void refreshNotificationRecords(orderId, deliveryId);
       },
     ).finally(() => {
-      inflight.current = null;
-      if (mounted.current) setPendingId(null);
+      inflight.current.delete(deliveryId);
+      if (mounted.current) {
+        setPendingIds((current) => {
+          if (!current.has(deliveryId)) return current;
+          const next = new Set(current);
+          next.delete(deliveryId);
+          return next;
+        });
+      }
     });
   };
-  return { pendingId, run };
+  const isPending = (deliveryId: string) => pendingIds.has(deliveryId);
+  return { pendingIds, isPending, run };
 }
 
 /** Shared redelivery dialog for dead-lettered rows in the notifications list without leaving the list. */
 export function useSummaryRedelivery() {
   const api = useWorkspaceApi();
   const [snapshot, setSnapshot] = useState<WebhookDeliverySummary | null>(null);
+  const [sentIds, setSentIds] = useState<ReadonlySet<string>>(() => new Set());
   const finalFocus = useRef<HTMLElement | null>(null);
   const setMessage = useSuccessToast();
   const open = (summary: WebhookDeliverySummary, trigger: HTMLElement | null) => {
+    if (sentIds.has(summary.delivery_id)) return;
     finalFocus.current = trigger;
     setSnapshot(summary);
   };
   const dialog = snapshot && (
     <ReasonDialog
+      key={snapshot.delivery_id}
       finalFocus={() => finalFocus.current}
       title="重新发送通知"
       description="再次发送同一事件，业务方需避免重复处理。"
@@ -189,6 +214,11 @@ export function useSummaryRedelivery() {
         finalFocus.current = document.getElementById("main-content");
         const orderId = snapshot.event.order_id;
         const deliveryId = snapshot.delivery_id;
+        setSentIds((current) => {
+          const next = new Set(current);
+          next.add(deliveryId);
+          return next;
+        });
         setSnapshot(null);
         setMessage("已创建新通知，等待发送");
         void refreshNotificationRecords(orderId, deliveryId);
@@ -203,7 +233,8 @@ export function useSummaryRedelivery() {
       />
     </ReasonDialog>
   );
-  return { open, dialog };
+  const isSent = (deliveryId: string) => sentIds.has(deliveryId);
+  return { open, isSent, dialog };
 }
 
 /** Actionability state for a list-level delivery summary. */
@@ -220,6 +251,7 @@ export function summaryDeliveryState(summary: WebhookDeliverySummary) {
     terminated: confirmationRevoked && summary.status !== "ACKNOWLEDGED",
     retryable: isLatest && summary.status === "RETRY_WAIT" && !confirmationRevoked,
     resendable: isLatest && terminal && !confirmationRevoked,
+    nextAttemptAt: terminal || confirmationRevoked ? null : summary.next_attempt_at,
   };
 }
 

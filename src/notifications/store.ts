@@ -31,6 +31,20 @@ const UUID_V4_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const FINGERPRINT_PATTERN = /^[0-9a-f]{64}$/;
 const MAX_LEASE_MILLISECONDS = 120_000;
+const REDELIVERY_BLOCKED_REASON_SQL = `CASE
+  WHEN target.target_format != 'NATIVE_JSON_V1'
+   AND NOT EXISTS (
+     SELECT 1 FROM payment_orders AS confirmed_order
+      JOIN payment_matches AS confirmed_match
+        ON confirmed_match.created_by_operation_id = outbox.financial_operation_id
+     WHERE confirmed_order.order_id = outbox.aggregate_id
+       AND outbox.event_type = 'PAYMENT_CONFIRMED'
+       AND confirmed_order.payment_status = 'CONFIRMED'
+       AND confirmed_match.status = 'SETTLED'
+   )
+  THEN 'payment_confirmation_revoked'
+  ELSE NULL
+END AS redelivery_blocked_reason`;
 
 export interface WebhookSigningKey {
   readonly keyVersion: number;
@@ -995,7 +1009,8 @@ export class WebhookStore {
                   target.url_fingerprint, target.created_at AS target_created_at,
                   (SELECT newer.delivery_id FROM webhook_deliveries AS newer
                     WHERE newer.outbox_event_id = delivery.outbox_event_id
-                      AND newer.target_id = delivery.target_id ORDER BY newer.generation DESC LIMIT 1) AS latest_delivery_id
+                      AND newer.target_id = delivery.target_id ORDER BY newer.generation DESC LIMIT 1) AS latest_delivery_id,
+                  ${REDELIVERY_BLOCKED_REASON_SQL}
              FROM webhook_deliveries AS delivery
              JOIN outbox_events AS outbox ON outbox.outbox_event_id = delivery.outbox_event_id
              JOIN webhook_targets AS target ON target.target_id = delivery.target_id
@@ -1018,7 +1033,7 @@ export class WebhookStore {
       return {
         isLatest: row.latest_delivery_id === row.delivery_id,
         latestDeliveryId: row.latest_delivery_id,
-        redeliveryBlockedReason: redeliveryBlockedReason(connection, row.target_format, row.outbox_event_id),
+        redeliveryBlockedReason: row.redelivery_blocked_reason,
         delivery: mapDelivery(row),
         event: mapEvent(row),
         target: mapTarget(row),
@@ -1052,7 +1067,8 @@ export class WebhookStore {
                   target.url_fingerprint, target.created_at AS target_created_at,
                   (SELECT newer.delivery_id FROM webhook_deliveries AS newer
                     WHERE newer.outbox_event_id = delivery.outbox_event_id
-                      AND newer.target_id = delivery.target_id ORDER BY newer.generation DESC LIMIT 1) AS latest_delivery_id
+                      AND newer.target_id = delivery.target_id ORDER BY newer.generation DESC LIMIT 1) AS latest_delivery_id,
+                  ${REDELIVERY_BLOCKED_REASON_SQL}
              FROM webhook_deliveries AS delivery
              JOIN outbox_events AS outbox
                ON outbox.outbox_event_id = delivery.outbox_event_id
@@ -1087,7 +1103,7 @@ export class WebhookStore {
         deliveries: pageRows.map((row) => ({
           isLatest: row.latest_delivery_id === row.delivery_id,
           latestDeliveryId: row.latest_delivery_id,
-          redeliveryBlockedReason: redeliveryBlockedReason(connection, row.target_format, row.outbox_event_id),
+          redeliveryBlockedReason: row.redelivery_blocked_reason,
           delivery: mapDelivery(row),
           event: mapEvent(row),
           target: mapTarget(row),
@@ -1150,7 +1166,8 @@ export class WebhookStore {
                   target.target_format, target.url_fingerprint,
                   (SELECT newer.delivery_id FROM webhook_deliveries AS newer
                     WHERE newer.outbox_event_id = delivery.outbox_event_id
-                      AND newer.target_id = delivery.target_id ORDER BY newer.generation DESC LIMIT 1) AS latest_delivery_id
+                      AND newer.target_id = delivery.target_id ORDER BY newer.generation DESC LIMIT 1) AS latest_delivery_id,
+                  ${REDELIVERY_BLOCKED_REASON_SQL}
              FROM webhook_deliveries AS delivery
              JOIN outbox_events AS outbox
                ON outbox.outbox_event_id = delivery.outbox_event_id
@@ -1167,7 +1184,7 @@ export class WebhookStore {
       return {
         deliveries: pageRows.map((row) => ({
           isLatest: row.latest_delivery_id === row.delivery_id,
-          redeliveryBlockedReason: redeliveryBlockedReason(connection, row.target_format, row.outbox_event_id),
+          redeliveryBlockedReason: row.redelivery_blocked_reason,
           delivery: mapDelivery(row),
           eventType: row.event_type,
           orderId: row.aggregate_id,
@@ -1242,6 +1259,7 @@ interface DeliveryRow {
 
 interface DeliverySummaryRow extends DeliveryRow {
   readonly latest_delivery_id: string;
+  readonly redelivery_blocked_reason: "payment_confirmation_revoked" | null;
   readonly event_type: string;
   readonly aggregate_id: string;
   readonly target_format: WebhookTargetFormat;
@@ -1259,6 +1277,7 @@ type ClaimRow = DeliveryRow & EventRow & {
 };
 type DetailRow = DeliveryRow & EventRow & {
   readonly latest_delivery_id: string;
+  readonly redelivery_blocked_reason: "payment_confirmation_revoked" | null;
   readonly order_id: string;
   readonly api_client_id: string;
   readonly target_format: WebhookTargetFormat;

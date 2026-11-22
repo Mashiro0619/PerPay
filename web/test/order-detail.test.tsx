@@ -903,7 +903,7 @@ describe("payment provenance", () => {
       return json({ data: { delivery: state.deliveries[0]!.delivery } }, 202);
     });
     mount();
-    expect(await screen.findByText(/该订单付款通知暂未确认，当前等待自动重试/)).toBeVisible();
+    expect(await screen.findByText(/该订单「收款已确认」通知暂未确认，当前等待自动重试/)).toBeVisible();
     const footerAction = await screen.findByRole("button", { name: "立即重试通知" });
     await userEvent.setup().click(footerAction);
     expect(await screen.findByText("已发起立即重试")).toBeVisible();
@@ -920,10 +920,41 @@ describe("payment provenance", () => {
     };
     mockData(paidOrder, [deadDelivery]);
     mount();
-    expect(await screen.findByText(/该订单付款通知已停止重试/)).toBeVisible();
+    expect(await screen.findByText(/该订单「收款已确认」通知已停止重试/)).toBeVisible();
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "重新发送通知" }));
     const dialog = await screen.findByRole("dialog", { name: "重新发送通知" });
     expect(within(dialog).getByRole("button", { name: "回调修复后手动重发" })).toBeVisible();
+  });
+
+  it("prioritizes DEAD_LETTER over RETRY_WAIT, names non-confirmation events accurately, and shares retry lock across footer and section", async () => {
+    let finishRetry!: () => void;
+    const retryCalls: string[] = [];
+    const retryWait: OrderWebhookDeliveryDetail = {
+      ...delivery,
+      delivery: { ...delivery.delivery, delivery_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", status: "RETRY_WAIT" },
+    };
+    const deadDisputed: OrderWebhookDeliveryDetail = {
+      ...delivery,
+      event: { ...delivery.event, event_type: "PAYMENT_DISPUTED" },
+      delivery: { ...delivery.delivery, delivery_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", status: "DEAD_LETTER", next_attempt_at: null },
+    };
+    mockData(paidOrder, [retryWait, deadDisputed], async (request) => {
+      retryCalls.push(new URL(request.url).pathname);
+      await new Promise<void>((resolve) => { finishRetry = resolve; });
+      return json({ data: { delivery: { ...retryWait.delivery, status: "LEASED" } } }, 202);
+    });
+    mount();
+    expect(await screen.findByText(/该订单「收款有争议」通知已停止重试.*共 2 条待处理通知/)).toBeVisible();
+    expect(await screen.findByRole("button", { name: "重新发送通知" })).toBeVisible();
+
+    // Clicking the card-level retry button disables it while in flight and blocks duplicate sends.
+    const user = userEvent.setup();
+    const retryBtn = within(section("notifications")).getByRole("button", { name: "立即重试" });
+    await user.click(retryBtn);
+    expect(within(section("notifications")).getByRole("button", { name: "正在重试…" })).toBeDisabled();
+    expect(retryCalls).toHaveLength(1);
+    finishRetry();
+    expect(await screen.findByText("已发起立即重试")).toBeVisible();
   });
 });

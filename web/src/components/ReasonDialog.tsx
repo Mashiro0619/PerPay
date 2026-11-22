@@ -166,7 +166,7 @@ export function ReasonDialog<Output>({
                   if (!mutation.conflict) mutation.reset();
                 }}
               />
-              {!mutation.recovery && snapshot.quickReasons && snapshot.quickReasons.length > 0 && (
+              {!mutation.recovery && !mutation.conflict && snapshot.quickReasons && snapshot.quickReasons.length > 0 && (
                 <div className="flex flex-wrap items-center gap-1.5 pt-1" role="group" aria-label="快捷填写操作理由">
                   {snapshot.quickReasons.map((preset) => (
                     <Button
@@ -176,10 +176,10 @@ export function ReasonDialog<Output>({
                       variant="outline"
                       disabled={mutation.isPending}
                       onClick={() => {
-                        if (mutation.isBusy() || mutation.recovery) return;
+                        if (mutation.isBusy() || mutation.recovery || mutation.conflict) return;
                         setReason(preset);
                         setValidation(null);
-                        if (!mutation.conflict) mutation.reset();
+                        mutation.reset();
                       }}
                     >
                       {preset}

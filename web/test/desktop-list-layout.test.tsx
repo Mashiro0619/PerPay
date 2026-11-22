@@ -26,6 +26,7 @@ const longOrder = {
 };
 const notification: WebhookDeliverySummary = {
   ...delivery.delivery,
+  is_latest: true,
   event: delivery.event,
   target: delivery.target,
 };

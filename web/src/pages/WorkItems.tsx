@@ -586,18 +586,20 @@ function WorkItemPage({
                         if (item.type !== "NOTIFICATION_FAILURE" || item.ended || item.status !== "RETRY_WAIT") {
                           return null;
                         }
-                        const pending = quickRetry.pendingId === item.resource_id;
+                        const pending = quickRetry.isPending(item.resource_id);
                         return (
-                          <Button
-                            type="button"
-                            size="xs"
-                            variant="outline"
-                            disabled={pending}
-                            onClick={() => quickRetry.run(item.resource_id, item.order_id)}
-                          >
-                            {pending && <Spinner aria-hidden="true" data-icon="inline-start" />}
-                            {pending ? "正在重试…" : "立即重试"}
-                          </Button>
+                          <div data-row-action>
+                            <Button
+                              type="button"
+                              size="xs"
+                              variant="outline"
+                              disabled={busy || pending}
+                              onClick={() => quickRetry.run(item.resource_id, item.order_id)}
+                            >
+                              {pending && <Spinner aria-hidden="true" data-icon="inline-start" />}
+                              {pending ? "正在重试…" : "立即重试"}
+                            </Button>
+                          </div>
                         );
                       }
                     : undefined

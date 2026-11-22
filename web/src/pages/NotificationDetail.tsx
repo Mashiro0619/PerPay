@@ -36,8 +36,14 @@ function DeliveryDetail({ deliveryId }: { deliveryId: string }) {
     queryKey: ["notification", deliveryId],
     queryFn: ({ signal }) => result(api.getWebhookDelivery({ path: { deliveryId }, signal })),
     refetchInterval: query => {
-      const status = query.state.data?.data.delivery.status;
-      return status === "LEASED" ? 1_500 : status && ["PENDING", "RETRY_WAIT"].includes(status) ? 5_000 : false;
+      const detail = query.state.data?.data;
+      if (!detail) return false;
+      const status = detail.delivery.status;
+      if (status === "LEASED") return 1_500;
+      if (detail.is_latest && !deliveryState(detail).confirmationRevoked && (status === "PENDING" || status === "RETRY_WAIT")) {
+        return 5_000;
+      }
+      return false;
     },
   });
   // Read again whenever the delivery reports another attempt or a new status.

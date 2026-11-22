@@ -563,4 +563,119 @@ describe("readable delivery attempts", () => {
     expect(await screen.findByText("已创建新通知，等待发送")).toBeVisible();
     expect(writes[1]!.path).toBe("/api/admin/v1/webhooks/deliveries/" + deadId + "/actions/redeliver");
   });
+
+  it("allows independent row retries concurrently, keeps disabled row action clicks from opening row links, and hides next attempt on revoked EasyPay rows", async () => {
+    const rowA = "55555555-5555-4555-8555-555555555551";
+    const rowB = "55555555-5555-4555-8555-555555555552";
+    const revokedRow = "55555555-5555-4555-8555-555555555553";
+    const resolvers = new Map<string, () => void>();
+    const retryPaths: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (request: Request) => {
+      const path = new URL(request.url).pathname;
+      if (request.method === "POST" && path.endsWith("/actions/retry")) {
+        retryPaths.push(path);
+        await new Promise<void>((resolve) => { resolvers.set(path, resolve); });
+        return json({ data: { delivery: { ...delivery.delivery, status: "LEASED" } } }, 202);
+      }
+      return json({
+        data: [
+          {
+            ...delivery.delivery,
+            delivery_id: rowA,
+            status: "RETRY_WAIT",
+            is_latest: true,
+            redelivery_blocked_reason: null,
+            event: { event_type: "PAYMENT_CONFIRMED", order_id: paidOrder.order_id },
+            target: { format: "NATIVE_JSON_V1", url_fingerprint: delivery.target.url_fingerprint },
+            order_summary: {
+              api_client_id: "site_a",
+              site_name: "站点 A",
+              product_name: "并发重试商品甲",
+              merchant_order_no: "M-CONCUR-A",
+              payable_amount_cents: 1001,
+            },
+          },
+          {
+            ...delivery.delivery,
+            delivery_id: rowB,
+            status: "RETRY_WAIT",
+            is_latest: true,
+            redelivery_blocked_reason: null,
+            event: { event_type: "PAYMENT_CONFIRMED", order_id: paidOrder.order_id },
+            target: { format: "NATIVE_JSON_V1", url_fingerprint: delivery.target.url_fingerprint },
+            order_summary: {
+              api_client_id: "site_a",
+              site_name: "站点 A",
+              product_name: "并发重试商品乙",
+              merchant_order_no: "M-CONCUR-B",
+              payable_amount_cents: 2001,
+            },
+          },
+          {
+            ...delivery.delivery,
+            delivery_id: revokedRow,
+            status: "RETRY_WAIT",
+            next_attempt_at: "2026-09-06T00:02:00.000Z",
+            is_latest: true,
+            redelivery_blocked_reason: "payment_confirmation_revoked",
+            event: { event_type: "PAYMENT_CONFIRMED", order_id: paidOrder.order_id },
+            target: { format: "EPAY_V1", url_fingerprint: delivery.target.url_fingerprint },
+            order_summary: {
+              api_client_id: "site_a",
+              site_name: "站点 A",
+              product_name: "已撤销易支付商品",
+              merchant_order_no: "M-REVOKED",
+              payable_amount_cents: 3001,
+            },
+          },
+        ],
+        page: { next_cursor: null },
+      });
+    }));
+
+    const navigatedTo: string[] = [];
+    function OpenedDetail() {
+      navigatedTo.push("opened");
+      return <div>detail</div>;
+    }
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={["/notifications"]}>
+          <WorkspaceProvider>
+            <Toaster>
+              <Routes>
+                <Route path="/notifications" element={<Notifications />} />
+                <Route path="/notifications/:id" element={<OpenedDetail />} />
+              </Routes>
+            </Toaster>
+          </WorkspaceProvider>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    const elemA = (await screen.findByText("并发重试商品甲")).closest<HTMLElement>("[data-business-row]")!;
+    const elemB = screen.getByText("并发重试商品乙").closest<HTMLElement>("[data-business-row]")!;
+    const elemRevoked = screen.getByText("已撤销易支付商品").closest<HTMLElement>("[data-business-row]")!;
+
+    // Revoked EasyPay row shows 已终止, omits retry/resend actions, and suppresses stale next_attempt_at.
+    expect(within(elemRevoked).getByText("已终止")).toBeVisible();
+    expect(within(elemRevoked).queryByRole("button", { name: /立即重试|重新发送/ })).not.toBeInTheDocument();
+    expect(within(elemRevoked).queryByTitle("2026/09/06 08:02（北京时间）")).not.toBeInTheDocument();
+
+    const user = userEvent.setup();
+    await user.click(within(elemA).getByRole("button", { name: "立即重试" }));
+    // Clicking the action wrapper while row A's button is disabled must NOT open the row link.
+    const wrapperA = elemA.querySelector<HTMLElement>("[data-row-action]")!;
+    await user.click(wrapperA);
+    expect(navigatedTo).toHaveLength(0);
+
+    // Meanwhile row B remains independently clickable and dispatches its own retry immediately!
+    await user.click(within(elemB).getByRole("button", { name: "立即重试" }));
+    expect(retryPaths).toEqual([
+      "/api/admin/v1/webhooks/deliveries/" + rowA + "/actions/retry",
+      "/api/admin/v1/webhooks/deliveries/" + rowB + "/actions/retry",
+    ]);
+    for (const resolve of resolvers.values()) resolve();
+    expect(await screen.findAllByText("已发起立即重试")).not.toHaveLength(0);
+  });
 });

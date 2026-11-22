@@ -44,7 +44,7 @@ describe("order and notification copy follows its actual source", () => {
     const overrides = hidden ? { order: false, attempt_count: false, next_attempt_at: false } : {};
     localStorage.setItem("perpay.table-columns.v2.notifications", JSON.stringify(overrides));
     const summary: WebhookDeliverySummary = {
-      ...delivery.delivery, event: delivery.event, target: delivery.target,
+      ...delivery.delivery, is_latest: true, event: delivery.event, target: delivery.target,
       order_summary: {
         order_id: paidOrder.order_id, api_client_id: paidOrder.api_client_id, site_name: paidOrder.site_name ?? null,
         product_name: paidOrder.product_name, merchant_order_no: paidOrder.merchant_order_no,
@@ -74,6 +74,7 @@ describe("order and notification copy follows its actual source", () => {
     const merchant = "BUSINESS-ORDER-20261021-" + "0123456789".repeat(10);
     const summaries: WebhookDeliverySummary[] = ["PAYMENT_CONFIRMED", "PAYMENT_DISPUTED"].map((eventType, index) => ({
       ...delivery.delivery,
+      is_latest: true,
       delivery_id: index ? "99999999-9999-4999-8999-999999999999" : delivery.delivery.delivery_id,
       event: { event_type: eventType, order_id: paidOrder.order_id },
       target: { format: "NATIVE_JSON_V1", url_fingerprint: "a".repeat(64) },

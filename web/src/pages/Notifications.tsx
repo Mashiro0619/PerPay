@@ -61,8 +61,10 @@ export default function Notifications() {
   const [search, setSearch] = useSearchParams();
   const status = notificationStatus(search) ?? "";
   function changeStatus(value: string | null) {
+    const normalized = value ?? "";
+    if (normalized === status) return;
     const next = new URLSearchParams(search);
-    if (value) next.set("status", value);
+    if (normalized) next.set("status", normalized);
     else next.delete("status");
     next.delete("cursor");
     next.delete("page");
@@ -126,36 +128,48 @@ function DeliveryPage({
     "desc",
     true,
   );
-  const deliveries = useQuery(notificationsQuery(clientId, listQuery, pagination.cursor, status));
+  const deliveries = useQuery({
+    ...notificationsQuery(clientId, listQuery, pagination.cursor, status),
+    refetchInterval: query => {
+      const items = query.state.data?.data ?? [];
+      return items.some(item => item.status === "LEASED") ? 1_500 : false;
+    },
+  });
   const quickRetry = useQuickRetryDelivery();
   const summaryRedelivery = useSummaryRedelivery();
   function renderRowAction(delivery: WebhookDeliverySummary) {
     const state = summaryDeliveryState(delivery);
     if (state.retryable) {
-      const pending = quickRetry.pendingId === delivery.delivery_id;
+      const pending = quickRetry.isPending(delivery.delivery_id);
       return (
-        <Button
-          type="button"
-          size="xs"
-          variant="outline"
-          disabled={pending}
-          onClick={() => quickRetry.run(delivery.delivery_id, delivery.event.order_id)}
-        >
-          {pending && <Spinner aria-hidden="true" data-icon="inline-start" />}
-          {pending ? "正在重试…" : "立即重试"}
-        </Button>
+        <div data-row-action>
+          <Button
+            type="button"
+            size="xs"
+            variant="outline"
+            disabled={pending}
+            onClick={() => quickRetry.run(delivery.delivery_id, delivery.event.order_id)}
+          >
+            {pending && <Spinner aria-hidden="true" data-icon="inline-start" />}
+            {pending ? "正在重试…" : "立即重试"}
+          </Button>
+        </div>
       );
     }
     if (state.resendable && delivery.status === "DEAD_LETTER") {
+      const sent = summaryRedelivery.isSent(delivery.delivery_id);
       return (
-        <Button
-          type="button"
-          size="xs"
-          variant="outline"
-          onClick={(event) => summaryRedelivery.open(delivery, event.currentTarget)}
-        >
-          重新发送
-        </Button>
+        <div data-row-action>
+          <Button
+            type="button"
+            size="xs"
+            variant="outline"
+            disabled={sent}
+            onClick={(event) => summaryRedelivery.open(delivery, event.currentTarget)}
+          >
+            重新发送
+          </Button>
+        </div>
       );
     }
     return null;
@@ -240,14 +254,14 @@ function DeliveryPage({
             {!state.isLatest && (
               <span className="text-xs text-muted-foreground">已有新发送</span>
             )}
-            {context.isSummary && delivery.last_error_code && (
+            {context.isSummary && (state.terminated || delivery.last_error_code) && (
               <span className="text-xs text-muted-foreground">
-                {notificationErrorName(delivery.last_error_code)}
+                {state.terminated ? "原付款确认已撤销，已停止发送" : notificationErrorName(delivery.last_error_code!)}
               </span>
             )}
-            {delivery.next_attempt_at && context.showInSummary("next_attempt_at") && (
+            {state.nextAttemptAt && context.showInSummary("next_attempt_at") && (
               <ListMeta>
-                <span>下次 <ListDateTime value={delivery.next_attempt_at} inline /></span>
+                <span>下次 <ListDateTime value={state.nextAttemptAt} inline /></span>
               </ListMeta>
             )}
             {!context.isSummary && renderRowAction(delivery)}
@@ -283,7 +297,7 @@ function DeliveryPage({
       layout: "datetime",
       summaryDefault: true,
       responsive: { minWidthRem: 56, basis: "container" },
-      cell: (delivery) => <ListDateTime value={delivery.next_attempt_at} />,
+      cell: (delivery) => <ListDateTime value={summaryDeliveryState(delivery).nextAttemptAt} />,
     },
   ];
   if (!clientId) columns.splice(1, 0, { id: "site", label: "网站", layout: "text", summaryDefault: false,
@@ -396,19 +410,25 @@ function DeliveryPage({
                         <span>通知类型：<span>{label(delivery.event.event_type)}</span></span>
                         {!state.isLatest && <span>已有新发送</span>}
                       </div>}
-                      message={delivery.last_error_code ? notificationErrorName(delivery.last_error_code) : undefined}
+                      message={
+                        state.terminated
+                          ? "原付款确认已撤销，已停止发送"
+                          : delivery.last_error_code
+                            ? notificationErrorName(delivery.last_error_code)
+                            : undefined
+                      }
                       actions={renderRowAction(delivery)}
                       details={columns.filter((column) =>
                         context.isColumnVisible(column.id) && !context.isSummaryPrimary(column.id),
                       ).map((column) => (
                         <ListSummaryField key={column.id} label={column.label}>
-                          {column.id === "next_attempt_at" ? <ListDateTime value={delivery.next_attempt_at} inline /> : column.cell(delivery, context)}
+                          {column.id === "next_attempt_at" ? <ListDateTime value={state.nextAttemptAt} inline /> : column.cell(delivery, context)}
                         </ListSummaryField>
                       ))}
                     >
                       {columns.filter((column) =>
                         !["identity", "status", "event_type"].includes(column.id) &&
-                        (column.id !== "next_attempt_at" || !!delivery.next_attempt_at) && context.isSummaryPrimary(column.id),
+                        (column.id !== "next_attempt_at" || !!state.nextAttemptAt) && context.isSummaryPrimary(column.id),
                       ).map((column) => (
                         <ListSummaryField
                           key={column.id}
@@ -416,7 +436,11 @@ function DeliveryPage({
                           visibleLabel
                           fullWidth={column.id === "order" || column.id === "created_at"}
                         >
-                          {column.id === "next_attempt_at" || column.id === "created_at" ? <ListDateTime value={delivery[column.id]} inline /> : column.cell(delivery, context)}
+                          {column.id === "next_attempt_at"
+                            ? <ListDateTime value={state.nextAttemptAt} inline />
+                            : column.id === "created_at"
+                              ? <ListDateTime value={delivery.created_at} inline />
+                              : column.cell(delivery, context)}
                         </ListSummaryField>
                       ))}
                     </ListSummary>

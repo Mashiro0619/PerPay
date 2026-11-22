@@ -10,7 +10,7 @@ test("mobile notifications retain distinct order identities, amounts and dates a
     const id = orderIds[index]!;
     const createdAt = `2026-11-0${index + 1}T04:00:00.000Z`;
     return {
-      delivery_id: id, event_id: id, target_id: id, request_key: id, generation: 1,
+      delivery_id: id, event_id: id, target_id: id, request_key: id, generation: 1, is_latest: true,
       predecessor_delivery_id: null, requested_by_type: "SYSTEM", requested_by_actor_id: null, reason: null,
       status: "ACKNOWLEDGED", attempt_count: 1, next_attempt_at: null, lease_expires_at: null,
       acknowledged_at: createdAt, dead_lettered_at: null, last_error_code: null, created_at: createdAt, updated_at: createdAt,

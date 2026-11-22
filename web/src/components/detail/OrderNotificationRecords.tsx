@@ -13,13 +13,14 @@ import { FieldList } from "@/components/record/FieldList";
 import { Section } from "@/components/record/Sections";
 import { SubRecord } from "@/components/record/SubRecord";
 import { Timeline } from "@/components/record/Timeline";
-import { attemptEntries, deliveryAdvice, deliveryFields, deliveryPhrase, deliveryState, DeliveryStatus, useRedelivery, useRetryDelivery } from "./NotificationEvidence";
+import { attemptEntries, deliveryAdvice, deliveryFields, deliveryPhrase, deliveryState, DeliveryStatus, useQuickRetryDelivery, useRedelivery } from "./NotificationEvidence";
 import type { DatedTechnicalEntry } from "@/components/record/ActionBar";
 
 /** One page of the order's deliveries. The record reads it once for its section, navigation and technical data. */
 export function useOrderNotifications(orderId: string) {
   const api = useWorkspaceApi();
   const pagination = useCursor("notifications_cursor");
+  const retry = useQuickRetryDelivery();
   const query = useQuery({
     queryKey: ["order-notifications", orderId, pagination.cursor],
     queryFn: ({ signal }) => result(api.listAdministratorOrderWebhookDeliveries({
@@ -30,15 +31,37 @@ export function useOrderNotifications(orderId: string) {
     refetchInterval: state => {
       const items = state.state.data?.data ?? [];
       if (items.some(item => item.delivery.status === "LEASED")) return 1_500;
-      if (items.some(item => item.is_latest && (item.delivery.status === "PENDING" || item.delivery.status === "RETRY_WAIT"))) return 5_000;
+      if (items.some(item => item.is_latest && !deliveryState(item).confirmationRevoked && (item.delivery.status === "PENDING" || item.delivery.status === "RETRY_WAIT"))) return 5_000;
       return false;
     },
   });
   const deliveries = query.data?.data ?? [];
-  const actionable = deliveries.find(item => {
+  const actionableItems = deliveries.filter(item => {
     const state = deliveryState(item);
     return state.retryable || (state.resendable && item.delivery.status === "DEAD_LETTER");
-  }) ?? null;
+  });
+  const pageActionable =
+    actionableItems.find(item => item.delivery.status === "DEAD_LETTER") ??
+    actionableItems[0] ??
+    null;
+  const pageOneActionable = useRef<{
+    orderId: string;
+    actionable: OrderWebhookDeliveryDetail | null;
+    count: number;
+  }>({ orderId, actionable: null, count: 0 });
+  if (pagination.page === 1 && query.data) {
+    pageOneActionable.current = {
+      orderId,
+      actionable: pageActionable,
+      count: actionableItems.length,
+    };
+  }
+  const retained =
+    pagination.page > 1 && pageOneActionable.current.orderId === orderId
+      ? pageOneActionable.current
+      : null;
+  const actionable = pageActionable ?? retained?.actionable ?? null;
+  const actionableCount = pageActionable ? actionableItems.length : (retained?.count ?? 0);
   const statusSignature = deliveries.map(item => `${item.delivery.delivery_id}:${item.delivery.status}`).join(",");
   const previousStatuses = useRef<{ orderId: string; statuses: Map<string, string> }>({ orderId, statuses: new Map() });
   useEffect(() => {
@@ -59,17 +82,35 @@ export function useOrderNotifications(orderId: string) {
   }, [orderId, statusSignature]);
   // A count is only true when this page holds every delivery.
   const complete = !!query.data && pagination.page === 1 && !query.data.page.next_cursor;
-  return { query, pagination, deliveries, actionable, count: complete ? query.data!.data.length : undefined };
+  return {
+    query,
+    pagination,
+    deliveries,
+    actionable,
+    actionableCount,
+    retry,
+    count: complete ? query.data!.data.length : undefined,
+  };
 }
 
 /** One delivery of an order event: its result once, in the badge, then the address and each attempt. */
-function OrderDeliveryRecord({ detail }: { detail: OrderWebhookDeliveryDetail }) {
+function OrderDeliveryRecord({
+  detail,
+  retry,
+}: {
+  detail: OrderWebhookDeliveryDetail;
+  retry: ReturnType<typeof useQuickRetryDelivery>;
+}) {
   const redelivery = useRedelivery(detail);
-  const retry = useRetryDelivery(detail);
   const { confirmationRevoked, retryable, resendable } = deliveryState(detail);
   const advice = deliveryAdvice(detail, detail.attempts);
+  const retryPending = retry.isPending(detail.delivery.delivery_id);
   const actions = retryable
-    ? [{ label: retry.pending ? "正在重试…" : "立即重试", disabled: retry.pending, onSelect: retry.run }]
+    ? [{
+        label: retryPending ? "正在重试…" : "立即重试",
+        disabled: retryPending,
+        onSelect: () => retry.run(detail.delivery.delivery_id, detail.event.order_id),
+      }]
     : resendable
       ? [{ label: "重新发送", disabled: redelivery.sent, onSelect: redelivery.open }]
       : [];
@@ -94,7 +135,7 @@ export function OrderNotificationsSection({ notifications, notifyUrl }: {
   notifications: ReturnType<typeof useOrderNotifications>;
   notifyUrl: string | null;
 }) {
-  const { query, pagination, deliveries, count } = notifications;
+  const { query, pagination, deliveries, count, retry } = notifications;
   const current = deliveries.filter(detail => detail.is_latest);
   const superseded = deliveries.filter(detail => !detail.is_latest);
   const none = pagination.page > 1 ? "此页暂无通知记录" : notifyUrl ? "此订单已设置通知地址，暂无通知记录" : "此订单未设置通知地址";
@@ -102,10 +143,10 @@ export function OrderNotificationsSection({ notifications, notifyUrl }: {
     <ErrorNotice scope="page" error={query.error} retainedData={!!query.data} retry={() => { void query.refetch(); }}
       placeholder="通知结果读取失败，请刷新重试。" />
     {query.isPending ? <Loading label="正在读取通知结果…" /> : query.data && <>
-      {current.map(detail => <OrderDeliveryRecord key={detail.delivery.delivery_id} detail={detail} />)}
+      {current.map(detail => <OrderDeliveryRecord key={detail.delivery.delivery_id} detail={detail} retry={retry} />)}
       {!deliveries.length && <p className="text-[0.8125rem] leading-5 text-muted-foreground">{none}</p>}
       {superseded.length > 0 && <Disclosure label="历史通知" count={superseded.length}>
-        {superseded.map(detail => <OrderDeliveryRecord key={detail.delivery.delivery_id} detail={detail} />)}
+        {superseded.map(detail => <OrderDeliveryRecord key={detail.delivery.delivery_id} detail={detail} retry={retry} />)}
       </Disclosure>}
       <CursorPagination
         previousLabel={pagination.previousLabel}

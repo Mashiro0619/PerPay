@@ -17,7 +17,7 @@ import { QueryView } from "@/components/request-state";
 import { DetailNavigation, DetailPage } from "@/components/detail/DetailPrimitives";
 import { disputeState } from "@/components/detail/disputed-order-actions";
 import { useAssociateIncome } from "@/components/detail/FinancialActions";
-import { deliveryState, useRedelivery, useRetryDelivery } from "@/components/detail/NotificationEvidence";
+import { deliveryState, useRedelivery } from "@/components/detail/NotificationEvidence";
 import { notificationTechnical, OrderNotificationsSection, useOrderNotifications } from "@/components/detail/OrderNotificationRecords";
 import { OrderExceptionRecord, OrderMatchRecord, paymentTechnical } from "@/components/detail/OrderPaymentRecords";
 import { ActionBar, technicalEntries } from "@/components/record/ActionBar";
@@ -101,9 +101,11 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
   const pending = `${exceptions.length} 项待核对`;
 
   const notifications = useOrderNotifications(order.order_id);
-  const notificationRetry = useRetryDelivery(notifications.actionable);
   const notificationRedelivery = useRedelivery(notifications.actionable);
   const actionableNotificationState = notifications.actionable ? deliveryState(notifications.actionable) : null;
+  const actionableRetryPending = notifications.actionable
+    ? notifications.retry.isPending(notifications.actionable.delivery.delivery_id)
+    : false;
   const refund = useRefundMark(order);
   const associate = useAssociateIncome({ orderId: order.order_id, orderLabel: order.product_name, ...(dispute ? { actionLabel: "重新核对并确认收款" } : {}) });
 
@@ -128,9 +130,12 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
     !unpaid && !unresolved && notifications.actionable && actionableNotificationState
       ? actionableNotificationState.retryable
         ? {
-            label: notificationRetry.pending ? "正在重试…" : "立即重试通知",
-            disabled: notificationRetry.pending,
-            onSelect: notificationRetry.run,
+            label: actionableRetryPending ? "正在重试…" : "立即重试通知",
+            disabled: actionableRetryPending,
+            onSelect: () => {
+              const target = notifications.actionable;
+              if (target) notifications.retry.run(target.delivery.delivery_id, target.event.order_id);
+            },
           }
         : actionableNotificationState.resendable && notifications.actionable.delivery.status === "DEAD_LETTER"
           ? {
@@ -182,8 +187,9 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
         jump={{ section: "notifications", label: "查看通知" }}
       >
         {notifications.actionable.delivery.status === "DEAD_LETTER"
-          ? "该订单付款通知已停止重试，核对回调后可手动重新发送。"
-          : "该订单付款通知暂未确认，当前等待自动重试，可直接发起立即重试。"}
+          ? `该订单「${label(notifications.actionable.event.event_type)}」通知已停止重试，核对回调后可手动重新发送。`
+          : `该订单「${label(notifications.actionable.event.event_type)}」通知暂未确认，当前等待自动重试，可直接发起立即重试。`}
+        {notifications.actionableCount > 1 ? `（共 ${notifications.actionableCount} 条待处理通知）` : ""}
       </RecordNotice>
     )}
     <Sections label="订单详情内容">

@@ -233,12 +233,15 @@ export function WorkItemsTable({
       align: "center",
       layout: "status",
       summaryDefault: true,
-      cell: (item) => (
-        <div className="business-cell-stack flex flex-col items-end gap-2">
-          <ReminderStatus item={item} />
-          {actions?.(item) ?? inlineAction?.(item)}
-        </div>
-      ),
+      cell: (item) => {
+        const actionNode = actions?.(item) ?? inlineAction?.(item);
+        return (
+          <div className="business-cell-stack flex flex-col items-end gap-2">
+            <ReminderStatus item={item} />
+            {actionNode && <div data-row-action>{actionNode}</div>}
+          </div>
+        );
+      },
     },
   ];
   if (!clientId) columns.splice(2, 0, {

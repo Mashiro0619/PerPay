@@ -291,7 +291,7 @@ async function notifyBusinessOrder(page: Page, fixture: BusinessFixture, info: T
   expect(stored.received_amount_cents).toBe(stored.payable_amount_cents);
   expect(stored.notification.notify_url).toBe(fixture.notificationUrl);
   await screenshot(page, info, "08-business-notification-recovered");
-  await overlay.getByRole("button", { name: "关闭对话框", exact: true }).click();
+  await overlay.getByRole("button", { name: "返回上一步", exact: true }).click();
   await expect(overlay.getByRole("heading", { name: "订单信息", exact: true })).toBeVisible();
   await expect(overlay.getByText(merchantOrderNo, { exact: true })).toBeVisible();
   await closeOverlay(page);
