@@ -26,6 +26,7 @@ interface PendingSchedule {
   nextRunAt: number;
   interval: number;
   kind: LedgerScheduleKind;
+  clearProtection?: boolean;
 }
 
 export interface LedgerIngestSchedulerOptions {
@@ -153,18 +154,20 @@ export class LedgerIngestScheduler {
     if (this.#unpersistedSchedule !== null) {
       const restored = this.#persistSchedule();
       this.#armSchedule(restored);
-      return this.#waitForNextScan();
+      if (reason !== "admin_manual") return this.#waitForNextScan();
     }
     const gate = this.#gate?.read() ?? this.#lastGate;
     this.#lastGate = gate;
     this.#storageRecovered();
-    const completedAt = gate?.completedAt ?? this.#lastCompletedAt;
-    const protectedUntil = Math.max(gate?.protectedUntil ?? 0, this.#scheduleKind === "retry" ? this.#nextRunAt ?? 0 : 0);
-    const continuing = gate?.continuation ?? this.#scheduleKind === "continuation";
-    const earliest = Math.max(protectedUntil, continuing ? 0 : completedAt === null ? 0 : completedAt + this.#minimumIntervalMilliseconds);
-    if (this.#minimumIntervalMilliseconds > 0 && (earliest > now || (reason !== "scheduled" && this.#scheduleKind === "continuation" && this.#timer !== null))) {
-      if (this.#scheduleKind !== "continuation" || this.#timer === null) this.#scheduleAt(earliest, this.#readIntervalMilliseconds(), protectedUntil > now ? "retry" : "manual");
-      return this.#waitForNextScan();
+    if (reason !== "admin_manual") {
+      const completedAt = gate?.completedAt ?? this.#lastCompletedAt;
+      const protectedUntil = Math.max(gate?.protectedUntil ?? 0, this.#scheduleKind === "retry" ? this.#nextRunAt ?? 0 : 0);
+      const continuing = gate?.continuation ?? this.#scheduleKind === "continuation";
+      const earliest = Math.max(protectedUntil, continuing ? 0 : completedAt === null ? 0 : completedAt + this.#minimumIntervalMilliseconds);
+      if (this.#minimumIntervalMilliseconds > 0 && (earliest > now || (reason !== "scheduled" && this.#scheduleKind === "continuation" && this.#timer !== null))) {
+        if (this.#scheduleKind !== "continuation" || this.#timer === null) this.#scheduleAt(earliest, this.#readIntervalMilliseconds(), protectedUntil > now ? "retry" : "manual");
+        return this.#waitForNextScan();
+      }
     }
     // A manual trigger is an explicit operator action. Cancel a pending
     // automatic timer so it cannot race the requested scan.
@@ -342,7 +345,9 @@ export class LedgerIngestScheduler {
     const pending = this.#unpersistedSchedule!;
     const saved = this.#gate ? this.#gate.read() ?? this.#lastGate : null;
     const completedAt = Math.max(pending.gate.completedAt, saved?.completedAt ?? 0);
-    const protectedUntil = Math.max(pending.gate.protectedUntil, saved?.protectedUntil ?? 0);
+    const protectedUntil = pending.clearProtection
+      ? pending.gate.protectedUntil
+      : Math.max(pending.gate.protectedUntil, saved?.protectedUntil ?? 0);
     pending.gate = {
       completedAt, protectedUntil,
       continuation: completedAt === pending.gate.completedAt && pending.gate.continuation,
@@ -482,9 +487,11 @@ export class LedgerIngestScheduler {
         );
       }
     }
+    const succeeded = result !== null && (result.status === "COMPLETED" || result.status === "PARTIAL");
     this.#recordSchedule({
       gate: { completedAt: this.#lastCompletedAt, protectedUntil: kind === "retry" ? this.#lastCompletedAt + delay : 0, continuation: kind === "continuation" },
       nextRunAt: this.#lastCompletedAt + delay, interval, kind,
+      clearProtection: succeeded,
     });
   }
 }

@@ -182,7 +182,10 @@ export class LedgerIngestService {
   async #run(reason: string, signal: AbortSignal): Promise<LedgerScanResult> {
     const now = safeNow(this.#clock());
     const scheduleState = this.#store.getIngestScheduleState(this.#providerAccountKey);
-    if (scheduleState !== null) {
+    // Explicit administrator manual scans may probe immediately after fixing
+    // network/IP/credential issues, while automatic and public checkout scans
+    // continue honoring persisted backoff and upstream cooldowns.
+    if (scheduleState !== null && reason !== "admin_manual") {
       const scheduleNow = Math.max(now, scheduleState.updatedAt);
       if (scheduleState.cooldownUntil > scheduleNow) {
         return {
