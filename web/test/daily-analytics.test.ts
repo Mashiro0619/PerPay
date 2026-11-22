@@ -1,7 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import type { SystemAnalytics } from "../src/api/client";
 import {
+  buildCalendarWeeks,
+  buildDailyCsv,
   buildDailyReport,
+  calendarCellDateLabel,
+  calendarHeatLevel,
+  compactCalendarMoney,
   dailyDateLabel,
   dailyWeekday,
   type DailyDay,
@@ -139,5 +144,72 @@ describe("daily report calendar and comparisons", () => {
     expect(dailyWeekday("2026-10-11")).toBe("周日");
     expect(dailyWeekday("2026-01-01")).toBe("周四");
     expect(dailyWeekday("2028-02-29")).toBe("周二");
+  });
+
+  it("aligns calendar weeks Monday-to-Sunday with empty boundary padding", () => {
+    // 2026-10-07 is Wednesday (offset 2), 2026-10-12 is Monday (sunday pad 6)
+    const input = [
+      day("2026-10-12", 500),
+      day("2026-10-07", 200),
+      day("2026-10-08", 0),
+      day("2026-10-09", 300),
+      day("2026-10-10", 0),
+      day("2026-10-11", 400),
+    ];
+    const weeks = buildCalendarWeeks(input);
+    expect(weeks).toHaveLength(2);
+    expect(weeks[0]!.map((cell) => cell.day?.date ?? null)).toEqual([
+      null,
+      null,
+      "2026-10-07",
+      "2026-10-08",
+      "2026-10-09",
+      "2026-10-10",
+      "2026-10-11",
+    ]);
+    expect(weeks[1]!.map((cell) => cell.day?.date ?? null)).toEqual([
+      "2026-10-12",
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+    ]);
+    expect(buildCalendarWeeks([])).toEqual([]);
+  });
+
+  it("computes compact cell currency, heat levels, cell labels and UTF-8 BOM CSV", () => {
+    expect(compactCalendarMoney(0)).toBe("¥0");
+    expect(compactCalendarMoney(1)).toBe("¥0.01");
+    expect(compactCalendarMoney(9999)).toBe("¥99.99");
+    expect(compactCalendarMoney(220321)).toBe("¥2,203");
+    expect(compactCalendarMoney(1_250_000)).toBe("¥1.3万");
+    expect(compactCalendarMoney(123_456_789_012)).toBe("¥12.3亿");
+    expect(compactCalendarMoney(2_000_000_000_000_000)).toBe("¥20万亿");
+
+    expect(calendarHeatLevel(0, 1000)).toBe(0);
+    expect(calendarHeatLevel(100, 0)).toBe(0);
+    expect(calendarHeatLevel(200, 1000)).toBe(1);
+    expect(calendarHeatLevel(400, 1000)).toBe(2);
+    expect(calendarHeatLevel(700, 1000)).toBe(3);
+    expect(calendarHeatLevel(1000, 1000)).toBe(4);
+
+    expect(calendarCellDateLabel("2026-11-23", "2026-11-23", "2026-10-25")).toBe("今日");
+    expect(calendarCellDateLabel("2026-10-25", "2026-11-23", "2026-10-25")).toBe("10月25日");
+    expect(calendarCellDateLabel("2026-10-25", "2026-11-23", "2026-10-25", true)).toBe("10/25");
+    expect(calendarCellDateLabel("2026-11-01", "2026-11-23", "2026-10-25")).toBe("11月1日");
+    expect(calendarCellDateLabel("2026-11-01", "2026-11-23", "2026-10-25", true)).toBe("11/1");
+    expect(calendarCellDateLabel("2026-11-17", "2026-11-23", "2026-10-25")).toBe("17");
+
+    const csv = buildDailyCsv([
+      { ...day("2026-10-06", 10050, 2, 3), notifications_acknowledged: 2, notifications_failed: 0 },
+      { ...day("2026-10-07", 0, 0, 1), notifications_acknowledged: 0, notifications_failed: 1 },
+    ]);
+    expect(csv.startsWith("\uFEFF")).toBe(true);
+    const lines = csv.slice(1).split("\r\n");
+    expect(lines[0]).toBe("日期,星期,确认金额(元),确认笔数,笔均金额(元),新建订单,通知已确认,通知失败");
+    expect(lines[1]).toBe("2026-10-07,周三,0.00,0,0.00,1,0,1");
+    expect(lines[2]).toBe("2026-10-06,周二,100.50,2,50.25,3,2,0");
   });
 });

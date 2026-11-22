@@ -1,6 +1,5 @@
 import { MemoryRouter } from "react-router";
 import {
-  act,
   fireEvent,
   render,
   screen,
@@ -548,47 +547,53 @@ function dailyDates(region = screen.getByRole("region", { name: "每日数据" }
 
 describe("complete daily analytics report", () => {
   it.each([7, 30, 90] as const)(
-    "shows all %i days newest-first in one table with one header",
+    "shows all %i days in a Monday-to-Sunday bill calendar grid without pagination",
     (range) => {
       const data = analytics(range);
       const original = structuredClone(data);
-      render(<DailyAnalytics analytics={data} range={range} pending={false} />);
+      render(
+        <MemoryRouter>
+          <DailyAnalytics analytics={data} range={range} pending={false} />
+        </MemoryRouter>,
+      );
       const report = screen.getByRole("region", { name: "每日数据" });
-      const tables = within(report).getAllByRole("table", { name: "每日收款数据" });
-      expect(tables).toHaveLength(1);
-      const table = tables[0]!;
-      const headings = within(table).getAllByRole("columnheader");
+      const grids = within(report).getAllByRole("grid", { name: "每日收款日历" });
+      expect(grids).toHaveLength(1);
+      const grid = grids[0]!;
+      const headings = within(grid).getAllByRole("columnheader");
       expect(headings.map((heading) => heading.textContent))
-        .toEqual(["日期", "确认金额", "确认笔数", "新建订单"]);
-      const rows = within(table).getAllByRole("row").slice(1);
-      expect(rows).toHaveLength(range);
-      for (const row of rows) {
-        expect(within(row).getAllByRole("cell")).toHaveLength(4);
-      }
+        .toEqual(["周一", "周二", "周三", "周四", "周五", "周六", "周日"]);
       const dates = dailyDates(report);
       expect(within(report).getAllByRole("status")).toHaveLength(1);
       expect(within(report).getByRole("status")).toHaveTextContent(`共 ${range} 天`);
       expect(within(report).getByRole("status")).toHaveAttribute("aria-live", "polite");
       expect(within(report).getByRole("status")).toHaveAttribute("aria-atomic", "true");
       expect(within(report).queryByRole("navigation", { name: "每日数据分页" })).not.toBeInTheDocument();
-      expect(dates).toEqual(original.daily.map((day) => day.date).reverse());
+      expect(dates).toEqual(original.daily.map((day) => day.date));
       expect(new Set(dates).size).toBe(range);
-      const pennyRow = report.querySelector('.daily-date time[datetime="2026-06-03"]')!.closest("tr")!;
-      expect(within(pennyRow).getByText("¥0.01", { exact: true })).toBeVisible();
+      const pennyCell = report.querySelector('button[data-cal-date="2026-06-03"]')!;
+      expect(pennyCell).toHaveTextContent("¥0.01");
       expect(within(report).queryByRole("button", { name: "全部展开" })).not.toBeInTheDocument();
       expect(within(report).queryByRole("button", { name: "全部收起" })).not.toBeInTheDocument();
       expect(data).toEqual(original);
     },
   );
 
-  it("uses the authoritative total and includes completed zero days in average and latest peak tie", () => {
+  it("uses the authoritative total, picks the latest peak tie, and updates the detail strip on click and arrow keys", async () => {
+    const user = userEvent.setup();
     const data = analytics();
     data.confirmations.amount_cents = 123456;
     data.daily = data.daily.map((day, index) => ({
       ...day,
       confirmed_amount_cents: [0, 101, 202, 202, 0, 0, 999][index]!,
+      confirmations: [0, 1, 2, 2, 0, 0, 3][index]!,
+      notifications_failed: index === 1 ? 2 : 0,
     }));
-    const { container } = render(<DailyAnalytics analytics={data} range={7} pending={false} />);
+    const { container } = render(
+      <MemoryRouter initialEntries={["/sites/shop-a"]}>
+        <DailyAnalytics analytics={data} range={7} pending={false} scopeKey="shop-a" />
+      </MemoryRouter>,
+    );
     expect(screen.getByLabelText("每日数据汇总")).toBeVisible();
     expect(container.querySelector('[data-daily-summary="total"]'))
       .toHaveTextContent("¥1,234.56");
@@ -598,15 +603,33 @@ describe("complete daily analytics report", () => {
       .toHaveTextContent("¥2.02");
     expect(container.querySelector('[data-daily-summary="peak"]'))
       .toHaveTextContent("06-04");
-    expect(screen.queryByText("区间金额含今日；日均与最高不含今日。"))
-      .not.toBeInTheDocument();
-    const todayTime = container.querySelector('time[datetime="2026-06-07"]');
-    expect(todayTime).toHaveTextContent("2026-06-07");
-    expect(todayTime).not.toHaveAttribute("aria-label");
-    const today = todayTime?.closest("tr");
-    expect(today).toHaveTextContent("今日");
-    expect(today).toHaveTextContent("周日");
-    expect(today?.querySelector(".daily-date-weekday")).not.toHaveAttribute("aria-hidden");
+    // Latest peak tie (2026-06-04) is selected by default.
+    const detail = container.querySelector('[data-daily-detail="2026-06-04"]')!;
+    expect(detail).toHaveTextContent("2026-06-04");
+    expect(detail).toHaveTextContent("单日最高");
+    expect(detail).toHaveTextContent("¥2.02");
+    expect(within(detail as HTMLElement).getByRole("link", { name: /查看当天订单/ }))
+      .toHaveAttribute("href", "/sites/shop-a/orders?created_from=2026-06-04&created_to=2026-06-04");
+
+    // Clicking a day with notification failures exposes the notification troubleshooting link.
+    const failCell = container.querySelector<HTMLButtonElement>('button[data-cal-date="2026-06-02"]')!;
+    await user.click(failCell);
+    const failDetail = container.querySelector('[data-daily-detail="2026-06-02"]')!;
+    expect(failDetail).toHaveTextContent("失败 2 次");
+    expect(within(failDetail as HTMLElement).getByRole("link", { name: /排查通知/ }))
+      .toHaveAttribute("href", "/sites/shop-a/notifications?created_from=2026-06-02&created_to=2026-06-02");
+
+    // ArrowRight moves focus and selection to the next day; End jumps to today.
+    await user.keyboard("{ArrowRight}");
+    expect(container.querySelector('button[data-cal-date="2026-06-03"]')).toHaveFocus();
+    expect(container.querySelector('[data-daily-detail="2026-06-03"]')).not.toBeNull();
+    await user.keyboard("{End}");
+    const todayCell = container.querySelector<HTMLButtonElement>('button[data-cal-date="2026-06-07"]')!;
+    expect(todayCell).toHaveFocus();
+    expect(todayCell).toHaveTextContent("今日");
+    const todayDetail = container.querySelector('[data-daily-detail="2026-06-07"]')!;
+    expect(todayDetail).toHaveTextContent("今日累计中");
+    expect(todayDetail).toHaveTextContent("周日");
   });
 
   it("shows no completed-day average or peak when the response only contains today", () => {
@@ -620,6 +643,8 @@ describe("complete daily analytics report", () => {
     }
     expect(container.querySelector('[data-daily-summary="total"]'))
       .toHaveTextContent("¥100.01");
+    expect(container.querySelector('[data-daily-detail="2026-06-07"]'))
+      .toHaveTextContent("今日累计中");
     expect(screen.getByRole("status")).toHaveTextContent("共 1 天");
   });
 
@@ -632,18 +657,21 @@ describe("complete daily analytics report", () => {
       date: ["2025-12-31", "2026-01-01", "2026-01-02"][index]!,
       confirmed_amount_cents: index === 0 ? 1234567890123 : 0,
     }));
-    render(<DailyAnalytics analytics={data} range={7} pending={false} />);
-    const table = screen.getByRole("table", { name: "每日收款数据" });
-    expect(dailyDates()).toEqual(["2026-01-02", "2026-01-01", "2025-12-31"]);
-    for (const time of table.querySelectorAll<HTMLTimeElement>("time[datetime]")) {
-      expect(time).toHaveTextContent(time.dateTime);
-    }
-    const row = table.querySelector('time[datetime="2025-12-31"]')!.closest("tr")!;
-    expect(within(row).getByText("¥12,345,678,901.23", { exact: true })).toBeVisible();
+    const { container } = render(
+      <MemoryRouter>
+        <DailyAnalytics analytics={data} range={7} pending={false} />
+      </MemoryRouter>,
+    );
+    expect(dailyDates()).toEqual(["2025-12-31", "2026-01-01", "2026-01-02"]);
+    expect(container.querySelector('[data-daily-summary="peak"]'))
+      .toHaveTextContent("2025-12-31");
+    const detail = container.querySelector('[data-daily-detail="2025-12-31"]')!;
+    expect(within(detail as HTMLElement).getByText("¥12,345,678,901.23", { exact: true })).toBeVisible();
+    expect(container.querySelector('button[data-cal-date="2025-12-31"]')).toHaveTextContent("¥123亿");
     expect(screen.getByRole("status")).toHaveTextContent("共 3 天");
   });
 
-  it("keeps summaries and CSP-compatible amount bars on one interval scale for every date, including zero", () => {
+  it("assigns CSP-compatible heat levels on one interval scale without inline styles", () => {
     const data = analytics(30);
     data.daily = data.daily.map((day, index) => ({
       ...day,
@@ -652,43 +680,41 @@ describe("complete daily analytics report", () => {
     const { container } = render(<DailyAnalytics analytics={data} range={30} pending={false} />);
     expect(container.querySelector('[data-daily-summary="total"]')).toHaveTextContent("¥100.01");
     expect(dailyDates()).toHaveLength(30);
-    const width = (date: string) => container.querySelector(
-      'svg[data-date="' + date + '"] rect[data-daily-bar-fill]',
-    )?.getAttribute("width");
-    expect(width("2026-06-30")).toBe("50");
-    expect(width("2026-06-29")).toBe("0");
-    expect(width("2026-06-01")).toBe("100");
-    expect(width("2026-06-02")).toBe("0");
-    expect(container.querySelector('svg[data-date] [style]')).toBeNull();
+    const level = (date: string) =>
+      container.querySelector(`button[data-cal-date="${date}"]`)?.getAttribute("data-cal-level");
+    expect(level("2026-06-01")).toBe("4");
+    expect(level("2026-06-30")).toBe("3");
+    expect(level("2026-06-29")).toBe("0");
+    expect(level("2026-06-02")).toBe("0");
+    expect(container.querySelector(".daily-report [style]")).toBeNull();
   });
 
-  it("preserves every date and refreshes amounts through responsive layout changes", () => {
+  it("preserves every date and refreshes amounts cleanly", () => {
     const data = analytics(30);
-    const { rerender } = render(<DailyAnalytics analytics={data} range={30} pending={false} />);
+    const { rerender, container } = render(
+      <MemoryRouter>
+        <DailyAnalytics analytics={data} range={30} pending={false} />
+      </MemoryRouter>,
+    );
     const dates = dailyDates();
-    rerender(<DailyAnalytics analytics={data} range={30} pending />);
+    rerender(
+      <MemoryRouter>
+        <DailyAnalytics analytics={data} range={30} pending />
+      </MemoryRouter>,
+    );
     const refreshed = structuredClone(data);
     refreshed.confirmations.amount_cents = 222222;
-    refreshed.daily[29]!.confirmed_amount_cents = 11111;
-    rerender(<DailyAnalytics analytics={refreshed} range={30} pending={false} />);
+    refreshed.daily[2]!.confirmed_amount_cents = 11111;
+    rerender(
+      <MemoryRouter>
+        <DailyAnalytics analytics={refreshed} range={30} pending={false} />
+      </MemoryRouter>,
+    );
     expect(screen.getByRole("status")).toHaveTextContent("共 30 天");
     expect(dailyDates()).toEqual(dates);
     expect(dates).toHaveLength(30);
-    expect(screen.getByText("¥2,222.22", { exact: true })).toBeVisible();
-    expect(screen.getByText("¥111.11", { exact: true })).toBeVisible();
-    vi.stubGlobal("innerWidth", 390);
-    act(() => window.dispatchEvent(new Event("resize")));
-    expect(screen.queryByRole("table", { name: "每日收款数据" })).not.toBeInTheDocument();
-    expect(within(screen.getByRole("list", { name: "每日收款数据" })).getAllByRole("listitem"))
-      .toHaveLength(30);
-    expect(dailyDates()).toEqual(dates);
-    expect(screen.getByRole("region", { name: "每日数据" }).querySelector('svg[data-date]')).toBeNull();
-    expect(screen.getByRole("status")).toHaveTextContent("共 30 天");
-    vi.stubGlobal("innerWidth", 1440);
-    act(() => window.dispatchEvent(new Event("resize")));
-    expect(screen.getByRole("table", { name: "每日收款数据" })).toBeVisible();
-    expect(dailyDates()).toEqual(dates);
-    expect(screen.getByRole("status")).toHaveTextContent("共 30 天");
+    expect(container.querySelector('[data-daily-summary="total"]')).toHaveTextContent("¥2,222.22");
+    expect(container.querySelector('[data-daily-detail="2026-06-03"]')).toHaveTextContent("¥111.11");
   });
 
   it("replaces the complete report when the website or selected range changes", () => {
@@ -702,15 +728,15 @@ describe("complete daily analytics report", () => {
     rerender(<DailyAnalytics analytics={otherSite} range={30} pending={false} scopeKey="site-b" />);
     expect(screen.getByRole("status")).toHaveTextContent("共 30 天");
     expect(screen.getByText("¥9,876.54", { exact: true })).toBeVisible();
-    expect(dailyDates()).toEqual(data.daily.map(day => day.date).reverse());
-    expect(dailyDates()[0]).toBe("2026-06-30");
+    expect(dailyDates()).toEqual(data.daily.map((day) => day.date));
+    expect(dailyDates().at(-1)).toBe("2026-06-30");
     rerender(<DailyAnalytics analytics={analytics(90)} range={90} pending={false} scopeKey="site-b" />);
     expect(screen.getByRole("status")).toHaveTextContent("共 90 天");
     expect(dailyDates()).toHaveLength(90);
-    expect(dailyDates()[0]).toBe("2026-08-29");
+    expect(dailyDates().at(-1)).toBe("2026-08-29");
   });
 
-  it("hides stale summaries and rows while another period loads, then shows the complete new range", () => {
+  it("hides stale summaries and calendar cells while another period loads, then shows the complete new range", () => {
     const { rerender, container } = render(
       <DailyAnalytics analytics={analytics(90)} range={90} pending={false} />,
     );
@@ -719,7 +745,7 @@ describe("complete daily analytics report", () => {
     expect(report).toHaveAttribute("aria-busy", "true");
     expect(within(report).getByRole("status")).toHaveTextContent("正在读取每日数据");
     expect(within(report).queryByText("¥100.00")).not.toBeInTheDocument();
-    expect(within(report).queryByRole("table", { name: "每日收款数据" })).not.toBeInTheDocument();
+    expect(within(report).queryByRole("grid", { name: "每日收款日历" })).not.toBeInTheDocument();
     expect(dailyDates(report)).toHaveLength(0);
     expect(container.querySelector("[data-slot=skeleton]")).not.toBeNull();
     rerender(<DailyAnalytics analytics={analytics(30)} range={30} pending={false} />);
@@ -744,7 +770,7 @@ describe("complete daily analytics report", () => {
     rerender(<DailyAnalytics analytics={zeros} range={7} pending={false} />);
     expect(screen.queryByText("暂无每日数据")).not.toBeInTheDocument();
     expect(screen.queryByText("统计数据暂不可用")).not.toBeInTheDocument();
-    expect(screen.getByRole("table", { name: "每日收款数据" })).toBeVisible();
+    expect(screen.getByRole("grid", { name: "每日收款日历" })).toBeVisible();
     expect(container.querySelector('[data-daily-summary="average"]')).toHaveTextContent("¥0.00");
     expect(container.querySelector('[data-daily-summary="peak"]')).toHaveTextContent("06-06");
   });
@@ -788,12 +814,12 @@ describe("shared trend and daily views", () => {
     const chartTab = screen.getByRole("tab", { name: "图表" });
     const dailyTab = screen.getByRole("tab", { name: "每日数据" });
     expect(
-      screen.queryByRole("table", { name: "每日收款数据" }),
+      screen.queryByRole("grid", { name: "每日收款日历" }),
     ).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "新建订单" }));
     await user.click(dailyTab);
-    const table = screen.getAllByRole("table", { name: "每日收款数据" })[0]!;
-    expect(table.closest('[data-slot="card"]')).toBe(
+    const grid = screen.getAllByRole("grid", { name: "每日收款日历" })[0]!;
+    expect(grid.closest('[data-slot="card"]')).toBe(
       trend.closest('[data-slot="card"]'),
     );
     expect(container.querySelectorAll('[data-slot="card"]')).toHaveLength(1);
@@ -812,7 +838,7 @@ describe("shared trend and daily views", () => {
     expect(dates).toHaveLength(30);
     await user.click(chartTab);
     expect(
-      screen.queryByRole("table", { name: "每日收款数据" }),
+      screen.queryByRole("grid", { name: "每日收款日历" }),
     ).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "新建订单" })).toHaveAttribute(
       "aria-pressed",
@@ -870,7 +896,7 @@ describe("shared trend and daily views", () => {
     expect(screen.getByRole("status")).toHaveTextContent("共 30 天");
     expect(dailyDates()).toHaveLength(30);
     expect(screen.getByRole("region", { name: "每日数据" })).toHaveTextContent("¥9,876.54");
-    expect(dailyDates()[0]).toBe("2026-06-30");
+    expect(dailyDates().at(-1)).toBe("2026-06-30");
     expect(onRangeChange).not.toHaveBeenCalled();
   });
 });

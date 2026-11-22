@@ -56,7 +56,7 @@ async function range(page: Page, days: number) {
   await expect(report(page).locator('[role="status"]')).toContainText(`共 ${days} 天`);
 }
 
-test("daily data shows every date, interval totals and bar scales together without additional reads", async ({ page, manifest }, info) => {
+test("daily data shows every date in a bill calendar with heat levels, detail strip and drill-down links without additional reads", async ({ page, manifest }, info) => {
   let reads = 0;
   const fixtures = new Map<number, SystemAnalytics>();
   await page.route(ANALYTICS, async route => {
@@ -75,11 +75,11 @@ test("daily data shows every date, interval totals and bar scales together witho
   for (const days of [30, 90, 7]) {
     if (days !== 30) await range(page, days);
     const current = report(page);
-    await expect(current.locator("table")).toHaveCount(1);
-    await expect(current.getByRole("columnheader")).toHaveText(["日期", "确认金额", "确认笔数", "新建订单"]);
+    await expect(current.getByRole("grid", { name: "每日收款日历", exact: true })).toHaveCount(1);
+    await expect(current.getByRole("columnheader")).toHaveText(["周一", "周二", "周三", "周四", "周五", "周六", "周日"]);
     await expect(current.getByText("全部展开", { exact: true })).toHaveCount(0);
     await expect(current.getByText("全部收起", { exact: true })).toHaveCount(0);
-    const expected = [...fixtures.get(days)!.daily].reverse();
+    const expected = fixtures.get(days)!.daily;
     const totals = await current.locator("[data-daily-summary]").allTextContents();
     await expect(current.locator('[data-daily-summary="total"]')).toContainText("¥76,543.21");
     const beforeInspecting = reads;
@@ -88,16 +88,22 @@ test("daily data shows every date, interval totals and bar scales together witho
     await expect(current.locator('[role="status"]')).toHaveText(`共 ${days} 天`);
     await expect(pager).toHaveCount(0);
     expect(observed).toEqual(expected.map(day => day.date));
-    const bars = await current.locator(".daily-amount-bar").evaluateAll(elements => elements.map(element => ({
-      date: element.getAttribute("data-date"), track: element.getBoundingClientRect().width,
-      fill: element.querySelector("[data-daily-bar-fill]")!.getBoundingClientRect().width,
+    const levels = await current.locator(".daily-cal-cell").evaluateAll(elements => elements.map(element => ({
+      date: element.getAttribute("data-cal-date"),
+      level: Number(element.getAttribute("data-cal-level")),
     })));
-    expect(bars).toHaveLength(days);
+    expect(levels).toHaveLength(days);
     const maximum = Math.max(...expected.map(day => day.confirmed_amount_cents));
-    for (const bar of bars) {
-      expect(bar.track).toBeCloseTo(64, 1);
-      expect(bar.fill).toBeCloseTo(64 * expected.find(day => day.date === bar.date)!.confirmed_amount_cents / maximum, 1);
+    for (const cell of levels) {
+      const amount = expected.find(day => day.date === cell.date)!.confirmed_amount_cents;
+      if (amount === 0) expect(cell.level).toBe(0);
+      else if (amount === maximum) expect(cell.level).toBe(4);
+      else expect(cell.level).toBeGreaterThanOrEqual(1);
     }
+    const todayDate = expected.at(-1)!.date;
+    await current.locator(`button[data-cal-date="${todayDate}"]`).click();
+    await expect(current.locator(`[data-daily-detail="${todayDate}"]`)).toBeVisible();
+    await expect(current.locator(`[data-daily-detail="${todayDate}"] a[href*="/orders?created_from=${todayDate}&created_to=${todayDate}"]`)).toBeVisible();
     if (days === 30) await screenshot(page, info, "daily-normal-1440-complete");
     expect(observed).toHaveLength(days);
     expect(new Set(observed).size).toBe(days);
@@ -140,10 +146,10 @@ test("complete daily data survives presentation changes and updates for website,
   await expect(status).toHaveText("共 30 天");
   await page.getByRole("button", { name: "切换为全屏布局", exact: true }).click();
   await page.setViewportSize({ width: 390, height: 900 });
-  await expect(current.locator(".daily-mobile-list")).toBeVisible();
+  await expect(current.getByRole("grid", { name: "每日收款日历", exact: true })).toBeVisible();
   expect(await visibleDates(page)).toEqual(dates);
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await expect(current.locator("table")).toBeVisible();
+  await expect(current.getByRole("grid", { name: "每日收款日历", exact: true })).toBeVisible();
   expect(await visibleDates(page)).toEqual(dates);
   expect(reads).toBe(beforePresentation);
 
@@ -158,10 +164,10 @@ test("complete daily data survives presentation changes and updates for website,
   const beforeMidnight = reads;
   await refresh.click();
   await expect.poll(() => reads).toBeGreaterThan(beforeMidnight);
-  await expect(current.locator(".daily-date time").first()).toHaveAttribute("datetime", "2026-01-05");
+  await expect(current.locator(".daily-date time").last()).toHaveAttribute("datetime", "2026-01-05");
   await expect(status).toHaveText("共 30 天");
   const nextDates = await visibleDates(page);
-  expect(nextDates).toEqual(["2026-01-05", ...dates.slice(0, -1)]);
+  expect(nextDates).toEqual([...dates.slice(1), "2026-01-05"]);
   await range(page, 90);
   await expect(status).toHaveText("共 90 天");
   await expect(current.locator(".daily-date time")).toHaveCount(90);
@@ -170,14 +176,15 @@ test("complete daily data survives presentation changes and updates for website,
   await page.getByRole("list", { name: "查看范围列表", exact: true }).locator(`a[href^="/admin${sitePath}?"]`).click();
   await expect(page).toHaveURL(new RegExp(sitePath));
   await showDaily(page);
-  await expect(report(page).locator(".daily-date time").first()).toHaveAttribute("datetime", "2026-01-06");
+  await expect(report(page).locator(".daily-date time").last()).toHaveAttribute("datetime", "2026-01-06");
   expect(siteFixture).toBeDefined();
   await expect(report(page).locator('[role="status"]')).toHaveText(`共 ${siteFixture!.range_days} 天`);
-  expect(await visibleDates(page)).toEqual(siteFixture!.daily.map(day => day.date).reverse());
+  expect(await visibleDates(page)).toEqual(siteFixture!.daily.map(day => day.date));
+  await expect(report(page).locator(`[data-daily-detail] a[href^="/admin${sitePath}/orders?created_from="]`)).toBeVisible();
   await record(page, info, { preservedDates: dates, reads, midnightDates: nextDates, sitePath, siteDates: await visibleDates(page) });
 });
 
-test("daily table and mobile summaries keep fixed bars and complete large values in all supported layouts", async ({ page, manifest }, info) => {
+test("daily bill calendar keeps readable cells and complete large values in all supported layouts", async ({ page, manifest }, info) => {
   test.setTimeout(240_000);
   const errors: string[] = [];
   page.on("pageerror", error => errors.push(error.message));
@@ -199,46 +206,38 @@ test("daily table and mobile summaries keep fixed bars and complete large values
     const current = report(page);
     await expect(current.locator('[role="status"]')).toHaveText("共 30 天");
     await expect(current.locator(".daily-date time")).toHaveCount(30);
-    await expect(current.locator(".daily-date time").first()).toHaveText("2026-01-04");
+    await expect(current.locator(".daily-date time").last()).toHaveAttribute("datetime", "2026-01-04");
     await expect(current.getByText("今日", { exact: true })).toBeVisible();
     await expect(current.getByText("¥20,000,000,000,000.00", { exact: true }).last()).toBeVisible();
     await expect(page.locator("[data-content-width]")).toHaveAttribute("data-content-width", mode);
     const geometry = await current.evaluate(element => {
-      const mobile = element.querySelector(".daily-mobile-list");
-      const table = element.querySelector("table");
+      const grid = element.querySelector('[role="grid"]');
       const values = [...element.querySelectorAll(".list-money")].filter(value => value.getBoundingClientRect().width > 0);
-      const bars = [...element.querySelectorAll(".daily-amount-bar")].map(bar => ({ width: bar.getBoundingClientRect().width, display: getComputedStyle(bar).display }));
+      const cells = [...element.querySelectorAll(".daily-cal-cell")].map(cell => ({
+        width: cell.getBoundingClientRect().width,
+        height: cell.getBoundingClientRect().height,
+      }));
       return {
         container: element.getBoundingClientRect().width,
-        mobile: !!mobile && mobile.getBoundingClientRect().width > 0,
-        table: !!table && table.getBoundingClientRect().width > 0,
-        heads: table?.querySelectorAll("thead").length ?? 0,
-        rows: table?.querySelectorAll("tbody tr").length ?? mobile?.children.length,
-        bars,
+        grid: !!grid && grid.getBoundingClientRect().width > 0,
+        cellCount: cells.length,
+        minCellWidth: Math.min(...cells.map(cell => cell.width)),
+        minCellHeight: Math.min(...cells.map(cell => cell.height)),
+        horizontalOverflow: element.scrollWidth > element.clientWidth + 1,
         clipped: values.filter(value => value.scrollWidth > value.clientWidth + 1 || value.scrollHeight > value.clientHeight + 1).map(value => value.textContent),
-        amounts: [...element.querySelectorAll(".daily-amount")].map(amount => {
-          const numeric = amount.querySelector(".list-money")!.getBoundingClientRect();
-          const bar = amount.querySelector("svg")!.getBoundingClientRect();
-          return { gap: numeric.left - bar.right, right: numeric.right };
-        }),
       };
     });
-    expect(geometry.mobile).toBe(geometry.container < 640);
-    expect(geometry.table).toBe(geometry.container >= 640);
-    expect(geometry.rows).toBe(30);
+    expect(geometry.grid).toBe(true);
+    expect(geometry.cellCount).toBe(30);
+    expect(geometry.minCellWidth).toBeGreaterThanOrEqual(24);
+    expect(geometry.minCellHeight).toBeGreaterThanOrEqual(36);
+    expect(geometry.horizontalOverflow).toBe(false);
     expect(geometry.clipped).toEqual([]);
-    if (geometry.table) {
-      expect(geometry.heads).toBe(1);
-      expect(geometry.bars).toHaveLength(30);
-      expect(geometry.bars.every(bar => Math.abs(bar.width - 64) < .1)).toBe(true);
-      expect(geometry.amounts.every(amount => amount.gap >= 8 && amount.gap <= 16)).toBe(true);
-      expect(geometry.amounts.every(amount => Math.abs(amount.right - geometry.amounts[0]!.right) < .1)).toBe(true);
-    } else expect(geometry.bars.every(bar => bar.width === 0 || bar.display === "none")).toBe(true);
     await record(page, info, { width, theme, mode, dailyGeometry: geometry, syntheticLargeValue: true });
     await screenshot(page, info, `daily-${width}-${theme}-${mode}`);
   }
   expect(errors).toEqual([]);
-  await audit(page, info, "daily-table");
+  await audit(page, info, "daily-calendar");
 });
 
 test("daily data separates loading, failures, empty series and valid zero days through fast range changes", async ({ page, manifest }, info) => {
@@ -291,7 +290,7 @@ test("daily data separates loading, failures, empty series and valid zero days t
   await refresh.click();
   await expect(current.locator(".daily-date time")).toHaveCount(7);
   await expect(current.getByText("暂无每日数据", { exact: true })).toHaveCount(0);
-  const zeros = await current.locator("[data-daily-bar-fill]").evaluateAll(elements => elements.map(element => element.getAttribute("width")));
+  const zeros = await current.locator(".daily-cal-cell").evaluateAll(elements => elements.map(element => element.getAttribute("data-cal-level")));
   expect(zeros).toEqual(Array(7).fill("0"));
-  await record(page, info, { fastRangeChange: true, failedThenRecovered: true, emptyDistinctFromZero: true, zeroFillWidths: zeros });
+  await record(page, info, { fastRangeChange: true, failedThenRecovered: true, emptyDistinctFromZero: true, zeroHeatLevels: zeros });
 });

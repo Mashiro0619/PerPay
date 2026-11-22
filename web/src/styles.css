@@ -1703,62 +1703,145 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   width: 100%;
   min-width: 0;
   flex-direction: column;
-  gap: 1.125rem;
+  gap: 0.875rem;
   container: daily-report / inline-size;
 }
-.daily-report-summary {
-  display: grid;
-  min-width: 0;
-  grid-template-columns: minmax(0, 1.3fr) repeat(2, minmax(0, 1fr));
-  gap: 1rem;
-  align-items: start;
-  padding: 0.75rem 1rem;
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--console-hairline, var(--border));
-  background: color-mix(in oklch, var(--muted) 34%, var(--card));
-}
-@container daily-report (min-width: 40rem) {
-  .daily-report-summary > .daily-summary-metric + .daily-summary-metric {
-    padding-left: 1rem;
-    border-left: 1px solid var(--console-hairline, var(--border));
-  }
-}
-.daily-summary-metric { display: flex; min-width: 0; flex-direction: column; align-items: flex-start; gap: 0.25rem; }
-.daily-summary-metric dt { color: var(--muted-foreground); font-size: 0.75rem; line-height: 1.4; }
-.daily-summary-metric dd { min-width: 0; max-width: 100%; }
 .daily-report .list-money { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
-.daily-summary-metric .list-money {
-  font-size: 1.1875rem;
-  line-height: 1.25;
-  font-weight: 600;
+.daily-day-badge {
+  height: 1.125rem;
+  padding-inline: 0.4375rem;
+  font-size: 0.6875rem;
+  line-height: 1;
+}
+.daily-cal-loading {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.875rem;
+}
+.daily-cal-loading-head { padding-bottom: 0.375rem; }
+.daily-cal-loading-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.375rem;
+}
+.daily-cal-top {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+}
+.daily-cal-summary {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.375rem 1.25rem;
+  margin: 0;
+  font-size: 0.75rem;
   font-variant-numeric: tabular-nums;
+}
+.daily-cal-summary-item {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.375rem;
+}
+.daily-cal-summary-item dt {
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
+.daily-cal-summary-item dd {
+  min-width: 0;
+  max-width: 100%;
+  margin: 0;
+  color: var(--foreground);
+  font-size: 0.875rem;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.daily-cal-summary-primary .list-money {
+  font-size: 1rem;
+  font-weight: 600;
   letter-spacing: -0.02em;
 }
-.daily-summary-total .list-money {
-  font-size: 1.5rem;
-  letter-spacing: -0.035em;
+.daily-cal-summary-date {
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  font-weight: 400;
 }
-.daily-summary-note { color: var(--muted-foreground); font-size: 0.75rem; line-height: 1.4; font-variant-numeric: tabular-nums; }
-.daily-report-loading { display: flex; min-width: 0; flex-direction: column; gap: 0.5rem; }
-.daily-report-rows {
+.daily-cal-tools {
+  display: inline-flex;
   min-width: 0;
-  max-height: min(26rem, 62svh);
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+}
+.daily-cal-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+}
+.daily-cal-export {
+  color: var(--muted-foreground);
+}
+.daily-cal-export:hover {
+  color: var(--foreground);
+}
+.daily-cal-surface {
+  min-width: 0;
+  padding: 0.75rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--console-hairline, var(--border));
+  background: color-mix(in oklch, var(--muted) 22%, var(--card));
+}
+.daily-cal-grid-wrap {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+.daily-cal-head { min-width: 0; }
+.daily-cal-week {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.375rem;
+}
+.daily-cal-weekday {
+  padding-bottom: 0.125rem;
+  text-align: center;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--muted-foreground);
+}
+.daily-cal-body {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+.daily-cal-body[data-scrollable="true"] {
+  max-height: 22rem;
   overflow-y: auto;
   overscroll-behavior-y: contain;
+  padding-right: 0.25rem;
   scrollbar-width: thin;
 }
-.daily-report-rows[data-daily-surface="true"] {
-  border: 1px solid var(--console-hairline, var(--border));
-  border-radius: var(--radius-lg);
-  background: color-mix(in oklch, var(--muted) 14%, var(--card));
+.daily-cal-body[data-scrollable="true"]:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-md);
 }
-.daily-report-rows > [data-slot="table-container"] {
-  overflow: visible;
-}
-.daily-report-rows:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 @media (forced-colors: none) {
   @supports selector(::-webkit-scrollbar) {
-    .daily-report-rows {
+    .daily-cal-body[data-scrollable="true"] {
       scrollbar-width: auto;
       &::-webkit-scrollbar { width: 6px; height: 6px; }
       &::-webkit-scrollbar-track, &::-webkit-scrollbar-corner { background: transparent; }
@@ -1776,94 +1859,233 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
     }
   }
 }
-.daily-report-table { table-layout: fixed; }
-.daily-report-table .daily-date-column { width: 32%; }
-.daily-report-table .daily-amount-column { width: 36%; }
-.daily-report-table .daily-count-column { width: 16%; }
-.daily-report-table thead tr {
-  border-bottom-color: var(--console-hairline, var(--border));
+.daily-cal-pad {
+  min-height: 3.75rem;
+  border-radius: var(--radius-md);
+  border: 1px dashed color-mix(in oklch, var(--foreground) 7%, transparent);
+  background: transparent;
 }
-.daily-report-table thead th {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  height: 2.25rem;
-  padding-inline: 1rem;
-  font-size: 0.75rem;
-  font-weight: 500;
-  color: var(--muted-foreground);
-  background: color-mix(in oklch, var(--muted) 56%, var(--card));
-  box-shadow: inset 0 -1px 0 var(--console-hairline, var(--border));
+.daily-cal-slot {
+  display: flex;
+  min-width: 0;
 }
-.daily-report-table tbody tr {
-  border-bottom-color: var(--console-hairline, var(--border));
-  transition: background-color var(--console-motion-fast, 140ms) var(--console-ease, ease);
-}
-.daily-report-table tbody tr[data-daily-peak="true"] {
-  background: color-mix(in oklch, var(--muted) 32%, transparent);
-}
-.daily-report-table tbody tr:hover {
-  background: color-mix(in oklch, var(--muted) 52%, transparent);
-}
-.daily-report-table td {
-  padding: 0.5625rem 1rem;
+.daily-cal-cell {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  height: auto;
+  min-height: 3.75rem;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 0.375rem;
+  padding: 0.4375rem 0.5rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--console-hairline, var(--border));
+  background: var(--card);
+  color: var(--foreground);
+  text-align: left;
   white-space: normal;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums lining-nums;
+  transition:
+    border-color var(--console-motion-fast, 140ms) var(--console-ease, ease),
+    background-color var(--console-motion-fast, 140ms) var(--console-ease, ease),
+    box-shadow var(--console-motion-fast, 140ms) var(--console-ease, ease);
+}
+.daily-cal-cell[data-cal-level="0"] { background: var(--card); }
+.daily-cal-cell[data-cal-level="1"] { background: color-mix(in oklch, var(--foreground) 3.5%, var(--card)); }
+.daily-cal-cell[data-cal-level="2"] { background: color-mix(in oklch, var(--foreground) 6.5%, var(--card)); }
+.daily-cal-cell[data-cal-level="3"] { background: color-mix(in oklch, var(--foreground) 10%, var(--card)); }
+.daily-cal-cell[data-cal-level="4"] { background: color-mix(in oklch, var(--foreground) 13.5%, var(--card)); }
+@media (hover: hover) {
+  .daily-cal-cell:hover {
+    border-color: color-mix(in oklch, var(--foreground) 28%, transparent);
+  }
+  .daily-cal-cell[data-cal-level="0"]:hover { background: color-mix(in oklch, var(--foreground) 2.5%, var(--card)); }
+  .daily-cal-cell[data-cal-level="1"]:hover { background: color-mix(in oklch, var(--foreground) 5.5%, var(--card)); }
+  .daily-cal-cell[data-cal-level="2"]:hover { background: color-mix(in oklch, var(--foreground) 8.5%, var(--card)); }
+  .daily-cal-cell[data-cal-level="3"]:hover { background: color-mix(in oklch, var(--foreground) 12%, var(--card)); }
+  .daily-cal-cell[data-cal-level="4"]:hover { background: color-mix(in oklch, var(--foreground) 15%, var(--card)); }
+}
+.daily-cal-cell[data-selected="true"] {
+  border-color: var(--foreground);
+  box-shadow: inset 0 0 0 1px var(--foreground);
+}
+.daily-cal-cell:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+.daily-cal-cell-head {
+  display: flex;
+  min-width: 0;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.25rem;
+}
+.daily-date {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  font-variant-numeric: tabular-nums;
+}
+.daily-cal-date time {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.75rem;
+  line-height: 1.2;
+  font-weight: 500;
+  color: color-mix(in oklch, var(--foreground) 72%, var(--card));
+}
+.daily-cal-date-short { display: none; }
+.daily-cal-cell[data-daily-today="true"] .daily-cal-date time {
+  font-weight: 600;
+  color: var(--foreground);
+}
+.daily-cal-indicators {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 0.25rem;
+}
+.daily-cal-peak-icon {
+  width: 0.6875rem;
+  height: 0.6875rem;
+  color: var(--foreground);
+  fill: currentColor;
+}
+.daily-cal-fail-dot {
+  display: inline-block;
+  width: 0.375rem;
+  height: 0.375rem;
+  flex: none;
+  border-radius: 999px;
+  background: var(--warning-foreground);
+}
+.daily-cal-cell-body {
+  display: flex;
+  min-width: 0;
+  width: 100%;
+  flex-direction: column;
+  gap: 0.0625rem;
+}
+.daily-cal-amount {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.75rem;
+  line-height: 1.25;
+  font-weight: 600;
+  color: var(--foreground);
+}
+.daily-cal-cell[data-daily-zero="true"] .daily-cal-amount {
+  font-weight: 400;
+  color: color-mix(in oklch, var(--foreground) 68%, var(--card));
+}
+.daily-cal-count {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.6875rem;
+  line-height: 1.2;
+  color: color-mix(in oklch, var(--foreground) 72%, var(--card));
+}
+.daily-cal-detail {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--console-hairline, var(--border));
+  background: color-mix(in oklch, var(--muted) 30%, var(--card));
+}
+.daily-cal-detail-info {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 20rem;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+.daily-cal-detail-head {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem 0.5rem;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+.daily-cal-detail-date {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--foreground);
+}
+.daily-cal-detail-weekday,
+.daily-cal-detail-delta {
+  color: var(--muted-foreground);
+}
+.daily-cal-detail-metrics {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 1rem;
+  margin: 0;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+.daily-cal-detail-metric {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.3125rem;
+}
+.daily-cal-detail-metric dt {
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
+.daily-cal-detail-metric dd {
+  min-width: 0;
+  max-width: 100%;
+  margin: 0;
+  color: var(--foreground);
+  font-weight: 500;
   overflow-wrap: anywhere;
 }
-.daily-report-table td[data-zero="true"] {
-  color: var(--muted-foreground);
+.daily-cal-detail-amount .list-money {
+  font-size: 0.875rem;
+  font-weight: 600;
 }
-.daily-report-table tbody tr[data-daily-zero="true"] .daily-amount > .list-money {
-  color: var(--muted-foreground);
-  font-weight: 400;
+.daily-cal-detail-warn {
+  color: var(--warning-foreground);
+  font-weight: 500;
 }
-.daily-report-table :is(th, td):not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }
-.daily-report-table .list-money { font-size: inherit; }
-.daily-date { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: 0.375rem; font-variant-numeric: tabular-nums; }
-.daily-date time { font-weight: 500; color: var(--foreground); }
-.daily-date-weekday { color: var(--muted-foreground); font-size: 0.75rem; }
-.daily-day-badge {
-  height: 1.125rem;
-  padding-inline: 0.4375rem;
-  font-size: 0.6875rem;
-  line-height: 1;
+.daily-cal-detail-actions {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
 }
-/* A fixed short track and independent numeric slot keep daily amounts comparable. */
-.daily-amount { display: grid; min-width: 0; grid-template-columns: 64px minmax(0, 11.5ch); justify-content: end; align-items: center; gap: 0.75rem; }
-.daily-amount > .list-money { text-align: right; font-weight: 600; }
-.daily-amount-bar {
-  display: block;
-  width: 64px;
-  height: 5px;
-  overflow: hidden;
-  border-radius: 999px;
-  color: color-mix(in oklch, var(--chart-1) 76%, var(--card));
-  transition: color var(--console-motion-fast, 140ms) var(--console-ease, ease);
+.daily-cal-warn-action {
+  border-color: color-mix(in oklch, var(--warning-foreground) 24%, transparent);
+  background: var(--warning);
+  color: var(--warning-foreground);
 }
-.daily-report-table tbody tr:is(:hover, [data-daily-peak="true"]) .daily-amount-bar {
-  color: var(--chart-1);
+@media (hover: hover) {
+  .daily-cal-warn-action:hover {
+    background: color-mix(in oklch, var(--warning) 86%, var(--warning-foreground));
+    color: var(--warning-foreground);
+  }
 }
-.daily-amount-track { fill: color-mix(in oklch, var(--foreground) 8%, transparent); }
-.daily-report-table tbody tr[data-daily-zero="true"] .daily-amount-track {
-  fill: color-mix(in oklch, var(--foreground) 5%, transparent);
-}
-.daily-mobile-list .record-list-row {
-  padding: 0.625rem 0.875rem;
-  border-bottom-color: var(--console-hairline, var(--border));
-}
-.daily-mobile-list .record-list-row[data-daily-peak="true"] {
-  background: color-mix(in oklch, var(--muted) 32%, transparent);
-}
-.daily-mobile-list .record-list-row[data-daily-zero="true"] .list-summary-aside .list-money {
-  color: var(--muted-foreground);
-  font-weight: 400;
-}
-.daily-mobile-list .list-summary-heading { align-items: center; gap: 0.75rem; }
-.daily-mobile-list .list-summary-aside { min-width: 0; }
-.daily-mobile-list .list-summary-aside .list-money { font-weight: 600; }
-.daily-mobile-list .business-summary-field { flex-direction: row; align-items: baseline; gap: 0.375rem; }
-.daily-mobile-list :is(.list-money, .list-identity-title) { font-size: 0.875rem; }
-.daily-mobile-list :is(.business-summary-field dt, .business-summary-field dd) { font-size: 0.75rem; }
+.daily-cal-empty { min-width: 0; }
 .daily-report-footer {
   display: flex;
   min-width: 0;
@@ -1880,15 +2102,56 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   font-size: 0.75rem;
   font-variant-numeric: tabular-nums;
 }
-@container daily-report (max-width: 39.999rem) {
-  .daily-report-summary {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.875rem 0.75rem;
-    padding: 0.625rem 0.75rem;
+@container daily-report (max-width: 31.999rem) {
+  .daily-cal-surface { padding: 0.5rem; }
+  .daily-cal-grid-wrap,
+  .daily-cal-body { gap: 0.25rem; }
+  .daily-cal-week,
+  .daily-cal-loading-grid { gap: 0.25rem; }
+  .daily-cal-pad,
+  .daily-cal-cell {
+    min-height: 3.125rem;
+    padding: 0.3125rem 0.25rem;
+    gap: 0.1875rem;
   }
-  .daily-summary-metric:first-child { grid-column: 1 / -1; }
-  .daily-summary-total .list-money { font-size: 1.375rem; }
-  .daily-summary-metric .list-money { font-size: 1.125rem; }
+  .daily-cal-date time,
+  .daily-cal-amount { font-size: 0.6875rem; }
+  .daily-cal-count { display: none; }
+  .daily-cal-detail { padding: 0.625rem 0.75rem; }
+}
+@container daily-report (max-width: 21.999rem) {
+  .daily-cal-surface { padding: 0.375rem; }
+  .daily-cal-week,
+  .daily-cal-loading-grid { gap: 0.1875rem; }
+  .daily-cal-weekday { font-size: 0.6875rem; }
+  .daily-cal-pad,
+  .daily-cal-cell {
+    position: relative;
+    min-height: 2.625rem;
+    padding: 0.25rem 0.125rem;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+  }
+  .daily-cal-date-full { display: none; }
+  .daily-cal-date-short { display: inline; }
+  .daily-cal-date time { font-size: 0.6875rem; }
+  .daily-cal-cell-head { justify-content: center; gap: 0; }
+  .daily-cal-indicators {
+    position: absolute;
+    top: 0.1875rem;
+    right: 0.1875rem;
+    gap: 0.125rem;
+  }
+  .daily-cal-peak-icon { width: 0.5rem; height: 0.5rem; }
+  .daily-cal-fail-dot { width: 0.3125rem; height: 0.3125rem; }
+  .daily-cal-cell-body { display: none; }
+}
+@media (pointer: coarse) {
+  .daily-cal-export,
+  .daily-cal-detail-actions a {
+    min-height: 2.5rem;
+  }
 }
 
 [data-overlay-content][data-overlay-viewport="dialog"] {

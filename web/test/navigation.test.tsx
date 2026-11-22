@@ -446,7 +446,7 @@ describe("navigation and draft protection", () => {
     await userEvent.click(screen.getByRole("tab", { name: "每日数据" }));
     const daily = screen.getByRole("region", { name: "每日数据" });
     expect(daily).toHaveAttribute("aria-busy", "true");
-    expect(within(daily).queryAllByRole("cell")).toHaveLength(0);
+    expect(within(daily).queryAllByRole("gridcell")).toHaveLength(0);
     await act(async () => {
       finishRange(
         json({
@@ -460,10 +460,10 @@ describe("navigation and draft protection", () => {
     expect(screen.queryByText("正在读取近 7 天…")).not.toBeInTheDocument();
     const loadedDaily = screen.getByRole("region", { name: "每日数据" });
     expect(loadedDaily).not.toHaveAttribute("aria-busy", "true");
-    expect(within(loadedDaily).getAllByRole("table", { name: "每日收款数据" })).toHaveLength(1);
+    expect(within(loadedDaily).getAllByRole("grid", { name: "每日收款日历" })).toHaveLength(1);
     expect(Array.from(loadedDaily.querySelectorAll<HTMLTimeElement>(".daily-date time[datetime]"))
       .map((time) => time.dateTime)).toEqual(previous.data.daily.slice(-7)
-      .map((day) => day.date).reverse());
+      .map((day) => day.date));
     expect(within(loadedDaily).getByRole("status")).toHaveTextContent("共 7 天");
   });
   it("does not replace the selected period with a late response after rapid switching", async () => {
@@ -875,8 +875,8 @@ describe("shared content width navigation", () => {
     await userEvent.click(tab);
     const report = await screen.findByRole("region", { name: "每日数据" });
     const before = fetchMock.mock.calls.length;
-    const table = within(report).getByRole("table", { name: "每日收款数据" });
-    const dates = Array.from(table.querySelectorAll<HTMLTimeElement>("time[datetime]"))
+    const grid = within(report).getByRole("grid", { name: "每日收款日历" });
+    const dates = Array.from(grid.querySelectorAll<HTMLTimeElement>(".daily-date time[datetime]"))
       .map((time) => time.dateTime);
     expect(dates).toHaveLength(30);
     await userEvent.click(screen.getByRole("tab", { name: "图表" }));
@@ -885,8 +885,8 @@ describe("shared content width navigation", () => {
     expect(fetchMock).toHaveBeenCalledTimes(before);
     await userEvent.click(screen.getByRole("button", { name: "切换为全屏布局" }));
     expect(tab).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByRole("table", { name: "每日收款数据" })).toBe(table);
-    expect(Array.from(table.querySelectorAll<HTMLTimeElement>("time[datetime]"))
+    expect(screen.getByRole("grid", { name: "每日收款日历" })).toBe(grid);
+    expect(Array.from(grid.querySelectorAll<HTMLTimeElement>(".daily-date time[datetime]"))
       .map((time) => time.dateTime)).toEqual(dates);
     expect(within(report).getByRole("status")).toHaveTextContent("共 30 天");
     expect(fetchMock).toHaveBeenCalledTimes(before);
