@@ -125,10 +125,10 @@ describe("workspace navigation preparation", () => {
       "/api/admin/v1/system/analytics", "/api/admin/v1/settings", "/api/admin/v1/orders",
       "/api/admin/v1/work-items", "/api/admin/v1/sites/overview",
     ]));
-    expect(Object.fromEntries(urls.find(url => url.pathname.endsWith("/sites/overview"))!.searchParams)).toEqual({ range: "7", limit: "10" });
+    expect(Object.fromEntries(urls.find(url => url.pathname.endsWith("/sites/overview"))!.searchParams)).toEqual({ range: "7", limit: "10", sort_by: "amount" });
     rows.resolve(json({ data: [], page: { next_cursor: null } }));
     await prepared;
-    expect(queryClient.getQueryState(["site-overview", 7, 10])?.status).toBe("success");
+    expect(queryClient.getQueryState(["site-overview", 7, 10, "amount"])?.status).toBe("success");
     expect(urls.filter(url => url.pathname.endsWith("/sites/overview"))).toHaveLength(1);
   });
 
@@ -142,7 +142,7 @@ describe("workspace navigation preparation", () => {
       ],
       pageParams: [null, "second-page", "third-page"],
     };
-    const key = ["site-overview", 7, 10];
+    const key = ["site-overview", 7, 10, "amount"];
     queryClient.setQueryData(key, cached, { updatedAt: 1 });
     const before = queryClient.getQueryData(key);
     const slowRefresh = deferred();

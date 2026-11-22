@@ -5455,6 +5455,7 @@ export type ListSiteOverviewData = {
         q?: string;
         range?: 7 | 30 | 90;
         limit?: number;
+        sort_by?: 'client_id' | 'amount' | 'work_items';
         cursor?: string;
     };
     url: '/api/admin/v1/sites/overview';
@@ -5471,6 +5472,8 @@ export type ListSiteOverviewResponses = {
             to: string;
         };
         max_confirmed_amount_cents: number;
+        total_confirmed_amount_cents?: number;
+        total_sites?: number;
         data: Array<{
             client_id: string;
             api_client_id?: string;

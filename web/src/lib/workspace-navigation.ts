@@ -82,7 +82,7 @@ export async function prepareWorkspaceNavigation(request: Request, clientId: str
       reads.push(prepare(options.analytics), prepare(options.settings), prepare(options.orders), prepare(options.work));
       if (clientId) reads.push(prepare(options.workSummary));
       // Reuse loaded pages; the mounted hook refreshes them without delaying the route.
-      else reads.push(queryClient.ensureInfiniteQueryData({ ...siteOverviewQueryOptions(range), revalidateIfStale: false }));
+      else reads.push(queryClient.ensureInfiniteQueryData({ ...siteOverviewQueryOptions(range, 10, "amount"), revalidateIfStale: false }));
     } else if (localPath === "/orders") {
       const list = readListQuery(search, ORDER_SORT_FIELDS, "created_at", "desc", true);
       const { payment, checkout } = orderFilters(search);

@@ -46,16 +46,26 @@ function otherSite() {
 function page(
   data: OverviewSite[],
   nextCursor: string | null = null,
-  { range = 7, end = "2026-10-10", maximum = Math.max(0, ...data.map((item) => item.confirmed_amount_cents)) }: {
+  {
+    range = 7,
+    end = "2026-10-10",
+    maximum = Math.max(0, ...data.map((item) => item.confirmed_amount_cents)),
+    total = data.reduce((sum, item) => sum + item.confirmed_amount_cents, 0),
+    totalSites,
+  }: {
     range?: Range;
     end?: string;
     maximum?: number;
+    total?: number;
+    totalSites?: number;
   } = {},
 ) {
   const response: ListSiteOverviewResponse = {
     data,
     period: period(range, end),
     max_confirmed_amount_cents: maximum,
+    total_confirmed_amount_cents: total,
+    ...(totalSites !== undefined ? { total_sites: totalSites } : {}),
     page: { next_cursor: nextCursor },
   };
   return json(response);
@@ -231,7 +241,7 @@ describe("website overview amount cards", () => {
       : page([site("site_only", "唯一网站")]));
     await waitFor(() => expect(screen.queryByRole("region", { name: "各网站概览" })).not.toBeInTheDocument());
     fail = true;
-    await act(async () => { await queryClient.invalidateQueries({ queryKey: ["site-overview", 7, 10], exact: true }); });
+    await act(async () => { await queryClient.invalidateQueries({ queryKey: ["site-overview", 7, 10, "amount"], exact: true }); });
     const error = await screen.findByRole("alert");
     expect(error).toHaveTextContent("网站数量刷新失败");
     expect(screen.getByRole("region", { name: "各网站概览" })).toBeVisible();
@@ -286,8 +296,33 @@ describe("website overview amount cards", () => {
     const url = new URL(view.requests[0]!.url);
     expect(url.searchParams.get("range")).toBe(String(range));
     expect(url.searchParams.get("limit")).toBe("10");
+    expect(url.searchParams.get("sort_by")).toBe("amount");
     expect(url.searchParams.has("cursor")).toBe(false);
     expect(view.requests[0]!.method).toBe("GET");
+    expect(within(link).getByText("17 笔 · 33%", { exact: true })).toBeVisible();
+  });
+
+  it("switches between amount and work_items ranking and shows total website count", async () => {
+    const view = mount((url) => {
+      const sortBy = url.searchParams.get("sort_by");
+      if (sortBy === "work_items") {
+        return page([
+          site("site_urgent", "异常较多网站", { confirmed_amount_cents: 1000, confirmed_count: 2, work_items: 7 }),
+          site("site_top", "高实收网站", { confirmed_amount_cents: 9000, confirmed_count: 15, work_items: 1 }),
+        ], null, { maximum: 9000, total: 10000, totalSites: 6 });
+      }
+      return page([
+        site("site_top", "高实收网站", { confirmed_amount_cents: 9000, confirmed_count: 15, work_items: 1 }),
+        site("site_urgent", "异常较多网站", { confirmed_amount_cents: 1000, confirmed_count: 2, work_items: 7 }),
+      ], null, { maximum: 9000, total: 10000, totalSites: 6 });
+    });
+    await findCard("site_top");
+    expect(screen.getByText("共 6 个", { exact: true })).toBeVisible();
+    expect(cards().map((item) => new URL(item.href).pathname)).toEqual(["/sites/site_top", "/sites/site_urgent"]);
+    expect(within(card("site_top")).getByText("15 笔 · 90%", { exact: true })).toBeVisible();
+    await userEvent.setup().click(screen.getByRole("button", { name: "按待处理" }));
+    await waitFor(() => expect(cards().map((item) => new URL(item.href).pathname)).toEqual(["/sites/site_urgent", "/sites/site_top"]));
+    expect(view.requests.map((request) => new URL(request.url).searchParams.get("sort_by"))).toEqual(["amount", "work_items"]);
   });
 
   it("uses the backend maximum even before the largest website is loaded and applies the latest page maximum to every card", async () => {

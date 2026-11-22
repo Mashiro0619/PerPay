@@ -219,9 +219,62 @@ describe("website overview period and global amount scale", () => {
       assert.equal(noMatches.page.next_cursor, null);
       readPage("q=Deleted&range=7", 0, 7);
 
-      for (const query of ["q=Batch&range=7", "q=Hidden&range=30"]) {
+      for (const query of ["q=Batch&range=7", "q=Hidden&range=30", "q=Batch&range=30&sort_by=amount"]) {
         assert.throws(() => siteOverview(database, new URLSearchParams(`${query}&cursor=${encodeURIComponent(first.page.next_cursor!)}`), now), /游标/);
       }
+    });
+  });
+
+  it("sorts by amount or work_items with deterministic keyset pagination and returns global totals", () => {
+    withFixture((database, connection) => {
+      const now = Date.parse("2026-01-16T12:00:00+08:00");
+      addSite(connection, "s-zero-paused", "Paused Zero", { acceptingOrders: false });
+      addSite(connection, "s-zero-active", "Active Zero", { acceptingOrders: true });
+      addSite(connection, "s-small-hot", "Small Hot");
+      addSite(connection, "s-mid", "Mid");
+      addSite(connection, "s-top", "Top");
+      addSite(connection, "s-deleted", "Deleted", { deletedAt: now });
+
+      addConfirmation(connection, "s-top", "o-top-1", now, 10000);
+      addConfirmation(connection, "s-mid", "o-mid-1", now, 3000);
+      addConfirmation(connection, "s-small-hot", "o-hot-1", now, 500);
+      addConfirmation(connection, "s-deleted", "o-del-1", now, 999999);
+
+      connection.prepare(`
+        INSERT INTO financial_exceptions(exception_id, order_id, created_at, status)
+        VALUES ('ex-hot-1', 'o-hot-1', ?, 'OPEN'),
+               ('ex-hot-2', 'o-hot-1', ?, 'OPEN'),
+               ('ex-top-1', 'o-top-1', ?, 'OPEN')
+      `).run(now, now, now);
+
+      const byAmountPages: string[] = [];
+      let cursor: string | null = null;
+      do {
+        const params = new URLSearchParams({ range: "30", limit: "2", sort_by: "amount" });
+        if (cursor) params.set("cursor", cursor);
+        const page = siteOverview(database, params, now);
+        assert.equal(page.max_confirmed_amount_cents, 10000);
+        assert.equal(page.total_confirmed_amount_cents, 13500);
+        assert.equal(page.total_sites, 5);
+        byAmountPages.push(...page.data.map(site => site.client_id));
+        cursor = page.page.next_cursor;
+      } while (cursor);
+      assert.deepEqual(byAmountPages, ["s-top", "s-mid", "s-small-hot", "s-zero-active", "s-zero-paused"]);
+
+      const firstWorkPage = siteOverview(database, new URLSearchParams("range=30&limit=2&sort_by=work_items"), now);
+      assert.deepEqual(firstWorkPage.data.map(site => site.client_id), ["s-small-hot", "s-top"]);
+      assert.ok(firstWorkPage.page.next_cursor);
+      assert.throws(() => siteOverview(database, new URLSearchParams(`range=30&limit=2&sort_by=amount&cursor=${encodeURIComponent(firstWorkPage.page.next_cursor!)}`), now), /游标/);
+
+      const byWorkPages = firstWorkPage.data.map(site => site.client_id);
+      let workCursor: string | null = firstWorkPage.page.next_cursor;
+      while (workCursor) {
+        const page = siteOverview(database, new URLSearchParams({ range: "30", limit: "2", sort_by: "work_items", cursor: workCursor }), now);
+        byWorkPages.push(...page.data.map(site => site.client_id));
+        workCursor = page.page.next_cursor;
+      }
+      assert.deepEqual(byWorkPages, ["s-small-hot", "s-top", "s-mid", "s-zero-active", "s-zero-paused"]);
+      assert.throws(() => siteOverview(database, new URLSearchParams("sort_by=invalid"), now), /无效/);
     });
   });
 });

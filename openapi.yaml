@@ -7117,6 +7117,15 @@ paths:
             minimum: 1
             maximum: 100
             default: 20
+        - name: sort_by
+          in: query
+          schema:
+            type: string
+            enum:
+              - client_id
+              - amount
+              - work_items
+            default: client_id
         - name: cursor
           in: query
           schema:
@@ -7151,6 +7160,14 @@ paths:
                     type: integer
                     minimum: 0
                     description: 相同 period 内所有未删除网站的区间实收最大值，包含暂停接单或关闭通知的网站，不受搜索、游标或分页影响；无实收时为 0，空页同样返回。
+                  total_confirmed_amount_cents:
+                    type: integer
+                    minimum: 0
+                    description: 相同 period 内所有未删除网站的区间实收合计，包含暂停接单或关闭通知的网站，不受搜索、游标或分页影响；无实收时为 0，空页同样返回。
+                  total_sites:
+                    type: integer
+                    minimum: 0
+                    description: 当前所有未删除网站的总数，不受搜索、游标或分页影响；空页同样返回。
                   data:
                     type: array
                     items:

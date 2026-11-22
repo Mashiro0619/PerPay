@@ -52,12 +52,25 @@ export function overviewQueries(clientId: string | null, range: 7 | 30 | 90) {
   };
 }
 
-export function siteOverviewQueryOptions(range: 7 | 30 | 90, pageSize: 10 | 30 = 10) {
+export type SiteOverviewSort = "client_id" | "amount" | "work_items";
+
+export function siteOverviewQueryOptions(
+  range: 7 | 30 | 90,
+  pageSize: 10 | 30 = 10,
+  sortBy: SiteOverviewSort = "client_id",
+) {
   return infiniteQueryOptions({
-    queryKey: ["site-overview", range, pageSize],
+    queryKey: sortBy === "client_id"
+      ? ["site-overview", range, pageSize]
+      : ["site-overview", range, pageSize, sortBy],
     initialPageParam: null as string | null,
     queryFn: ({ pageParam, signal }) => result(api.listSiteOverview({
-      query: { range, limit: pageSize, ...(pageParam ? { cursor: pageParam } : {}) },
+      query: {
+        range,
+        limit: pageSize,
+        ...(sortBy !== "client_id" ? { sort_by: sortBy } : {}),
+        ...(pageParam ? { cursor: pageParam } : {}),
+      },
       signal,
     })),
     getNextPageParam: page => page.page.next_cursor ?? undefined,
