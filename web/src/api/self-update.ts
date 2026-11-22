@@ -1,4 +1,5 @@
 import { api, result, type SelfUpdateApplyRequest, type SelfUpdateStatus, type UpdateExecutionJob } from "@/api/client";
+import { isReleaseVersion } from "../../../src/shared/release-version";
 
 export type { SelfUpdateApplyRequest, SelfUpdateStatus, UpdateExecutionJob };
 
@@ -15,6 +16,9 @@ export interface ActiveSelfUpdateHint {
 }
 
 export function buildOneLineUpgradeCommand(version: string): string {
+  if (!isReleaseVersion(version)) {
+    throw new RangeError("目标版本号格式无效");
+  }
   return `sed -i 's|^x-perpay-image:.*|x-perpay-image: \\&perpay-image ghcr.io/mashiro0619/perpay:${version}|' docker-compose.yml && docker compose pull && docker compose up -d`;
 }
 
@@ -41,8 +45,11 @@ export function readActiveSelfUpdateHint(): ActiveSelfUpdateHint | null {
     const parsed = JSON.parse(raw) as Partial<ActiveSelfUpdateHint>;
     if (
       typeof parsed.id === "string" &&
+      parsed.id.trim().length > 0 &&
       typeof parsed.target_version === "string" &&
-      typeof parsed.previous_version === "string"
+      isReleaseVersion(parsed.target_version) &&
+      typeof parsed.previous_version === "string" &&
+      isReleaseVersion(parsed.previous_version)
     ) {
       return {
         id: parsed.id,

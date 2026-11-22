@@ -1,17 +1,24 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { once } from "node:events";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import http from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it, type TestContext } from "node:test";
 import { parse } from "yaml";
-import { DockerClient, type DockerContainerInspect, type DockerCreateContainerBody } from "../src/update/docker-client.ts";
+import {
+  buildRecreateSpec,
+  demuxDockerLogs,
+  DockerClient,
+  type DockerContainerInspect,
+  type DockerCreateContainerBody,
+} from "../src/update/docker-client.ts";
 import {
   createUpdaterServer,
   ensureUpdaterToken,
   OFFICIAL_IMAGE_REPOSITORY,
+  resolveComposeProject,
   UpdaterOrchestrator,
   type UpdateExecutionJob,
 } from "../src/update/updater-core.ts";
@@ -34,7 +41,8 @@ interface MockContainerRecord {
 async function startMockDockerEngine(
   context: TestContext,
   options: {
-    newAppBehavior?: "healthy" | "exit_error" | "never_healthy";
+    newAppBehavior?: "healthy" | "exit_error" | "never_healthy" | "crash_loop";
+    failBackupCreate?: boolean;
     pullError?: string;
     pingFail?: boolean;
   } = {},
@@ -149,9 +157,11 @@ async function startMockDockerEngine(
         State: {
           Status: item.status,
           Running: item.running,
+          Restarting: item.status === "restarting",
           ExitCode: item.exitCode,
           Health: { Status: item.healthy ? "healthy" : "starting" },
         },
+        RestartCount: item.status === "restarting" ? 1 : 0,
         Config: {
           Hostname: item.id.slice(0, 12),
           User: "1000:1000",
@@ -193,6 +203,9 @@ async function startMockDockerEngine(
       const name = url.searchParams.get("name") ?? `container-${seq}`;
       const body = JSON.parse(rawBody) as DockerCreateContainerBody;
       const service = body.Labels?.["com.docker.compose.service"] ?? "unknown";
+      if (service === "backup" && options.failBackupCreate) {
+        return send(500, { message: "simulated backup create failure" });
+      }
       const id = `${service}-new-${seq++}`;
       createdBodies.push({ name, body });
       containers.set(id, {
@@ -225,6 +238,12 @@ async function startMockDockerEngine(
         item.status = "exited";
         item.exitCode = 1;
         item.healthy = false;
+      } else if (item.service === "app" && item.id.startsWith("app-new-") && options.newAppBehavior === "crash_loop") {
+        item.running = true;
+        item.status = "restarting";
+        item.exitCode = 137;
+        item.healthy = false;
+        item.logs = "Crash loop on startup";
       } else {
         item.running = true;
         item.status = "running";
@@ -474,12 +493,21 @@ describe("self-update sidecar updater", () => {
     assert.equal(dockerMock.containers.get("app-old-id-123456")?.running, true);
   });
 
-  it("keeps docker-compose.updater.yml isolated from business data and master-key volumes", () => {
+  it("keeps docker-compose.updater.yml isolated from business data, master-key volumes, external networks, and hardcoded project names", () => {
     const overlay = parse(readFileSync(new URL("../docker-compose.updater.yml", import.meta.url), "utf8")) as {
       services: {
-        app: { environment: Record<string, string>; volumes: string[] };
-        updater: { image: string; volumes: string[]; ports?: unknown[]; read_only: boolean; cap_drop: string[] };
+        app: { environment: Record<string, string>; volumes: string[]; networks?: string[] };
+        updater: {
+          image: string;
+          environment?: Record<string, string>;
+          volumes: string[];
+          networks?: string[];
+          ports?: unknown[];
+          read_only: boolean;
+          cap_drop: string[];
+        };
       };
+      networks?: Record<string, { internal?: boolean }>;
       volumes: Record<string, unknown>;
     };
     assert.ok(overlay.services.updater);
@@ -489,5 +517,195 @@ describe("self-update sidecar updater", () => {
     assert.equal(overlay.services.updater.volumes.some(v => v.includes("perpay-data") || v.includes("perpay-secrets")), false);
     assert.equal(overlay.services.app.volumes.some(v => v.includes("docker.sock")), false);
     assert.match(overlay.services.updater.image, /ghcr\.io\/mashiro0619\/perpay/u);
+    assert.equal(overlay.services.updater.environment?.PERPAY_COMPOSE_PROJECT, undefined);
+    assert.equal(overlay.networks?.["perpay-updater"]?.internal, true);
+    assert.deepEqual(overlay.services.updater.networks, ["perpay-updater"]);
+    assert.ok(overlay.services.app.networks?.includes("perpay-updater"));
+  });
+
+  it("blocks forged previous_version downgrades using authoritative running container version before pulling", async (context) => {
+    const dockerMock = await startMockDockerEngine(context, { newAppBehavior: "healthy" });
+    const appContainer = dockerMock.containers.get("app-old-id-123456")!;
+    appContainer.image = `${OFFICIAL_IMAGE_REPOSITORY}:1.2.0`;
+    const docker = new DockerClient({ baseUrl: dockerMock.baseUrl });
+    const orchestrator = new UpdaterOrchestrator({
+      docker,
+      composeProject: "perpay",
+      sleep: async () => {},
+      healthCheck: async () => true,
+    });
+
+    // Attacker supplies forged previous_version="0.0.1" attempting downgrade from 1.2.0 -> 1.0.0.
+    orchestrator.start({
+      operation_id: randomUUID(),
+      target_version: "1.0.0",
+      previous_version: "0.0.1",
+    });
+    await orchestrator.settled();
+
+    const state = orchestrator.state();
+    assert.equal(state.latest?.status, "FAILED");
+    assert.match(state.latest?.error ?? "", /1\.2\.0.*拒绝降级/u);
+    // Neither pullImage nor stopContainer should ever have been called!
+    assert.equal(dockerMock.events.length, 0);
+  });
+
+  it("auto-detects Compose project from updater container label, rejects corrupt token files, and handles multi-network + log demux", async (context) => {
+    const dir = mkdtempSync(join(tmpdir(), "perpay-updater-corrupt-"));
+    context.after(() => rmSync(dir, { recursive: true, force: true }));
+    const badTokenPath = join(dir, "bad-token");
+    writeFileSync(badTokenPath, "not-a-valid-64-hex-token\n", "utf8");
+    assert.throws(() => ensureUpdaterToken(badTokenPath), /64 lowercase hexadecimal/u);
+
+    const dockerMock = await startMockDockerEngine(context, { newAppBehavior: "healthy" });
+    dockerMock.containers.set("updater-self-abc", {
+      id: "updater-self-abc",
+      name: "/perpay-staging-updater-1",
+      service: "updater",
+      image: `${OFFICIAL_IMAGE_REPOSITORY}:1.0.0`,
+      running: true,
+      status: "running",
+      exitCode: 0,
+      healthy: true,
+      env: [],
+      hostConfig: {},
+      networks: {},
+      logs: "",
+    });
+    const docker = new DockerClient({ baseUrl: dockerMock.baseUrl });
+    assert.equal(await resolveComposeProject(docker, undefined, "updater-self-abc"), "perpay");
+    await assert.rejects(() => resolveComposeProject(docker, undefined, "missing-self"), /无法自动识别/u);
+
+    // Multi-network ordering: caddy_proxy sorts before perpay_default, yet HostConfig.NetworkMode must win!
+    const spec = buildRecreateSpec(
+      {
+        Id: "1234567890abcdef",
+        Name: "/perpay-app-1",
+        Image: `${OFFICIAL_IMAGE_REPOSITORY}:1.0.0`,
+        State: { Status: "running", Running: true },
+        Config: {
+          Image: `${OFFICIAL_IMAGE_REPOSITORY}:1.0.0`,
+          Labels: {
+            "com.docker.compose.project": "perpay",
+            "com.docker.compose.service": "app",
+            "org.opencontainers.image.version": "1.0.0",
+            "com.docker.compose.image": `${OFFICIAL_IMAGE_REPOSITORY}:1.0.0`,
+          },
+        },
+        HostConfig: { NetworkMode: "perpay_default" },
+        NetworkSettings: {
+          Networks: {
+            caddy_proxy: { Aliases: ["proxy-app"] },
+            perpay_default: { Aliases: ["app"] },
+          },
+        },
+      },
+      `${OFFICIAL_IMAGE_REPOSITORY}:1.1.0`,
+    );
+    assert.deepEqual(Object.keys(spec.body.NetworkingConfig?.EndpointsConfig ?? {}), ["perpay_default"]);
+    assert.deepEqual(spec.extraNetworks.map(item => item.networkName), ["caddy_proxy"]);
+    assert.equal(spec.body.Labels?.["org.opencontainers.image.version"], undefined);
+    assert.equal(spec.body.Labels?.["com.docker.compose.image"], undefined);
+    assert.equal(spec.body.Labels?.["com.docker.compose.service"], "app");
+
+    // Demux 8-byte Docker log frames cleanly
+    const payload = Buffer.from("line one\nline two\n", "utf8");
+    const frame = Buffer.alloc(8 + payload.byteLength);
+    frame[0] = 2; // stderr
+    frame.writeUInt32BE(payload.byteLength, 4);
+    payload.copy(frame, 8);
+    assert.equal(demuxDockerLogs(frame), "line one\nline two");
+  });
+
+  it("fast-fails crash-looping app containers, preserves stopped backup state, and returns 413 on oversized apply requests", async (context) => {
+    const dockerMock = await startMockDockerEngine(context, { newAppBehavior: "healthy" });
+    // Keep backup container stopped initially — upgrade must preserve its stopped state
+    const backup = dockerMock.containers.get("backup-old-id-999")!;
+    backup.running = false;
+    backup.status = "exited";
+    const docker = new DockerClient({ baseUrl: dockerMock.baseUrl });
+    const orchestrator = new UpdaterOrchestrator({
+      docker,
+      composeProject: "perpay",
+      sleep: async () => {},
+      healthCheck: async () => true,
+    });
+    orchestrator.start({
+      operation_id: randomUUID(),
+      target_version: "1.0.0",
+      previous_version: "1.0.0-rc.5",
+    });
+    await orchestrator.settled();
+    assert.equal(orchestrator.state().latest?.status, "SUCCEEDED");
+    // Stopped backup was recreated on the new image without being started!
+    const newBackup = [...dockerMock.containers.values()].find(c => c.service === "backup");
+    assert.ok(newBackup);
+    assert.equal(newBackup.image, `${OFFICIAL_IMAGE_REPOSITORY}:1.0.0`);
+    assert.equal(newBackup.running, false);
+
+    // Oversized HTTP body to /apply returns clean 413 without crashing server
+    const token = "b".repeat(64);
+    const updaterServer = createUpdaterServer({ orchestrator, token });
+    updaterServer.listen(0, "127.0.0.1");
+    await once(updaterServer, "listening");
+    const addr = updaterServer.address();
+    assert.ok(addr && typeof addr === "object");
+    context.after(async () => {
+      await new Promise<void>(resolve => { updaterServer.close(() => resolve()); updaterServer.closeAllConnections(); });
+    });
+    const oversized = await fetch(`http://127.0.0.1:${addr.port}/apply`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({ pad: "x".repeat(24 * 1024) }),
+    });
+    assert.equal(oversized.status, 413);
+  });
+
+  it("fast-fails crash-looping app containers and restores original backup non-destructively if backup recreate fails", async (context) => {
+    const crashMock = await startMockDockerEngine(context, { newAppBehavior: "crash_loop" });
+    let sleeps = 0;
+    const crashOrchestrator = new UpdaterOrchestrator({
+      docker: new DockerClient({ baseUrl: crashMock.baseUrl }),
+      composeProject: "perpay",
+      sleep: async () => { sleeps += 1; },
+      healthCheck: async () => false,
+      healthTimeoutMilliseconds: 90_000,
+    });
+    crashOrchestrator.start({
+      operation_id: randomUUID(),
+      target_version: "1.0.0",
+      previous_version: "1.0.0-rc.5",
+    });
+    await crashOrchestrator.settled();
+    assert.equal(crashOrchestrator.state().latest?.status, "FAILED");
+    assert.equal(crashOrchestrator.state().latest?.rolled_back, true);
+    assert.match(crashOrchestrator.state().latest?.error ?? "", /崩溃重启.*restarts=1/u);
+    assert.equal(sleeps, 0);
+
+    // Non-destructive backup recreate failure keeps upgraded app live and restores original backup!
+    const backupFailMock = await startMockDockerEngine(context, {
+      newAppBehavior: "healthy",
+      failBackupCreate: true,
+    });
+    const backupFailOrchestrator = new UpdaterOrchestrator({
+      docker: new DockerClient({ baseUrl: backupFailMock.baseUrl }),
+      composeProject: "perpay",
+      sleep: async () => {},
+      healthCheck: async () => true,
+    });
+    backupFailOrchestrator.start({
+      operation_id: randomUUID(),
+      target_version: "1.0.0",
+      previous_version: "1.0.0-rc.5",
+    });
+    await backupFailOrchestrator.settled();
+    const resultState = backupFailOrchestrator.state().latest;
+    assert.equal(resultState?.status, "FAILED");
+    assert.equal(resultState?.rolled_back, false);
+    assert.match(resultState?.error ?? "", /原备份容器已恢复/u);
+    const restoredBackup = backupFailMock.containers.get("backup-old-id-999");
+    assert.ok(restoredBackup);
+    assert.equal(restoredBackup.name, "/perpay-backup-1");
+    assert.equal(restoredBackup.running, true);
   });
 });

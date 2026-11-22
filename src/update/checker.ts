@@ -51,16 +51,6 @@ export class UpdateCheckUnavailable extends Error {
   }
 }
 
-export class UpdateCheckRateLimited extends Error {
-  readonly retryAfterSeconds: number;
-
-  constructor(retryAfterSeconds: number) {
-    super("刚刚已检查过官方更新，请等待后再检查。");
-    this.name = "UpdateCheckRateLimited";
-    this.retryAfterSeconds = retryAfterSeconds;
-  }
-}
-
 function publishedRelease(raw: unknown, includePrereleases: boolean): PublishedRelease | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const release = raw as Record<string, unknown>;
@@ -237,6 +227,11 @@ export class OfficialUpdateChecker {
       });
       if (manual && !attempt.quotaExhausted && this.#githubRetrySequence === retrySequenceAtStart) {
         this.#githubRetryAt = 0;
+        for (const [cachedChannel, entry] of this.#cache) {
+          if (cachedChannel !== channel && entry.result === null && entry.failureReason === "rate_limited") {
+            this.#cache.delete(cachedChannel);
+          }
+        }
       }
       this.#cache.set(channel, { checkedAt, expiresAt: checkedAt + SUCCESS_CACHE_MILLISECONDS, result });
       return result;

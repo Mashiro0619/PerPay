@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { queryClient, sessionKey, type SelfUpdateStatus, type UpdateExecutionJob } from "../src/api/client";
-import { clearActiveSelfUpdateHint } from "../src/api/self-update";
+import { buildOneLineUpgradeCommand, clearActiveSelfUpdateHint } from "../src/api/self-update";
 import { SelfUpdateDialog } from "../src/components/self-update-dialog";
 import { json } from "./fixtures";
 
@@ -285,5 +285,113 @@ describe("SelfUpdateDialog dual-track experience", () => {
     const backupButton = await screen.findByRole("button", { name: "立即备份数据库" });
     expect(backupButton).toBeDisabled();
     expect(screen.getByText("演示环境为只读模式，不执行数据库写入操作。")).toBeVisible();
+  });
+
+  it("Track 1: does not mask a recreating_backup failure when current_version already reached targetVersion", async () => {
+    const user = userEvent.setup();
+    let statusCalls = 0;
+
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const request = input instanceof Request ? input : new Request(input);
+      const path = new URL(request.url).pathname;
+      if (path === "/api/admin/v1/system/update/status") {
+        statusCalls += 1;
+        if (statusCalls === 1) return json({ data: makeStatus() });
+        if (statusCalls === 2) {
+          // App already restarted on target 1.0.0, but updater is still recreating backup!
+          return json({
+            data: makeStatus({
+              current_version: "1.0.0",
+              active_job: makeJob({
+                status: "RUNNING",
+                stage: "recreating_backup",
+                message: "核心服务已就绪，正在同步更新备份服务至 v1.0.0…",
+              }),
+            }),
+          });
+        }
+        return json({
+          data: makeStatus({
+            current_version: "1.0.0",
+            active_job: null,
+            latest_job: makeJob({
+              status: "FAILED",
+              stage: "failed",
+              rolled_back: false,
+              message: "核心服务已切换至 v1.0.0，但备份服务更新失败",
+              error: "创建 backup 容器失败；核心服务已运行在新版本，原备份容器已恢复。",
+              finished_at: 1_700_000_020_000,
+            }),
+          }),
+        });
+      }
+      if (path === "/api/admin/v1/system/update/apply") {
+        return json({ data: makeJob({ stage: "pulling", message: "正在拉取官方镜像…" }) }, 202);
+      }
+      return new Response(null, { status: 404 });
+    }));
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <SelfUpdateDialog
+          open
+          onOpenChange={() => {}}
+          targetVersion="1.0.0"
+          currentVersion="1.0.0-rc.5"
+          pollIntervalMs={20}
+        />
+      </QueryClientProvider>,
+    );
+
+    await user.click(await screen.findByRole("button", { name: "确认开始更新" }));
+    expect(await screen.findByText("核心服务已切换至 v1.0.0，但备份服务更新未完成")).toBeVisible();
+    expect(screen.getByRole("alert")).toHaveTextContent(/创建 backup 容器失败/);
+    expect(screen.queryByText("已成功更新至 v1.0.0")).not.toBeInTheDocument();
+  });
+
+  it("Track 1: surfaces a clear warning instead of spinning forever when updater becomes unreachable", async () => {
+    const user = userEvent.setup();
+    let statusCalls = 0;
+
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const request = input instanceof Request ? input : new Request(input);
+      const path = new URL(request.url).pathname;
+      if (path === "/api/admin/v1/system/update/status") {
+        statusCalls += 1;
+        if (statusCalls === 1) return json({ data: makeStatus() });
+        return json({
+          data: makeStatus({
+            enabled: false,
+            unavailable_reason: "unreachable",
+            active_job: null,
+            latest_job: null,
+          }),
+        });
+      }
+      if (path === "/api/admin/v1/system/update/apply") {
+        return json({ data: makeJob({ stage: "pulling", message: "正在拉取官方镜像…" }) }, 202);
+      }
+      return new Response(null, { status: 404 });
+    }));
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <SelfUpdateDialog
+          open
+          onOpenChange={() => {}}
+          targetVersion="1.0.0"
+          currentVersion="1.0.0-rc.5"
+          pollIntervalMs={10}
+        />
+      </QueryClientProvider>,
+    );
+
+    await user.click(await screen.findByRole("button", { name: "确认开始更新" }));
+    expect(await screen.findByText(/持续无法连接到伴生更新器/, {}, { timeout: 3000 })).toBeVisible();
+  });
+
+  it("rejects non-canonical version strings in buildOneLineUpgradeCommand", () => {
+    expect(() => buildOneLineUpgradeCommand("1.0.0; rm -rf /")).toThrow(RangeError);
+    expect(buildOneLineUpgradeCommand("1.2.3")).toContain("ghcr.io/mashiro0619/perpay:1.2.3");
   });
 });

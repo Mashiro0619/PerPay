@@ -134,7 +134,7 @@ import {
 import { SettingsFieldError } from "../settings/validation.ts";
 import { collectionCodeError } from "../shared/collection-code.ts";
 import { APP_VERSION } from "../version.ts";
-import { OfficialUpdateChecker, UpdateCheckRateLimited, UpdateCheckUnavailable } from "../update/checker.ts";
+import { OfficialUpdateChecker, UpdateCheckUnavailable } from "../update/checker.ts";
 import { SelfUpdateError, SelfUpdateService, selfUpdateApplyRequestSchema } from "../update/self-update.ts";
 import { PublicCheckoutRateLimiter } from "./public-checkout-rate-limit.ts";
 import { parseStrictJson, StrictJsonError } from "./strict-json.ts";
@@ -859,9 +859,6 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
       context.header("x-perpay-update-refresh-after", String(updateChecker.refreshAfterSeconds?.(channel) ?? 0));
       return context.json({ data });
     } catch (error) {
-      if (error instanceof UpdateCheckRateLimited) {
-        throw new HttpApiError(429, "update_check_rate_limited", error.message, error.retryAfterSeconds);
-      }
       if (!(error instanceof UpdateCheckUnavailable)) throw error;
       throw new HttpApiError(503, "update_check_unavailable", error.message, error.retryAfterSeconds);
     }

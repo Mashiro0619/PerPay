@@ -56,9 +56,12 @@ describe("self-update configuration and HTTP orchestration", () => {
     assert.equal(configured.updater?.token, null);
     assert.equal(configured.updater?.tokenFile, join(dir, "token"));
 
-    assert.throws(() => loadConfig({ ...baseEnv, PERPAY_UPDATER_URL: "https://updater:6199", PERPAY_UPDATER_TOKEN: "abc" }));
-    assert.throws(() => loadConfig({ ...baseEnv, PERPAY_UPDATER_URL: "http://updater:6199/extra", PERPAY_UPDATER_TOKEN: "abc" }));
+    assert.throws(() => loadConfig({ ...baseEnv, PERPAY_UPDATER_URL: "https://updater:6199", PERPAY_UPDATER_TOKEN: "a".repeat(64) }));
+    assert.throws(() => loadConfig({ ...baseEnv, PERPAY_UPDATER_URL: "http://updater:6199/extra", PERPAY_UPDATER_TOKEN: "a".repeat(64) }));
     assert.throws(() => loadConfig({ ...baseEnv, PERPAY_UPDATER_URL: "http://updater:6199" }));
+    assert.throws(() => loadConfig({ ...baseEnv, PERPAY_UPDATER_URL: "http://updater:6199", PERPAY_UPDATER_TOKEN: "weak-short-token" }));
+    const strongToken = loadConfig({ ...baseEnv, PERPAY_UPDATER_URL: "http://updater:6199", PERPAY_UPDATER_TOKEN: "a".repeat(64) });
+    assert.equal(strongToken.updater?.token, "a".repeat(64));
   });
 
   it("reports not_configured and demo_read_only states cleanly and enforces auth/CSRF", async (context) => {
@@ -307,5 +310,67 @@ describe("self-update configuration and HTTP orchestration", () => {
     const body = (await statusRes.json() as { data: { enabled: boolean; unavailable_reason: string | null } }).data;
     assert.equal(body.enabled, true);
     assert.equal(body.unavailable_reason, null);
+  });
+
+  it("blocks concurrent POST /apply calls via synchronous lock and probes updater status after handoff timeout", async () => {
+    let releaseStatus!: () => void;
+    let statusGate = new Promise<void>((resolve) => { releaseStatus = resolve; });
+    const acceptedId = randomUUID();
+    let remoteJob: UpdateExecutionJob | null = null;
+    let applyAttempts = 0;
+
+    const client: UpdaterClient = {
+      status: async () => {
+        await statusGate;
+        return { active: remoteJob, latest: remoteJob };
+      },
+      apply: async (request) => {
+        applyAttempts += 1;
+        // Simulate updater accepting the job, then dropping the HTTP response before returning!
+        remoteJob = {
+          id: request.operation_id,
+          target_version: request.target_version,
+          previous_version: request.previous_version,
+          status: "RUNNING",
+          stage: "pulling",
+          message: "正在拉取镜像…",
+          backup_name: request.backup_name ?? null,
+          rolled_back: false,
+          started_at: Date.now(),
+          finished_at: null,
+          error: null,
+        };
+        throw new Error("simulated handoff timeout after acceptance");
+      },
+    };
+    const maintenance = new MaintenanceController({
+      pause: async () => {},
+      resume: async () => {},
+      run: async () => ({ backup_name: "perpay-race-backup.sqlite3" }),
+    });
+    const service = new SelfUpdateService({
+      updaterClient: client,
+      maintenance,
+      currentVersion: "1.0.0-rc.5",
+    });
+    const observer = { session: { session: { username: "admin" } } } as never;
+
+    const firstPromise = service.apply({ operation_id: acceptedId, target_version: "1.0.0", create_backup: true }, observer);
+    await assert.rejects(
+      () => service.apply({ operation_id: randomUUID(), target_version: "1.0.0", create_backup: false }, observer),
+      /已有在线更新任务正在执行/u,
+    );
+    releaseStatus();
+    statusGate = Promise.resolve();
+
+    const first = await firstPromise;
+    assert.equal(first.stage, "backing_up");
+    await service.settled();
+    assert.equal(applyAttempts, 1);
+
+    // Even though client.apply threw after acceptance, probing client.status() recovered the running remote job!
+    const afterStatus = await service.status();
+    assert.equal(afterStatus.active_job?.id, acceptedId);
+    assert.equal(afterStatus.active_job?.stage, "pulling");
   });
 });

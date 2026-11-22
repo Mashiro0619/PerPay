@@ -27,6 +27,7 @@ import { syncDirectory } from "./database/maintenance-lock.ts";
 const MASTER_KEY_BYTES = 32;
 const MASTER_KEY_HEX_LENGTH = MASTER_KEY_BYTES * 2;
 const masterKeyHexPattern = /^[0-9a-fA-F]{64}$/;
+const updaterTokenPattern = /^[\x21-\x7E]{32,256}$/u;
 
 const rawDeploymentConfigSchema = z.object({
   PERPAY_HOST: z.string().trim().min(1).default("127.0.0.1"),
@@ -262,6 +263,9 @@ function resolveUpdaterConfig(
   }
   if (rawToken === undefined && rawTokenFile === undefined) {
     throw new Error("configuration validation failed: PERPAY_UPDATER_URL requires PERPAY_UPDATER_TOKEN or PERPAY_UPDATER_TOKEN_FILE");
+  }
+  if (rawToken !== undefined && !updaterTokenPattern.test(rawToken)) {
+    throw new Error("configuration validation failed: PERPAY_UPDATER_TOKEN must be 32-256 non-whitespace printable ASCII characters");
   }
   return Object.freeze({
     url: parsed.origin,

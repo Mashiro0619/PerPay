@@ -494,8 +494,8 @@ docker compose -f docker-compose.yml -f docker-compose.updater.yml up -d
 ### 安全边界
 
 - **主容器权限不变**：`app` 仍保持只读文件系统、非 root 运行、移除全部 Linux Capability，并且**不接触** `/var/run/docker.sock`。
-- **最小权限伴生容器**：仅独立的 `updater` 容器挂载 `/var/run/docker.sock`，不对外暴露任何宿主机端口，不挂载业务数据卷（`perpay-data`）与主密钥卷（`perpay-secrets`），通过独立卷 `perpay-updater-secrets` 中自动生成的 32 字节随机 Bearer 令牌与 `app` 通信。
-- **镜像与范围硬编码白名单**：`updater` 仅允许拉取 `ghcr.io/mashiro0619/perpay:<规范语义化版本号>` 官方镜像，严格拒绝降级，且只操作同一 `PERPAY_COMPOSE_PROJECT`（默认 `perpay`）下的 `app` 与 `backup` 容器。
+- **最小权限伴生容器**：仅独立的 `updater` 容器挂载 `/var/run/docker.sock`，不对外暴露任何宿主机端口，仅接入内部隔离网络（`internal: true`），不挂载业务数据卷（`perpay-data`）与主密钥卷（`perpay-secrets`），通过独立卷 `perpay-updater-secrets` 中自动生成的 32 字节随机 Bearer 令牌（`0640` 权限）与 `app` 通信。
+- **镜像与范围硬编码白名单**：`updater` 仅允许拉取 `ghcr.io/mashiro0619/perpay:<规范语义化版本号>` 官方镜像，会直接从运行中 `app` 容器校验真实当前版本并严格拒绝降级，启动时自动识别自身所属 Compose 项目（也可通过 `PERPAY_COMPOSE_PROJECT` 显式覆盖）并只操作该项目下的 `app` 与 `backup` 容器。
 
 ### 执行流程与自动回滚
 

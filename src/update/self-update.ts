@@ -6,7 +6,7 @@ import type { HttpErrorCode } from "../http/error-codes.ts";
 import type { MaintenanceController, MaintenanceObserver } from "../maintenance/controller.ts";
 import { compareReleaseVersions, parseReleaseVersion } from "../shared/release-version.ts";
 import { APP_VERSION } from "../version.ts";
-import type { UpdateExecutionJob, UpdaterApplyRequest, UpdaterState } from "./updater-core.ts";
+import { isValidUpdaterToken, type UpdateExecutionJob, type UpdaterApplyRequest, type UpdaterState } from "./updater-core.ts";
 
 export const selfUpdateApplyRequestSchema = z.object({
   operation_id: z.uuid(),
@@ -74,6 +74,7 @@ export class SelfUpdateService {
   readonly #currentVersion: string;
   readonly #clock: () => number;
   readonly #requests = new Map<string, StoredLocalRequest>();
+  #starting = false;
   #localActive: UpdateExecutionJob | null = null;
   #localLatest: UpdateExecutionJob | null = null;
   #handoffExecution: Promise<void> | null = null;
@@ -178,127 +179,148 @@ export class SelfUpdateService {
       return existing.job;
     }
 
-    if (this.#localActive) {
+    if (this.#localActive || this.#starting) {
       throw new SelfUpdateError(409, "update_in_progress", "已有在线更新任务正在执行，请等待当前更新完成。");
     }
 
-    // Confirm updater connectivity and idle state before starting any pre-upgrade backup.
-    let remoteState: UpdaterState;
+    // Acquire synchronous lock before the first await so concurrent POST /apply calls cannot race.
+    this.#starting = true;
     try {
-      remoteState = await this.#client.status();
-    } catch {
-      throw new SelfUpdateError(
-        503,
-        "self_update_unavailable",
-        "暂时无法连接到伴生更新服务，请检查 updater 容器状态，或改用升级助手手动更新。",
-      );
-    }
-    if (remoteState.active) {
-      if (remoteState.active.id === request.operation_id) return remoteState.active;
-      throw new SelfUpdateError(409, "update_in_progress", "已有在线更新任务正在执行，请等待当前更新完成。");
-    }
-    if (remoteState.latest?.id === request.operation_id) {
-      return remoteState.latest;
-    }
+      // Confirm updater connectivity and idle state before starting any pre-upgrade backup.
+      let remoteState: UpdaterState;
+      try {
+        remoteState = await this.#client.status();
+      } catch {
+        throw new SelfUpdateError(
+          503,
+          "self_update_unavailable",
+          "暂时无法连接到伴生更新服务，请检查 updater 容器状态，或改用升级助手手动更新。",
+        );
+      }
+      if (remoteState.active) {
+        if (remoteState.active.id === request.operation_id) return remoteState.active;
+        throw new SelfUpdateError(409, "update_in_progress", "已有在线更新任务正在执行，请等待当前更新完成。");
+      }
+      if (remoteState.latest?.id === request.operation_id) {
+        return remoteState.latest;
+      }
 
-    if (this.#maintenance && (this.#maintenance.paused || this.#maintenance.state().active !== null)) {
-      throw new SelfUpdateError(409, "maintenance_in_progress", "已有维护任务正在执行，请等待完成后再开始更新。");
-    }
+      if (this.#maintenance && (this.#maintenance.paused || this.#maintenance.state().active !== null)) {
+        throw new SelfUpdateError(409, "maintenance_in_progress", "已有维护任务正在执行，请等待完成后再开始更新。");
+      }
 
-    // Case 1: Skip pre-upgrade backup (user explicitly unchecked or maintenance service unavailable).
-    if (!request.create_backup || !this.#maintenance) {
-      const job = await this.#client.apply({
-        operation_id: request.operation_id,
+      // Case 1: Skip pre-upgrade backup (user explicitly unchecked or maintenance service unavailable).
+      if (!request.create_backup || !this.#maintenance) {
+        const job = await this.#client.apply({
+          operation_id: request.operation_id,
+          target_version: request.target_version,
+          previous_version: this.#currentVersion,
+          backup_name: null,
+        });
+        this.#rememberRequest(request, job, true);
+        this.#localLatest = job;
+        return job;
+      }
+
+      // Case 2: Run online database backup first, then hand off to updater only if backup succeeds.
+      const backupOperationId = randomUUID();
+      this.#maintenance.start({ operation_id: backupOperationId, kind: "BACKUP" }, observer);
+
+      const backingUpJob: UpdateExecutionJob = {
+        id: request.operation_id,
         target_version: request.target_version,
         previous_version: this.#currentVersion,
+        status: "RUNNING",
+        stage: "backing_up",
+        message: "正在创建更新前数据库备份…",
         backup_name: null,
-      });
-      this.#rememberRequest(request, job, true);
-      this.#localLatest = job;
-      return job;
-    }
+        rolled_back: false,
+        started_at: this.#clock(),
+        finished_at: null,
+        error: null,
+      };
+      const stored = this.#rememberRequest(request, backingUpJob, false);
+      this.#localActive = backingUpJob;
+      this.#localLatest = backingUpJob;
 
-    // Case 2: Run online database backup first, then hand off to updater only if backup succeeds.
-    const backupOperationId = randomUUID();
-    this.#maintenance.start({ operation_id: backupOperationId, kind: "BACKUP" }, observer);
+      const maintenance = this.#maintenance;
+      const client = this.#client;
+      this.#handoffExecution = (async () => {
+        try {
+          await maintenance.settled();
+          const backupJob = maintenance.get(backupOperationId);
+          if (backupJob.status !== "SUCCEEDED") {
+            const failed: UpdateExecutionJob = {
+              ...stored.job,
+              status: "FAILED",
+              stage: "failed",
+              message: "更新前数据库备份失败，已中止更新，当前服务未受影响",
+              finished_at: this.#clock(),
+              error: backupJob.error ?? "数据库备份未成功完成",
+            };
+            stored.job = failed;
+            this.#localActive = null;
+            this.#localLatest = failed;
+            return;
+          }
+          const backupName = backupJob.result?.backup_name ?? null;
+          const handingOff: UpdateExecutionJob = {
+            ...stored.job,
+            stage: "queued",
+            backup_name: backupName,
+            message: backupName
+              ? `更新前备份已完成（${backupName}），正在移交伴生更新器…`
+              : "更新前备份已完成，正在移交伴生更新器…",
+          };
+          stored.job = handingOff;
+          this.#localActive = handingOff;
+          this.#localLatest = handingOff;
 
-    const backingUpJob: UpdateExecutionJob = {
-      id: request.operation_id,
-      target_version: request.target_version,
-      previous_version: this.#currentVersion,
-      status: "RUNNING",
-      stage: "backing_up",
-      message: "正在创建更新前数据库备份…",
-      backup_name: null,
-      rolled_back: false,
-      started_at: this.#clock(),
-      finished_at: null,
-      error: null,
-    };
-    const stored = this.#rememberRequest(request, backingUpJob, false);
-    this.#localActive = backingUpJob;
-    this.#localLatest = backingUpJob;
-
-    const maintenance = this.#maintenance;
-    const client = this.#client;
-    this.#handoffExecution = (async () => {
-      try {
-        await maintenance.settled();
-        const backupJob = maintenance.get(backupOperationId);
-        if (backupJob.status !== "SUCCEEDED") {
+          const remoteJob = await client.apply({
+            operation_id: request.operation_id,
+            target_version: request.target_version,
+            previous_version: this.#currentVersion,
+            backup_name: backupName,
+          });
+          stored.job = remoteJob;
+          stored.handedOff = true;
+          this.#localActive = null;
+          this.#localLatest = remoteJob;
+        } catch (error) {
+          // Probe updater status once before reporting failure in case the apply request succeeded right before a timeout.
+          const probed = await client.status().catch(() => null);
+          const accepted =
+            (probed?.active?.id === request.operation_id ? probed.active : null) ??
+            (probed?.latest?.id === request.operation_id ? probed.latest : null);
+          if (accepted) {
+            stored.job = accepted;
+            stored.handedOff = true;
+            this.#localActive = null;
+            this.#localLatest = accepted;
+            return;
+          }
+          const explicitRejection = error instanceof SelfUpdateError && (error.status === 409 || error.status === 422);
+          const message = error instanceof Error ? error.message : "无法将更新任务移交给伴生更新器";
           const failed: UpdateExecutionJob = {
             ...stored.job,
             status: "FAILED",
             stage: "failed",
-            message: "更新前数据库备份失败，已中止更新，当前服务未受影响",
+            message: explicitRejection
+              ? "备份已完成，但未能启动在线更新，当前服务未受影响"
+              : "备份已完成，向伴生更新器移交任务时未收到确认，请刷新检查当前更新状态",
             finished_at: this.#clock(),
-            error: backupJob.error ?? "数据库备份未成功完成",
+            error: message,
           };
           stored.job = failed;
           this.#localActive = null;
           this.#localLatest = failed;
-          return;
         }
-        const backupName = backupJob.result?.backup_name ?? null;
-        const handingOff: UpdateExecutionJob = {
-          ...stored.job,
-          stage: "queued",
-          backup_name: backupName,
-          message: backupName
-            ? `更新前备份已完成（${backupName}），正在移交伴生更新器…`
-            : "更新前备份已完成，正在移交伴生更新器…",
-        };
-        stored.job = handingOff;
-        this.#localActive = handingOff;
-        this.#localLatest = handingOff;
+      })();
 
-        const remoteJob = await client.apply({
-          operation_id: request.operation_id,
-          target_version: request.target_version,
-          previous_version: this.#currentVersion,
-          backup_name: backupName,
-        });
-        stored.job = remoteJob;
-        stored.handedOff = true;
-        this.#localActive = null;
-        this.#localLatest = remoteJob;
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "无法将更新任务移交给伴生更新器";
-        const failed: UpdateExecutionJob = {
-          ...stored.job,
-          status: "FAILED",
-          stage: "failed",
-          message: "备份已完成，但未能启动在线更新，当前服务未受影响",
-          finished_at: this.#clock(),
-          error: message,
-        };
-        stored.job = failed;
-        this.#localActive = null;
-        this.#localLatest = failed;
-      }
-    })();
-
-    return backingUpJob;
+      return backingUpJob;
+    } finally {
+      this.#starting = false;
+    }
   }
 
   #rememberRequest(request: SelfUpdateApplyRequest, job: UpdateExecutionJob, handedOff: boolean): StoredLocalRequest {
@@ -322,17 +344,48 @@ function selectLatestJob(
   return remote.started_at >= local.started_at ? remote : local;
 }
 
+const MAX_UPDATER_RESPONSE_BYTES = 256 * 1024;
+
 function readUpdaterToken(config: UpdaterConfig): string | null {
-  if (config.token) return config.token;
+  if (config.token) return isValidUpdaterToken(config.token) ? config.token : null;
   if (!config.tokenFile) return null;
   try {
     if (!existsSync(config.tokenFile)) return null;
     const stat = lstatSync(config.tokenFile);
-    if (stat.isSymbolicLink() || !stat.isFile()) return null;
+    if (stat.isSymbolicLink() || !stat.isFile() || stat.nlink !== 1) return null;
     const token = readFileSync(config.tokenFile, "utf8").trim();
-    return token.length > 0 ? token : null;
+    return isValidUpdaterToken(token) ? token : null;
   } catch {
     return null;
+  }
+}
+
+async function readBoundedUpdaterJson(response: Response): Promise<unknown> {
+  const lengthHeader = response.headers.get("content-length");
+  if (lengthHeader !== null && (!/^\d+$/u.test(lengthHeader) || Number(lengthHeader) > MAX_UPDATER_RESPONSE_BYTES)) {
+    await response.body?.cancel().catch(() => undefined);
+    return null;
+  }
+  const reader = response.body?.getReader();
+  if (!reader) return null;
+  const chunks: Uint8Array[] = [];
+  let bytes = 0;
+  try {
+    while (true) {
+      const next = await reader.read();
+      if (next.done) break;
+      bytes += next.value.byteLength;
+      if (bytes > MAX_UPDATER_RESPONSE_BYTES) {
+        await reader.cancel().catch(() => undefined);
+        return null;
+      }
+      chunks.push(next.value);
+    }
+    return JSON.parse(Buffer.concat(chunks, bytes).toString("utf8"));
+  } catch {
+    return null;
+  } finally {
+    reader.releaseLock();
   }
 }
 
@@ -348,7 +401,7 @@ export function createHttpUpdaterClient(
       throw new SelfUpdateError(
         503,
         "self_update_unavailable",
-        "尚未读取到伴生更新器认证令牌，请稍后重试或检查 updater 容器状态。",
+        "尚未读取到有效的伴生更新器认证令牌，请稍后重试或检查 updater 容器状态。",
       );
     }
     let response: Response;
@@ -361,6 +414,8 @@ export function createHttpUpdaterClient(
           ...(body !== undefined ? { "content-type": "application/json" } : {}),
         },
         ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+        redirect: "error",
+        cache: "no-store",
         signal: AbortSignal.timeout(timeoutMilliseconds),
       });
     } catch {
@@ -371,7 +426,7 @@ export function createHttpUpdaterClient(
       );
     }
 
-    const payload = await response.json().catch(() => null) as {
+    const payload = await readBoundedUpdaterJson(response) as {
       data?: T;
       error?: { code?: unknown; message?: unknown };
     } | null;

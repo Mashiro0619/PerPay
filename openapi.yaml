@@ -1507,16 +1507,6 @@ paths:
                 $ref: '#/components/schemas/OfficialUpdateEnvelope'
         '401': { $ref: '#/components/responses/AdminUnauthorized' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
-        '429':
-          description: update_check_rate_limited；距同通道上次成功检查不足 60 秒，尚未访问官方源。
-          headers:
-            Retry-After:
-              description: 可再次手动检查前需等待的秒数
-              schema: { type: integer, minimum: 1 }
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorEnvelope'
         '503':
           description: update_check_unavailable；官方版本读取失败或正在等待上游限流恢复，不沿用旧的成功结论。
           headers:
@@ -12222,12 +12212,13 @@ components:
       allOf:
         - $ref: '#/components/schemas/WebhookDeliveryFields'
         - type: object
-          required: [event, target]
+          required: [event, target, is_latest]
           properties:
-            is_latest: { type: boolean }
+            is_latest:
+              type: boolean
+              description: Latest delivery for the event and target, independent of pagination. Writes still revalidate eligibility.
             redelivery_blocked_reason:
-              type: [string, 'null']
-              enum: [payment_confirmation_revoked, null]
+              $ref: '#/components/schemas/WebhookRedeliveryBlockedReason'
             order_summary:
               anyOf:
                 - { $ref: '#/components/schemas/OrderIdentitySummary' }

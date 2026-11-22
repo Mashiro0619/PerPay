@@ -14,7 +14,7 @@ import {
   type SelfUpdateStatus,
   type UpdateExecutionJob,
 } from "@/api/self-update";
-import { isPrereleaseVersion } from "../../../src/shared/release-version";
+import { isPrereleaseVersion, isReleaseVersion } from "../../../src/shared/release-version";
 import {
   Dialog,
   DialogBody,
@@ -47,6 +47,8 @@ type DialogPhase = "loading" | "load_error" | "confirm" | "running" | "completed
 type StepState = "pending" | "active" | "done" | "skipped" | "rollback";
 
 const MAX_RECONNECT_WAIT_MS = 5 * 60 * 1000;
+const MAX_UNREACHABLE_POLLS = 10;
+const MAX_MISSING_JOB_POLLS = 5;
 
 function isTransientRestartError(error: unknown): boolean {
   if (error instanceof DOMException && error.name === "AbortError") return false;
@@ -140,6 +142,7 @@ export function SelfUpdateDialog({
   const [trackedIncludeBackup, setTrackedIncludeBackup] = useState(true);
   const [reconnecting, setReconnecting] = useState(false);
   const [reconnectStartedAt, setReconnectStartedAt] = useState<number | null>(null);
+  const [nowTick, setNowTick] = useState(() => Date.now());
   const [pollWarning, setPollWarning] = useState<string | null>(null);
 
   // Track 2 inline backup state
@@ -148,6 +151,8 @@ export function SelfUpdateDialog({
   const [backupError, setBackupError] = useState<string | null>(null);
 
   const titleRef = useRef<HTMLHeadingElement>(null);
+  const reconnectStartedAtRef = useRef<number | null>(null);
+  const assistantBackupControllerRef = useRef<AbortController | null>(null);
   const effectiveTarget = trackedTarget || targetVersion;
   const effectiveCurrent = status?.current_version || currentVersion;
 
@@ -155,6 +160,10 @@ export function SelfUpdateDialog({
     setPhase("loading");
     setLoadError(null);
     setApplyError(null);
+    reconnectStartedAtRef.current = null;
+    setReconnecting(false);
+    setReconnectStartedAt(null);
+    setPollWarning(null);
     try {
       const data = await getSelfUpdateStatus(signal);
       if (signal?.aborted) return;
@@ -164,23 +173,11 @@ export function SelfUpdateDialog({
         setTrackedJob(data.active_job);
         setTrackedTarget(data.active_job.target_version);
         setTrackedIncludeBackup(hint?.id === data.active_job.id ? hint.create_backup : data.active_job.stage === "backing_up" || data.active_job.backup_name !== null);
-        setReconnecting(false);
-        setReconnectStartedAt(null);
-        setPollWarning(null);
         setPhase("running");
         return;
       }
       if (hint) {
-        if (
-          data.current_version === hint.target_version ||
-          (data.latest_job?.id === hint.id && data.latest_job.status === "SUCCEEDED")
-        ) {
-          clearActiveSelfUpdateHint();
-          setTrackedTarget(hint.target_version);
-          setTrackedJob(data.latest_job ?? null);
-          setPhase("completed");
-          return;
-        }
+        // Check explicit FAILED status before current_version so a recreating_backup failure is never masked as success.
         if (data.latest_job?.id === hint.id && data.latest_job.status === "FAILED") {
           clearActiveSelfUpdateHint();
           setTrackedTarget(hint.target_version);
@@ -188,10 +185,29 @@ export function SelfUpdateDialog({
           setPhase("failed");
           return;
         }
+        if (
+          (data.latest_job?.id === hint.id && data.latest_job.status === "SUCCEEDED") ||
+          data.current_version === hint.target_version
+        ) {
+          clearActiveSelfUpdateHint();
+          setTrackedTarget(hint.target_version);
+          setTrackedJob(data.latest_job ?? null);
+          setPhase("completed");
+          return;
+        }
         clearActiveSelfUpdateHint();
       }
       setTrackedTarget(targetVersion);
       if (data.enabled) {
+        if (
+          data.latest_job?.target_version === targetVersion &&
+          data.latest_job.status === "FAILED" &&
+          data.current_version === targetVersion
+        ) {
+          setTrackedJob(data.latest_job);
+          setPhase("failed");
+          return;
+        }
         if (
           data.current_version === targetVersion ||
           (data.latest_job?.target_version === targetVersion && data.latest_job.status === "SUCCEEDED")
@@ -213,12 +229,30 @@ export function SelfUpdateDialog({
   }, [targetVersion]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      assistantBackupControllerRef.current?.abort();
+      assistantBackupControllerRef.current = null;
+      return;
+    }
     const controller = new AbortController();
     setBackupError(null);
     void loadCapability(controller.signal);
-    return () => { controller.abort(); };
+    return () => {
+      controller.abort();
+      assistantBackupControllerRef.current?.abort();
+      assistantBackupControllerRef.current = null;
+    };
   }, [open, loadCapability]);
+
+  // Keep reconnect elapsed seconds ticking live every second while waiting for restart recovery.
+  useEffect(() => {
+    if (!open || phase !== "running" || !reconnecting || reconnectStartedAt === null) return;
+    setNowTick(Date.now());
+    const interval = window.setInterval(() => {
+      setNowTick(Date.now());
+    }, 1_000);
+    return () => { window.clearInterval(interval); };
+  }, [open, phase, reconnecting, reconnectStartedAt]);
 
   // Track 1 live status & restart reconnect polling loop
   useEffect(() => {
@@ -226,6 +260,8 @@ export function SelfUpdateDialog({
     const controller = new AbortController();
     let timer: number | undefined;
     let active = true;
+    let unreachablePolls = 0;
+    let missingJobPolls = 0;
     const jobId = trackedJob?.id ?? readActiveSelfUpdateHint()?.id ?? null;
 
     const poll = async () => {
@@ -234,45 +270,60 @@ export function SelfUpdateDialog({
         const next = await getSelfUpdateStatus(controller.signal);
         if (!active || controller.signal.aborted) return;
         setStatus(next);
+        reconnectStartedAtRef.current = null;
         setReconnecting(false);
         setReconnectStartedAt(null);
-        setPollWarning(null);
 
         const matchedLatest = next.latest_job && (!jobId || next.latest_job.id === jobId)
           ? next.latest_job
           : null;
 
-        if (next.current_version === effectiveTarget || matchedLatest?.status === "SUCCEEDED") {
+        // Always honor an active job (such as recreating_backup after app already restarted) first.
+        if (next.active_job) {
+          unreachablePolls = 0;
+          missingJobPolls = 0;
+          setPollWarning(null);
+          setTrackedJob(next.active_job);
+        } else if (matchedLatest?.status === "FAILED") {
           clearActiveSelfUpdateHint();
-          setTrackedJob(matchedLatest ?? next.latest_job ?? null);
-          setPhase("completed");
-          return;
-        }
-        if (matchedLatest?.status === "FAILED") {
-          clearActiveSelfUpdateHint();
+          setPollWarning(null);
           setTrackedJob(matchedLatest);
           setPhase("failed");
           return;
-        }
-        if (next.active_job) {
-          setTrackedJob(next.active_job);
+        } else if (matchedLatest?.status === "SUCCEEDED" || next.current_version === effectiveTarget) {
+          clearActiveSelfUpdateHint();
+          setPollWarning(null);
+          setTrackedJob(matchedLatest ?? next.latest_job ?? null);
+          setPhase("completed");
+          return;
+        } else if (!next.enabled && next.unavailable_reason === "unreachable") {
+          unreachablePolls += 1;
+          if (unreachablePolls >= MAX_UNREACHABLE_POLLS) {
+            clearActiveSelfUpdateHint();
+            setPollWarning("持续无法连接到伴生更新器，请检查 updater 容器状态，或刷新页面确认当前运行版本。");
+            return;
+          }
+          setPollWarning("暂时无法连接到伴生更新器，正在继续重试…");
+        } else if (next.enabled) {
+          missingJobPolls += 1;
+          if (missingJobPolls >= MAX_MISSING_JOB_POLLS) {
+            clearActiveSelfUpdateHint();
+            setPollWarning("未能查询到更新任务状态（伴生更新器可能已重启），请刷新页面确认当前运行版本。");
+            return;
+          }
         }
       } catch (error) {
         if (!active || controller.signal.aborted) return;
-        if (error instanceof ApiError && error.status === 401) {
-          clearActiveSelfUpdateHint();
-          setPollWarning("服务可能已完成重启但当前会话已失效，请刷新页面并重新登录以确认版本。");
-          return;
-        }
         if (isTransientRestartError(error)) {
+          const now = Date.now();
+          const started = reconnectStartedAtRef.current ?? now;
+          reconnectStartedAtRef.current = started;
           setReconnecting(true);
-          setReconnectStartedAt(previous => {
-            const started = previous ?? Date.now();
-            if (Date.now() - started >= MAX_RECONNECT_WAIT_MS) {
-              setPollWarning("等待服务恢复已超过 5 分钟，请检查宿主机容器运行日志，或刷新页面确认状态。");
-            }
-            return started;
-          });
+          setReconnectStartedAt(started);
+          setNowTick(now);
+          if (now - started >= MAX_RECONNECT_WAIT_MS) {
+            setPollWarning("等待服务恢复已超过 5 分钟，请检查宿主机容器运行日志，或刷新页面确认状态。");
+          }
         } else {
           setPollWarning(error instanceof Error ? error.message : "查询更新进度失败，将继续尝试重连。");
         }
@@ -359,14 +410,20 @@ export function SelfUpdateDialog({
     if (backupStarting || activeBackupId) return;
     setBackupStarting(true);
     setBackupError(null);
+    assistantBackupControllerRef.current?.abort();
+    const controller = new AbortController();
+    assistantBackupControllerRef.current = controller;
     try {
-      const controller = new AbortController();
       const job = await startMaintenance({ operation_id: createOperationId(), kind: "BACKUP" }, controller.signal);
-      setBackupJob(job);
+      if (!controller.signal.aborted) setBackupJob(job);
     } catch (error) {
+      if (controller.signal.aborted || (error instanceof DOMException && error.name === "AbortError")) return;
       setBackupError(error instanceof Error ? error.message : "未能启动数据库备份，请稍后重试。");
     } finally {
-      setBackupStarting(false);
+      if (assistantBackupControllerRef.current === controller) {
+        assistantBackupControllerRef.current = null;
+      }
+      if (!controller.signal.aborted) setBackupStarting(false);
     }
   };
 
@@ -383,14 +440,15 @@ export function SelfUpdateDialog({
       : "当前实例以默认高安全模式运行（未启用伴生更新器），可通过以下两步安全完成升级。";
 
   const steps = computeStepStates(trackedJob?.stage, trackedIncludeBackup, reconnecting);
-  const reconnectSeconds = reconnectStartedAt ? Math.max(1, Math.floor((Date.now() - reconnectStartedAt) / 1000)) : 0;
+  const reconnectSeconds = reconnectStartedAt ? Math.max(1, Math.floor((nowTick - reconnectStartedAt) / 1000)) : 0;
+  const oneLineCommand = isReleaseVersion(effectiveTarget) ? buildOneLineUpgradeCommand(effectiveTarget) : null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         data-self-update-dialog
         initialFocus={titleRef}
-        finalFocus={returnFocus ? () => returnFocus : undefined}
+        finalFocus={returnFocus ? () => (returnFocus.isConnected ? returnFocus : null) : undefined}
       >
         <DialogHeader>
           <DialogTitle ref={titleRef} tabIndex={-1} className="outline-none">
@@ -557,7 +615,9 @@ export function SelfUpdateDialog({
                 <span>
                   {trackedJob?.rolled_back
                     ? `新版本启动异常，已自动回滚至 v${trackedJob.previous_version}`
-                    : "更新未完成，当前服务运行正常"}
+                    : effectiveCurrent === effectiveTarget
+                      ? `核心服务已切换至 v${effectiveTarget}，但备份服务更新未完成`
+                      : "更新未完成，当前服务运行正常"}
                 </span>
               </div>
               <p role="alert" className="break-words text-xs text-destructive">
@@ -622,12 +682,14 @@ export function SelfUpdateDialog({
                     <CopyValue value={`ghcr.io/mashiro0619/perpay:${effectiveTarget}`} label="复制目标镜像" />
                   </div>
                 </div>
-                <div className="flex min-w-0 flex-col gap-1 text-xs">
-                  <span className="text-muted-foreground">单行升级命令（在 docker-compose.yml 所在目录执行）</span>
-                  <div className="rounded-md border border-border bg-muted/30 px-2.5 py-1.5 font-mono">
-                    <CopyValue value={buildOneLineUpgradeCommand(effectiveTarget)} label="复制升级命令" />
+                {oneLineCommand && (
+                  <div className="flex min-w-0 flex-col gap-1 text-xs">
+                    <span className="text-muted-foreground">单行升级命令（在 docker-compose.yml 所在目录执行）</span>
+                    <div className="rounded-md border border-border bg-muted/30 px-2.5 py-1.5 font-mono">
+                      <CopyValue value={oneLineCommand} label="复制升级命令" />
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
 
               <Collapsible className="rounded-lg border border-border bg-muted/20 p-3 text-xs">
@@ -637,7 +699,7 @@ export function SelfUpdateDialog({
                       type="button"
                       variant="ghost"
                       size="sm"
-                      className="h-auto w-full justify-between px-0 py-0 text-xs font-medium text-foreground hover:bg-transparent"
+                      className="h-auto w-full justify-between px-0 py-0 text-xs font-medium text-foreground hover:bg-transparent aria-expanded:bg-transparent dark:hover:bg-transparent"
                     />
                   }
                 >
@@ -710,7 +772,7 @@ export function SelfUpdateDialog({
           {phase === "failed" && (
             <>
               <Button variant="outline" onClick={close}>关闭</Button>
-              <Button onClick={() => { setApplyError(null); setPhase("confirm"); }}>重试更新</Button>
+              <Button onClick={() => { void loadCapability(); }}>重新检查状态</Button>
             </>
           )}
           {(phase === "loading" || phase === "assistant") && (

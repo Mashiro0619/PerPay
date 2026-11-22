@@ -1648,8 +1648,8 @@ export type WebhookDeliveryFields = {
 };
 export type WebhookDelivery = WebhookDeliveryFields;
 export type WebhookDeliverySummary = WebhookDeliveryFields & {
-    is_latest?: boolean;
-    redelivery_blocked_reason?: 'payment_confirmation_revoked' | null;
+    is_latest: boolean;
+    redelivery_blocked_reason?: WebhookRedeliveryBlockedReason;
     order_summary?: OrderIdentitySummary | null;
     event: {
         event_type: string;
@@ -2674,7 +2674,6 @@ export type CheckOfficialUpdateData = {
 export type CheckOfficialUpdateErrors = {
     401: ErrorEnvelope;
     422: ErrorEnvelope;
-    429: ErrorEnvelope;
     503: ErrorEnvelope;
 };
 export type CheckOfficialUpdateError = CheckOfficialUpdateErrors[keyof CheckOfficialUpdateErrors];

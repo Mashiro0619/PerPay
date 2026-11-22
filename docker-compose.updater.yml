@@ -14,6 +14,9 @@ services:
       PERPAY_UPDATER_TOKEN_FILE: "/run/perpay-updater-secrets/token"
     volumes:
       - perpay-updater-secrets:/run/perpay-updater-secrets:ro
+    networks:
+      - default
+      - perpay-updater
 
   updater:
     image: ${PERPAY_IMAGE:-ghcr.io/mashiro0619/perpay:latest}
@@ -24,10 +27,11 @@ services:
       PERPAY_UPDATER_HOST: "0.0.0.0"
       PERPAY_UPDATER_PORT: "6199"
       PERPAY_UPDATER_TOKEN_FILE: "/run/perpay-updater-secrets/token"
-      PERPAY_COMPOSE_PROJECT: "perpay"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - perpay-updater-secrets:/run/perpay-updater-secrets
+    networks:
+      - perpay-updater
     # 访问宿主机 /var/run/docker.sock 通常需要 root 或加入宿主机 docker 组。
     user: "0:0"
     restart: unless-stopped
@@ -54,6 +58,10 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+networks:
+  perpay-updater:
+    internal: true
 
 volumes:
   perpay-updater-secrets:
