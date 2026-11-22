@@ -323,6 +323,14 @@ export class OrderStore {
   ): CreateStoredOrderResult {
     validateWebhookTargetInput(input);
     validateReturnUrlInput(input);
+    const minOffsetMaximum = input.allowZeroAmountOffset === true ? 0 : 1;
+    if (
+      !Number.isSafeInteger(input.amountOffsetMaximumCents) ||
+      input.amountOffsetMaximumCents < minOffsetMaximum ||
+      input.amountOffsetMaximumCents > 99
+    ) {
+      throw new RangeError("amount offset maximum is invalid");
+    }
     const amountReuseCooldownSeconds = input.amountReuseCooldownSeconds ?? DEFAULT_AMOUNT_REUSE_COOLDOWN_SECONDS;
     if (!Number.isSafeInteger(amountReuseCooldownSeconds) ||
       amountReuseCooldownSeconds < MIN_AMOUNT_REUSE_COOLDOWN_SECONDS ||

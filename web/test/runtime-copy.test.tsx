@@ -69,6 +69,10 @@ describe("runtime failure explanations", () => {
     expect(runtimeErrorMessage("查账", "ledger_schedule_storage_error")).toContain("进度暂时无法读取或保存");
     expect(runtimeErrorMessage("自动确认收款", "reconciliation_storage_error")).toContain("记录暂时无法读取或保存");
     expect(runtimeErrorMessage("通知", "webhook_delivery_failed")).toContain("通知发送失败");
+    expect(runtimeErrorMessage("查账", "normal_continuation")).toContain("系统会自动继续补查剩余时段");
+    expect(runtimeErrorMessage("查账", "normal_continuation")).not.toContain("异常");
+    expect(runtimeErrorMessage("查账", "compensation_continuation")).toContain("系统会自动继续补查剩余时段");
+    expect(runtimeErrorMessage("查账", "request_budget_exhausted")).toContain("系统会自动继续补查剩余时段");
   });
 
   it("keeps unknown codes out of ordinary text and names the failed task", () => {

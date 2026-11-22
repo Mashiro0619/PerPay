@@ -357,4 +357,44 @@ describe("cancelled scan schedule persistence", () => {
     assert.deepEqual(saved,{completedAt:START,protectedUntil:START+900000,continuation:false});
     assert.equal(timers.size,0);
   });
+
+  it("preserves retry schedule kind when a SKIPPED run retains a persisted protection deadline across refreshSchedule", async () => {
+    const timers = new ManualTimers();
+    let saved: import("../src/ledger/scan-gate.ts").LedgerScanGate | null = {
+      completedAt: START,
+      protectedUntil: START + 60_000,
+      continuation: false,
+    };
+    let calls = 0;
+    let dynamicInterval = 30_000;
+    const scheduler = new LedgerIngestScheduler({
+      service: {
+        run: async () => {
+          calls += 1;
+          return result({ status: "SKIPPED", reason: "already_running" });
+        },
+        stop() {},
+        async waitForIdle() {},
+      } as unknown as LedgerIngestService,
+      intervalMilliseconds: 30_000,
+      getIntervalMilliseconds: () => dynamicInterval,
+      minimumIntervalMilliseconds: 5_000,
+      clock: () => timers.now,
+      setTimeout: timers.setTimeout,
+      clearTimeout: timers.clearTimeout,
+      gate: { read: () => saved, write: value => { saved = value; } },
+    });
+    scheduler.start();
+    try {
+      await scheduler.trigger("admin_manual");
+      assert.equal(calls, 1);
+      assert.equal(timers.nextAt, START + 60_000);
+      // Even when active orders shorten the polling interval and refreshSchedule() runs, persisted backoff must hold.
+      dynamicInterval = 8_000;
+      scheduler.refreshSchedule();
+      assert.equal(timers.nextAt, START + 60_000);
+    } finally {
+      await scheduler.stop();
+    }
+  });
 });

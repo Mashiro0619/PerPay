@@ -50,6 +50,9 @@ function read(configuration: object, path: FieldPath): FieldValue {
   return target[key] as FieldValue;
 }
 
+const ALLOW_ZERO_OFFSET_PATH: FieldPath = "policy.orders.allow_zero_amount_offset";
+const MAX_OFFSET_PATH: FieldPath = "policy.orders.amount_offset_maximum_cents";
+
 function mergeFields<Configuration extends object>(
   base: Configuration,
   draft: Configuration,
@@ -71,6 +74,24 @@ function mergeFields<Configuration extends object>(
     }
     const { target, key } = fieldLocation(configuration, path);
     target[key] = local;
+  }
+  const hasOrderOffsetFields =
+    selectedFields.some(([, path]) => path === ALLOW_ZERO_OFFSET_PATH) &&
+    selectedFields.some(([, path]) => path === MAX_OFFSET_PATH);
+  if (
+    hasOrderOffsetFields &&
+    read(configuration, ALLOW_ZERO_OFFSET_PATH) === false &&
+    read(configuration, MAX_OFFSET_PATH) === 0
+  ) {
+    for (const path of [ALLOW_ZERO_OFFSET_PATH, MAX_OFFSET_PATH] as const) {
+      if (conflicts.some(conflict => conflict.path === path)) continue;
+      const spec = selectedFields.find(([, fieldPath]) => fieldPath === path);
+      if (!spec) continue;
+      const before = read(base, path), local = read(draft, path), latest = read(remote, path);
+      if (JSON.stringify(local) !== JSON.stringify(latest)) {
+        conflicts.push({ path, label: spec[2], before, local, remote: latest });
+      }
+    }
   }
   return { configuration, conflicts };
 }

@@ -153,18 +153,20 @@ export class LedgerIngestScheduler {
     }
     if (this.#unpersistedSchedule !== null) {
       const restored = this.#persistSchedule();
-      this.#armSchedule(restored);
-      if (reason !== "admin_manual") return this.#waitForNextScan();
+      if (reason !== "admin_manual") {
+        this.#armSchedule(restored);
+        return this.#waitForNextScan();
+      }
     }
     const gate = this.#gate?.read() ?? this.#lastGate;
     this.#lastGate = gate;
     this.#storageRecovered();
-    if (reason !== "admin_manual") {
+    if (this.#minimumIntervalMilliseconds > 0 && reason !== "admin_manual") {
       const completedAt = gate?.completedAt ?? this.#lastCompletedAt;
       const protectedUntil = Math.max(gate?.protectedUntil ?? 0, this.#scheduleKind === "retry" ? this.#nextRunAt ?? 0 : 0);
       const continuing = gate?.continuation ?? this.#scheduleKind === "continuation";
       const earliest = Math.max(protectedUntil, continuing ? 0 : completedAt === null ? 0 : completedAt + this.#minimumIntervalMilliseconds);
-      if (this.#minimumIntervalMilliseconds > 0 && (earliest > now || (reason !== "scheduled" && this.#scheduleKind === "continuation" && this.#timer !== null))) {
+      if (earliest > now || (reason !== "scheduled" && this.#scheduleKind === "continuation" && this.#timer !== null)) {
         if (this.#scheduleKind !== "continuation" || this.#timer === null) this.#scheduleAt(earliest, this.#readIntervalMilliseconds(), protectedUntil > now ? "retry" : "manual");
         return this.#waitForNextScan();
       }
@@ -352,8 +354,14 @@ export class LedgerIngestScheduler {
       completedAt, protectedUntil,
       continuation: completedAt === pending.gate.completedAt && pending.gate.continuation,
     };
-    pending.nextRunAt = Math.max(pending.nextRunAt, protectedUntil,
-      pending.gate.continuation ? 0 : completedAt + this.#minimumIntervalMilliseconds);
+    const nextRunBeforeProtection = Math.max(
+      pending.nextRunAt,
+      pending.gate.continuation ? 0 : completedAt + this.#minimumIntervalMilliseconds,
+    );
+    if (protectedUntil > nextRunBeforeProtection) {
+      pending.kind = "retry";
+    }
+    pending.nextRunAt = Math.max(nextRunBeforeProtection, protectedUntil);
     // Leave pending intact on failure; recovery never turns this into a synthetic
     // provider failure or resets the deadline from the time storage recovers.
     this.#gate?.write(pending.gate);

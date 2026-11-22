@@ -378,7 +378,7 @@ export function SettingsEditor({
         value={initialSettings.collection_policy?.minimum_scan_interval_seconds ?? PROVIDER_TIMING_DEFAULTS.activeScanIntervalSeconds}
         min={5}
         max={3600}
-        hint="同样限制手动查账的频率，且不能大于活跃查账间隔。"
+        hint="限制自动与收银台触发查账的最小间隔，且不能大于活跃查账间隔。"
       />
       <NumberField
         name="safety_lag_seconds"

@@ -1240,6 +1240,19 @@ describe("OrderStore", () => {
       ));
       assert.equal(defaultOrder.order.payableAmountCents, 2_001);
 
+      // Invalid offset ceiling (0 when allowZeroAmountOffset is false, or > 99) fails fast with RangeError
+      assert.throws(
+        () => store.createOrder(createInput(requestFor("invalid-zero-max", "invalid-zero-max", 2_000), 0)),
+        RangeError,
+      );
+      assert.throws(
+        () => store.createOrder({
+          ...createInput(requestFor("invalid-high-max", "invalid-high-max", 2_000), 100),
+          allowZeroAmountOffset: true,
+        }),
+        RangeError,
+      );
+
       assert.equal(database.integrityCheck().ok, true);
     });
   });

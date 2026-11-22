@@ -14,7 +14,11 @@ export function runtimeErrorMessage(task: RuntimeTask, code: string): string {
         return "支付宝限制了查询频率，系统会等待后再试。";
       case "transport_network":
       case "transport_timeout":
-        return "支付宝查询连接失败或超时，请检查网络；恢复后可点击“手动查账”立即重测。";
+        return "支付宝查询连接失败或超时，请检查网络；恢复后可点击“手动查账”或对应账号的“立即查账”立即重测。";
+      case "normal_continuation":
+      case "compensation_continuation":
+      case "request_budget_exhausted":
+        return "本轮查账已推进，系统会自动继续补查剩余时段。";
       case "ledger_schedule_storage_error":
         return "查账进度暂时无法读取或保存，请检查数据库和运行诊断。";
       case "pagination_variant":

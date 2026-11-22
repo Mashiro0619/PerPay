@@ -116,11 +116,6 @@ function AccountScan({ account }: { account: AlipayAccount }) {
       >
         {scan.isPending ? "正在提交…" : active ? "查账处理中…" : "立即查账"}
       </Button>
-      {request && active && request.state === "WAITING" && request.next_attempt_at && (
-        <span className="text-sm text-muted-foreground">
-          计划开始：<ListDateTime value={request.next_attempt_at} inline />
-        </span>
-      )}
       {request && !active && (
         <span className="text-sm text-muted-foreground">
           {request.state === "FAILED"

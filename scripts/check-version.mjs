@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse } from "yaml";
@@ -99,6 +99,20 @@ export function inspectVersionFiles(root, requestedTag) {
   }
   if (!/org\.opencontainers\.image\.version="\$\{APP_VERSION\}"/u.test(dockerfile)) {
     errors.push("Dockerfile OCI version label must use APP_VERSION");
+  }
+
+  const clientDemoPackagePath = resolve(root, "examples/node-client/package.json");
+  if (existsSync(clientDemoPackagePath)) {
+    try {
+      const clientDemoPackage = JSON.parse(readFileSync(clientDemoPackagePath, "utf8"));
+      if (clientDemoPackage.version !== packageVersion) {
+        errors.push(
+          `examples/node-client/package.json version=${clientDemoPackage.version ?? "<missing>"} does not match package.json=${packageVersion}`,
+        );
+      }
+    } catch (error) {
+      errors.push(`examples/node-client/package.json is invalid: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   if (requestedTag !== undefined) {
