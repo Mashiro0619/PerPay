@@ -26,7 +26,16 @@ function mount(path: string) {
     if (request.method === "GET") return json({ data });
     return request.json().then((body: Record<string, unknown>) => {
       writes.push(body);
-      data = { ...data, revision: data.revision + 1, display: { ...data.display, system_name: String(body.system_name), dashboard_chart_type: body.dashboard_chart_type as DashboardChartType } };
+      data = {
+        ...data,
+        revision: data.revision + 1,
+        display: {
+          ...data.display,
+          system_name: String(body.system_name),
+          dashboard_chart_type: body.dashboard_chart_type as DashboardChartType,
+          ...(body.dashboard_sections ? { dashboard_sections: body.dashboard_sections as RuntimeSettings["display"]["dashboard_sections"] } : {}),
+        },
+      };
       return json({ data });
     });
   } });

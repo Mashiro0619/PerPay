@@ -41,15 +41,21 @@ describe("instance display settings", () => {
     expect(form.querySelector("[data-slot=card-content] > [data-slot=field-set]")).toHaveClass("max-w-2xl");
     const displayFields = name.closest('[data-slot="field-group"]')!;
     const rows = [...displayFields.children];
-    expect(rows).toHaveLength(2);
+    expect(rows).toHaveLength(3);
     for (const row of rows) {
       expect(row).toHaveAttribute("data-orientation", "vertical");
       expect(row).not.toContainElement(row.querySelector("label input"));
     }
     expect(rows[0]).toContainElement(name);
     expect(rows[1]).toContainElement(chart);
+    const sections = screen.getByRole("group", { name: "总览显示模块" });
+    expect(rows[2]).toContainElement(sections);
+    for (const label of ["核心指标", "收款趋势", "各网站概览", "待处理", "最近订单"]) {
+      expect(within(sections).getByRole("switch", { name: label })).toBeChecked();
+    }
     expect(new FormData(form).get("dashboard_chart_type")).toBe("AREA");
     expect(chart).toHaveAccessibleDescription("用于未设置个人图形偏好的浏览器。");
+    expect(sections).toHaveAccessibleDescription("控制总览页展示的卡片模块，至少保留一项开启。");
     expect(form.querySelector('[data-slot="card-header"]')).toHaveClass("sr-only");
     expect(form.querySelector('[data-slot="field-legend"]')).toHaveClass("sr-only");
     expect(screen.getByLabelText("系统名称")).toBeVisible();
@@ -183,5 +189,101 @@ describe("instance display settings", () => {
     expect(screen.getByRole("button", { name: "柱状图" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByText("未保存")).toBeVisible();
     expect(onSaved).not.toHaveBeenCalled();
+  });
+
+  it("toggles dashboard sections, locks the last remaining module, and submits edited visibility", async () => {
+    const requests: Request[] = [];
+    const expectedSections = {
+      summary_cards: true,
+      trend: false,
+      site_overview: false,
+      work_items: false,
+      recent_orders: false,
+    };
+    const saved: RuntimeSettings = {
+      ...settings,
+      revision: settings.revision + 1,
+      display: {
+        ...settings.display,
+        dashboard_sections: expectedSections,
+      },
+    };
+    vi.stubGlobal("fetch", vi.fn(async (request: Request) => {
+      requests.push(request);
+      return json({ data: saved });
+    }));
+    const { onSaved } = mount();
+    const user = userEvent.setup();
+    const sections = screen.getByRole("group", { name: "总览显示模块" });
+
+    // Toggle off and back on restores clean state without network calls.
+    await user.click(within(sections).getByRole("switch", { name: "收款趋势" }));
+    expect(screen.getByText("未保存")).toBeVisible();
+    await user.click(within(sections).getByRole("switch", { name: "收款趋势" }));
+    expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
+
+    // Turning off 4 modules locks the last enabled switch so at least 1 remains on.
+    for (const label of ["收款趋势", "各网站概览", "待处理", "最近订单"]) {
+      await user.click(within(sections).getByRole("switch", { name: label }));
+    }
+    const lastSwitch = within(sections).getByRole("switch", { name: "核心指标" });
+    expect(lastSwitch).toBeChecked();
+    expect(lastSwitch).toHaveAttribute("aria-disabled", "true");
+    await user.click(lastSwitch);
+    expect(lastSwitch).toBeChecked();
+
+    await user.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalledWith(saved));
+    expect(requests).toHaveLength(1);
+    expect(await requests[0]!.json()).toMatchObject({
+      revision: settings.revision,
+      dashboard_sections: expectedSections,
+    });
+    expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
+  });
+
+  it("preserves remote dashboard sections when only editing system name", async () => {
+    const requests: Request[] = [];
+    const remoteSections = {
+      summary_cards: true,
+      trend: false,
+      site_overview: true,
+      work_items: true,
+      recent_orders: false,
+    };
+    const latest: RuntimeSettings = {
+      ...settings,
+      revision: settings.revision + 1,
+      display: {
+        ...settings.display,
+        dashboard_sections: remoteSections,
+      },
+    };
+    const saved: RuntimeSettings = {
+      ...latest,
+      revision: latest.revision + 1,
+      display: {
+        ...latest.display,
+        system_name: "新名称",
+      },
+    };
+    vi.stubGlobal("fetch", vi.fn(async (request: Request) => {
+      requests.push(request);
+      return json({ data: saved });
+    }));
+    const { onSaved, updateSettings } = mount();
+    const user = userEvent.setup();
+    const name = screen.getByRole("textbox", { name: "系统名称" });
+    await user.clear(name);
+    await user.type(name, "新名称");
+    updateSettings(latest);
+    await user.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalledWith(saved));
+    expect(await requests[0]!.json()).toEqual({
+      revision: latest.revision,
+      system_name: "新名称",
+      dashboard_chart_type: "AREA",
+      dashboard_sections: remoteSections,
+    });
   });
 });

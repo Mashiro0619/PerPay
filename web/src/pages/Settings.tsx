@@ -50,6 +50,7 @@ import { maintenanceKey } from "@/api/maintenance";
 import { useMaintenanceJobs } from "@/hooks/use-maintenance";
 import { MaintenanceJobResult } from "@/components/maintenance-operation";
 import { durationLabel } from "@/lib/format";
+import { formatDashboardSectionsSummary } from "@/lib/dashboard-sections";
 
 const sectionIcons = {
   accounts: Wallet,
@@ -259,7 +260,11 @@ function settingsSummaryRows(settings: RuntimeSettings, section: Exclude<Configu
     const policy = settings.collection_policy;
     return [["请求超时", policy?.timeout_milliseconds === undefined ? "未配置" : policy.timeout_milliseconds / 1000 + " 秒"], ["常规查账间隔", policy?.scan_interval_seconds === undefined ? "未配置" : policy.scan_interval_seconds + " 秒"], ["活跃 / 最小间隔", policy?.active_scan_interval_seconds === undefined ? "未配置" : policy.active_scan_interval_seconds + " / " + (policy.minimum_scan_interval_seconds ?? policy.active_scan_interval_seconds) + " 秒"], ["查账延迟", policy?.safety_lag_seconds === undefined ? "未配置" : policy.safety_lag_seconds + " 秒"], ["查账有效时限", policy?.maximum_success_age_seconds === undefined ? "未配置" : policy.maximum_success_age_seconds + " 秒"]];
   }
-  if (section === "display") return [["系统名称", settings.display.system_name || "PerPay"], ["收款趋势默认图形", { AREA: "面积图", BAR: "柱状图", LINE: "累计图" }[settings.display.dashboard_chart_type]]];
+  if (section === "display") return [
+    ["系统名称", settings.display.system_name || "PerPay"],
+    ["收款趋势默认图形", { AREA: "面积图", BAR: "柱状图", LINE: "累计图" }[settings.display.dashboard_chart_type]],
+    ["总览显示模块", formatDashboardSectionsSummary(settings.display.dashboard_sections)],
+  ];
   return [["收银台链接密钥更换周期", settings.advanced.checkout_key_rotation_days + " 天"], ["订单结束后收银台可查时长", durationLabel(settings.advanced.checkout_terminal_observation_seconds)]];
 }
 

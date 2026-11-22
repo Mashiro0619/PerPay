@@ -17,6 +17,7 @@ import {
   activateProviderApplicationKeySchema,
   backupSettingsInputSchema,
   collectionSettingsInputSchema,
+  DEFAULT_DASHBOARD_SECTIONS,
   displaySettingsInputSchema,
   generateProviderApplicationKey,
   parseProviderApplicationPrivateKey,
@@ -36,6 +37,7 @@ import {
   type ProviderSettings,
   type BackupSettingsInput,
   type DashboardChartType,
+  type DashboardSections,
   type DisplaySettingsInput,
   type CollectionSettingsInput,
   type ApiCredentialSnapshot,
@@ -127,6 +129,7 @@ export interface RuntimeSettingsView {
     readonly checkout_help_url: string | null;
     readonly checkout_show_product_name: boolean;
     readonly dashboard_chart_type: DashboardChartType;
+    readonly dashboard_sections: DashboardSections;
   };
   readonly secrets: Readonly<Record<RuntimeSecretName, ReturnType<RuntimeSettingsStore["secretMetadata"]>>>;
 }
@@ -139,7 +142,7 @@ export type InstanceSettingsView = Omit<RuntimeSettingsView,
   readonly completion: Omit<RuntimeSettingsView["completion"], "api" | "notifications"> & { readonly sites: boolean };
   readonly collection: { readonly code_payload: string } | null;
   readonly provider: Pick<NonNullable<RuntimeSettingsView["provider"]>, "environment" | "app_id" | "platform_public_key" | "provider_account_key"> | null;
-  readonly display: Pick<RuntimeSettingsView["display"], "system_name" | "dashboard_chart_type">;
+  readonly display: Pick<RuntimeSettingsView["display"], "system_name" | "dashboard_chart_type" | "dashboard_sections">;
   readonly secrets: Pick<RuntimeSettingsView["secrets"], "provider_private_key" | "provider_public_key">;
 };
 
@@ -267,7 +270,11 @@ export class RuntimeSettingsService {
       })),
       advanced: { checkout_key_rotation_days: snapshot.advanced.checkoutKeyRotationDays, checkout_terminal_observation_seconds: snapshot.advanced.checkoutTerminalObservationSeconds },
       backup: { interval_seconds: snapshot.backup.intervalSeconds, keep_count: snapshot.backup.keepCount },
-      display: { system_name: snapshot.display.systemName ?? "PerPay", dashboard_chart_type: snapshot.display.dashboardChartType },
+      display: {
+        system_name: snapshot.display.systemName ?? "PerPay",
+        dashboard_chart_type: snapshot.display.dashboardChartType,
+        dashboard_sections: snapshot.display.dashboardSections ?? DEFAULT_DASHBOARD_SECTIONS,
+      },
       secrets: { provider_private_key: this.#store.secretMetadata("provider_private_key"), provider_public_key: this.#store.secretMetadata("provider_public_key") },
     };
   }
@@ -371,6 +378,7 @@ export class RuntimeSettingsService {
         checkout_help_url: snapshot.display?.checkoutHelpUrl ?? null,
         checkout_show_product_name: snapshot.display?.checkoutShowProductName ?? true,
         dashboard_chart_type: snapshot.display?.dashboardChartType ?? "AREA",
+        dashboard_sections: snapshot.display?.dashboardSections ?? DEFAULT_DASHBOARD_SECTIONS,
       },
       secrets: {
         api_secret: this.#store.secretMetadata("api_secret"),

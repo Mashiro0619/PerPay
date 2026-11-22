@@ -8,6 +8,7 @@ import { OrderError } from "../src/orders/service.ts";
 import { AppDatabase } from "../src/database/database.ts";
 import { auditContextFingerprint, type StoredAuditContext } from "../src/audit/context.ts";
 import {
+  DEFAULT_DASHBOARD_SECTIONS,
   RuntimeSecretCipher,
   RuntimeSettingsService,
   RuntimeSettingsStore,
@@ -43,6 +44,7 @@ it("persists validated display settings with CSRF, revisions and audit without c
     assert.deepEqual(original.display, {
       system_name: "PerPay",
       dashboard_chart_type: "AREA",
+      dashboard_sections: DEFAULT_DASHBOARD_SECTIONS,
     });
     assert.equal(
       (
@@ -77,6 +79,7 @@ it("persists validated display settings with CSRF, revisions and audit without c
     assert.deepEqual(saved.display, {
       system_name: "星河收款",
       dashboard_chart_type: "BAR",
+      dashboard_sections: DEFAULT_DASHBOARD_SECTIONS,
     });
     assert.deepEqual(saved.provider, original.provider);
     assert.deepEqual(saved.collection, original.collection);
@@ -200,7 +203,11 @@ it("upgrades schema 23 with presentation defaults while preserving revisions, co
       assert.equal(after.revision, before.revision);
       assert.equal(after.payment_revision, before.payment_revision);
       assert.deepEqual(after.provider, before.provider);
-      assert.deepEqual(after.display, { system_name: "PerPay", dashboard_chart_type: "AREA" });
+      assert.deepEqual(after.display, {
+        system_name: "PerPay",
+        dashboard_chart_type: "AREA",
+        dashboard_sections: DEFAULT_DASHBOARD_SECTIONS,
+      });
       assert.deepEqual(settings.siteStore()!.get("default")!.configuration.policy.display, { checkout_name: "PerPay", checkout_help_url: null, checkout_show_product_name: true });
       const actual = snapshot(upgraded);
       const auditIndex = tables.indexOf("audit_events");
@@ -386,5 +393,91 @@ it("escapes public names and reads anonymous branding without decrypting secrets
         assert.ok(!html.includes("<script>x</script>"));
       }
     } finally { decrypt.mock.restore(); }
+  });
+});
+
+it("validates, persists, audits and preserves dashboard section visibility settings", async () => {
+  await withHttpFixture(async ({ app, services, database }) => {
+    const auth = await login(app);
+    const headers = financialHeaders(auth);
+    const save = (body: unknown) => app.request("/api/admin/v1/settings/display", {
+      method: "PUT", headers, body: JSON.stringify(body),
+    });
+    const initial = services.settings.instanceView();
+    assert.deepEqual(initial.display.dashboard_sections, DEFAULT_DASHBOARD_SECTIONS);
+
+    for (const badSections of [
+      { summary_cards: false, trend: false, site_overview: false, work_items: false, recent_orders: false },
+      { summary_cards: true, trend: true },
+      { ...DEFAULT_DASHBOARD_SECTIONS, extra: true },
+      { ...DEFAULT_DASHBOARD_SECTIONS, trend: "false" },
+    ]) {
+      const rejected = await save({
+        revision: initial.revision,
+        dashboard_chart_type: "AREA",
+        dashboard_sections: badSections,
+      });
+      assert.equal(rejected.status, 422);
+    }
+    assert.equal(services.settings.instanceView().revision, initial.revision);
+
+    const customSections = {
+      summary_cards: true,
+      trend: false,
+      site_overview: false,
+      work_items: true,
+      recent_orders: true,
+    };
+    const updated = await save({
+      revision: initial.revision,
+      dashboard_chart_type: "AREA",
+      dashboard_sections: customSections,
+    });
+    assert.equal(updated.status, 200);
+    assert.deepEqual(services.settings.instanceView().display.dashboard_sections, customSections);
+    assert.deepEqual(services.settings.display().dashboardSections, customSections);
+
+    // Omitting dashboard_sections in a subsequent request preserves the saved preference.
+    const preserved = await save({
+      revision: initial.revision + 1,
+      system_name: "精简看板",
+      dashboard_chart_type: "BAR",
+    });
+    assert.equal(preserved.status, 200);
+    assert.deepEqual(services.settings.instanceView().display.dashboard_sections, customSections);
+
+    const audit = database.read((c) =>
+      c.prepare(
+        `SELECT context.context_json FROM audit_events event
+           JOIN audit_event_context context USING(event_id)
+          WHERE event.action = 'settings.display_updated'
+          ORDER BY event.rowid ASC`,
+      ).all(),
+    ) as { context_json: string }[];
+    assert.equal(audit.length, 2);
+    const firstContext = JSON.parse(audit[0]!.context_json) as StoredAuditContext;
+    assert.deepEqual(firstContext.changes, [
+      {
+        field: "dashboard_sections",
+        kind: "value",
+        before: DEFAULT_DASHBOARD_SECTIONS,
+        after: customSections,
+      },
+    ]);
+    const secondContext = JSON.parse(audit[1]!.context_json) as StoredAuditContext;
+    assert.equal(secondContext.changes.some((c) => c.field === "dashboard_sections"), false);
+
+    database.close();
+    const reopened = await AppDatabase.open(services.config.databasePath);
+    try {
+      const settings = new RuntimeSettingsService({
+        store: new RuntimeSettingsStore(reopened, services.config.masterKey),
+      });
+      settings.initialize();
+      assert.deepEqual(settings.instanceView().display.dashboard_sections, customSections);
+      assert.equal(reopened.integrityCheck().ok, true);
+    } finally {
+      reopened.close();
+    }
   });
 });

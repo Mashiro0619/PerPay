@@ -18,6 +18,7 @@ import {
   fingerprintCollectionCodeProfile,
 } from "../src/orders/service.ts";
 import { seedFixedSite } from "./fixed-site-fixture.ts";
+import { DATABASE_COMPATIBILITY } from "../src/version.ts";
 
 describe("zero-offset migration (v47 -> v48)", () => {
   it("upgrades a populated schema 47 database with active order children and unlocks zero-offset allocation", async () => {
@@ -138,7 +139,7 @@ describe("zero-offset migration (v47 -> v48)", () => {
         const maxVersion = upgraded.read((c) =>
           Number((c.prepare("SELECT max(version) AS v FROM schema_migrations").get() as { v: bigint }).v),
         );
-        assert.equal(maxVersion, 48);
+        assert.equal(maxVersion, DATABASE_COMPATIBILITY.maximum);
 
         // Existing order, slot, and events survived migration untouched.
         const store = new OrderStore(upgraded, () => now + 1_000);

@@ -852,12 +852,20 @@ export type AdvancedSettings = {
     checkout_terminal_observation_seconds: number;
 };
 export type DashboardChartType = 'AREA' | 'BAR' | 'LINE';
+export type DashboardSections = {
+    summary_cards: boolean;
+    trend: boolean;
+    site_overview: boolean;
+    work_items: boolean;
+    recent_orders: boolean;
+};
 export type SystemName = string;
 export type DisplaySettings = {
     system_name?: SystemName;
     checkout_help_url?: string | null;
     checkout_show_product_name?: boolean;
     dashboard_chart_type: DashboardChartType;
+    dashboard_sections?: DashboardSections;
 };
 export type BackupSettings = {
     interval_seconds: number;
@@ -908,6 +916,7 @@ export type DisplaySettingsRequest = {
     revision: number;
     checkout_show_product_name?: boolean;
     dashboard_chart_type: DashboardChartType;
+    dashboard_sections?: DashboardSections;
 };
 export type BackupSettingsRequest = {
     revision: number;

@@ -15,6 +15,10 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { auditChanges, type AuditChange } from "../audit/context.ts";
 import { collectionCodeError } from "../shared/collection-code.ts";
 import {
+  parseDashboardSectionsJson,
+  serializeDashboardSections,
+} from "../shared/dashboard-sections.ts";
+import {
   bindProviderIdentityInTransaction,
 } from "../ledger/store.ts";
 import { LEDGER_PROVIDER_KIND } from "../ledger/model.ts";
@@ -54,7 +58,7 @@ const SETTINGS_AUDIT_FIELDS = [
   "provider_maximum_success_age_milliseconds", "webhook_enabled", "webhook_allowed_origin", "webhook_timeout_milliseconds",
   "webhook_maximum_attempts", "webhook_retry_base_milliseconds", "webhook_retry_maximum_milliseconds",
   "checkout_key_rotation_days", "checkout_terminal_observation_seconds", "backup_interval_seconds", "backup_keep_count",
-  "system_name", "checkout_help_url", "checkout_show_product_name", "dashboard_chart_type",
+  "system_name", "checkout_help_url", "checkout_show_product_name", "dashboard_chart_type", "dashboard_sections",
   "api_secret", "webhook_secret", "provider_private_key", "provider_public_key", "pending_private_key",
 ] as const;
 const settingsAuditSnapshots = new AsyncLocalStorage<{ connection: DatabaseSync; before: Record<string, unknown> }>();
@@ -63,6 +67,7 @@ function settingsAuditView(connection: DatabaseSync): Record<string, unknown> {
   const row = connection.prepare("SELECT * FROM runtime_configuration WHERE singleton_key = 1").get() ?? {};
   const view: Record<string, unknown> = Object.fromEntries(SETTINGS_AUDIT_FIELDS.map(field => [field, row[field] ?? null]));
   if (typeof view.admin_access === "string") view.admin_access = JSON.parse(view.admin_access);
+  if (typeof view.dashboard_sections === "string") view.dashboard_sections = parseDashboardSectionsJson(view.dashboard_sections);
   for (const secret of connection.prepare("SELECT secret_name, secret_fingerprint FROM runtime_secrets").all()) {
     if (SETTINGS_AUDIT_FIELDS.includes(String(secret.secret_name) as typeof SETTINGS_AUDIT_FIELDS[number])) view[String(secret.secret_name)] = secret.secret_fingerprint;
   }
@@ -105,6 +110,7 @@ interface ConfigurationRow {
   readonly checkout_help_url: string | null;
   readonly checkout_show_product_name: bigint | number;
   readonly dashboard_chart_type: DashboardChartType;
+  readonly dashboard_sections?: string;
   readonly updated_at: bigint | number;
 }
 
@@ -211,6 +217,7 @@ export class RuntimeSettingsStore {
         checkoutHelpUrl: row.checkout_help_url,
         checkoutShowProductName: Number(row.checkout_show_product_name) === 1,
         dashboardChartType: row.dashboard_chart_type,
+        dashboardSections: parseDashboardSectionsJson(row.dashboard_sections),
       };
     });
   }
@@ -852,8 +859,14 @@ export class RuntimeSettingsStore {
   saveInstanceDisplay(input: import("./model.ts").InstanceDisplayInput, audit: SettingsAuditContext, now = Date.now()): void {
     this.#write(connection => {
       assertRevision(connection, input.revision);
-      assertUpdated(connection.prepare("UPDATE runtime_configuration SET revision = revision + 1, system_name = COALESCE(?, system_name), dashboard_chart_type = ?, updated_at = max(updated_at, ?) WHERE singleton_key = 1 AND revision = ?")
-        .run(input.system_name ?? null, input.dashboard_chart_type, now, input.revision).changes);
+      const hasSectionsColumn = hasDashboardSectionsColumn(connection);
+      if (hasSectionsColumn) {
+        assertUpdated(connection.prepare("UPDATE runtime_configuration SET revision = revision + 1, system_name = COALESCE(?, system_name), dashboard_chart_type = ?, dashboard_sections = COALESCE(?, dashboard_sections), updated_at = max(updated_at, ?) WHERE singleton_key = 1 AND revision = ?")
+          .run(input.system_name ?? null, input.dashboard_chart_type, input.dashboard_sections ? serializeDashboardSections(input.dashboard_sections) : null, now, input.revision).changes);
+      } else {
+        assertUpdated(connection.prepare("UPDATE runtime_configuration SET revision = revision + 1, system_name = COALESCE(?, system_name), dashboard_chart_type = ?, updated_at = max(updated_at, ?) WHERE singleton_key = 1 AND revision = ?")
+          .run(input.system_name ?? null, input.dashboard_chart_type, now, input.revision).changes);
+      }
       appendSettingsAudit(connection, audit, now, "settings.display_updated", { revision: input.revision + 1, payment_revision_changed: false });
     });
   }
@@ -865,29 +878,52 @@ export class RuntimeSettingsStore {
   ): RuntimeSettingsSnapshot {
     return this.#write((connection) => {
       assertRevision(connection, input.revision);
-      const updated = connection.prepare(
-        `UPDATE runtime_configuration
-            SET revision = revision + 1,
-                system_name = COALESCE(?, system_name),
-                checkout_help_url = CASE WHEN ? THEN ? ELSE checkout_help_url END,
-                checkout_show_product_name = ?,
-                dashboard_chart_type = ?,
-                updated_at = ?
-          WHERE singleton_key = 1 AND revision = ?`,
-      ).run(
-        input.system_name ?? null,
-        input.checkout_help_url !== undefined ? 1 : 0,
-        input.checkout_help_url ?? null,
-        input.checkout_show_product_name ? 1 : 0,
-        input.dashboard_chart_type,
-        now,
-        input.revision,
-      );
+      const hasSectionsColumn = hasDashboardSectionsColumn(connection);
+      const updated = hasSectionsColumn
+        ? connection.prepare(
+            `UPDATE runtime_configuration
+                SET revision = revision + 1,
+                    system_name = COALESCE(?, system_name),
+                    checkout_help_url = CASE WHEN ? THEN ? ELSE checkout_help_url END,
+                    checkout_show_product_name = ?,
+                    dashboard_chart_type = ?,
+                    dashboard_sections = COALESCE(?, dashboard_sections),
+                    updated_at = ?
+              WHERE singleton_key = 1 AND revision = ?`,
+          ).run(
+            input.system_name ?? null,
+            input.checkout_help_url !== undefined ? 1 : 0,
+            input.checkout_help_url ?? null,
+            input.checkout_show_product_name ? 1 : 0,
+            input.dashboard_chart_type,
+            input.dashboard_sections ? serializeDashboardSections(input.dashboard_sections) : null,
+            now,
+            input.revision,
+          )
+        : connection.prepare(
+            `UPDATE runtime_configuration
+                SET revision = revision + 1,
+                    system_name = COALESCE(?, system_name),
+                    checkout_help_url = CASE WHEN ? THEN ? ELSE checkout_help_url END,
+                    checkout_show_product_name = ?,
+                    dashboard_chart_type = ?,
+                    updated_at = ?
+              WHERE singleton_key = 1 AND revision = ?`,
+          ).run(
+            input.system_name ?? null,
+            input.checkout_help_url !== undefined ? 1 : 0,
+            input.checkout_help_url ?? null,
+            input.checkout_show_product_name ? 1 : 0,
+            input.dashboard_chart_type,
+            now,
+            input.revision,
+          );
       assertUpdated(updated.changes);
       appendSettingsAudit(connection, audit, now, "settings.display_updated", {
         revision: input.revision + 1,
         checkout_show_product_name: input.checkout_show_product_name,
         dashboard_chart_type: input.dashboard_chart_type,
+        ...(input.dashboard_sections ? { dashboard_sections: input.dashboard_sections } : {}),
         system_name: input.system_name ?? readConfiguration(connection).system_name,
         checkout_help_url: input.checkout_help_url ?? readConfiguration(connection).checkout_help_url,
         payment_revision_changed: false,
@@ -953,7 +989,11 @@ export class RuntimeSettingsStore {
           checkoutTerminalObservationSeconds: safeInteger(row.checkout_terminal_observation_seconds, "checkout terminal observation seconds"),
         },
         backup: { intervalSeconds: safeInteger(row.backup_interval_seconds, "backup interval"), keepCount: safeInteger(row.backup_keep_count, "backup keep count") },
-        display: { systemName: row.system_name, dashboardChartType: row.dashboard_chart_type },
+        display: {
+          systemName: row.system_name,
+          dashboardChartType: row.dashboard_chart_type,
+          dashboardSections: parseDashboardSectionsJson(row.dashboard_sections),
+        },
         activeProviderAccountKey: row.provider_account_key,
       };
   }
@@ -1067,6 +1107,7 @@ export class RuntimeSettingsStore {
         checkoutHelpUrl: row.checkout_help_url,
         checkoutShowProductName: Number(row.checkout_show_product_name) === 1,
         dashboardChartType: row.dashboard_chart_type,
+        dashboardSections: parseDashboardSectionsJson(row.dashboard_sections),
       },
       activeProviderAccountKey: row.provider_account_key,
     };
@@ -1077,6 +1118,11 @@ export { API_CLIENT_ID };
 
 function hasSiteSchema(connection: DatabaseSync): boolean {
   return connection.prepare("SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'sites'").get() !== undefined;
+}
+
+function hasDashboardSectionsColumn(connection: DatabaseSync): boolean {
+  const columns = connection.prepare("PRAGMA table_info(runtime_configuration)").all() as Array<{ name: string }>;
+  return columns.some((column) => column.name === "dashboard_sections");
 }
 
 function readConfiguration(connection: DatabaseSync): ConfigurationRow {

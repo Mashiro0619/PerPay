@@ -5047,4 +5047,14 @@ export const migrations: readonly Migration[] = [
   { version: 46, name: "manual_history_archives", sql: HISTORY_ARCHIVE_SCHEMA_SQL },
   { version: 47, name: "archived_request_checkpoint_watermarks", sql: REQUEST_CHECKPOINT_ARCHIVE_SCHEMA_SQL },
   { version: 48, name: "allow_zero_amount_offset", sql: ZERO_AMOUNT_OFFSET_SCHEMA_SQL },
+  {
+    version: 49,
+    name: "dashboard_section_visibility",
+    sql: `
+      ALTER TABLE runtime_configuration
+        ADD COLUMN dashboard_sections TEXT NOT NULL
+        DEFAULT '{"summary_cards":true,"trend":true,"site_overview":true,"work_items":true,"recent_orders":true}'
+        CHECK (json_valid(dashboard_sections));
+    `,
+  },
 ] as const;

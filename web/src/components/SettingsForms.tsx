@@ -28,7 +28,17 @@ import { ErrorNotice } from "@/components/request-state";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import {
+  DASHBOARD_SECTION_KEYS,
+  DASHBOARD_SECTION_META,
+  hasVisibleDashboardSection,
+  normalizeDashboardSections,
+  serializeDashboardSections,
+  type DashboardSectionKey,
+  type DashboardSections,
+} from "@/lib/dashboard-sections";
 import {
   Select,
   SelectContent,
@@ -233,9 +243,13 @@ export function SettingsEditor({
     initialSettings.display?.dashboard_chart_type ?? "AREA",
   );
   const [savedChartType, setSavedChartType] = useState(chartType);
+  const [dashboardSections, setDashboardSections] = useState<DashboardSections>(() =>
+    normalizeDashboardSections(initialSettings.display?.dashboard_sections),
+  );
+  const [savedDashboardSections, setSavedDashboardSections] = useState<DashboardSections>(dashboardSections);
   useEffect(() => {
     if (section === "display") draft.onChange();
-  }, [chartType, section]);
+  }, [chartType, dashboardSections, section]);
   const mounted = useRef(false);
   const localFeedback = useSuccessToast();
   // A parent that remounts this editor after saving keeps the same toast owner.
@@ -252,7 +266,7 @@ export function SettingsEditor({
     mutationFn: (form: FormData) => {
       if (!onlineManager.isOnline() || !navigator.onLine)
         throw new Error("网络已断开，设置未提交。恢复连接后请重新提交。");
-      return saveSettings(section, form, settings, savedChartType);
+      return saveSettings(section, form, settings, savedChartType, savedDashboardSections);
     },
     onSuccess: (data, form) => {
       if (!mounted.current) {
@@ -266,6 +280,10 @@ export function SettingsEditor({
         setChartType(savedType);
         setSavedChartType(savedType);
         form.set("dashboard_chart_type", savedType);
+        const savedSections = normalizeDashboardSections(data.display?.dashboard_sections);
+        setDashboardSections(savedSections);
+        setSavedDashboardSections(savedSections);
+        form.set("dashboard_sections", serializeDashboardSections(savedSections));
       }
       draft.markSaved(form);
       const message = section === "backup" ? "备份策略已保存" : "已保存";
@@ -290,7 +308,9 @@ export function SettingsEditor({
     const name = Object.keys(fieldErrors)[0] ?? "";
     const field = name === "dashboard_chart_type"
       ? draft.form.current?.querySelector<HTMLElement>('[data-settings-chart-default] [aria-pressed="true"]')
-      : draft.form.current?.elements.namedItem(name);
+      : name === "dashboard_sections"
+        ? draft.form.current?.querySelector<HTMLElement>('[data-settings-dashboard-sections] [data-slot="switch"]:not([aria-disabled="true"])')
+        : draft.form.current?.elements.namedItem(name);
     if (!(field instanceof HTMLElement)) return;
     revealField(field);
     requestAnimationFrame(() => field.focus());
@@ -436,6 +456,9 @@ export function SettingsEditor({
       </Link>
     </FieldGroup>
   );
+  const enabledDashboardSectionCount = DASHBOARD_SECTION_KEYS.filter(
+    (key) => dashboardSections[key],
+  ).length;
   const displayRowClassName =
     "gap-2";
   const displayFields = (
@@ -494,6 +517,83 @@ export function SettingsEditor({
           </ToggleGroup>
           <FieldDescription id={formId + "-chart-hint"}>用于未设置个人图形偏好的浏览器。</FieldDescription>
           {fieldErrors.dashboard_chart_type && <FieldError id={formId + "-chart-error"}>{fieldErrors.dashboard_chart_type}</FieldError>}
+        </FieldContent>
+      </Field>
+      <Field
+        orientation="vertical"
+        className={displayRowClassName}
+        data-invalid={!!fieldErrors.dashboard_sections}
+      >
+        <FieldLabel id={formId + "-sections-label"}>总览显示模块</FieldLabel>
+        <FieldContent className="min-w-0">
+          <input
+            type="hidden"
+            name="dashboard_sections"
+            value={serializeDashboardSections(dashboardSections)}
+          />
+          <div
+            role="group"
+            data-settings-dashboard-sections
+            aria-labelledby={formId + "-sections-label"}
+            aria-describedby={
+              formId + "-sections-hint" +
+              (fieldErrors.dashboard_sections ? " " + formId + "-sections-error" : "")
+            }
+            className="settings-display-sections"
+          >
+            {DASHBOARD_SECTION_META.map((item) => {
+              const checked = dashboardSections[item.key];
+              const lockedLast = checked && enabledDashboardSectionCount <= 1;
+              const switchId = `${formId}-section-${item.key}`;
+              const hintId = `${switchId}-hint`;
+              return (
+                <div
+                  key={item.key}
+                  className="settings-display-section-row"
+                  data-checked={checked || undefined}
+                >
+                  <div className="settings-display-section-copy">
+                    <FieldLabel htmlFor={switchId} className="settings-display-section-label">
+                      {item.label}
+                    </FieldLabel>
+                    <FieldDescription id={hintId} className="settings-display-section-desc">
+                      {item.description}
+                    </FieldDescription>
+                  </div>
+                  <Switch
+                    id={switchId}
+                    checked={checked}
+                    disabled={save.isPending || lockedLast}
+                    aria-describedby={hintId}
+                    aria-invalid={!!fieldErrors.dashboard_sections}
+                    onCheckedChange={(nextChecked) => {
+                      if (!nextChecked && enabledDashboardSectionCount <= 1) return;
+                      setDashboardSections((current) => ({
+                        ...current,
+                        [item.key]: nextChecked,
+                      }));
+                      setSavedMessage("");
+                      save.reset();
+                      setFieldErrors((current) => {
+                        if (!current.dashboard_sections) return current;
+                        const next = { ...current };
+                        delete next.dashboard_sections;
+                        return next;
+                      });
+                    }}
+                  />
+                </div>
+              );
+            })}
+          </div>
+          <FieldDescription id={formId + "-sections-hint"}>
+            控制总览页展示的卡片模块，至少保留一项开启。
+          </FieldDescription>
+          {fieldErrors.dashboard_sections && (
+            <FieldError id={formId + "-sections-error"}>
+              {fieldErrors.dashboard_sections}
+            </FieldError>
+          )}
         </FieldContent>
       </Field>
     </FieldGroup>
@@ -614,6 +714,7 @@ async function saveSettings(
   form: FormData,
   settings: RuntimeSettings,
   savedChartType: DashboardChartType,
+  savedDashboardSections: DashboardSections,
 ): Promise<RuntimeSettings> {
   const revision = settings.revision;
   const text = (key: string) => String(form.get(key) ?? "").trim();
@@ -645,6 +746,19 @@ async function saveSettings(
     const selectedType = text("dashboard_chart_type");
     if (selectedType !== "AREA" && selectedType !== "BAR" && selectedType !== "LINE")
       throw new SettingsInputError("dashboard_chart_type", "请选择有效的默认图形。");
+    let parsedSections: DashboardSections;
+    try {
+      const raw = JSON.parse(text("dashboard_sections")) as Partial<Record<DashboardSectionKey, unknown>>;
+      parsedSections = normalizeDashboardSections(raw);
+    } catch {
+      throw new SettingsInputError("dashboard_sections", "总览显示模块配置无效。");
+    }
+    if (!hasVisibleDashboardSection(parsedSections)) {
+      throw new SettingsInputError("dashboard_sections", "请至少保留一项总览显示模块。");
+    }
+    const sectionsChanged =
+      serializeDashboardSections(parsedSections) !== serializeDashboardSections(savedDashboardSections);
+    const serverSections = settings.display?.dashboard_sections;
     return (
       await result(
         api.updateDisplaySettings({
@@ -654,6 +768,11 @@ async function saveSettings(
             dashboard_chart_type: selectedType === savedChartType
               ? settings.display?.dashboard_chart_type ?? "AREA"
               : selectedType,
+            ...(sectionsChanged
+              ? { dashboard_sections: parsedSections }
+              : serverSections
+                ? { dashboard_sections: normalizeDashboardSections(serverSections) }
+                : {}),
           },
         }),
       )

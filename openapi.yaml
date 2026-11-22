@@ -10124,6 +10124,31 @@ components:
     DashboardChartType:
       type: string
       enum: [AREA, BAR, LINE]
+    DashboardSections:
+      type: object
+      additionalProperties: false
+      required:
+        - summary_cards
+        - trend
+        - site_overview
+        - work_items
+        - recent_orders
+      properties:
+        summary_cards:
+          type: boolean
+          description: Shows the top KPI summary cards on the overview page.
+        trend:
+          type: boolean
+          description: Shows the payment trend chart and daily calendar panel on the overview page.
+        site_overview:
+          type: boolean
+          description: Shows the per-site overview panel on the global overview page.
+        work_items:
+          type: boolean
+          description: Shows the pending work items card on the overview page.
+        recent_orders:
+          type: boolean
+          description: Shows the recent orders card on the overview page.
     SystemName:
       type: string
       minLength: 1
@@ -10151,6 +10176,8 @@ components:
           deprecated: true
         dashboard_chart_type:
           $ref: "#/components/schemas/DashboardChartType"
+        dashboard_sections:
+          $ref: "#/components/schemas/DashboardSections"
     BackupSettings:
       type: object
       additionalProperties: false
@@ -10300,6 +10327,8 @@ components:
           deprecated: true
         dashboard_chart_type:
           $ref: "#/components/schemas/DashboardChartType"
+        dashboard_sections:
+          $ref: "#/components/schemas/DashboardSections"
     BackupSettingsRequest:
       type: object
       additionalProperties: false

@@ -16,6 +16,7 @@ import {
   isOnboardingDeferred,
   onboardingPath,
 } from "@/lib/onboarding";
+import { normalizeDashboardSections } from "@/lib/dashboard-sections";
 import { OverviewWorkItems } from "@/components/overview-work-items";
 import { SectionCards } from "@/components/section-cards";
 import { ChartAreaInteractive } from "@/components/chart-area-interactive";
@@ -144,13 +145,23 @@ function DashboardContent() {
         : siteNeedsAccount
           ? "本站尚未分配收款账号，请先选择支付宝账号。"
           : "本站已就绪，可以先发起一笔测试收款；正式接入时再配置 API 密钥与回调通知。";
-  const trend = <div key="trend" className="overview-trend flex min-w-0 flex-col gap-6">
-    {analytics.isPaused ? <ReadPausedNotice retainedData={data !== undefined} /> : <ErrorNotice
-      scope="page"
-      error={analytics.error}
-      retainedData={data !== undefined}
-      retry={() => { void analytics.refetch(); }}
-    />}
+  const visibleSections = normalizeDashboardSections(settings.data?.data.display?.dashboard_sections);
+  const showSummaryCards = visibleSections.summary_cards;
+  const showTrend = visibleSections.trend;
+  const showSites = !clientId && visibleSections.site_overview;
+  const showWorkItems = visibleSections.work_items;
+  const showRecentOrders = visibleSections.recent_orders;
+  const hasVisibleSection = showSummaryCards || showTrend || showSites || showWorkItems || showRecentOrders;
+  const analyticsNotice = analytics.isPaused
+    ? <ReadPausedNotice retainedData={data !== undefined} />
+    : <ErrorNotice
+        scope="page"
+        error={analytics.error}
+        retainedData={data !== undefined}
+        retry={() => { void analytics.refetch(); }}
+      />;
+  const trend = showTrend ? <div key="trend" className="overview-trend flex min-w-0 flex-col gap-6">
+    {analyticsNotice}
     {!firstOrder && <ChartAreaInteractive
       scopeKey={clientId ?? "all"}
       analytics={data}
@@ -159,10 +170,10 @@ function DashboardContent() {
       onRangeChange={changeRange}
       pending={!analytics.isPaused && (analytics.isPending || analytics.isPlaceholderData)}
     />}
-  </div>;
-  const sites = !clientId && <SiteOverviewList key="sites" range={range} />;
-  const records = <div key="records" className="overview-records" data-work-empty={workEmpty || undefined}>
-    <Card size="sm" className="overview-record-panel overview-work-panel" role="region" aria-labelledby="overview-work-title">
+  </div> : null;
+  const sites = showSites ? <SiteOverviewList key="sites" range={range} /> : null;
+  const records = (showWorkItems || showRecentOrders) ? <div key="records" className="overview-records" data-work-empty={(showWorkItems && workEmpty) || undefined}>
+    {showWorkItems && <Card size="sm" className="overview-record-panel overview-work-panel" role="region" aria-labelledby="overview-work-title">
       <CardHeader className="overview-records-header">
         <CardTitle id="overview-work-title" role="heading" aria-level={2} aria-label={clientId ? "本站待处理" : "全部待处理"} className="flex items-center gap-2">
           {clientId ? "本站待处理" : "全部待处理"}
@@ -182,8 +193,8 @@ function DashboardContent() {
           {(page) => <OverviewWorkItems items={page.data} />}
         </QueryView>
       </CardContent>}
-    </Card>
-    <div className="overview-orders-container">
+    </Card>}
+    {showRecentOrders && <div className="overview-orders-container">
       <Card size="sm" className="overview-record-panel overview-orders-panel" role="region" aria-labelledby="overview-orders-title">
         <CardHeader className="overview-records-header">
           <CardTitle id="overview-orders-title" role="heading" aria-level={2}>最近订单</CardTitle>
@@ -199,14 +210,14 @@ function DashboardContent() {
           </QueryView>
         </CardContent>
       </Card>
-    </div>
-  </div>;
-  const hero = (
+    </div>}
+  </div> : null;
+  const hero = (showTrend || showSites) ? (
     <div key="hero" className="overview-hero">
       {trend}
       {sites}
     </div>
-  );
+  ) : null;
   return (
     <div
       className="flex w-full min-w-0 flex-col gap-4"
@@ -247,16 +258,32 @@ function DashboardContent() {
               : <><Link to="/test-payment" className={buttonVariants()}>测试收款</Link><Link to={clientId ? "/sites/" + encodeURIComponent(clientId) + "/settings/integration" : "/sites"} className={buttonVariants({ variant: "outline" })}>接入业务网站</Link></>}
         </CardContent>
       </Card>}
-      <SectionCards
+      {showSummaryCards && !showTrend && analyticsNotice}
+      {showSummaryCards && <SectionCards
         analytics={metricsUnavailable ? undefined : data}
         clientId={clientId}
         range={range}
         workItems={workTotal}
         workBreakdown={!checking && !unavailable && !clientId ? state?.work_items : undefined}
         pending={!analytics.isPaused && (analytics.isPending || analytics.isPlaceholderData)}
-      />
-      {clientId && <ErrorNotice scope="page" error={workSummary.error} retry={() => { void workSummary.refetch(); }} />}
+      />}
+      {clientId && (showSummaryCards || showWorkItems) && <ErrorNotice scope="page" error={workSummary.error} retry={() => { void workSummary.refetch(); }} />}
       {mobile ? [records, hero] : [hero, records]}
+      {!hasVisibleSection && (
+        <Card size="sm" data-overview-empty-sections>
+          <CardHeader>
+            <CardTitle role="heading" aria-level={2}>当前视角没有已开启的总览模块</CardTitle>
+            <CardDescription>
+              你目前仅开启了“各网站概览”，该模块仅在全部网站总览中展示。可以在界面显示设置中开启更多模块。
+            </CardDescription>
+            <CardAction>
+              <Link to="/settings/display" className={buttonVariants({ variant: "outline", size: "sm" })}>
+                界面显示设置
+              </Link>
+            </CardAction>
+          </CardHeader>
+        </Card>
+      )}
     </div>
   );
 }
