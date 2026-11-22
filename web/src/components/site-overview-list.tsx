@@ -66,7 +66,6 @@ function SiteOverviewCard({
   const shareLabel = formatShare(site.confirmed_amount_cents, totalAmount);
   const orderCount = count(site.confirmed_count) + " 笔";
   const statsText = shareLabel ? orderCount + " · " + shareLabel : orderCount;
-  const hasBadges = !site.accepting_orders || site.work_items > 0;
   const topRank = rank <= 3 && (sortBy === "work_items" ? site.work_items > 0 : site.confirmed_amount_cents > 0);
 
   return (
@@ -82,19 +81,26 @@ function SiteOverviewCard({
     >
       <div className="site-overview-card-surface">
         <span className="site-overview-rank" aria-hidden="true">
-          {rank}
+          {String(rank).padStart(2, "0")}
         </span>
         <div className="site-overview-card-body">
           <div className="site-overview-row-head">
             <div className="site-overview-row-identity">
-              <span
-                className="site-overview-card-title"
-                role="heading"
-                aria-level={3}
-                title={label}
-              >
-                {site.name}
-              </span>
+              <div className="site-overview-title-line">
+                <span
+                  className="site-overview-card-title"
+                  role="heading"
+                  aria-level={3}
+                  title={label}
+                >
+                  {site.name}
+                </span>
+                {!site.accepting_orders && (
+                  <Badge variant="outline" className="site-overview-paused-badge">
+                    暂停接单
+                  </Badge>
+                )}
+              </div>
               {nameSuffix && (
                 <span className="site-overview-card-suffix break-all text-xs text-muted-foreground">
                   {nameSuffix}
@@ -113,15 +119,11 @@ function SiteOverviewCard({
           </div>
           <div className="site-overview-row-meta">
             <span className="site-overview-row-stats">{statsText}</span>
-            {hasBadges && (
-              <div className="site-overview-row-badges">
-                {!site.accepting_orders && (
-                  <Badge variant="secondary" className="site-overview-badge">暂停接单</Badge>
-                )}
-                {site.work_items > 0 && (
-                  <Badge variant="warning" className="site-overview-badge">待处理 {count(site.work_items)}</Badge>
-                )}
-              </div>
+            {site.work_items > 0 && (
+              <Badge variant="warning" className="site-overview-work-indicator">
+                <span className="site-overview-work-dot" aria-hidden="true" />
+                待处理 {count(site.work_items)}
+              </Badge>
             )}
           </div>
           <SiteAmountBar amount={site.confirmed_amount_cents} maximum={maximum} />
@@ -140,12 +142,12 @@ function SiteOverviewCard({
 
 function SiteOverviewSkeletons() {
   return (
-    <div role="status" aria-label="正在读取网站概览…">
+    <div className="site-overview-surface" role="status" aria-label="正在读取网站概览…">
       <ul className="site-overview-grid" aria-hidden="true">
         {Array.from({ length: 5 }, (_, index) => (
           <li key={index} className="min-w-0">
             <div className="site-overview-card-surface">
-              <Skeleton className="mt-0.5 size-5 rounded-sm" />
+              <Skeleton className="mt-0.5 h-3.5 w-4 rounded-sm" />
               <div className="site-overview-card-body">
                 <div className="flex items-center justify-between gap-3">
                   <Skeleton className="h-4 w-28" />
@@ -153,9 +155,9 @@ function SiteOverviewSkeletons() {
                 </div>
                 <div className="flex items-center justify-between gap-3">
                   <Skeleton className="h-3.5 w-16" />
-                  <Skeleton className="h-4 w-12 rounded-full" />
+                  <Skeleton className="h-3.5 w-12" />
                 </div>
-                <Skeleton className="h-1.5 w-full rounded-full" />
+                <Skeleton className="h-1 w-full rounded-full" />
               </div>
             </div>
           </li>
@@ -189,7 +191,7 @@ export function SiteOverviewList({ range }: { range: 7 | 30 | 90 }) {
     >
       <Card className="site-overview-panel">
         <CardHeader className="site-overview-panel-header">
-          <div className="site-overview-panel-top">
+          <div className="site-overview-identity">
             <div className="site-overview-panel-title-group">
               <CardTitle id={headingId} role="heading" aria-level={2}>
                 各网站概览
@@ -219,78 +221,67 @@ export function SiteOverviewList({ range }: { range: 7 | 30 | 90 }) {
                 </PopoverContent>
               </Popover>
             </div>
-            <Link
-              to="/sites"
-              className={buttonVariants({
-                variant: "ghost",
-                size: "sm",
-                className: "site-overview-manage-link",
-              })}
-            >
-              网站管理
-              <ArrowRight data-icon="inline-end" />
-            </Link>
-          </div>
-          <div className="site-overview-panel-bar">
             <CardDescription className="site-overview-panel-subtitle">
               <span>近 {range} 天实收</span>
               {totalSites != null && (
                 <span className="site-overview-panel-count">共 {count(totalSites)} 个</span>
               )}
             </CardDescription>
-            <SelectionMotionGroup>
-              <ToggleGroup
-                value={[sortBy]}
-                onValueChange={(value) => {
-                  if (value[0] === "amount" || value[0] === "work_items") {
-                    setSortBy(value[0]);
-                  }
-                }}
-                spacing={1}
-                size="sm"
-                aria-label="网站排序方式"
-                className="site-overview-sort"
-                data-selection-motion="fill"
-              >
-                {sortChoices.map((choice) => (
-                  <ToggleGroupItem key={choice.value} value={choice.value}>
-                    <SelectionMotionIndicator active={sortBy === choice.value} />
-                    {choice.label}
-                  </ToggleGroupItem>
-                ))}
-              </ToggleGroup>
-            </SelectionMotionGroup>
           </div>
+          <SelectionMotionGroup>
+            <ToggleGroup
+              value={[sortBy]}
+              onValueChange={(value) => {
+                if (value[0] === "amount" || value[0] === "work_items") {
+                  setSortBy(value[0]);
+                }
+              }}
+              spacing={1}
+              size="sm"
+              aria-label="网站排序方式"
+              className="site-overview-sort"
+              data-selection-motion="fill"
+            >
+              {sortChoices.map((choice) => (
+                <ToggleGroupItem key={choice.value} value={choice.value}>
+                  <SelectionMotionIndicator active={sortBy === choice.value} />
+                  {choice.label}
+                </ToggleGroupItem>
+              ))}
+            </ToggleGroup>
+          </SelectionMotionGroup>
         </CardHeader>
         <CardContent className="site-overview-panel-content">
           {pending ? query.isPaused ? <ReadPausedNotice /> : <SiteOverviewSkeletons /> : query.data === undefined ? (
             <ErrorNotice scope="page" error={query.error} retry={refresh} />
           ) : (
-            <div className="flex min-w-0 flex-1 flex-col gap-3">
+            <div className="site-overview-panel-body">
               {query.isPaused ? <ReadPausedNotice retainedData /> : !query.isFetchNextPageError && <ErrorNotice scope="page" error={query.error} retry={refresh} retainedData />}
               {sites.length ? (
-                <ul className="site-overview-grid" aria-label="各网站概览">
-                  {visibleSites.map((site, index) => (
-                    <li key={site.client_id} className="min-w-0">
-                      <SiteOverviewCard
-                        site={site}
-                        range={range}
-                        maximum={latest!.max_confirmed_amount_cents}
-                        totalAmount={latest?.total_confirmed_amount_cents}
-                        rank={index + 1}
-                        sortBy={sortBy}
-                        label={siteChoiceLabel({ client_id: site.client_id, configuration: { name: site.name } }, choices)}
-                      />
-                    </li>
-                  ))}
-                </ul>
+                <div className="site-overview-surface">
+                  <ul className="site-overview-grid" aria-label="各网站概览">
+                    {visibleSites.map((site, index) => (
+                      <li key={site.client_id} className="min-w-0">
+                        <SiteOverviewCard
+                          site={site}
+                          range={range}
+                          maximum={latest!.max_confirmed_amount_cents}
+                          totalAmount={latest?.total_confirmed_amount_cents}
+                          rank={index + 1}
+                          sortBy={sortBy}
+                          label={siteChoiceLabel({ client_id: site.client_id, configuration: { name: site.name } }, choices)}
+                        />
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               ) : (
                 <Empty>
                   <EmptyHeader><EmptyTitle>暂无网站</EmptyTitle></EmptyHeader>
                 </Empty>
               )}
               {mobile && (sites.length > 4 || query.hasNextPage) && (
-                <div className="site-overview-footer">
+                <div className="site-overview-mobile-toggle">
                   <Button
                     className="w-full"
                     variant="outline"
@@ -301,28 +292,48 @@ export function SiteOverviewList({ range }: { range: 7 | 30 | 90 }) {
                   </Button>
                 </div>
               )}
-              {query.isFetchNextPageError ? (
+              {query.isFetchNextPageError && (
                 <ErrorNotice scope="page" error={query.error} retry={loadMore} />
-              ) : query.hasNextPage && (!mobile || expanded) && (
-                <div className="site-overview-footer">
+              )}
+            </div>
+          )}
+          <div className="site-overview-footer">
+            <div className="site-overview-footer-left">
+              {!pending && query.data !== undefined && !query.isFetchNextPageError && query.hasNextPage && (!mobile || expanded) ? (
+                <>
                   <Button
                     variant="outline"
-                    size="sm"
+                    size="xs"
                     disabled={query.isFetching}
                     onClick={loadMore}
                   >
                     {query.isFetchingNextPage && <Spinner data-icon="inline-start" aria-hidden="true" />}
-                    {query.isFetchingNextPage ? "正在加载更多网站…" : "加载更多网站汇总"}
+                    {query.isFetchingNextPage ? "正在加载…" : "加载更多网站汇总"}
                   </Button>
                   {totalSites != null && totalSites > sites.length && (
                     <span className="site-overview-footer-count">
-                      已显示 {count(sites.length)} / {count(totalSites)}
+                      {count(sites.length)} / {count(totalSites)}
                     </span>
                   )}
-                </div>
+                </>
+              ) : (
+                <span className="site-overview-footer-count">
+                  按{sortBy === "work_items" ? "待处理" : "实收"}排序
+                </span>
               )}
             </div>
-          )}
+            <Link
+              to="/sites"
+              className={buttonVariants({
+                variant: "ghost",
+                size: "xs",
+                className: "site-overview-manage-link",
+              })}
+            >
+              网站管理
+              <ArrowRight data-icon="inline-end" />
+            </Link>
+          </div>
         </CardContent>
       </Card>
     </section>
