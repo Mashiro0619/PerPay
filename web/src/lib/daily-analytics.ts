@@ -103,6 +103,20 @@ export function compactCalendarMoney(cents: number): string {
   return `${sign}¥${formatted}万亿`;
 }
 
+export function dailyDeltaPercent(
+  amountCents: number,
+  averageCents: number | null,
+): number | null {
+  if (averageCents === null || averageCents <= 0 || amountCents <= 0) return null;
+  return Math.round(((amountCents - averageCents) / averageCents) * 100);
+}
+
+export function compactDeltaPercent(percent: number): string {
+  if (percent > 999) return ">999%";
+  if (percent > 0) return `+${percent}%`;
+  return `${percent}%`;
+}
+
 /** Build chronological Monday-to-Sunday calendar weeks covering the given days. */
 export function buildCalendarWeeks(days: readonly DailyDay[]): CalendarCell[][] {
   if (!days.length) return [];

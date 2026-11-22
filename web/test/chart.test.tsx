@@ -600,9 +600,11 @@ describe("complete daily analytics report", () => {
     const surface = container.querySelector('[data-daily-surface="true"]')!;
     expect(detail.compareDocumentPosition(surface) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
-    // Latest peak tie (2026-06-04) and latest lowest tie (2026-06-06) are marked on cells.
-    expect(container.querySelector('button[data-cal-date="2026-06-04"]')).toHaveTextContent("最高");
-    expect(container.querySelector('button[data-cal-date="2026-06-06"]')).toHaveTextContent("最低");
+    // Latest peak tie (2026-06-04) and latest lowest tie (2026-06-06) show icon markers on cells.
+    expect(container.querySelector('button[data-cal-date="2026-06-04"][data-daily-peak="true"] .daily-cal-mark-icon')).not.toBeNull();
+    expect(container.querySelector('button[data-cal-date="2026-06-04"] .daily-cal-delta')).toHaveTextContent("+140%");
+    expect(container.querySelector('button[data-cal-date="2026-06-06"][data-daily-lowest="true"] .daily-cal-mark-icon')).not.toBeNull();
+    expect(container.querySelector('button[data-cal-date="2026-06-07"] .daily-cal-delta')).toBeNull();
     expect(container.querySelector(".daily-cal-fail-dot")).toBeNull();
 
     expect(detail).toHaveTextContent("2026-06-04");

@@ -1880,26 +1880,18 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   flex: none;
   align-items: center;
   justify-content: center;
-  padding: 0.0625rem 0.25rem;
-  border-radius: calc(var(--radius-sm) - 1px);
-  font-size: 0.625rem;
-  line-height: 1.15;
-  font-weight: 500;
-  white-space: nowrap;
+  line-height: 1;
 }
 .daily-cal-mark-peak {
-  background: var(--foreground);
-  color: var(--background);
-}
-.daily-cal-mark-low {
-  border: 1px solid color-mix(in oklch, var(--foreground) 24%, transparent);
-  background: var(--card);
   color: var(--foreground);
 }
+.daily-cal-mark-low {
+  color: color-mix(in oklch, var(--foreground) 68%, var(--card));
+}
 .daily-cal-mark-icon {
-  display: none;
-  width: 0.5625rem;
-  height: 0.5625rem;
+  display: block;
+  width: 0.75rem;
+  height: 0.75rem;
 }
 .daily-cal-cell-body {
   display: flex;
@@ -1921,6 +1913,14 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   font-weight: 400;
   color: color-mix(in oklch, var(--foreground) 68%, var(--card));
 }
+.daily-cal-cell-foot {
+  display: flex;
+  min-width: 0;
+  width: 100%;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.25rem;
+}
 .daily-cal-count {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1928,6 +1928,18 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   font-size: 0.6875rem;
   line-height: 1.15;
   color: color-mix(in oklch, var(--foreground) 72%, var(--card));
+}
+.daily-cal-delta {
+  flex: none;
+  white-space: nowrap;
+  font-size: 0.625rem;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+  color: color-mix(in oklch, var(--foreground) 68%, var(--card));
+}
+.daily-cal-delta[data-delta-sign="up"] {
+  font-weight: 500;
+  color: var(--foreground);
 }
 .daily-cal-detail {
   display: flex;
@@ -2053,6 +2065,31 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   padding-top: 0.75rem;
   border-top: 1px solid var(--console-hairline, var(--border));
 }
+.daily-report-meta-group {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem 0.625rem;
+}
+.daily-cal-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.1875rem;
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+.daily-cal-legend-icon {
+  width: 0.75rem;
+  height: 0.75rem;
+  flex: none;
+  color: var(--foreground);
+}
+.daily-cal-legend + .daily-report-meta::before {
+  content: "·";
+  margin-right: 0.5rem;
+}
 .daily-report-status,
 .daily-report-meta {
   color: var(--muted-foreground);
@@ -2073,8 +2110,8 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   }
   .daily-cal-date time,
   .daily-cal-amount { font-size: 0.6875rem; }
-  .daily-cal-count { display: none; }
-  .daily-cal-mark { padding: 0.0625rem 0.1875rem; font-size: 0.5625rem; }
+  .daily-cal-cell-foot { display: none; }
+  .daily-cal-mark-icon { width: 0.6875rem; height: 0.6875rem; }
   .daily-cal-detail-header { padding: 0.625rem 0.75rem; }
   .daily-cal-detail-grid,
   .daily-cal-detail-grid[data-has-warning="true"] {
@@ -2113,15 +2150,10 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   .daily-cal-cell-head { justify-content: center; gap: 0; }
   .daily-cal-mark {
     position: absolute;
-    top: 0.125rem;
-    right: 0.125rem;
-    padding: 0.0625rem;
-    border: 0;
-    background: transparent;
-    color: var(--foreground);
+    top: 0.1875rem;
+    right: 0.1875rem;
   }
-  .daily-cal-mark-text { display: none; }
-  .daily-cal-mark-icon { display: block; }
+  .daily-cal-mark-icon { width: 0.5625rem; height: 0.5625rem; }
   .daily-cal-cell-body { display: none; }
 }
 @media (pointer: coarse) {

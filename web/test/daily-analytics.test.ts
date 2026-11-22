@@ -6,7 +6,9 @@ import {
   calendarCellDateLabel,
   calendarHeatLevel,
   compactCalendarMoney,
+  compactDeltaPercent,
   dailyDateLabel,
+  dailyDeltaPercent,
   dailyWeekday,
   type DailyDay,
 } from "../src/lib/daily-analytics";
@@ -203,5 +205,15 @@ describe("daily report calendar and comparisons", () => {
     expect(calendarCellDateLabel("2026-11-01", "2026-11-23", "2026-10-25")).toBe("11月1日");
     expect(calendarCellDateLabel("2026-11-01", "2026-11-23", "2026-10-25", true)).toBe("11/1");
     expect(calendarCellDateLabel("2026-11-17", "2026-11-23", "2026-10-25")).toBe("17");
+
+    expect(dailyDeltaPercent(0, 1000)).toBeNull();
+    expect(dailyDeltaPercent(500, null)).toBeNull();
+    expect(dailyDeltaPercent(500, 0)).toBeNull();
+    expect(dailyDeltaPercent(1250, 1000)).toBe(25);
+    expect(dailyDeltaPercent(570, 1000)).toBe(-43);
+    expect(compactDeltaPercent(25)).toBe("+25%");
+    expect(compactDeltaPercent(-43)).toBe("-43%");
+    expect(compactDeltaPercent(0)).toBe("0%");
+    expect(compactDeltaPercent(2800)).toBe(">999%");
   });
 });

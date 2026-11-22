@@ -12,6 +12,8 @@ import {
   calendarCellDateLabel,
   calendarHeatLevel,
   compactCalendarMoney,
+  compactDeltaPercent,
+  dailyDeltaPercent,
   dailyWeekday,
 } from "@/lib/daily-analytics";
 import { ListMoney } from "@/components/list-primitives";
@@ -136,14 +138,8 @@ export function DailyAnalytics({
   const selectedIsPeak = Boolean(selectedDay && peakDate === selectedDay.date);
   const selectedIsLowest = Boolean(selectedDay && lowestDate === selectedDay.date);
   const selectedDeltaPct =
-    selectedDay &&
-    !selectedIsToday &&
-    report?.averageCents &&
-    report.averageCents > 0 &&
-    selectedDay.confirmed_amount_cents > 0
-      ? Math.round(
-        ((selectedDay.confirmed_amount_cents - report.averageCents) / report.averageCents) * 100,
-      )
+    selectedDay && !selectedIsToday
+      ? dailyDeltaPercent(selectedDay.confirmed_amount_cents, report?.averageCents ?? null)
       : null;
   const selectedAverageTicket =
     selectedDay && selectedDay.confirmations > 0
@@ -313,6 +309,9 @@ export function DailyAnalytics({
                       const isToday = day.date === report.today;
                       const isPeak = peakDate === day.date;
                       const isLowest = lowestDate === day.date;
+                      const deltaPct = isToday
+                        ? null
+                        : dailyDeltaPercent(day.confirmed_amount_cents, report.averageCents);
                       const level = calendarHeatLevel(day.confirmed_amount_cents, report.maximum);
                       const isSelected = day.date === selectedDate;
                       const cellLabel = calendarCellDateLabel(day.date, report.today, firstDate);
@@ -328,6 +327,9 @@ export function DailyAnalytics({
                         isPeak ? "单日最高" : null,
                         isLowest ? "单日最低" : null,
                         `确认金额 ${money(day.confirmed_amount_cents)}`,
+                        deltaPct !== null
+                          ? `较日均 ${deltaPct >= 0 ? `+${deltaPct}` : deltaPct}%`
+                          : null,
                         `确认 ${count(day.confirmations)} 笔`,
                         `新建订单 ${count(day.orders_created)} 笔`,
                       ].filter(Boolean);
@@ -375,15 +377,13 @@ export function DailyAnalytics({
                                     "daily-cal-mark",
                                     isPeak ? "daily-cal-mark-peak" : "daily-cal-mark-low",
                                   )}
+                                  title={isPeak ? "单日最高" : "单日最低"}
                                   aria-hidden="true"
                                 >
-                                  <span className="daily-cal-mark-text">
-                                    {isPeak ? "最高" : "最低"}
-                                  </span>
                                   {isPeak ? (
-                                    <ArrowUp className="daily-cal-mark-icon" />
+                                    <ArrowUp className="daily-cal-mark-icon" strokeWidth={2.25} />
                                   ) : (
-                                    <ArrowDown className="daily-cal-mark-icon" />
+                                    <ArrowDown className="daily-cal-mark-icon" strokeWidth={2.25} />
                                   )}
                                 </span>
                               )}
@@ -392,8 +392,20 @@ export function DailyAnalytics({
                               <span className="daily-cal-amount">
                                 {compactCalendarMoney(day.confirmed_amount_cents)}
                               </span>
-                              <span className="daily-cal-count">
-                                {count(day.confirmations)} 笔
+                              <span className="daily-cal-cell-foot">
+                                <span className="daily-cal-count">
+                                  {count(day.confirmations)} 笔
+                                </span>
+                                {deltaPct !== null && (
+                                  <span
+                                    className="daily-cal-delta"
+                                    data-delta-sign={
+                                      deltaPct > 0 ? "up" : deltaPct < 0 ? "down" : "flat"
+                                    }
+                                  >
+                                    {compactDeltaPercent(deltaPct)}
+                                  </span>
+                                )}
                               </span>
                             </span>
                           </Button>
@@ -421,10 +433,24 @@ export function DailyAnalytics({
           {pending ? "正在读取每日数据…" : !analytics ? "等待统计数据" : `共 ${totalDays} 天`}
         </p>
         {!pending && hasDays && report && analytics && (
-          <p className="daily-report-meta">
-            有收款 {count(activeDays)} 天 · 确认 {count(analytics.confirmations.count)} 笔 · 新建{" "}
-            {count(analytics.orders.created)} 笔
-          </p>
+          <div className="daily-report-meta-group">
+            {peakDate && (
+              <span className="daily-cal-legend">
+                <ArrowUp className="daily-cal-legend-icon" aria-hidden="true" />
+                最高
+              </span>
+            )}
+            {lowestDate && (
+              <span className="daily-cal-legend">
+                <ArrowDown className="daily-cal-legend-icon" aria-hidden="true" />
+                最低
+              </span>
+            )}
+            <p className="daily-report-meta">
+              有收款 {count(activeDays)} 天 · 确认 {count(analytics.confirmations.count)} 笔 · 新建{" "}
+              {count(analytics.orders.created)} 笔
+            </p>
+          </div>
         )}
       </div>
     </div>
