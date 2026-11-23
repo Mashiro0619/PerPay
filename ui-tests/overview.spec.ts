@@ -180,7 +180,9 @@ test("overview grids use container widths and preserve complete identifiers and 
       const contentBounds = workPanel.querySelector('[data-slot="card-content"]')!.getBoundingClientRect();
       const titleBounds = workPanel.querySelector('[data-slot="card-title"]')!.getBoundingClientRect();
       const actionBounds = workPanel.querySelector('[data-slot="card-action"]')!.getBoundingClientRect();
+      const workList = workPanel.querySelector(".overview-work-list")!;
       return { main: main.getBoundingClientRect().width, recordColumns: getComputedStyle(records).gridTemplateColumns.split(" ").map(parseFloat),
+        workPanelWidth: panelBounds.width, workColumns: Math.max(1, getComputedStyle(workList).gridTemplateColumns.split(" ").filter(v => v && v !== "none").length),
         siteWidth: siteContainer.getBoundingClientRect().width, siteColumns: getComputedStyle(grid).gridTemplateColumns.split(" ").length,
         gap: getComputedStyle(document.querySelector("[data-overview-kpis]")!).gap,
         fields: [...document.querySelectorAll(".overview-work-fields dd")].map(e => ({ text: e.textContent, clipped: e.scrollWidth > e.clientWidth + 1 })),
@@ -203,8 +205,8 @@ test("overview grids use container widths and preserve complete identifiers and 
     expect(geometry.work.headerAlignment).toBeLessThan(1);
     expect(geometry.work.titleInset).toBe(16);
     expect(geometry.work.rows.every(row => row.inset >= 16 && row.hoverInset >= 8 && row.contained && row.inlineFields)).toBe(true);
-    expect(geometry.recordColumns).toHaveLength(geometry.main >= 1088 ? 2 : 1);
-    if (geometry.main >= 1088) { expect(geometry.recordColumns[0]).toBeGreaterThanOrEqual(352); expect(geometry.recordColumns[0]).toBeLessThanOrEqual(448); }
+    expect(geometry.recordColumns).toHaveLength(1);
+    expect(geometry.workColumns).toBe(geometry.workPanelWidth >= 768 ? 2 : 1);
     expect(geometry.siteColumns).toBe(geometry.siteWidth >= 576 ? 2 : 1);
     await record(page, info, geometry);
     await info.attach(`overview-${width}`, { body: await page.screenshot(), contentType: "image/png" });
@@ -220,17 +222,20 @@ test("overview container breakpoints switch at 68rem in both width preferences",
     await page.evaluate(mode => localStorage.setItem("perpay:content-width", mode), mode);
     await page.goto(manifest.origin + "/admin/");
     await expect(page.locator(".overview-records")).toBeVisible();
+    await expect(page.locator(".overview-work-list")).toBeVisible();
     const measured = await page.locator("[data-content-width]").evaluate(element => element.getBoundingClientRect().width);
     await page.setViewportSize({ width: 1280 + target - measured, height: 900 });
     await expect.poll(() => page.locator("[data-content-width]").evaluate(element => element.getBoundingClientRect().width)).toBe(target);
     const columns = await page.evaluate(() => ({
       hero: getComputedStyle(document.querySelector(".overview-hero")!).gridTemplateColumns.split(" ").length,
       records: getComputedStyle(document.querySelector(".overview-records")!).gridTemplateColumns.split(" ").length,
+      workItems: getComputedStyle(document.querySelector(".overview-work-list")!).gridTemplateColumns.split(" ").filter(v => v && v !== "none").length,
       sites: getComputedStyle(document.querySelector(".site-overview-grid")!).gridTemplateColumns.split(" ").length,
       siteWidth: document.querySelector(".site-overview-section")!.getBoundingClientRect().width,
     }));
     expect(columns.hero).toBe(target >= 1088 ? 2 : 1);
-    expect(columns.records).toBe(target >= 1088 ? 2 : 1);
+    expect(columns.records).toBe(1);
+    expect(columns.workItems).toBe(2);
     if (target < 1088) {
       expect(columns.siteWidth).toBe(target);
       expect(columns.sites).toBe(2);
