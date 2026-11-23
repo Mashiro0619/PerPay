@@ -344,13 +344,13 @@ export async function createPreviewDemo(options: { port?: number; now?: number; 
     // Keep a small set of recent terminal checkouts inside the normal public
     // observation window; older cases remain available in administrator history.
     advanceTo(capturedAt - 98 * MINUTE);
-    lifecycle.expired = create(2, "expired", true, "ACKNOWLEDGED").orderId;
+    lifecycle.expired = create(2, "expired", true, "ACKNOWLEDGED", { returnUrl: true }).orderId;
     setNow(capturedAt - 28 * MINUTE);
     lifecycle.expiringSoon = create(3, "open", true, "ACKNOWLEDGED").orderId;
     setNow(capturedAt - 20 * MINUTE);
     lifecycle.closed = create(1, "closed", true, "ACKNOWLEDGED").orderId;
     setNow(capturedAt - 16 * MINUTE);
-    const disputed = create(1, "paid", true, "ACKNOWLEDGED");
+    const disputed = create(1, "paid", true, "ACKNOWLEDGED", { returnUrl: true });
     const disputedMatch = reconciliation.paymentMatchDetailsForOrder(disputed.orderId)
       .find(item => item.paymentMatch.status === "SETTLED")?.paymentMatch;
     assert.ok(disputedMatch);
