@@ -422,13 +422,13 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
             ? cn(
                 "order-5 px-(--card-spacing) pt-1 pb-(--card-spacing)",
                 useTwoColumns &&
-                  "md:order-none md:col-start-1 md:row-start-2 md:rounded-none md:px-6 md:pt-0 md:pb-6 lg:px-8 lg:pb-8",
+                  "md:order-none md:col-start-1 md:row-start-3 md:rounded-none md:px-6 md:pt-0 md:pb-6 lg:px-8 lg:pb-8",
               )
             : cn(
                 "order-3 pt-0 md:order-none",
                 hasSummaryBody ? "pb-1" : "pb-(--card-spacing)",
                 useTwoColumns &&
-                  "md:col-start-1 md:row-start-2 md:rounded-none md:px-6 md:pt-0 md:pb-6 lg:px-8 lg:pb-8",
+                  "md:col-start-1 md:row-start-3 md:rounded-none md:px-6 md:pt-0 md:pb-6 lg:px-8 lg:pb-8",
               )
           : "px-6 pt-0 pb-6 sm:px-8 sm:pb-8",
       )}
@@ -593,7 +593,7 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
               ? cn(
                   "gap-3.5 pb-0 [--card-spacing:--spacing(5)] sm:[--card-spacing:--spacing(5)]",
                   useTwoColumns &&
-                    "md:grid md:grid-cols-[minmax(0,1.12fr)_auto_minmax(0,0.88fr)] md:grid-rows-[1fr_auto] md:gap-0 md:py-0 md:[--card-spacing:--spacing(4)] lg:grid-cols-[minmax(0,1.15fr)_auto_minmax(0,0.85fr)]",
+                    "md:grid md:grid-cols-[minmax(0,1.12fr)_auto_minmax(0,0.88fr)] md:grid-rows-[auto_1fr_auto] md:gap-0 md:py-0 md:[--card-spacing:--spacing(4)] lg:grid-cols-[minmax(0,1.15fr)_auto_minmax(0,0.85fr)]",
                   isTerminalOrder &&
                     cn(
                       "gap-4 pt-5 sm:pt-6",
@@ -614,8 +614,8 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
               order &&
                 useTwoColumns &&
                 (hasActions
-                  ? "md:col-start-1 md:row-start-1 md:gap-4 md:pt-6 md:pb-4 lg:pt-8 lg:pb-5"
-                  : "md:col-start-1 md:row-start-1 md:row-span-2 md:gap-4 md:py-6 lg:py-8"),
+                  ? "md:col-start-1 md:row-start-1 md:row-span-2 md:gap-4 md:pt-6 md:pb-4 lg:pt-8 lg:pb-5"
+                  : "md:col-start-1 md:row-start-1 md:row-span-3 md:gap-4 md:py-6 lg:py-8"),
               order && !canPay && useTwoColumns && "md:justify-center",
             )}
             data-checkout-payment
@@ -920,7 +920,7 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
               className={cn(
                 "order-2 -mt-1 px-(--card-spacing) text-center text-[0.8125rem] leading-relaxed text-muted-foreground",
                 useTwoColumns &&
-                  "md:order-none md:col-start-3 md:row-start-2 md:mt-0 md:self-end md:px-6 md:pt-0 md:pb-6 md:text-left md:text-sm lg:px-8 lg:pb-8",
+                  "md:order-none md:col-start-3 md:row-start-2 md:mt-0 md:self-start md:px-6 md:pt-0 md:pb-6 md:text-left md:text-sm lg:px-8 lg:pb-8",
               )}
               data-checkout-payment-instructions
             >
@@ -949,7 +949,7 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
               className={cn(
                 "order-2 -mt-1 px-(--card-spacing) text-center text-[0.8125rem] leading-relaxed text-muted-foreground",
                 useTwoColumns &&
-                  "md:order-none md:col-start-3 md:row-start-2 md:mt-0 md:self-end md:px-6 md:pt-0 md:pb-6 md:text-left md:text-sm lg:px-8 lg:pb-8",
+                  "md:order-none md:col-start-3 md:row-start-2 md:mt-0 md:self-start md:px-6 md:pt-0 md:pb-6 md:text-left md:text-sm lg:px-8 lg:pb-8",
               )}
               data-checkout-terminal-note
             >
@@ -966,7 +966,7 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                   <Separator />
                 </div>
               )}
-              <Separator orientation="vertical" className="hidden md:col-start-2 md:row-start-1 md:row-span-2 md:block" />
+              <Separator orientation="vertical" className="hidden md:col-start-2 md:row-start-1 md:row-span-3 md:block" />
               <section
                 aria-label="订单信息"
                 className={cn(
@@ -977,7 +977,7 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                     : "order-5 pb-(--card-spacing)",
                   hasRightFooterNote
                     ? "md:px-6 md:pt-6 md:pb-4 lg:px-8 lg:pt-8"
-                    : "md:row-span-2 md:p-6 lg:p-8",
+                    : "md:row-span-3 md:p-6 lg:p-8",
                 )}
                 data-checkout-summary
               >

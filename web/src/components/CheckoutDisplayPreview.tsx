@@ -12,6 +12,7 @@ import {
   Info,
   Maximize,
   Monitor,
+  Plus,
   RefreshCw,
   Smartphone,
   WalletCards,
@@ -260,13 +261,18 @@ export function CheckoutDisplayPreview({
 
   const currentTerminal = isTerminal ? terminalMeta[previewState] : null;
   const terminalNoteText = currentTerminal?.detail ?? "";
+  const showConfirmedOptionalSlot = Boolean(
+    previewState === "CONFIRMED" && !terminalNoteText && onSelectTarget,
+  );
   const customNotice = display.checkout_notice?.trim() || null;
 
   const hasOrderMeta = showProductName || showMerchantOrderNo;
   const hasSummaryBody = hasOrderMeta || showAdjustmentDetails || Boolean(customNotice);
-  const hasSummaryPanel = hasSummaryBody || Boolean(terminalNoteText);
+  const hasSummaryPanel =
+    hasSummaryBody || Boolean(terminalNoteText) || showConfirmedOptionalSlot;
   const useTwoColumns = !isMobile && hasSummaryPanel;
-  const hasRightFooterNote = useTwoColumns && (Boolean(terminalNoteText) || isUnpaid);
+  const hasRightFooterNote =
+    useTwoColumns && (Boolean(terminalNoteText) || showConfirmedOptionalSlot || isUnpaid);
 
   const badgeNode = (
     <Badge
@@ -343,7 +349,7 @@ export function CheckoutDisplayPreview({
     </div>
   );
 
-  const terminalNoteBlock = currentTerminal && terminalNoteText && (
+  const terminalNoteBlock = currentTerminal && (terminalNoteText || showConfirmedOptionalSlot) && (
     <div
       className={cn(
         "checkout-preview-note",
@@ -351,20 +357,39 @@ export function CheckoutDisplayPreview({
           ? "checkout-preview-note-desktop"
           : "px-4 pt-1 pb-2.5 text-center text-xs",
       )}
-      data-preview-terminal-note
+      data-preview-terminal-note={terminalNoteText ? true : undefined}
+      data-preview-confirmed-optional={showConfirmedOptionalSlot || undefined}
     >
       <div className={cn(useTwoColumns && "border-t border-border/70 pt-3")}>
-        <PreviewHotspot
-          target={currentTerminal.detailTarget}
-          label={currentTerminal.detailLabel}
-          activeTarget={activeTarget}
-          onSelectTarget={onSelectTarget}
-          className={cn("w-full rounded-md", useTwoColumns ? "text-left" : "text-center")}
-        >
-          <p className="text-xs leading-relaxed text-muted-foreground">
-            {terminalNoteText}
-          </p>
-        </PreviewHotspot>
+        {terminalNoteText ? (
+          <PreviewHotspot
+            target={currentTerminal.detailTarget}
+            label={currentTerminal.detailLabel}
+            activeTarget={activeTarget}
+            onSelectTarget={onSelectTarget}
+            className={cn("w-full rounded-md", useTwoColumns ? "text-left" : "text-center")}
+          >
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              {terminalNoteText}
+            </p>
+          </PreviewHotspot>
+        ) : (
+          <button
+            type="button"
+            className={cn(
+              "checkout-preview-optional-slot",
+              !useTwoColumns && "justify-center text-center",
+            )}
+            data-preview-target="checkout_confirmed_detail"
+            data-active={activeTarget === "checkout_confirmed_detail" || undefined}
+            aria-pressed={activeTarget === "checkout_confirmed_detail"}
+            aria-label="启用并编辑付款成功说明（可选，默认关闭无文案）"
+            onClick={() => onSelectTarget?.("checkout_confirmed_detail")}
+          >
+            <Plus className="size-3.5 shrink-0" aria-hidden="true" />
+            <span>付款成功说明（默认关闭）</span>
+          </button>
+        )}
       </div>
     </div>
   );
@@ -725,7 +750,7 @@ export function CheckoutDisplayPreview({
               className={cn(
                 "flex min-w-0 flex-col gap-3",
                 useTwoColumns
-                  ? "col-start-1 row-start-1 px-5 pt-5 pb-3"
+                  ? "col-start-1 row-start-1 row-span-2 px-5 pt-5 pb-3"
                   : "px-4 pt-4 pb-2",
                 isTerminal && useTwoColumns && "justify-center",
               )}
@@ -868,21 +893,21 @@ export function CheckoutDisplayPreview({
 
             {useTwoColumns && (
               <>
-                <div className="col-start-1 row-start-2">{actionsBlock}</div>
+                <div className="col-start-1 row-start-3">{actionsBlock}</div>
                 <Separator
                   orientation="vertical"
-                  className="col-start-2 row-start-1 row-span-2"
+                  className="col-start-2 row-start-1 row-span-3"
                 />
                 <div
                   className={cn(
                     "col-start-3 row-start-1",
-                    !hasRightFooterNote && "row-span-2",
+                    !hasRightFooterNote && "row-span-3",
                   )}
                 >
                   {summarySection}
                 </div>
                 {hasRightFooterNote && (
-                  <div className="col-start-3 row-start-2 self-end px-5 pt-0 pb-5">
+                  <div className="col-start-3 row-start-2 self-start px-5 pt-0 pb-5">
                     {isUnpaid ? paymentInstructionsBlock : terminalNoteBlock}
                   </div>
                 )}

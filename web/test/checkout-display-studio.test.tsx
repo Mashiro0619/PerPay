@@ -193,4 +193,49 @@ describe("CheckoutDisplayStudio", () => {
     await user.click(screen.getByRole("switch", { name: "显示“打开支付宝”按钮" }));
     expect(within(previewShell).getByText("打开支付宝")).toBeVisible();
   });
+
+  it("shows an optional default-off confirmed copy slot that toggles and previews live", async () => {
+    mountStudio();
+    const user = userEvent.setup();
+
+    await screen.findByText("星河商店收银台");
+    const previewShell = document.querySelector("[data-checkout-preview]") as HTMLElement;
+
+    await user.click(
+      within(previewShell).getByRole("button", { name: "付款成功" }),
+    );
+    expect(previewShell).toHaveAttribute("data-preview-state", "CONFIRMED");
+
+    const optionalSlot = within(previewShell).getByRole("button", {
+      name: "启用并编辑付款成功说明（可选，默认关闭无文案）",
+    });
+    expect(optionalSlot).toBeVisible();
+
+    await user.click(optionalSlot);
+    const toggle = screen.getByRole("switch", { name: "启用付款成功说明" });
+    expect(toggle).toBeChecked();
+    const textarea = screen.getByLabelText("付款成功说明");
+    expect(textarea).toBeVisible();
+
+    fireEvent.change(textarea, {
+      target: { value: "权益已自动到账，请返回商家使用。" },
+    });
+    expect(previewShell.querySelector("[data-preview-terminal-note]")).toHaveTextContent(
+      "权益已自动到账，请返回商家使用。",
+    );
+    expect(
+      within(previewShell).queryByRole("button", {
+        name: "启用并编辑付款成功说明（可选，默认关闭无文案）",
+      }),
+    ).not.toBeInTheDocument();
+
+    await user.click(toggle);
+    expect(toggle).not.toBeChecked();
+    expect(screen.queryByRole("textbox", { name: "付款成功说明" })).not.toBeInTheDocument();
+    expect(
+      within(previewShell).getByRole("button", {
+        name: "启用并编辑付款成功说明（可选，默认关闭无文案）",
+      }),
+    ).toBeVisible();
+  });
 });

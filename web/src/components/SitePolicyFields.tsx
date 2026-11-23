@@ -124,7 +124,7 @@ const SITE_DISPLAY_COPY_FIELDS: ReadonlyArray<{
     key: "checkout_confirmed_detail",
     label: "付款成功说明",
     placeholder: "选填，例如：权益已自动生效，请点击返回商家查看。",
-    hint: "选填；留空不额外展示说明。",
+    hint: "默认关闭无文案；留空不展示说明。",
   },
   {
     key: "checkout_expired_detail",

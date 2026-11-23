@@ -162,6 +162,7 @@ const COPY_GROUPS: ReadonlyArray<{
     readonly hint?: string;
     readonly token?: { readonly text: string; readonly label: string };
     readonly previewState?: CheckoutPreviewState;
+    readonly optionalToggle?: boolean;
   }>;
 }> = [
   {
@@ -197,9 +198,10 @@ const COPY_GROUPS: ReadonlyArray<{
       {
         key: "checkout_confirmed_detail",
         label: "付款成功说明",
-        placeholder: "选填，例如：权益已自动生效，请点击返回商家查看。",
-        hint: "留空不额外展示说明。",
+        placeholder: "例如：权益已自动生效，请点击返回商家查看。",
+        hint: "默认关闭无文案；开启后可在付款成功页右侧展示自定义说明。",
         previewState: "CONFIRMED",
+        optionalToggle: true,
       },
       {
         key: "checkout_expired_detail",
@@ -299,6 +301,9 @@ export function CheckoutDisplayStudio({
   const [activeTarget, setActiveTarget] =
     useState<CheckoutDisplayTarget | null>(null);
   const [nameChecked, setNameChecked] = useState(false);
+  const [confirmedDetailEnabled, setConfirmedDetailEnabled] = useState(() =>
+    Boolean(site.configuration.policy.display.checkout_confirmed_detail),
+  );
 
   const [needsReview, setNeedsReview] = useState(false);
   const [review, setReview] = useState<
@@ -379,6 +384,9 @@ export function CheckoutDisplayStudio({
       setDraftDisplay(
         normalizeDisplay(structuredClone(response.data.configuration.policy.display)),
       );
+      setConfirmedDetailEnabled(
+        Boolean(response.data.configuration.policy.display.checkout_confirmed_detail),
+      );
       setNameChecked(false);
       setNeedsReview(false);
       setReview(null);
@@ -391,6 +399,7 @@ export function CheckoutDisplayStudio({
   function applyReview(nextSite: Site, configuration: SiteConfiguration) {
     setSaved(nextSite);
     setDraftDisplay(normalizeDisplay(structuredClone(configuration.policy.display)));
+    setConfirmedDetailEnabled(Boolean(configuration.policy.display.checkout_confirmed_detail));
     setReview(null);
     setChoices({});
     setNeedsReview(false);
@@ -529,6 +538,7 @@ export function CheckoutDisplayStudio({
     const nextState = targetPreviewState(target);
     if (nextState) setPreviewState(nextState);
     if (target === "checkout_show_alipay_launch") setViewport("mobile");
+    if (target === "checkout_confirmed_detail") setConfirmedDetailEnabled(true);
     requestAnimationFrame(() => {
       const control = inspectorRef.current?.querySelector<HTMLElement>(
         `[data-studio-control="${target}"]`,
@@ -627,6 +637,9 @@ export function CheckoutDisplayStudio({
                     normalizeDisplay(
                       structuredClone(saved.configuration.policy.display),
                     ),
+                  );
+                  setConfirmedDetailEnabled(
+                    Boolean(saved.configuration.policy.display.checkout_confirmed_detail),
                   );
                   setNameChecked(false);
                   save.reset();
@@ -811,7 +824,8 @@ export function CheckoutDisplayStudio({
                       variant="outline"
                       size="xs"
                       disabled={busy || requiresReview}
-                      onClick={() =>
+                      onClick={() => {
+                        setConfirmedDetailEnabled(false);
                         updateDisplay((next) => {
                           next.checkout_help_label = null;
                           next.checkout_payment_instructions = null;
@@ -821,8 +835,8 @@ export function CheckoutDisplayStudio({
                           next.checkout_expired_detail = null;
                           next.checkout_disputed_detail = null;
                           next.checkout_closed_detail = null;
-                        })
-                      }
+                        });
+                      }}
                     >
                       <RotateCcw aria-hidden="true" data-icon="inline-start" />
                       全部恢复默认
@@ -843,6 +857,10 @@ export function CheckoutDisplayStudio({
                       const currentValue = draftNormalized[item.key] ?? "";
                       const err = fieldError(item.key);
                       const active = activeTarget === item.key;
+                      const isOptionalOpen =
+                        !item.optionalToggle ||
+                        confirmedDetailEnabled ||
+                        currentValue.length > 0;
                       const describedBy =
                         [item.hint && hintId, err && errorId]
                           .filter(Boolean)
@@ -858,52 +876,94 @@ export function CheckoutDisplayStudio({
                           )}
                         >
                           <div className="flex items-center justify-between gap-2">
-                            <FieldLabel htmlFor={controlId}>
+                            <FieldLabel
+                              htmlFor={
+                                item.optionalToggle && !isOptionalOpen
+                                  ? `${controlId}-toggle`
+                                  : controlId
+                              }
+                            >
                               {item.label}
                             </FieldLabel>
-                            {currentValue.length > 0 && (
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="xs"
-                                className="h-auto px-1.5 py-0.5 text-xs text-muted-foreground hover:text-foreground"
-                                disabled={busy || requiresReview}
-                                onClick={() =>
-                                  updateDisplay((next) => {
-                                    next[item.key] = null;
-                                  })
-                                }
-                              >
-                                恢复默认
-                              </Button>
+                            {item.optionalToggle ? (
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs text-muted-foreground">
+                                  {isOptionalOpen ? "已开启" : "默认关闭"}
+                                </span>
+                                <Switch
+                                  id={`${controlId}-toggle`}
+                                  aria-label={`启用${item.label}`}
+                                  disabled={busy || requiresReview}
+                                  checked={isOptionalOpen}
+                                  onCheckedChange={(checked) => {
+                                    setConfirmedDetailEnabled(checked);
+                                    setActiveTarget(item.key);
+                                    if (item.previewState) {
+                                      setPreviewState(item.previewState);
+                                    }
+                                    if (!checked) {
+                                      updateDisplay((next) => {
+                                        next[item.key] = null;
+                                      });
+                                    } else {
+                                      requestAnimationFrame(() => {
+                                        inspectorRef.current
+                                          ?.querySelector<HTMLElement>(
+                                            `[data-studio-control="${item.key}"]`,
+                                          )
+                                          ?.focus();
+                                      });
+                                    }
+                                  }}
+                                />
+                              </div>
+                            ) : (
+                              currentValue.length > 0 && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="xs"
+                                  className="h-auto px-1.5 py-0.5 text-xs text-muted-foreground hover:text-foreground"
+                                  disabled={busy || requiresReview}
+                                  onClick={() =>
+                                    updateDisplay((next) => {
+                                      next[item.key] = null;
+                                    })
+                                  }
+                                >
+                                  恢复默认
+                                </Button>
+                              )
                             )}
                           </div>
-                          <Textarea
-                            id={controlId}
-                            data-studio-control={item.key}
-                            aria-label={item.label}
-                            aria-invalid={!!err}
-                            aria-describedby={describedBy}
-                            rows={2}
-                            maxLength={CHECKOUT_TEXT_MAX_LENGTH}
-                            placeholder={item.placeholder}
-                            value={currentValue}
-                            disabled={busy || requiresReview}
-                            onFocus={() => {
-                              setActiveTarget(item.key);
-                              if (item.previewState) {
-                                setPreviewState(item.previewState);
+                          {isOptionalOpen && (
+                            <Textarea
+                              id={controlId}
+                              data-studio-control={item.key}
+                              aria-label={item.label}
+                              aria-invalid={!!err}
+                              aria-describedby={describedBy}
+                              rows={2}
+                              maxLength={CHECKOUT_TEXT_MAX_LENGTH}
+                              placeholder={item.placeholder}
+                              value={currentValue}
+                              disabled={busy || requiresReview}
+                              onFocus={() => {
+                                setActiveTarget(item.key);
+                                if (item.previewState) {
+                                  setPreviewState(item.previewState);
+                                }
+                              }}
+                              onChange={(event) =>
+                                updateDisplay((next) => {
+                                  next[item.key] =
+                                    event.target.value === ""
+                                      ? null
+                                      : event.target.value;
+                                })
                               }
-                            }}
-                            onChange={(event) =>
-                              updateDisplay((next) => {
-                                next[item.key] =
-                                  event.target.value === ""
-                                    ? null
-                                    : event.target.value;
-                              })
-                            }
-                          />
+                            />
+                          )}
                           {item.token && (
                             <div className="flex flex-wrap items-center gap-1.5">
                               <button
