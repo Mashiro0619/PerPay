@@ -339,12 +339,12 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
 
   const desktopQueryIsPrimary = canPay && !returnUrl;
   const hasActions = Boolean(canLaunchAlipay || retryAllowed || returnUrl);
-  const terminalNoteText =
-    order && !canPay && !awaitingStartup
-      ? state.suspended
-        ? "付款时间已到，正在为您确认订单状态。"
-        : copy.detail
-      : "";
+  const isTerminalOrder = Boolean(order && !canPay && !awaitingStartup);
+  const terminalNoteText = isTerminalOrder
+    ? state.suspended
+      ? "付款时间已到，正在为您确认订单状态。"
+      : copy.detail
+    : "";
   const sideBySideTerminalActions = Boolean(!canPay && returnUrl && retryAllowed);
 
   const actions = hasActions && (
@@ -352,7 +352,9 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
       className={cn(
         "checkout-actions flex flex-col items-stretch gap-2.5 border-t-0 bg-transparent",
         order
-          ? "pt-0 pb-1 lg:col-start-1 lg:row-start-2 lg:rounded-none lg:px-8 lg:pt-0 lg:pb-8"
+          ? isTerminalOrder
+            ? "order-5 px-(--card-spacing) pt-1 pb-(--card-spacing) lg:order-none lg:col-start-1 lg:row-start-2 lg:rounded-none lg:px-8 lg:pt-0 lg:pb-8"
+            : "pt-0 pb-1 lg:col-start-1 lg:row-start-2 lg:rounded-none lg:px-8 lg:pt-0 lg:pb-8"
           : "px-6 pt-0 pb-6 sm:px-8 sm:pb-8",
       )}
       data-checkout-actions
@@ -360,7 +362,7 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
       <div
         className={cn(
           "flex w-full flex-col items-stretch gap-2.5",
-          sideBySideTerminalActions && "lg:grid lg:grid-cols-2",
+          sideBySideTerminalActions && "min-[440px]:grid min-[440px]:grid-cols-2",
         )}
       >
         {returnUrl && (
@@ -512,17 +514,20 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
             "checkout-card",
             order
               ? cn(
-                  "pb-0 lg:grid lg:grid-cols-[minmax(0,1.15fr)_auto_minmax(0,0.85fr)] lg:grid-rows-[1fr_auto] lg:gap-0 lg:py-0",
-                  !canPay && !awaitingStartup && "lg:min-h-[19.5rem]",
+                  "pb-0 sm:[--card-spacing:--spacing(6)] lg:grid lg:grid-cols-[minmax(0,1.15fr)_auto_minmax(0,0.85fr)] lg:grid-rows-[1fr_auto] lg:gap-0 lg:py-0 lg:[--card-spacing:--spacing(4)]",
+                  isTerminalOrder &&
+                    "gap-4 pt-5 [--card-spacing:--spacing(5)] sm:gap-5 sm:pt-6 lg:min-h-[19.5rem]",
                 )
               : "gap-5 py-6 sm:py-8",
           )}
           data-checkout-layout
           data-has-order={!!order}
+          data-terminal-order={isTerminalOrder || undefined}
         >
           <div
             className={cn(
-              "flex min-w-0 flex-col gap-3",
+              "flex min-w-0 flex-col",
+              isTerminalOrder ? "order-1 gap-4 lg:order-none" : "gap-3",
               order &&
                 (hasActions
                   ? "lg:col-start-1 lg:row-start-1 lg:gap-4 lg:pt-8 lg:pb-5"
@@ -625,9 +630,14 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
             )}
             {order && (
               <CardContent className="flex min-w-0 flex-col gap-3 lg:px-8">
-                <div className="checkout-amount-block">
+                <div className={isTerminalOrder ? "w-full min-w-0 lg:flex lg:flex-col lg:items-center" : "checkout-amount-block"}>
                   <div
-                    className="flex w-full min-w-0 flex-wrap items-baseline justify-center gap-2 text-center"
+                    className={cn(
+                      "flex w-full min-w-0 flex-wrap items-baseline gap-2",
+                      isTerminalOrder
+                        ? "justify-between gap-x-3 gap-y-1 lg:justify-center lg:gap-2 lg:text-center"
+                        : "justify-center text-center",
+                    )}
                     data-checkout-amount
                   >
                     <span
@@ -791,7 +801,7 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
           </div>
           {terminalNoteText && (
             <div
-              className="px-4 text-center text-sm leading-relaxed text-muted-foreground lg:col-start-3 lg:row-start-2 lg:self-end lg:px-8 lg:pt-0 lg:pb-8 lg:text-left"
+              className="order-2 -mt-1 px-(--card-spacing) text-left text-sm leading-relaxed text-muted-foreground lg:order-none lg:col-start-3 lg:row-start-2 lg:mt-0 lg:self-end lg:px-8 lg:pt-0 lg:pb-8"
               data-checkout-terminal-note
             >
               <div className="lg:border-t lg:border-border/70 lg:pt-4">
@@ -802,14 +812,17 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
           {actions}
           {order && (
             <>
-              <div className="px-4 lg:hidden">
+              <div className={cn("px-(--card-spacing) lg:hidden", isTerminalOrder && "order-3")}>
                 <Separator />
               </div>
               <Separator orientation="vertical" className="hidden lg:col-start-2 lg:row-start-1 lg:row-span-2 lg:block" />
               <section
                 aria-label="订单信息"
                 className={cn(
-                  "checkout-summary flex min-w-0 flex-col gap-5 pb-(--card-spacing) lg:col-start-3 lg:row-start-1",
+                  "checkout-summary flex min-w-0 flex-col gap-5 lg:order-none lg:col-start-3 lg:row-start-1",
+                  isTerminalOrder
+                    ? cn("order-4", hasActions ? "pb-0" : "pb-(--card-spacing)")
+                    : "pb-(--card-spacing)",
                   terminalNoteText
                     ? "lg:px-8 lg:pt-8 lg:pb-4"
                     : "lg:row-span-2 lg:p-8",
