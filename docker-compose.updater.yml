@@ -32,8 +32,9 @@ services:
       - perpay-updater-secrets:/run/perpay-updater-secrets
     networks:
       - perpay-updater
-    # 访问宿主机 /var/run/docker.sock 通常需要 root 或加入宿主机 docker 组。
-    user: "0:0"
+    # uid 0 访问宿主机 /var/run/docker.sock，主组 1000 对齐 app 容器的 node 组，
+    # 使 cap_drop: ALL 下自动生成的 0640 共享令牌文件天然可被 app 只读访问。
+    user: "0:1000"
     restart: unless-stopped
     read_only: true
     tmpfs:

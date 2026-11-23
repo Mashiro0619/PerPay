@@ -1,8 +1,14 @@
 import { screen, waitFor } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import type { DashboardSections, ListSiteOverviewResponse } from "../src/api/client";
+import { auditChangeValues, auditFieldLabel } from "../src/lib/audit";
+import { writeCachedDashboardSections } from "../src/lib/dashboard-sections";
 import { json } from "./fixtures";
 import { configuredThrough, mountOnboarding } from "./onboarding-fixture";
+
+afterEach(() => {
+  window.localStorage.removeItem("perpay:dashboard-sections");
+});
 
 function mountOverviewWithSections(
   sections: DashboardSections,
@@ -184,5 +190,55 @@ describe("dashboard section visibility", () => {
 
     expect(await screen.findByText("总览显示模块", { exact: true, selector: "dt" })).toBeVisible();
     expect(screen.getByText("核心指标、最近订单", { exact: true, selector: "dd" })).toBeVisible();
+  });
+
+  it("uses cached dashboard sections on cold load to avoid flashing hidden cards", async () => {
+    writeCachedDashboardSections({
+      summary_cards: false,
+      trend: false,
+      site_overview: false,
+      work_items: false,
+      recent_orders: true,
+    });
+    let siteOverviewRequests = 0;
+    const view = mountOnboarding({
+      stage: 4,
+      path: "/",
+      handle: (request) => {
+        const pathname = new URL(request.url).pathname;
+        if (pathname === "/api/admin/v1/settings") {
+          return new Promise<Response>(() => {});
+        }
+        if (pathname === "/api/admin/v1/sites/overview") {
+          siteOverviewRequests += 1;
+        }
+        return undefined;
+      },
+    });
+    expect(await screen.findByRole("heading", { name: "最近订单" })).toBeVisible();
+    expect(view.container.querySelector("[data-overview-kpis]")).toBeNull();
+    expect(view.container.querySelector(".overview-hero")).toBeNull();
+    expect(view.container.querySelector(".overview-work-panel")).toBeNull();
+    expect(view.container.querySelector(".overview-orders-container")).not.toBeNull();
+    expect(siteOverviewRequests).toBe(0);
+  });
+
+  it("formats display audit labels and values in Chinese without leaking raw JSON", () => {
+    expect(auditFieldLabel("dashboard_sections.trend")).toBe("总览模块：收款趋势");
+    expect(auditFieldLabel("target_version")).toBe("目标版本");
+    expect(auditFieldLabel("previous_version")).toBe("更新前版本");
+    expect(auditFieldLabel("create_backup")).toBe("更新前备份");
+    expect(auditChangeValues({
+      field: "dashboard_chart_type",
+      kind: "value",
+      before: "AREA",
+      after: "BAR",
+    })).toEqual(["面积图", "柱状图"]);
+    expect(auditChangeValues({
+      field: "dashboard_sections",
+      kind: "value",
+      before: { summary_cards: true, trend: true, site_overview: true, work_items: true, recent_orders: true },
+      after: { summary_cards: true, trend: false, site_overview: false, work_items: true, recent_orders: true },
+    })).toEqual(["全部显示（5 项）", "核心指标、待处理、最近订单"]);
   });
 });

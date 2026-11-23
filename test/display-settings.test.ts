@@ -457,15 +457,11 @@ it("validates, persists, audits and preserves dashboard section visibility setti
     assert.equal(audit.length, 2);
     const firstContext = JSON.parse(audit[0]!.context_json) as StoredAuditContext;
     assert.deepEqual(firstContext.changes, [
-      {
-        field: "dashboard_sections",
-        kind: "value",
-        before: DEFAULT_DASHBOARD_SECTIONS,
-        after: customSections,
-      },
+      { field: "dashboard_sections.trend", kind: "value", before: true, after: false },
+      { field: "dashboard_sections.site_overview", kind: "value", before: true, after: false },
     ]);
     const secondContext = JSON.parse(audit[1]!.context_json) as StoredAuditContext;
-    assert.equal(secondContext.changes.some((c) => c.field === "dashboard_sections"), false);
+    assert.equal(secondContext.changes.some((c) => c.field.startsWith("dashboard_sections")), false);
 
     database.close();
     const reopened = await AppDatabase.open(services.config.databasePath);

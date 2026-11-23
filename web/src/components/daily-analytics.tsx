@@ -206,7 +206,7 @@ export function DailyAnalytics({
                   )}
                   {selectedDeltaPct !== null && (
                     <Badge variant="outline" className="daily-day-badge daily-cal-delta-badge">
-                      较日均 {selectedDeltaPct >= 0 ? `+${selectedDeltaPct}` : selectedDeltaPct}%
+                      较日均 {selectedDeltaPct > 0 ? `+${selectedDeltaPct}` : selectedDeltaPct}%
                     </Badge>
                   )}
                 </div>
@@ -328,7 +328,7 @@ export function DailyAnalytics({
                         isLowest ? "单日最低" : null,
                         `确认金额 ${money(day.confirmed_amount_cents)}`,
                         deltaPct !== null
-                          ? `较日均 ${deltaPct >= 0 ? `+${deltaPct}` : deltaPct}%`
+                          ? `较日均 ${deltaPct > 0 ? `+${deltaPct}` : deltaPct}%`
                           : null,
                         `确认 ${count(day.confirmations)} 笔`,
                         `新建订单 ${count(day.orders_created)} 笔`,

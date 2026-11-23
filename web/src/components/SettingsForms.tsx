@@ -36,6 +36,7 @@ import {
   hasVisibleDashboardSection,
   normalizeDashboardSections,
   serializeDashboardSections,
+  writeCachedDashboardSections,
   type DashboardSectionKey,
   type DashboardSections,
 } from "@/lib/dashboard-sections";
@@ -247,9 +248,7 @@ export function SettingsEditor({
     normalizeDashboardSections(initialSettings.display?.dashboard_sections),
   );
   const [savedDashboardSections, setSavedDashboardSections] = useState<DashboardSections>(dashboardSections);
-  useEffect(() => {
-    if (section === "display") draft.onChange();
-  }, [chartType, dashboardSections, section]);
+  const serializedDashboardSections = serializeDashboardSections(dashboardSections);
   const mounted = useRef(false);
   const localFeedback = useSuccessToast();
   // A parent that remounts this editor after saving keeps the same toast owner.
@@ -283,6 +282,7 @@ export function SettingsEditor({
         const savedSections = normalizeDashboardSections(data.display?.dashboard_sections);
         setDashboardSections(savedSections);
         setSavedDashboardSections(savedSections);
+        writeCachedDashboardSections(savedSections);
         form.set("dashboard_sections", serializeDashboardSections(savedSections));
       }
       draft.markSaved(form);
@@ -301,6 +301,10 @@ export function SettingsEditor({
       submitting.current = false;
     },
   });
+  useEffect(() => {
+    // Wait until the disabled fieldset is released; FormData omits inputs inside a disabled fieldset.
+    if (section === "display" && !save.isPending) draft.onChange();
+  }, [chartType, serializedDashboardSections, section]);
   // Submitted saves retain the existing draft-confirmation flow in DraftProvider.
   useEffect(() => {
     // A mutation can publish field errors before its disabled fieldset is released.
@@ -529,7 +533,7 @@ export function SettingsEditor({
           <input
             type="hidden"
             name="dashboard_sections"
-            value={serializeDashboardSections(dashboardSections)}
+            value={serializedDashboardSections}
           />
           <div
             role="group"

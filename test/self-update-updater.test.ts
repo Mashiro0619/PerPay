@@ -708,4 +708,13 @@ describe("self-update sidecar updater", () => {
     assert.equal(restoredBackup.name, "/perpay-backup-1");
     assert.equal(restoredBackup.running, true);
   });
+
+  it("configures docker-compose.updater.yml with gid 1000 so app (node) can read the 0640 token under cap_drop ALL", () => {
+    const compose = parse(readFileSync(new URL("../docker-compose.updater.yml", import.meta.url), "utf8")) as {
+      services?: { updater?: { user?: string; cap_drop?: string[]; read_only?: boolean } };
+    };
+    assert.equal(compose.services?.updater?.user, "0:1000");
+    assert.deepEqual(compose.services?.updater?.cap_drop, ["ALL"]);
+    assert.equal(compose.services?.updater?.read_only, true);
+  });
 });

@@ -33,6 +33,8 @@ for (const layout of [
         const summary = page.locator("[data-settings-summary]");
         const defaultRow = summary.locator("dl > div").filter({ has: page.getByText("收款趋势默认图形", { exact: true }) });
         await expect(defaultRow.locator("dd")).toHaveText("面积图");
+        const sectionsRow = summary.locator("dl > div").filter({ has: page.getByText("总览显示模块", { exact: true }) });
+        await expect(sectionsRow.locator("dd")).toHaveText("全部显示（5 项）");
         await page.evaluate(() => localStorage.setItem("perpay:dashboard-chart-type", "LINE"));
         const writes: Array<{ path: string; body: unknown }> = [];
         page.on("request", request => {
@@ -109,7 +111,8 @@ for (const layout of [
         await expect(defaultRow.locator("dd")).toHaveText("柱状图");
         expect((await read()).display.dashboard_chart_type).toBe("BAR");
         expect(writes).toEqual([{ path: "/api/admin/v1/settings/display", body: { revision: initial.revision,
-          system_name: initial.display.system_name, dashboard_chart_type: "BAR" } }]);
+          system_name: initial.display.system_name, dashboard_chart_type: "BAR",
+          dashboard_sections: initial.display.dashboard_sections } }]);
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
         await page.screenshot({ path: info.outputPath("display-summary.png") });
         await summary.getByRole("link", { name: "编辑界面显示", exact: true }).click();

@@ -149,8 +149,19 @@ function readValidatedTokenFile(fullPath: string): string {
     if ((stat.mode & 0o027) !== 0) {
       chmodSync(fullPath, 0o640);
     }
-    if (process.getuid?.() === 0) {
-      try { chownSync(fullPath, APP_CONTAINER_UID, APP_CONTAINER_GID); } catch { /* ignore on restricted mounts */ }
+    if (process.getuid?.() === 0 && stat.gid !== APP_CONTAINER_GID) {
+      try {
+        chownSync(fullPath, APP_CONTAINER_UID, APP_CONTAINER_GID);
+      } catch {
+        console.warn(JSON.stringify({
+          level: "warn",
+          event: "updater_token_gid_mismatch",
+          path: fullPath,
+          actual_gid: stat.gid,
+          expected_gid: APP_CONTAINER_GID,
+          hint: "Set updater container user to 0:1000 so the app (node) container can read the 0640 token file under cap_drop: ALL.",
+        }));
+      }
     }
   }
   const existing = readFileSync(fullPath, "utf8").trim();
@@ -649,11 +660,12 @@ async function probeAppHealth(
   inspect: DockerContainerInspect,
 ): Promise<{ readonly healthy: boolean; readonly version: string | null }> {
   const port = readAppPort(inspect.Config.Env);
-  const candidates: string[] = [];
+  // Probe Compose service DNS first (resolves directly on the shared updater network),
+  // then fall back to container IPs without blocking 2s on unreachable non-shared bridge IPs first.
+  const candidates: string[] = [`http://app:${port}/healthz`];
   for (const endpoint of Object.values(inspect.NetworkSettings?.Networks ?? {})) {
     if (endpoint.IPAddress) candidates.push(`http://${endpoint.IPAddress}:${port}/healthz`);
   }
-  candidates.push(`http://app:${port}/healthz`);
   for (const url of candidates) {
     try {
       const response = await fetch(url, {

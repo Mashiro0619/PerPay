@@ -152,11 +152,23 @@ export function SelfUpdateDialog({
 
   const titleRef = useRef<HTMLHeadingElement>(null);
   const reconnectStartedAtRef = useRef<number | null>(null);
+  const loadControllerRef = useRef<AbortController | null>(null);
   const assistantBackupControllerRef = useRef<AbortController | null>(null);
   const effectiveTarget = trackedTarget || targetVersion;
   const effectiveCurrent = status?.current_version || currentVersion;
 
-  const loadCapability = useCallback(async (signal?: AbortSignal) => {
+  const loadCapability = useCallback(async (externalSignal?: AbortSignal) => {
+    loadControllerRef.current?.abort();
+    const controller = new AbortController();
+    loadControllerRef.current = controller;
+    if (externalSignal) {
+      if (externalSignal.aborted) {
+        controller.abort();
+        return;
+      }
+      externalSignal.addEventListener("abort", () => controller.abort(), { once: true });
+    }
+    const signal = controller.signal;
     setPhase("loading");
     setLoadError(null);
     setApplyError(null);
@@ -166,7 +178,7 @@ export function SelfUpdateDialog({
     setPollWarning(null);
     try {
       const data = await getSelfUpdateStatus(signal);
-      if (signal?.aborted) return;
+      if (signal.aborted) return;
       setStatus(data);
       const hint = readActiveSelfUpdateHint();
       if (data.active_job) {
@@ -222,14 +234,20 @@ export function SelfUpdateDialog({
         setPhase("assistant");
       }
     } catch (error) {
-      if (signal?.aborted || (error instanceof DOMException && error.name === "AbortError")) return;
+      if (signal.aborted || (error instanceof DOMException && error.name === "AbortError")) return;
       setLoadError(error instanceof Error ? error.message : "暂时无法读取更新状态。");
       setPhase("load_error");
+    } finally {
+      if (loadControllerRef.current === controller) {
+        loadControllerRef.current = null;
+      }
     }
   }, [targetVersion]);
 
   useEffect(() => {
     if (!open) {
+      loadControllerRef.current?.abort();
+      loadControllerRef.current = null;
       assistantBackupControllerRef.current?.abort();
       assistantBackupControllerRef.current = null;
       return;
@@ -239,6 +257,8 @@ export function SelfUpdateDialog({
     void loadCapability(controller.signal);
     return () => {
       controller.abort();
+      loadControllerRef.current?.abort();
+      loadControllerRef.current = null;
       assistantBackupControllerRef.current?.abort();
       assistantBackupControllerRef.current = null;
     };

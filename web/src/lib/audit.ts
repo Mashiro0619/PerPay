@@ -1,5 +1,6 @@
 import type { AuditActorType, AuditCaptureState, AuditChange, AuditEventItem, AuditFilters, AuditJsonValue, AuditSource } from "../../../src/shared/audit";
 import { sessionDevice } from "./session-device";
+import { formatDashboardSectionsSummary } from "./dashboard-sections";
 
 export const AUDIT_ACTOR_LABELS: Readonly<Record<AuditActorType, string>> = {
   ADMIN: "管理员", API_CLIENT: "业务网站", SYSTEM: "系统", ANONYMOUS: "未登录访问",
@@ -59,6 +60,7 @@ const fieldLabels: Readonly<Record<string, string>> = {
   lock_kind: "锁类别", lock_fingerprint: "锁标识", lock_created_at: "锁创建时间", lock_readable: "锁记录可读取",
   force_abandon_lease: "强制释放维护锁", finalize_interrupted_restore: "完成中断的恢复",
   checkout_key_rotation_days: "收银台链接密钥更换周期（天）", checkout_terminal_observation_seconds: "订单结束后收银台可查时长（秒）",
+  target_version: "目标版本", previous_version: "更新前版本", create_backup: "更新前备份",
 };
 export function auditFieldLabel(field: string): string {
   return fieldLabels[field] ?? fieldLabels[field.split(".").at(-1)!] ?? field;
@@ -165,15 +167,27 @@ export function auditClientLabel(event: AuditRequestContext & Pick<AuditEventIte
   return program ? `${program} 客户端` : "其他客户端";
 }
 
-export function auditValue(value: AuditJsonValue | undefined): string {
+const chartTypeLabels: Readonly<Record<string, string>> = {
+  AREA: "面积图",
+  BAR: "柱状图",
+  LINE: "累计图",
+};
+
+export function auditValue(value: AuditJsonValue | undefined, field?: string): string {
   if (value === undefined) return "未记录";
   if (value === null) return "未设置";
   if (typeof value === "boolean") return value ? "是" : "否";
+  if (field === "dashboard_chart_type" && typeof value === "string" && chartTypeLabels[value]) {
+    return chartTypeLabels[value]!;
+  }
+  if (field === "dashboard_sections" && typeof value === "object" && !Array.isArray(value)) {
+    return formatDashboardSectionsSummary(value as Readonly<Record<string, unknown>>);
+  }
   return typeof value === "string" ? (value || "（空）") : JSON.stringify(value, null, 2);
 }
 
 export function auditChangeValues(change: AuditChange): readonly [string, string] {
-  if (change.kind === "value") return [auditValue(change.before), auditValue(change.after)];
+  if (change.kind === "value") return [auditValue(change.before, change.field), auditValue(change.after, change.field)];
   const before = change.configured_before === undefined ? "原值未记录" : change.configured_before ? "已配置" : "未配置";
   const after = change.configured_after === undefined ? "已变更（值不记录）"
     : change.configured_after ? change.configured_before ? "已更换（值不记录）" : "已配置（值不记录）" : "已清除";

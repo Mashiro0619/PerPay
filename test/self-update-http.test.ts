@@ -270,6 +270,31 @@ describe("self-update configuration and HTTP orchestration", () => {
     });
     assert.equal(replay.status, 202);
     assert.equal(((await replay.json()) as { data: UpdateExecutionJob }).data.id, opId);
+
+    // Flush activity recorder and verify audit query retains update detail keys.
+    activity.flush();
+    const auditRes = await app.request(
+      `${ORIGIN}/api/admin/v1/audit-events?source=activity&action=system.update_requested`,
+      { headers: { cookie: auth.cookie } },
+    );
+    assert.equal(auditRes.status, 200);
+    const auditBody = (await auditRes.json()) as {
+      data: Array<{ event_id: string; source: string }>;
+    };
+    assert.ok(auditBody.data.length >= 1);
+    const detailRes = await app.request(
+      `${ORIGIN}/api/admin/v1/audit-events/${auditBody.data[0]!.source}/${encodeURIComponent(auditBody.data[0]!.event_id)}`,
+      { headers: { cookie: auth.cookie } },
+    );
+    assert.equal(detailRes.status, 200);
+    const detailBody = (await detailRes.json()) as {
+      data: { details: Record<string, unknown> };
+    };
+    assert.deepEqual(detailBody.data.details, {
+      target_version: "1.0.0",
+      previous_version: "1.0.0-rc.5",
+      create_backup: true,
+    });
   });
 
   it("connects app to updater over real HTTP using a shared token file", async (context) => {

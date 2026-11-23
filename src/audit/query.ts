@@ -232,7 +232,8 @@ export function queryAuditEvents(database: ReadDatabase, query: AuditPageQuery, 
 }
 const SAFE_DETAIL_KEYS = new Set([
   "reason", "error_code", "stage", "status", "generation", "session_generation", "revision", "settings_revision", "payment_revision", "payment_revision_changed",
-  "key_version", "version", "purpose", "field", "enabled", "cidrs", "name", "system_name", "checkout_show_product_name", "dashboard_chart_type", "dashboard_sections", "checkout_help_url",
+  "key_version", "version", "purpose", "field", "enabled", "cidrs", "name", "system_name", "checkout_show_product_name", "dashboard_chart_type", "dashboard_sections", "summary_cards", "trend", "site_overview", "work_items", "recent_orders", "checkout_help_url",
+  "target_version", "previous_version", "create_backup",
   "operation_id", "financial_operation_id", "reverses_operation_id", "order_id", "order_version", "ledger_entry_id", "payment_match_id", "candidate_id", "conflict_id", "conflict_operation_id", "delivery_id", "redelivery_id", "event_id", "external_event_id", "account_id", "alipay_account_id", "client_id", "site_id", "site_name", "change_id",
   "request_fingerprint", "result_fingerprint", "membership_fingerprint", "q_fingerprint", "row_count", "snapshot", "filters", "source", "category", "action", "outcome", "actor_type", "source_address", "created_from", "created_to", "core_sequence", "activity_sequence", "captured_at",
   "revoked_sessions", "revoked_count", "session_id", "current_session_revoked", "conflict_type", "resolution_action", "terminal_status", "suppressed_since_previous",

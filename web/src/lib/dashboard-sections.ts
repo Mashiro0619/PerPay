@@ -62,3 +62,26 @@ export function formatDashboardSectionsSummary(
   }
   return enabled.map((item) => item.label).join("、");
 }
+
+const STORAGE_KEY = "perpay:dashboard-sections";
+
+export function readCachedDashboardSections(): DashboardSections | null {
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    const normalized = normalizeDashboardSections(parsed as Partial<Record<DashboardSectionKey, unknown>>);
+    return hasVisibleDashboardSection(normalized) ? normalized : null;
+  } catch {
+    return null;
+  }
+}
+
+export function writeCachedDashboardSections(sections: DashboardSections): void {
+  try {
+    window.localStorage.setItem(STORAGE_KEY, serializeDashboardSections(sections));
+  } catch {
+    // Ignore storage quota or private browsing errors.
+  }
+}

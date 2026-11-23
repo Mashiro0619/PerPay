@@ -98,7 +98,7 @@ describe("daily report calendar and comparisons", () => {
     expect(report.averageCents).toBe(34);
     expect(report.maximum).toBe(10000);
     expect(report.peak).toMatchObject({ date: "2026-10-08", confirmed_amount_cents: 100 });
-    expect(report.lowest).toMatchObject({ date: "2026-10-11", confirmed_amount_cents: 0 });
+    expect(report.lowest).toMatchObject({ date: "2026-10-09", confirmed_amount_cents: 1 });
   });
 
   it("preserves all-zero evidence and distinguishes no completed days from a zero average", () => {

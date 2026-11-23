@@ -165,7 +165,9 @@ export function buildDailyReport(analytics: SystemAnalytics): DailyReport {
       : best,
     null,
   );
-  const lowestCandidate = completed.reduce<DailyDay | null>(
+  // Compare positive completed days so empty ¥0 days do not get arbitrarily marked as "单日最低".
+  const activeCompleted = completed.filter((day) => day.confirmed_amount_cents > 0);
+  const lowestCandidate = activeCompleted.reduce<DailyDay | null>(
     (best, day) => !best || day.confirmed_amount_cents < best.confirmed_amount_cents
       ? day
       : best,

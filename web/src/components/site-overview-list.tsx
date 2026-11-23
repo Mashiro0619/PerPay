@@ -69,74 +69,74 @@ function SiteOverviewCard({
   const topRank = rank <= 3 && (sortBy === "work_items" ? site.work_items > 0 : site.confirmed_amount_cents > 0);
 
   return (
-    <Link
-      className="site-overview-card"
-      data-slot="site-overview-card"
-      data-accepting-orders={site.accepting_orders}
-      data-zero={site.confirmed_amount_cents === 0 || undefined}
-      data-top-rank={topRank || undefined}
-      to={"/sites/" + encodeURIComponent(site.client_id) + "?range=" + range}
-      aria-label={label + "，查看网站总览"}
-      aria-describedby={summaryId}
-    >
-      <div className="site-overview-card-surface">
-        <span className="site-overview-rank" aria-hidden="true">
-          {String(rank).padStart(2, "0")}
-        </span>
-        <div className="site-overview-card-body">
-          <div className="site-overview-row-head">
-            <div className="site-overview-row-identity">
-              <div className="site-overview-title-line">
-                <span
-                  className="site-overview-card-title"
-                  role="heading"
-                  aria-level={3}
-                  title={label}
-                >
-                  {site.name}
-                </span>
-                {!site.accepting_orders && (
-                  <Badge variant="outline" className="site-overview-paused-badge">
-                    暂停接单
-                  </Badge>
+    <>
+      <Link
+        className="site-overview-card relative"
+        data-slot="site-overview-card"
+        data-accepting-orders={site.accepting_orders}
+        data-zero={site.confirmed_amount_cents === 0 || undefined}
+        data-top-rank={topRank || undefined}
+        to={"/sites/" + encodeURIComponent(site.client_id) + "?range=" + range}
+        aria-describedby={summaryId}
+      >
+        <span className="sr-only">{label + "，查看网站总览"}</span>
+        <div className="site-overview-card-surface" aria-hidden="true">
+          <span className="site-overview-rank">
+            {String(rank).padStart(2, "0")}
+          </span>
+          <div className="site-overview-card-body">
+            <div className="site-overview-row-head">
+              <div className="site-overview-row-identity">
+                <div className="site-overview-title-line">
+                  <span
+                    className="site-overview-card-title"
+                    title={label}
+                  >
+                    {site.name}
+                  </span>
+                  {!site.accepting_orders && (
+                    <Badge variant="outline" className="site-overview-paused-badge">
+                      暂停接单
+                    </Badge>
+                  )}
+                </div>
+                {nameSuffix && (
+                  <span className="site-overview-card-suffix break-all text-xs text-muted-foreground">
+                    {nameSuffix}
+                  </span>
                 )}
               </div>
-              {nameSuffix && (
-                <span className="site-overview-card-suffix break-all text-xs text-muted-foreground">
-                  {nameSuffix}
-                </span>
+              <div className="site-overview-row-amount">
+                <div
+                  className="site-overview-card-amount"
+                  data-wide={amount.length > 14 || undefined}
+                >
+                  {amount}
+                </div>
+                <ChevronRight className="site-overview-row-chevron" aria-hidden="true" />
+              </div>
+            </div>
+            <div className="site-overview-row-meta">
+              <span className="site-overview-row-stats">{statsText}</span>
+              {site.work_items > 0 && (
+                <Badge variant="warning" className="site-overview-work-indicator">
+                  <span className="site-overview-work-dot" aria-hidden="true" />
+                  待处理 {count(site.work_items)}
+                </Badge>
               )}
             </div>
-            <div className="site-overview-row-amount">
-              <div
-                className="site-overview-card-amount"
-                data-wide={amount.length > 14 || undefined}
-              >
-                {amount}
-              </div>
-              <ChevronRight className="site-overview-row-chevron" aria-hidden="true" />
-            </div>
+            <SiteAmountBar amount={site.confirmed_amount_cents} maximum={maximum} />
           </div>
-          <div className="site-overview-row-meta">
-            <span className="site-overview-row-stats">{statsText}</span>
-            {site.work_items > 0 && (
-              <Badge variant="warning" className="site-overview-work-indicator">
-                <span className="site-overview-work-dot" aria-hidden="true" />
-                待处理 {count(site.work_items)}
-              </Badge>
-            )}
-          </div>
-          <SiteAmountBar amount={site.confirmed_amount_cents} maximum={maximum} />
         </div>
-        <span id={summaryId} className="sr-only">
-          {site.accepting_orders ? "" : "暂停接单。"}
-          近 {range} 天实收 {amount}
-          {site.confirmed_count > 0 ? "，" + orderCount : ""}
-          {shareLabel ? "，占比 " + shareLabel : ""}。
-          {site.work_items > 0 ? "待处理 " + count(site.work_items) + " 项。" : ""}
-        </span>
-      </div>
-    </Link>
+      </Link>
+      <span id={summaryId} className="sr-only">
+        {site.accepting_orders ? "" : "暂停接单。"}
+        近 {range} 天实收 {amount}
+        {site.confirmed_count > 0 ? "，" + orderCount : ""}
+        {shareLabel ? "，占比 " + shareLabel : ""}。
+        {site.work_items > 0 ? "待处理 " + count(site.work_items) + " 项。" : ""}
+      </span>
+    </>
   );
 }
 
@@ -261,7 +261,7 @@ export function SiteOverviewList({ range }: { range: 7 | 30 | 90 }) {
                 <div className="site-overview-surface">
                   <ul className="site-overview-grid" aria-label="各网站概览">
                     {visibleSites.map((site, index) => (
-                      <li key={site.client_id} className="min-w-0">
+                      <li key={site.client_id} className="relative min-w-0">
                         <SiteOverviewCard
                           site={site}
                           range={range}

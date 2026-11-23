@@ -58,16 +58,19 @@ const SETTINGS_AUDIT_FIELDS = [
   "provider_maximum_success_age_milliseconds", "webhook_enabled", "webhook_allowed_origin", "webhook_timeout_milliseconds",
   "webhook_maximum_attempts", "webhook_retry_base_milliseconds", "webhook_retry_maximum_milliseconds",
   "checkout_key_rotation_days", "checkout_terminal_observation_seconds", "backup_interval_seconds", "backup_keep_count",
-  "system_name", "checkout_help_url", "checkout_show_product_name", "dashboard_chart_type", "dashboard_sections",
+  "system_name", "checkout_help_url", "checkout_show_product_name", "dashboard_chart_type",
+  "dashboard_sections.summary_cards", "dashboard_sections.trend", "dashboard_sections.site_overview", "dashboard_sections.work_items", "dashboard_sections.recent_orders",
   "api_secret", "webhook_secret", "provider_private_key", "provider_public_key", "pending_private_key",
 ] as const;
 const settingsAuditSnapshots = new AsyncLocalStorage<{ connection: DatabaseSync; before: Record<string, unknown> }>();
 
 function settingsAuditView(connection: DatabaseSync): Record<string, unknown> {
   const row = connection.prepare("SELECT * FROM runtime_configuration WHERE singleton_key = 1").get() ?? {};
-  const view: Record<string, unknown> = Object.fromEntries(SETTINGS_AUDIT_FIELDS.map(field => [field, row[field] ?? null]));
+  const view: Record<string, unknown> = Object.fromEntries(
+    SETTINGS_AUDIT_FIELDS.filter(field => !field.includes(".")).map(field => [field, row[field] ?? null]),
+  );
   if (typeof view.admin_access === "string") view.admin_access = JSON.parse(view.admin_access);
-  if (typeof view.dashboard_sections === "string") view.dashboard_sections = parseDashboardSectionsJson(view.dashboard_sections);
+  view.dashboard_sections = typeof row.dashboard_sections === "string" ? parseDashboardSectionsJson(row.dashboard_sections) : null;
   for (const secret of connection.prepare("SELECT secret_name, secret_fingerprint FROM runtime_secrets").all()) {
     if (SETTINGS_AUDIT_FIELDS.includes(String(secret.secret_name) as typeof SETTINGS_AUDIT_FIELDS[number])) view[String(secret.secret_name)] = secret.secret_fingerprint;
   }

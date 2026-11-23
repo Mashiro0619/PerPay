@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { SiteOverviewList } from "@/components/site-overview-list";
 import { SystemStatusBoundary } from "@/features/system-status";
 import {
@@ -16,7 +16,12 @@ import {
   isOnboardingDeferred,
   onboardingPath,
 } from "@/lib/onboarding";
-import { normalizeDashboardSections } from "@/lib/dashboard-sections";
+import {
+  DEFAULT_DASHBOARD_SECTIONS,
+  normalizeDashboardSections,
+  readCachedDashboardSections,
+  writeCachedDashboardSections,
+} from "@/lib/dashboard-sections";
 import { OverviewWorkItems } from "@/components/overview-work-items";
 import { SectionCards } from "@/components/section-cards";
 import { ChartAreaInteractive } from "@/components/chart-area-interactive";
@@ -145,13 +150,23 @@ function DashboardContent() {
         : siteNeedsAccount
           ? "本站尚未分配收款账号，请先选择支付宝账号。"
           : "本站已就绪，可以先发起一笔测试收款；正式接入时再配置 API 密钥与回调通知。";
-  const visibleSections = normalizeDashboardSections(settings.data?.data.display?.dashboard_sections);
+  const serverSections = settings.data?.data.display?.dashboard_sections;
+  useEffect(() => {
+    if (serverSections) {
+      writeCachedDashboardSections(normalizeDashboardSections(serverSections));
+    }
+  }, [serverSections]);
+  const visibleSections = serverSections
+    ? normalizeDashboardSections(serverSections)
+    : (readCachedDashboardSections() ?? DEFAULT_DASHBOARD_SECTIONS);
   const showSummaryCards = visibleSections.summary_cards;
   const showTrend = visibleSections.trend;
   const showSites = !clientId && visibleSections.site_overview;
   const showWorkItems = visibleSections.work_items;
   const showRecentOrders = visibleSections.recent_orders;
   const hasVisibleSection = showSummaryCards || showTrend || showSites || showWorkItems || showRecentOrders;
+  const hasAnalyticsNotice = analytics.isPaused || Boolean(analytics.error);
+  const showTrendPanel = showTrend && (!firstOrder || hasAnalyticsNotice);
   const analyticsNotice = analytics.isPaused
     ? <ReadPausedNotice retainedData={data !== undefined} />
     : <ErrorNotice
@@ -160,7 +175,7 @@ function DashboardContent() {
         retainedData={data !== undefined}
         retry={() => { void analytics.refetch(); }}
       />;
-  const trend = showTrend ? <div key="trend" className="overview-trend flex min-w-0 flex-col gap-6">
+  const trend = showTrendPanel ? <div key="trend" className="overview-trend flex min-w-0 flex-col gap-6">
     {analyticsNotice}
     {!firstOrder && <ChartAreaInteractive
       scopeKey={clientId ?? "all"}
@@ -212,7 +227,7 @@ function DashboardContent() {
       </Card>
     </div>}
   </div> : null;
-  const hero = (showTrend || showSites) ? (
+  const hero = (showTrendPanel || showSites) ? (
     <div key="hero" className="overview-hero">
       {trend}
       {sites}

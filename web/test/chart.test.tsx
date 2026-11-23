@@ -600,10 +600,11 @@ describe("complete daily analytics report", () => {
     const surface = container.querySelector('[data-daily-surface="true"]')!;
     expect(detail.compareDocumentPosition(surface) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
-    // Latest peak tie (2026-06-04) and latest lowest tie (2026-06-06) show icon markers on cells.
+    // Latest peak tie (2026-06-04) and lowest active completed day (2026-06-02) show icon markers on cells.
     expect(container.querySelector('button[data-cal-date="2026-06-04"][data-daily-peak="true"] .daily-cal-mark-icon')).not.toBeNull();
     expect(container.querySelector('button[data-cal-date="2026-06-04"] .daily-cal-delta')).toHaveTextContent("+140%");
-    expect(container.querySelector('button[data-cal-date="2026-06-06"][data-daily-lowest="true"] .daily-cal-mark-icon')).not.toBeNull();
+    expect(container.querySelector('button[data-cal-date="2026-06-02"][data-daily-lowest="true"] .daily-cal-mark-icon')).not.toBeNull();
+    expect(container.querySelector('button[data-cal-date="2026-06-06"][data-daily-lowest="true"]')).toBeNull();
     expect(container.querySelector('button[data-cal-date="2026-06-07"] .daily-cal-delta')).toBeNull();
     expect(container.querySelector(".daily-cal-fail-dot")).toBeNull();
 
@@ -614,14 +615,11 @@ describe("complete daily analytics report", () => {
     expect(within(detail as HTMLElement).getByRole("link", { name: /查看当天订单/ }))
       .toHaveAttribute("href", "/sites/shop-a/orders?created_from=2026-06-04&created_to=2026-06-04");
 
-    // Clicking the lowest day shows the 单日最低 badge in the detail panel.
-    await user.click(container.querySelector<HTMLButtonElement>('button[data-cal-date="2026-06-06"]')!);
-    expect(container.querySelector('[data-daily-detail="2026-06-06"]')).toHaveTextContent("单日最低");
-
-    // Clicking a day with notification failures exposes the notification troubleshooting link in detail.
+    // Clicking the lowest active day (also with notification failures) shows both 单日最低 and notification link in detail.
     const failCell = container.querySelector<HTMLButtonElement>('button[data-cal-date="2026-06-02"]')!;
     await user.click(failCell);
     const failDetail = container.querySelector('[data-daily-detail="2026-06-02"]')!;
+    expect(failDetail).toHaveTextContent("单日最低");
     expect(failDetail).toHaveTextContent("失败 2 次");
     expect(within(failDetail as HTMLElement).getByRole("link", { name: /排查通知/ }))
       .toHaveAttribute("href", "/sites/shop-a/notifications?created_from=2026-06-02&created_to=2026-06-02");
