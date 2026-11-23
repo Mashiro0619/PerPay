@@ -12,9 +12,10 @@ import {
   subscribeRestoreSessionHold,
   type AdminSessionEnvelope,
 } from "@/api/client";
+import { AuthShell } from "@/components/auth-shell";
 import { ErrorNotice, Loading } from "@/components/request-state";
 import { LoginForm } from "@/components/login-form";
-import { PageHeading } from "@/components/page-heading";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { clearOnboardingDeferrals } from "@/lib/onboarding";
 import { OVERLAY_HISTORY_KEY, OVERLAY_PARAMETER, legacyOverlayLocation, overlayBackground, stateRecord } from "@/lib/overlay-navigation";
 const SessionContext = createContext<{
@@ -73,22 +74,38 @@ export function AuthBoundary({ children }: { children: ReactNode }) {
 
   if (session.isPending)
     return (
-      <main className="mx-auto flex min-h-svh max-w-md flex-col justify-center gap-6 p-6">
-        <PageHeading title="正在检查登录状态" />
-        <Loading label="正在检查登录状态…" />
-      </main>
+      <AuthShell>
+        <Card className="auth-card min-w-0">
+          <CardHeader className="auth-card-header">
+            <CardTitle className="auth-card-title">
+              <h1 className="w-full">正在检查登录状态</h1>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Loading label="正在检查登录状态…" />
+          </CardContent>
+        </Card>
+      </AuthShell>
     );
   if (session.isError && !session.data && !rejected) {
     return (
-      <main className="mx-auto flex min-h-svh max-w-md flex-col justify-center gap-6 p-6">
-        <PageHeading title="无法检查登录状态" />
-        <ErrorNotice
-          error={session.error}
-          retry={() => {
-            void session.refetch();
-          }}
-        />
-      </main>
+      <AuthShell>
+        <Card className="auth-card min-w-0">
+          <CardHeader className="auth-card-header">
+            <CardTitle className="auth-card-title">
+              <h1 className="w-full">无法检查登录状态</h1>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ErrorNotice
+              error={session.error}
+              retry={() => {
+                void session.refetch();
+              }}
+            />
+          </CardContent>
+        </Card>
+      </AuthShell>
     );
   }
   if (!session.data || rejected || resetOverlay)

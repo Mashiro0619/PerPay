@@ -3037,3 +3037,213 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   .manual-candidate-row .list-time { white-space: normal; }
   .manual-candidate-row .list-money { white-space: normal; overflow-wrap: anywhere; }
 }
+
+/* Authentication stage: focused neutral studio surface for login, setup, and session states. */
+.auth-stage {
+  position: relative;
+  isolation: isolate;
+  overflow-x: clip;
+  display: flex;
+  min-height: 100svh;
+  flex-direction: column;
+  padding: clamp(16px, 3vw, 24px);
+  background-color: var(--background);
+  background-image:
+    radial-gradient(
+      ellipse 68% 56% at 50% 40%,
+      transparent 16%,
+      var(--background) 74%
+    ),
+    radial-gradient(
+      ellipse 64% 44% at 50% -6%,
+      color-mix(in oklch, var(--foreground) 6.5%, transparent),
+      transparent 72%
+    ),
+    linear-gradient(to right, color-mix(in oklch, var(--foreground) 4.5%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in oklch, var(--foreground) 4.5%, transparent) 1px, transparent 1px);
+  background-size: 100% 100%, 100% 100%, 40px 40px, 40px 40px;
+  background-position: center, center top, center top, center top;
+  background-repeat: no-repeat, no-repeat, repeat, repeat;
+}
+.auth-topbar {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: flex-end;
+}
+.auth-theme-control button {
+  border-color: color-mix(in oklch, var(--border) 90%, transparent);
+  background-color: var(--card);
+  box-shadow: 0 1px 2px oklch(0 0 0 / 5%);
+}
+.auth-theme-control button:hover {
+  background-color: var(--muted);
+}
+.auth-stack {
+  margin: auto;
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  max-width: 26rem;
+  flex-direction: column;
+  gap: 1.5rem;
+  padding-block: clamp(1rem, 4vh, 2.5rem);
+}
+.auth-brand {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6875rem;
+  align-self: center;
+  border-radius: var(--radius-xl);
+  background-color: var(--background);
+  box-shadow: 0 0 20px 10px var(--background);
+  padding: 0.25rem 0.625rem;
+  text-decoration: none;
+}
+.auth-brand-mark {
+  display: inline-flex;
+  width: 2.25rem;
+  height: 2.25rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.75rem;
+  color: var(--foreground);
+  background: color-mix(in oklch, var(--card) 90%, var(--foreground) 10%);
+  border: 1px solid color-mix(in oklch, var(--foreground) 14%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in oklch, var(--foreground) 10%, transparent),
+    0 4px 12px -4px oklch(0 0 0 / 16%);
+  transition:
+    border-color var(--motion-fast, 140ms) var(--motion-ease-move, ease),
+    transform var(--motion-fast, 140ms) var(--motion-ease-move, ease);
+}
+@media (hover: hover) {
+  .auth-brand:hover .auth-brand-mark {
+    border-color: color-mix(in oklch, var(--foreground) 24%, transparent);
+    transform: translateY(-1px);
+  }
+}
+.auth-card {
+  --card-spacing: clamp(20px, 5vw, 28px);
+  border-radius: 1rem;
+  background: var(--card);
+  box-shadow:
+    inset 0 1px 0 color-mix(in oklch, var(--foreground) 8%, transparent),
+    0 1px 2px oklch(0 0 0 / 6%),
+    0 20px 44px -22px oklch(0 0 0 / 22%);
+}
+.auth-card-header {
+  gap: 0.375rem;
+}
+.auth-card-title {
+  font-size: clamp(1.25rem, 1.15rem + 0.4vw, 1.375rem);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.3;
+}
+.auth-card-description {
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+.auth-label-row {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.25rem 0.5rem;
+}
+.auth-ready-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--success-foreground);
+}
+.auth-input-group,
+.auth-input {
+  height: 2.5rem;
+  min-height: 2.5rem;
+}
+.auth-capslock-hint {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--warning-foreground);
+}
+.auth-status-alert {
+  background: var(--success);
+  color: var(--success-foreground);
+  border-color: color-mix(in oklch, var(--success-foreground) 22%, transparent);
+}
+.auth-status-alert [data-slot="alert-description"] {
+  color: var(--success-foreground);
+}
+.auth-remember-field {
+  padding-block: 0.125rem;
+}
+.auth-submit {
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+.auth-submit-arrow {
+  transition: transform var(--motion-fast, 140ms) var(--motion-ease-move, ease);
+}
+@media (hover: hover) {
+  .auth-submit:hover:not(:disabled) .auth-submit-arrow {
+    transform: translateX(2px);
+  }
+}
+.auth-card-footer {
+  background: transparent;
+  border-top: 1px solid color-mix(in oklch, var(--border) 75%, transparent);
+  padding: 0.75rem var(--card-spacing);
+}
+.auth-recovery-trigger {
+  color: var(--muted-foreground);
+  font-weight: 400;
+}
+.auth-recovery-trigger:hover,
+.auth-recovery-trigger[aria-expanded="true"] {
+  color: var(--foreground);
+}
+.auth-recovery-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.375rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  background: var(--card);
+  padding: 0.75rem 0.875rem;
+}
+.auth-recovery-link {
+  display: inline;
+  max-width: 100%;
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--foreground);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: color-mix(in oklch, var(--foreground) 32%, transparent);
+  transition: text-decoration-color var(--motion-fast, 140ms) var(--motion-ease-move, ease);
+}
+.auth-recovery-link:hover {
+  text-decoration-color: var(--foreground);
+}
+.auth-recovery-link-icon {
+  display: inline-block;
+  width: 0.85em;
+  height: 0.85em;
+  margin-inline-start: 0.2em;
+  vertical-align: -0.1em;
+}

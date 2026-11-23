@@ -299,4 +299,34 @@ describe("first-deployment authentication presentation", () => {
       document.querySelector('meta[name="perpay-initialized"]'),
     ).toHaveAttribute("content", "false");
   });
+
+  it("shows a live caps-lock status hint while typing the admin password and clears on blur", () => {
+    mount("true", "/login");
+    const password = screen.getByLabelText("管理员密码");
+    expect(screen.queryByText("大写锁定已开启")).not.toBeInTheDocument();
+    fireEvent.keyDown(password, { key: "A", modifierCapsLock: true });
+    expect(screen.getByRole("status")).toHaveTextContent("大写锁定已开启");
+    expect(password).not.toHaveAttribute("aria-describedby");
+    fireEvent.keyUp(password, { key: "A", modifierCapsLock: false });
+    expect(screen.queryByText("大写锁定已开启")).not.toBeInTheDocument();
+    fireEvent.keyDown(password, { key: "A", modifierCapsLock: true });
+    expect(screen.getByText("大写锁定已开启")).toBeVisible();
+    fireEvent.blur(password);
+    expect(screen.queryByText("大写锁定已开启")).not.toBeInTheDocument();
+  });
+
+  it("shows live setup password length and match cues without altering field labels", () => {
+    mount("false", "/setup", "false");
+    const password = screen.getByLabelText("设置管理员密码");
+    const confirm = screen.getByLabelText("再次输入密码");
+    expect(screen.queryByText("已满足长度")).not.toBeInTheDocument();
+    expect(screen.queryByText("两次输入一致")).not.toBeInTheDocument();
+    fireEvent.change(password, { target: { value: "short" } });
+    expect(screen.queryByText("已满足长度")).not.toBeInTheDocument();
+    fireEvent.change(password, { target: { value: "secure-pass" } });
+    expect(screen.getByText("已满足长度")).toBeVisible();
+    expect(screen.queryByText("两次输入一致")).not.toBeInTheDocument();
+    fireEvent.change(confirm, { target: { value: "secure-pass" } });
+    expect(screen.getByText("两次输入一致")).toBeVisible();
+  });
 });
