@@ -1,8 +1,18 @@
 import CreateSite from "./CreateSite";
 import { SiteManagementCards } from "@/components/site-management-cards";
-import { Pencil } from "lucide-react";
+import { Globe, Monitor, Receipt, Wallet, Webhook } from "lucide-react";
 import { CopyValue } from "@/components/copy-value";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { SelectionMotionGroup, SelectionMotionIndicator } from "@/components/selection-motion";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useLocation, useNavigation, useParams } from "react-router";
@@ -82,30 +92,32 @@ export default function Sites() {
   return <SiteManagementCards />;
 }
 const siteSections = [
-  { value: "basic", label: "基本信息" },
-  { value: "collection", label: "收款账号" },
-  { value: "orders", label: "订单设置" },
-  { value: "integration", label: "接入与通知" },
-  { value: "display", label: "收银台展示" },
+  { value: "basic", label: "基本信息", description: "配置网站名称、接单状态与对外识别的网站 ID。", icon: Globe },
+  { value: "collection", label: "收款账号", description: "分配可用于本站收款的支付宝账号与分配策略。", icon: Wallet },
+  { value: "orders", label: "订单设置", description: "控制收银台有效期、金额加价规则与待付款订单上限。", icon: Receipt },
+  { value: "integration", label: "接入与通知", description: "管理付款回调、返回域名、重试策略以及原生 API / 易支付接入。", icon: Webhook },
+  { value: "display", label: "收银台展示", description: "自定义本站收银台的展示模块与状态文案。", icon: Monitor },
 ] as const;
 
 function siteSummaryRows(site: Site, section: string): SettingsSummaryRow[] {
   const value = site.configuration, policy = value.policy;
   if (section === "collection") return [
-    ["分配方式", value.collection ? { FIXED: "指定账号", RANDOM: "随机分配", WEIGHTED: "按权重分配" }[value.collection.mode] : "未配置"],
+    ["分配方式", value.collection
+      ? <Badge variant="secondary">{{ FIXED: "指定账号", RANDOM: "随机分配", WEIGHTED: "按权重分配" }[value.collection.mode]}</Badge>
+      : <Badge variant="outline">未配置</Badge>],
     ["收款账号", <SiteCollectionSummary collection={value.collection} />],
   ];
   if (section === "orders") return [
     ["收银台有效期", durationLabel(policy.orders.order_ttl_seconds)],
-    ["加价起点", policy.orders.allow_zero_amount_offset ? "¥0.00（允许原价起）" : "¥0.01（默认）"],
+    ["加价起点", <Badge variant={policy.orders.allow_zero_amount_offset ? "secondary" : "outline"}>{policy.orders.allow_zero_amount_offset ? "¥0.00（允许原价起）" : "¥0.01（默认）"}</Badge>],
     ["最大加价金额", money(policy.orders.amount_offset_maximum_cents)],
     ["同金额冷却时长", durationLabel(policy.orders.amount_reuse_cooldown_seconds)],
     ["待付款订单上限", policy.orders.pending_order_limit === null ? "不限" : count(policy.orders.pending_order_limit) + " 笔"],
   ];
   if (section === "integration") return [
-    ["通知", value.notifications_enabled ? "开启" : "关闭"],
-    ["通知域名", value.notification_origin || "未设置"],
-    ["返回域名", value.return_origin || "未设置"],
+    ["通知", <Badge variant={value.notifications_enabled ? "success" : "outline"}>{value.notifications_enabled ? "开启" : "关闭"}</Badge>],
+    ["通知域名", value.notification_origin ? <span className="font-mono text-xs">{value.notification_origin}</span> : <span className="text-muted-foreground">未设置</span>],
+    ["返回域名", value.return_origin ? <span className="font-mono text-xs">{value.return_origin}</span> : <span className="text-muted-foreground">未设置</span>],
     ["通知超时", siteTimeoutSeconds(policy.notification_delivery.timeout_milliseconds) + " 秒"],
     ["最多发送次数", count(policy.notification_delivery.maximum_attempts) + " 次"],
     ["首次 / 最大重试间隔", policy.notification_delivery.retry_base_seconds + " / " + policy.notification_delivery.retry_maximum_seconds + " 秒"],
@@ -139,7 +151,7 @@ function siteSummaryRows(site: Site, section: string): SettingsSummaryRow[] {
   }
   return [
     ["业务网站名称", value.name],
-    ["新订单", value.accepting_orders ? "允许接单" : "暂停接单"],
+    ["新订单", <Badge variant={value.accepting_orders ? "success" : "warning"}>{value.accepting_orders ? "允许接单" : "暂停接单"}</Badge>],
     ["网站 ID", <CopyValue value={site.api_client_id ?? site.client_id} label="复制网站 ID" />],
     ["创建时间", dateTime(site.created_at)],
   ];
@@ -162,18 +174,21 @@ function SiteCollectionSummary({ collection }: { collection: SiteCollection | un
     {accounts.isError && <p className="text-muted-foreground">以下保留已保存的账号分配；当前账号资料与可用状态未确认。</p>}
     {accounts.isPaused ? <p role="status" className="text-muted-foreground">等待网络恢复，账号可用状态未确认。</p>
       : accounts.isFetching && <p role="status" className="text-muted-foreground">正在读取账号资料…</p>}
-    <ItemGroup aria-label="已分配收款账号">
+    <ItemGroup aria-label="已分配收款账号" className="gap-2">
       {configured.map(selected => {
         const account = catalog.get(selected.account_id);
         const status = !current ? "可用状态待确认" : account ? collectionAvailability(account) : "账号不存在或已删除，请核对历史配置";
-        return <Item key={selected.account_id} size="xs" role="listitem" className="min-w-0 px-0">
+        const ready = status === "当前可收款";
+        return <Item key={selected.account_id} size="xs" role="listitem" className="settings-collection-card">
           <ItemContent className="min-w-0 gap-1">
-            <ItemTitle className="line-clamp-none wrap-anywhere">{account?.name ?? selected.account_id}</ItemTitle>
-            {account && <ItemDescription className="line-clamp-none wrap-anywhere">账号 ID：{selected.account_id}</ItemDescription>}
-            <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <span className="text-muted-foreground">{status}</span>
-              {collection?.mode === "WEIGHTED" && <span className="tabular-nums">权重 {count(selected.weight ?? 1)}</span>}
+            <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+              <ItemTitle className="line-clamp-none wrap-anywhere">{account?.name ?? selected.account_id}</ItemTitle>
+              <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                <Badge variant={ready ? "success" : "outline"}>{status}</Badge>
+                {collection?.mode === "WEIGHTED" && <Badge variant="secondary" className="tabular-nums">权重 {count(selected.weight ?? 1)}</Badge>}
+              </div>
             </div>
+            {account && <ItemDescription className="line-clamp-none font-mono text-xs wrap-anywhere">账号 ID：{selected.account_id}</ItemDescription>}
           </ItemContent>
         </Item>;
       })}
@@ -184,32 +199,83 @@ function SiteCollectionSummary({ collection }: { collection: SiteCollection | un
 export function SiteSettingsPage() {
   const { clientId, section = "basic" } = useParams();
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
   const query = useQuery(siteEditorQueryOptions(clientId));
   const selected = siteSections.find(item => item.value === section);
   if (!selected) return <ErrorNotice error={new Error("网站设置分组不存在")} />;
-  return <div className="admin-settings-layout flex min-w-0 flex-col gap-4" data-site-settings-section={section}>
+  const changeSection = (value: string | null) => {
+    if (value) void navigate("/sites/" + encodeURIComponent(clientId!) + "/settings/" + value);
+  };
+  return <div className="admin-settings-layout @container/settings flex w-full min-w-0 flex-col gap-6" data-site-settings-section={section}>
     <PageHeading title="网站设置" />
-    <div className="site-settings-navigation flex min-w-0 items-center gap-2">
-      <Tabs className="min-w-0 flex-1" value={section} onValueChange={value => { if (value) void navigate("/sites/" + encodeURIComponent(clientId!) + "/settings/" + value); }}>
-        <ScrollingTabs selection={{ items: siteSections, value: section, onValueChange: value => { void navigate("/sites/" + encodeURIComponent(clientId!) + "/settings/" + value); }, label: "网站设置分组" }}><TabsList aria-label="网站设置分组" variant="line" activateOnFocus={false} className="min-w-max">
-          {siteSections.map(item => <TabsTrigger key={item.value} value={item.value}>{item.label}</TabsTrigger>)}
-        </TabsList></ScrollingTabs>
-      </Tabs>
-      <Link to={"/sites/" + encodeURIComponent(clientId!) + "/edit?section=" + section}
-        className={buttonVariants({ variant: "outline", size: "sm", className: "shrink-0" })}
-        aria-label={"编辑" + selected.label}
-      ><Pencil data-icon="inline-start" />编辑</Link>
-    </div>
-    <QueryView query={query}>{({ site }) => (
-      section === "display" ? (
-        <CheckoutDisplayStudio site={site} onCacheSite={cacheSite} />
+    <Tabs
+      orientation={isMobile ? "horizontal" : "vertical"}
+      value={section}
+      onValueChange={changeSection}
+      className={isMobile ? "min-w-0 gap-4" : "settings-shell"}
+    >
+      {isMobile ? (
+        <Select
+          value={section}
+          onValueChange={changeSection}
+          items={siteSections.map(item => ({ value: item.value, label: item.label }))}
+        >
+          <SelectTrigger aria-label="网站设置分组" className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent alignItemWithTrigger={false}>
+            <SelectGroup>
+              {siteSections.map(item => {
+                const Icon = item.icon;
+                return <SelectItem key={item.value} value={item.value}><Icon />{item.label}</SelectItem>;
+              })}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
       ) : (
-        <>
-          <SettingsSummary title={selected.label} rows={siteSummaryRows(site, section)} hideHeading />
-          {section === "integration" && <SiteIntegrationAssistant site={site} onReloadSite={() => { void query.refetch(); }} />}
-        </>
-      )
-    )}</QueryView>
+        <div className="settings-rail">
+          <SelectionMotionGroup>
+            <TabsList
+              aria-label="网站设置分组"
+              variant="line"
+              activateOnFocus={false}
+              data-selection-motion="fill"
+              className="settings-rail-list"
+            >
+              {siteSections.map(item => {
+                const Icon = item.icon;
+                return (
+                  <TabsTrigger key={item.value} value={item.value} className="settings-rail-item">
+                    <SelectionMotionIndicator active={section === item.value} variant="fill" />
+                    <Icon />
+                    <span>{item.label}</span>
+                  </TabsTrigger>
+                );
+              })}
+            </TabsList>
+          </SelectionMotionGroup>
+        </div>
+      )}
+      <TabsContent value={section} className="min-w-0" aria-label={isMobile ? selected.label : undefined}>
+        <div className="settings-pane">
+          <QueryView query={query}>{({ site }) => (
+            section === "display" ? (
+              <CheckoutDisplayStudio site={site} onCacheSite={cacheSite} />
+            ) : (
+              <>
+                <SettingsSummary
+                  title={selected.label}
+                  description={selected.description}
+                  rows={siteSummaryRows(site, section)}
+                  editTo={"/sites/" + encodeURIComponent(clientId!) + "/edit?section=" + section}
+                />
+                {section === "integration" && <SiteIntegrationAssistant site={site} onReloadSite={() => { void query.refetch(); }} />}
+              </>
+            )
+          )}</QueryView>
+        </div>
+      </TabsContent>
+    </Tabs>
   </div>;
 }
 
@@ -828,6 +894,7 @@ function SiteEditor({
       <form
         id={formId}
         ref={formRef}
+        className="settings-form-surface"
         onSubmit={(event) => {
           event.preventDefault();
           if (busy || requiresReview || timeoutError) return;

@@ -271,8 +271,7 @@ test.describe("mobile overlay regression with synthetic visible viewport", () =>
 
   test("dirty editor dismissal keeps both decisions reachable and restores the field focus", async ({ page, manifest }, info) => {
     await login(page, manifest);
-    await page.goto(manifest.origin + "/admin/settings/display");
-    await page.getByRole("link", { name: "编辑界面显示", exact: true }).click();
+    await page.goto(manifest.origin + "/admin/settings/display?overlay=%2Fsettings%2Fdisplay%2Fedit");
     const name = page.getByRole("textbox", { name: "系统名称", exact: true });
     await name.fill("保留的手机草稿");
     const address = page.url();

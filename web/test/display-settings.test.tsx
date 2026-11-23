@@ -38,23 +38,16 @@ describe("instance display settings", () => {
     const form = name.closest("form")!;
     expect(form).toHaveClass("w-full");
     expect(form).not.toHaveClass("max-w-2xl");
-    expect(form.querySelector("[data-slot=card-content] > [data-slot=field-set]")).toHaveClass("max-w-2xl");
-    const displayFields = name.closest('[data-slot="field-group"]')!;
-    const rows = [...displayFields.children];
-    expect(rows).toHaveLength(5);
-    for (const row of rows) {
-      expect(row).toHaveAttribute("data-orientation", "vertical");
-      expect(row).not.toContainElement(row.querySelector("label input"));
-    }
-    expect(rows[0]).toContainElement(name);
-    expect(rows[1]).toContainElement(chart);
+    expect(form).toHaveClass("settings-form-surface");
     const sections = screen.getByRole("group", { name: "总览显示模块" });
-    expect(rows[2]).toContainElement(sections);
     const workItemsLayout = screen.getByRole("group", { name: "待处理排列方式" });
-    expect(rows[3]).toContainElement(workItemsLayout);
     const notFound = screen.getByRole("textbox", { name: "订单不存在（404）说明" });
-    expect(rows[4]).toContainElement(notFound);
     expect(notFound).toHaveAttribute("maxlength", "200");
+    for (const field of [name, chart, sections, workItemsLayout, notFound]) {
+      const container = field.closest('[data-slot="field"]')!;
+      expect(container).toHaveAttribute("data-orientation", "vertical");
+      expect(container).not.toContainElement(container.querySelector("label input"));
+    }
     for (const label of ["核心指标", "收款趋势", "各网站概览", "待处理", "最近订单"]) {
       expect(within(sections).getByRole("switch", { name: label })).toBeChecked();
     }
@@ -62,7 +55,7 @@ describe("instance display settings", () => {
     expect(new FormData(form).get("dashboard_work_items_layout")).toBe("STACKED");
     expect(chart).toHaveAccessibleDescription("用于未设置个人图形偏好的浏览器。");
     expect(sections).toHaveAccessibleDescription("控制总览页展示的卡片模块，至少保留一项开启。");
-    expect(form.querySelector('[data-slot="card-header"]')).toHaveClass("sr-only");
+    expect(screen.getByRole("heading", { level: 2, name: "界面显示" })).toBeVisible();
     expect(form.querySelector('[data-slot="field-legend"]')).toHaveClass("sr-only");
     expect(screen.getByLabelText("系统名称")).toBeVisible();
     expect(screen.queryByText("收银台", { exact: true })).not.toBeInTheDocument();

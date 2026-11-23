@@ -302,24 +302,29 @@ test("account key content, drafts and confirmation focus survive content-width c
   await capture(page, info, "account-key-modal-focus-restored");
 });
 
-test("other settings sections retain their existing 56rem maximum width", async ({ page, manifest }, info) => {
+test("all settings sections share a unified full-width shell without width jumps", async ({ page, manifest }, info) => {
   const writes = await blockMutations(page);
   await page.setViewportSize({ width: 2190, height: 900 });
   await login(page, manifest);
   for (const mode of ["compact", "full"] as const) {
     await configure(page, "light", mode);
-    for (const section of ["accounts", "collection-policy", "backup", "display", "advanced", "provider", "collection"]) {
+    let baselineWidth: number | null = null;
+    for (const section of ["accounts", "collection-policy", "security", "backup", "display", "advanced", "provider", "collection"]) {
       await page.goto(manifest.origin + "/admin/settings/" + section);
       const currentSection = ["provider", "collection"].includes(section) ? "accounts" : section;
       await expect(page).toHaveURL(manifest.origin + "/admin/settings/" + currentSection);
       const layout = page.locator('.admin-settings-layout[data-settings-section="' + currentSection + '"]');
       await expect(layout).toBeVisible();
-      await expect(page.locator(summarySelector)).toHaveCount(0);
-      const geometry = await layout.evaluate(element => ({ width: element.getBoundingClientRect().width,
-        maxWidth: getComputedStyle(element).maxWidth, rem: parseFloat(getComputedStyle(document.documentElement).fontSize) }));
-      expect(geometry.maxWidth).toBe(56 * geometry.rem + "px");
-      expect(geometry.width).toBeLessThanOrEqual(56 * geometry.rem + 1);
-      await record(page, info, { feature: "non-security-settings-width-retained", section, currentSection, mode, geometry });
+      const geometry = await layout.evaluate(element => ({
+        width: element.getBoundingClientRect().width,
+        maxWidth: getComputedStyle(element).maxWidth,
+        contentWidth: element.closest("[data-content-width]")!.getBoundingClientRect().width,
+      }));
+      expect(geometry.maxWidth).toBe("none");
+      expect(Math.abs(geometry.width - geometry.contentWidth)).toBeLessThanOrEqual(1);
+      if (baselineWidth === null) baselineWidth = geometry.width;
+      else expect(Math.abs(geometry.width - baselineWidth)).toBeLessThanOrEqual(1);
+      await record(page, info, { feature: "unified-settings-width", section, currentSection, mode, geometry });
     }
   }
   expect(writes).toEqual([]);

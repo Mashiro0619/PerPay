@@ -315,9 +315,9 @@ function IntegrationContent({ site, siteDirty = false, disabled = false, showCli
       <FieldDescription>{hint}</FieldDescription>
     </Field>;
   }
-  return <Card data-site-integration>
+  return <Card size="sm" data-site-integration>
     <CardHeader>
-      <CardTitle>网站接入助手</CardTitle>
+      <CardTitle role="heading" aria-level={2}>网站接入助手</CardTitle>
     </CardHeader>
     <CardContent className="@container/integration flex min-w-0 flex-col gap-5">
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
@@ -354,29 +354,29 @@ function IntegrationContent({ site, siteDirty = false, disabled = false, showCli
       {!protocolEnabled && <p role="status">此协议已暂停新订单。</p>}
       {!keysReady && <Alert><AlertDescription>接入密钥尚未就绪，请生成对应密钥。</AlertDescription></Alert>}
       {feedback && <p role="status">{feedback}</p>}
-      <FieldGroup className="grid min-w-0 grid-cols-1 gap-4 @lg/integration:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-        <Field>
-          <FieldLabel>{protocol === "native" ? "PerPay 服务地址" : "易支付网关"}</FieldLabel>
+      <FieldGroup className="grid min-w-0 grid-cols-1 gap-3 @lg/integration:grid-cols-2">
+        <Field className="settings-metric-tile gap-1.5">
+          <FieldLabel className="text-xs text-muted-foreground">{protocol === "native" ? "PerPay 服务地址" : "易支付网关"}</FieldLabel>
           {configuration.public_origin
             ? <CopyValue value={configuration.public_origin.replace(/\/$/, "") + (protocol === "native" ? "" : "/")} label="复制接入地址" />
             : <FieldDescription>请先配置服务端公开地址。</FieldDescription>}
         </Field>
-        {(showClientId || protocol !== "native") && <Field>
-          <FieldLabel>{protocol === "native" ? "网站 ID（client_id）" : "商户 PID"}</FieldLabel>
+        {(showClientId || protocol !== "native") && <Field className="settings-metric-tile gap-1.5">
+          <FieldLabel className="text-xs text-muted-foreground">{protocol === "native" ? "网站 ID（client_id）" : "商户 PID"}</FieldLabel>
           <CopyValue value={protocol === "native" ? site.api_client_id ?? site.client_id : configuration.pid} label={protocol === "native" ? "复制网站 ID" : "复制商户 PID"} />
         </Field>}
       </FieldGroup>
       {protocol === "native"
-        ? showClientId && <Link to={sitePath + "/edit?section=integration"} className={buttonVariants({ variant: "outline", className: "self-start" })}>管理 API 与通知密钥</Link>
+        ? showClientId && <Link to={sitePath + "/edit?section=integration"} className={buttonVariants({ variant: "outline", size: "sm", className: "self-start" })}>管理 API 与通知密钥</Link>
         : <FieldGroup className="min-w-0 gap-4">
           {credential(protocol === "epay_v1" ? "epay_v1" : "epay_merchant")}
           {protocol === "epay_v2" && <>{credential("epay_platform", true)}{credential("epay_platform")}</>}
         </FieldGroup>}
-      <div className="flex min-w-0 flex-wrap gap-2">
+      <div className="flex min-w-0 flex-wrap gap-2 border-t border-border/70 pt-4">
         <a data-external-link href={documentation} target="_blank" rel="noopener noreferrer"
-          className={buttonVariants({ variant: "outline" })}><ExternalLink data-icon="inline-start" />接入文档</a>
-        <Link to={sitePath + "/orders"} className={buttonVariants({ variant: "outline" })}>查看网站订单</Link>
-        <Link to={sitePath + "/notifications"} className={buttonVariants({ variant: "outline" })}>查看通知记录</Link>
+          className={buttonVariants({ variant: "outline", size: "sm" })}><ExternalLink data-icon="inline-start" />接入文档</a>
+        <Link to={sitePath + "/orders"} className={buttonVariants({ variant: "outline", size: "sm" })}>查看网站订单</Link>
+        <Link to={sitePath + "/notifications"} className={buttonVariants({ variant: "outline", size: "sm" })}>查看通知记录</Link>
       </div>
     </CardContent>
     <SecretViewDialog open={viewing !== null} title={viewing?.publicOnly ? "平台公钥" : viewing ? secretLabels[viewing.purpose] : "查看密钥"}

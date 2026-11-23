@@ -137,7 +137,7 @@ describe("shared page request notices", () => {
 
   it("keeps the warning until every affected read recovers, including a later failed retry", async () => {
     const view = mountReads("/settings/display");
-    await screen.findByRole("link", { name: "编辑界面显示" });
+    await screen.findByRole("textbox", { name: "系统名称" });
     await settled();
     view.failed.add("settings");
     view.failed.add("status");
@@ -168,7 +168,7 @@ describe("shared page request notices", () => {
     await screen.findByRole("alert");
 
     await act(async () => { await view.router.navigate("/settings/display"); });
-    await screen.findByRole("link", { name: "编辑界面显示" });
+    await screen.findByRole("textbox", { name: "系统名称" });
     await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
     expect(queryClient.getQueryCache().findAll({ queryKey: ["orders"] })
       .some(query => query.state.status === "error" && !query.isActive())).toBe(true);

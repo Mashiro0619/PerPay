@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { onlineManager, useMutation } from "@tanstack/react-query";
-import { ShieldCheck } from "lucide-react";
+import { BookOpen, ChevronRight, ExternalLink, Globe, KeyRound, ShieldCheck } from "lucide-react";
 import { api, ApiError, result, type RuntimeSettings } from "@/api/client";
 import { useSession } from "@/auth";
 import { useDirtyDraft } from "@/drafts";
@@ -13,6 +13,7 @@ import { PageHeading } from "@/components/page-heading";
 import { SettingsSummary } from "@/components/settings-summary";
 import { OverlayFormActions } from "@/components/overlay-actions";
 import { ErrorNotice } from "@/components/request-state";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Input } from "@/components/ui/input";
@@ -21,19 +22,64 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 
 export function SecuritySettings({ settings }: { settings: RuntimeSettings }) {
   return <div className="flex min-w-0 flex-col gap-4" data-security-summary>
-    <SettingsSummary title="管理员 IP 白名单" rows={[
-      ["状态", settings.admin_access.enabled ? "已启用" : "未启用"],
-      ["允许的 IP / 网段", settings.admin_access.cidrs.length
-        ? <ul aria-label="已保存的白名单规则" className="flex min-w-0 flex-col gap-1">{settings.admin_access.cidrs.map(cidr => <li key={cidr} className="wrap-anywhere font-mono">{cidr}</li>)}</ul>
-        : "未配置规则"],
-    ]} editTo="/settings/security/access" />
-    <SettingsSummary title="登录密码" description="修改后所有设备都需重新登录。" rows={[["登录方式", "管理员密码"]]} editTo="/settings/security/password" editLabel="修改" />
-    <Card>
-      <CardHeader><CardTitle role="heading" aria-level={2}>密钥</CardTitle></CardHeader>
-      <CardContent className="flex flex-col items-start gap-2">
-        <Link to="/sites">业务网站密钥与网站 ID</Link>
-        <Link to="/settings/accounts">在支付宝账号中管理应用密钥</Link>
-        <a data-external-link href="https://github.com/Mashiro0619/PerPay/blob/main/USAGE.md" target="_blank" rel="noopener noreferrer" className="text-sm underline underline-offset-4">接入文档</a>
+    <SettingsSummary
+      title="管理员 IP 白名单"
+      description="启用后仅允许列表中的 IP 或网段访问管理后台。"
+      rows={[
+        ["状态", <Badge variant={settings.admin_access.enabled ? "success" : "outline"}>{settings.admin_access.enabled ? "已启用" : "未启用"}</Badge>],
+        ["允许的 IP / 网段", settings.admin_access.cidrs.length
+          ? <ul aria-label="已保存的白名单规则" className="flex min-w-0 flex-col gap-1">{settings.admin_access.cidrs.map(cidr => <li key={cidr} className="wrap-anywhere font-mono text-xs">{cidr}</li>)}</ul>
+          : <span className="text-muted-foreground">未配置规则</span>],
+      ]}
+      editTo="/settings/security/access"
+    />
+    <SettingsSummary
+      title="登录密码"
+      description="修改后所有设备都需重新登录。"
+      rows={[["登录方式", "管理员密码"]]}
+      editTo="/settings/security/password"
+      editLabel="修改"
+    />
+    <Card size="sm">
+      <CardHeader>
+        <CardTitle role="heading" aria-level={2}>密钥</CardTitle>
+        <CardDescription>接口密钥按业务网站独立管理，支付宝应用密钥在对应收款账号中维护。</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="settings-link-list">
+          <Link to="/sites" data-settings-link-row className="settings-link-row" aria-label="业务网站密钥与网站 ID">
+            <span className="settings-link-icon" aria-hidden="true"><Globe className="size-4" /></span>
+            <span className="settings-link-copy">
+              <span className="settings-link-title">业务网站密钥与网站 ID</span>
+              <span className="settings-link-desc" aria-hidden="true">查看或轮换各网站的原生 API、通知与易支付密钥</span>
+            </span>
+            <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+          </Link>
+          <Link to="/settings/accounts" data-settings-link-row className="settings-link-row" aria-label="在支付宝账号中管理应用密钥">
+            <span className="settings-link-icon" aria-hidden="true"><KeyRound className="size-4" /></span>
+            <span className="settings-link-copy">
+              <span className="settings-link-title">在支付宝账号中管理应用密钥</span>
+              <span className="settings-link-desc" aria-hidden="true">生成、更换或核对开放平台应用公钥与支付宝公钥</span>
+            </span>
+            <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+          </Link>
+          <a
+            data-external-link
+            data-settings-link-row
+            href="https://github.com/Mashiro0619/PerPay/blob/main/USAGE.md"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="settings-link-row"
+            aria-label="接入文档"
+          >
+            <span className="settings-link-icon" aria-hidden="true"><BookOpen className="size-4" /></span>
+            <span className="settings-link-copy">
+              <span className="settings-link-title">接入文档</span>
+              <span className="settings-link-desc" aria-hidden="true">阅读原生 API 签名规范、回调验证与易支付接入指南</span>
+            </span>
+            <ExternalLink className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+          </a>
+        </div>
       </CardContent>
     </Card>
     <AdministratorSessions />

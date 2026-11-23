@@ -131,19 +131,16 @@ test("website categories preserve keyboard activation across desktop tabs and th
   const sourceUrl = page.url(), sourceScroll = await page.evaluate(() => window.scrollY);
   const evidence = [];
   for (let index = 1; index < 5; index++) {
-    await page.keyboard.press("ArrowRight");
+    await page.keyboard.press("ArrowDown");
     const choice = choices.nth(index);
     await expect(choice).toBeFocused();
     expect(page.url()).toBe(sourceUrl);
     const geometry = await choice.evaluate(element => {
       const bounds = element.getBoundingClientRect();
-      const viewport = element.closest("[data-settings-tabs-scroll]")!.getBoundingClientRect();
       const hit = document.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
-      return { label: element.textContent, left: bounds.left, right: bounds.right, viewportLeft: viewport.left, viewportRight: viewport.right,
+      return { label: element.textContent, left: bounds.left, right: bounds.right,
         unobscured: hit === element || element.contains(hit), pageScroll: window.scrollY };
     });
-    expect(geometry.left).toBeGreaterThanOrEqual(geometry.viewportLeft - 1);
-    expect(geometry.right).toBeLessThanOrEqual(geometry.viewportRight + 1);
     expect(geometry.unobscured).toBe(true);
     expect(geometry.pageScroll).toBe(sourceScroll);
     evidence.push(geometry);
@@ -194,60 +191,46 @@ test("settings use guarded category selection on phones and scrolling tabs on de
     await record(page, info, { route, selected: selectedText });
   }
   await page.goto(manifest.origin + "/admin/settings/display");
-  await page.getByRole("link", { name: "编辑界面显示", exact: true }).click();
-  const editor = page.getByRole("dialog", { name: "编辑界面显示", exact: true });
   const name = page.getByRole("textbox", { name: "系统名称" });
   await name.fill("手机草稿保留");
-  await editor.locator("[data-overlay-actions]").getByRole("button", { name: "关闭", exact: true }).click();
+  await page.getByRole("combobox", { name: "设置分类" }).click();
+  await page.getByRole("option", { name: "查账设置" }).click();
   const guard = page.getByRole("alertdialog", { name: "放弃未保存的修改？" });
   await expect(guard).toBeVisible();
   await guard.getByRole("button", { name: "继续编辑" }).click();
   await expect(name).toHaveValue("手机草稿保留");
   await page.setViewportSize({ width: 1024, height: 768 });
   await expect(name).toHaveValue("手机草稿保留");
-  expect((await editor.boundingBox())!.width).toBeLessThanOrEqual(896);
-  await editor.locator("[data-overlay-actions]").getByRole("button", { name: "关闭", exact: true }).click();
-  await guard.getByRole("button", { name: "放弃修改并继续", exact: true }).click();
-  await expect(editor).toBeHidden();
   await expect(page.getByRole("tablist", { name: "设置分类" })).toBeVisible();
+  await page.getByRole("button", { name: "重置", exact: true }).click();
+  await expect(page.getByRole("button", { name: "保存", exact: true })).toBeDisabled();
   await page.goto(manifest.origin + "/admin/settings/provider");
   const list = page.getByRole("tablist", { name: "设置分类" });
   await expect(list).toBeVisible();
   const selected = list.locator('[aria-selected="true"]');
   await selected.focus();
   const before = page.url();
-  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("ArrowDown");
   expect(page.url()).toBe(before);
-  const next = page.getByRole("button", { name: "向后滚动设置分类" });
-  const scroll = page.locator("[data-settings-tabs-scroll]");
-  const overflows = await scroll.evaluate(element => element.scrollWidth > element.clientWidth + 1);
-  if (overflows) {
-    await expect(next).toBeVisible();
-    await next.click();
-    await expect.poll(() => scroll.evaluate(e => e.scrollLeft)).toBeGreaterThan(0);
-  } else await expect(next).toBeHidden();
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(manifest.origin + "/admin/settings/display");
-  const width = (await page.locator(".admin-settings-layout").boundingBox())!.width;
-  expect(width).toBeLessThanOrEqual(896);
-  await expect(page.getByRole("button", { name: "向后滚动设置分类" })).toBeHidden();
+  const layoutBounds = await page.locator(".admin-settings-layout").boundingBox();
+  expect(layoutBounds!.width).toBeGreaterThan(896);
   await page.clock.runFor(250);
   const indicator = list.locator('[aria-selected="true"] [data-selection-indicator]');
   await expect(list.locator("[data-selection-indicator]")).toHaveCount(1);
-  const underline = await indicator.evaluate(element => {
-    const line = element.getBoundingClientRect();
+  const pill = await indicator.evaluate(element => {
+    const box = element.getBoundingClientRect();
     const tab = element.parentElement!.getBoundingClientRect();
-    const viewport = element.closest("[data-settings-tabs-scroll]")!.getBoundingClientRect();
-    return { line: line.toJSON(), tab: tab.toJSON(), viewport: viewport.toJSON() };
+    return { box: box.toJSON(), tab: tab.toJSON() };
   });
-  expect(Math.abs(underline.line.left - underline.tab.left)).toBeLessThanOrEqual(1);
-  expect(Math.abs(underline.line.width - underline.tab.width)).toBeLessThanOrEqual(2);
-  expect(underline.line.bottom).toBeLessThanOrEqual(underline.viewport.bottom);
-  const stableEdit = await page.getByRole("link", { name: "编辑界面显示", exact: true }).elementHandle();
+  expect(Math.abs(pill.box.left - pill.tab.left)).toBeLessThanOrEqual(1);
+  expect(Math.abs(pill.box.width - pill.tab.width)).toBeLessThanOrEqual(2);
+  const stableInput = await page.getByRole("textbox", { name: "系统名称" }).elementHandle();
   await page.emulateMedia({ reducedMotion: "reduce" });
   await expect(indicator).toHaveAttribute("data-selection-mode", "static");
-  expect(await stableEdit!.evaluate(element => element.isConnected)).toBe(true);
-  await record(page, info, { feature: "settings-selection-motion", underline, reducedMotion: true });
+  expect(await stableInput!.evaluate(element => element.isConnected)).toBe(true);
+  await record(page, info, { feature: "settings-selection-motion", pill, reducedMotion: true });
 });
 
 test("account list and detail retain their console hierarchy across themes and widths", async ({ page, manifest }, info) => {

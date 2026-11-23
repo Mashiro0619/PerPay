@@ -182,7 +182,7 @@ describe("dashboard section visibility", () => {
     expect(screen.getByRole("link", { name: "界面显示设置" })).toHaveAttribute("href", "/settings/display");
   });
 
-  it("displays concise summary rows on the display settings page", async () => {
+  it("renders saved section switches directly inline on the display settings page", async () => {
     mountOverviewWithSections(
       {
         summary_cards: true,
@@ -194,8 +194,14 @@ describe("dashboard section visibility", () => {
       "/settings/display",
     );
 
-    expect(await screen.findByText("总览显示模块", { exact: true, selector: "dt" })).toBeVisible();
-    expect(screen.getByText("核心指标、最近订单", { exact: true, selector: "dd" })).toBeVisible();
+    const sectionsGroup = await screen.findByRole("group", { name: "总览显示模块" });
+    expect(screen.getByText("已开启 2 / 5")).toBeVisible();
+    expect(sectionsGroup.querySelector('[role="switch"]')).toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: "核心指标" })).toBeChecked();
+    expect(screen.getByRole("switch", { name: "最近订单" })).toBeChecked();
+    expect(screen.getByRole("switch", { name: "收款趋势" })).not.toBeChecked();
+    expect(screen.getByRole("switch", { name: "各网站概览" })).not.toBeChecked();
+    expect(screen.getByRole("switch", { name: "待处理" })).not.toBeChecked();
   });
 
   it("uses cached dashboard sections on cold load to avoid flashing hidden cards", async () => {
@@ -256,8 +262,8 @@ describe("dashboard section visibility", () => {
       "/settings/display",
       "SIDE_BY_SIDE",
     );
-    expect(await screen.findByText("待处理排列方式", { exact: true, selector: "dt" })).toBeVisible();
-    expect(screen.getByText("与订单并排", { exact: true, selector: "dd" })).toBeVisible();
+    const layoutGroup = await screen.findByRole("group", { name: "待处理排列方式" });
+    expect(layoutGroup.querySelector('[aria-pressed="true"]')).toHaveTextContent("与订单并排");
   });
 
   it("uses cached work-items layout on cold load before settings arrive", async () => {

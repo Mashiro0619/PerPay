@@ -7,6 +7,7 @@ import { api, ApiError, queryClient, result, type SitePolicy } from "@/api/clien
 import { useDirtyDraft } from "@/drafts";
 import { useSuccessToast } from "@/components/Feedback";
 import { ErrorNotice, QueryView } from "@/components/request-state";
+import { Monitor, Receipt, Webhook } from "lucide-react";
 import { SitePolicyFields } from "@/components/SitePolicyFields";
 import { siteTimeoutError, siteTimeoutSeconds } from "@/lib/site-timeout";
 import { isOperationResultUnknown, useOperationWait } from "@/hooks/use-operation-wait";
@@ -26,9 +27,9 @@ import {
 type DefaultsSnapshot = { revision: number; policy: SitePolicy };
 const defaultsKey = ["site-defaults"] as const;
 const sections = [
-  { value: "orders", label: "订单设置" },
-  { value: "display", label: "收银台展示" },
-  { value: "integration", label: "通知设置" },
+  { value: "orders", label: "订单设置", icon: Receipt },
+  { value: "display", label: "收银台展示", icon: Monitor },
+  { value: "integration", label: "通知设置", icon: Webhook },
 ];
 
 function latestDefaults(snapshot: DefaultsSnapshot): DefaultsSnapshot {
@@ -192,13 +193,16 @@ function DefaultsEditor({ initial }: { initial: DefaultsSnapshot }) {
   }, [section, save.error, busy]);
 
   return (
-    <div className="admin-settings-layout flex flex-col gap-6">
+    <div className="admin-settings-layout flex flex-col gap-5" data-site-defaults>
       <PageHeading title="新网站默认设置" />
-      <p className="text-sm text-muted-foreground">仅用于新网站，已有网站不变。</p>
+      <p className="text-sm text-muted-foreground">仅应用于后续新建的业务网站，已有网站的独立配置保持不变。</p>
       <Tabs value={section} onValueChange={value => { if (value) setSection(value); }}>
         <ScrollingTabs selection={{ items: sections, value: section, onValueChange: setSection, label: "默认设置分组" }}>
-          <TabsList className="min-w-max" aria-label="默认设置分组" activateOnFocus={false}>
-            {sections.map(item => <TabsTrigger key={item.value} value={item.value}>{item.label}</TabsTrigger>)}
+          <TabsList variant="line" className="min-w-max border-b border-border/70 pb-1" aria-label="默认设置分组" activateOnFocus={false}>
+            {sections.map(item => {
+              const Icon = item.icon;
+              return <TabsTrigger key={item.value} value={item.value}><Icon />{item.label}</TabsTrigger>;
+            })}
           </TabsList>
         </ScrollingTabs>
       </Tabs>
@@ -242,7 +246,7 @@ function DefaultsEditor({ initial }: { initial: DefaultsSnapshot }) {
           saveLabel="保存默认设置"
         />
       )}
-      <form id={formId} ref={formRef} onSubmit={event => {
+      <form id={formId} ref={formRef} className="settings-form-surface" onSubmit={event => {
         event.preventDefault();
         if (!busy && !requiresReview && !timeoutError) save.mutate();
       }}>

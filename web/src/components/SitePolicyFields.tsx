@@ -226,19 +226,7 @@ export function SitePolicyFields({
       {(!section || section === "orders") && (
         <FieldSet className="settings-fields" disabled={disabled}>
           <FieldLegend className={section ? "sr-only" : undefined}>订单设置</FieldLegend>
-          <NumberField
-            label="收银台有效期（秒）"
-            error={error("orders.order_ttl_seconds")}
-            value={value.orders.order_ttl_seconds}
-            min={60}
-            max={1800}
-            onChange={(n) =>
-              change((p) => {
-                p.orders.order_ttl_seconds = n;
-              })
-            }
-          />
-          <Field orientation="horizontal" data-disabled={disabled}>
+          <Field orientation="horizontal" className="col-span-full settings-toggle-card" data-disabled={disabled}>
             <FieldContent>
               <FieldLabel htmlFor={zeroOffsetId}>允许原价起（从 ¥0.00 开始加价）</FieldLabel>
               <FieldDescription id={zeroOffsetId + "-hint"}>
@@ -260,6 +248,18 @@ export function SitePolicyFields({
               }
             />
           </Field>
+          <NumberField
+            label="收银台有效期（秒）"
+            error={error("orders.order_ttl_seconds")}
+            value={value.orders.order_ttl_seconds}
+            min={60}
+            max={1800}
+            onChange={(n) =>
+              change((p) => {
+                p.orders.order_ttl_seconds = n;
+              })
+            }
+          />
           <NumberField
             label="最大加价金额（分）"
             hint={value.orders.allow_zero_amount_offset

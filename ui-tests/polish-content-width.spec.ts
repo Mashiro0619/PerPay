@@ -72,7 +72,7 @@ function details(manifest: Manifest): Scenario[] {
 
 function settings(account: string): Scenario[] {
   return [
-    { name: "display-summary", route: "/settings/display", kind: "settings", ready: "[data-settings-summary]" },
+    { name: "display-summary", route: "/settings/display", kind: "settings", ready: '[data-settings-editor-card="display"]' },
     { name: "security-summary", route: "/settings/security", kind: "settings", ready: "[data-security-summary]" },
     { name: "accounts", route: "/settings/accounts", kind: "settings", ready: "[data-account-list]" },
     { name: "display-editor", route: "/settings/display/edit", kind: "settings", ready: "#setting-system-name", overlayRem: 40 },
@@ -195,9 +195,9 @@ async function inspect(page: Page, scenario: Scenario, info: TestInfo, mode: Mod
   expect(geometry.texts.length, scenario.name + " has readable fields").toBeGreaterThan(0);
   expect(geometry.texts.filter(text => text.clipped.length), scenario.name + " keeps complete field text readable").toEqual([]);
   expect(geometry.fields.filter(field => !field.contained), scenario.name + " keeps form controls contained").toEqual([]);
-  if (scenario.kind === "settings" && !scenario.overlayRem && scenario.name !== "security-summary") {
-    expect(geometry.settingsWidth, "ordinary settings keep their separate reading width").not.toBeNull();
-    expect(geometry.settingsWidth!).toBeLessThanOrEqual(56 * geometry.rem + 1);
+  if (scenario.kind === "settings" && !scenario.overlayRem) {
+    expect(geometry.settingsWidth, "settings sections use the full content width consistently").not.toBeNull();
+    expect(geometry.settingsWidth!).toBeLessThanOrEqual(geometry.width + 1);
   }
   if (scenario.overlayRem) {
     const overlay = page.locator("[data-overlay-content]");

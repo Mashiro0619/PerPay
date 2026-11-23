@@ -9,7 +9,7 @@ import {
   type FormEvent,
 } from "react";
 import { onlineManager, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Save } from "lucide-react";
+import { RotateCcw, Save } from "lucide-react";
 import { PROVIDER_TIMING_DEFAULTS } from "../../../src/shared/provider-defaults";
 import {
   CHECKOUT_TEXT_MAX_LENGTH,
@@ -23,13 +23,14 @@ import {
   type RuntimeSettings,
 } from "@/api/client";
 import { Link } from "@/navigation";
-import { cn } from "@/lib/utils";
 import { useFormDraft } from "@/drafts";
 import { OverlayActions } from "@/components/overlay-actions";
 import { useOverlayContext } from "@/lib/overlay-context";
 import { useSuccessToast } from "@/components/Feedback";
 import { ErrorNotice } from "@/components/request-state";
+import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -68,8 +69,10 @@ import {
 } from "@/components/ui/field";
 import {
   Card,
+  CardAction,
   CardHeader,
   CardTitle,
+  CardDescription,
   CardContent,
   CardFooter,
 } from "@/components/ui/card";
@@ -94,6 +97,7 @@ export const sections = [
   ["advanced", "高级设置"],
 ] as const;
 function NumberField({
+  idPrefix = "setting",
   name,
   label,
   value,
@@ -103,6 +107,7 @@ function NumberField({
   error,
   scale = 1,
 }: {
+  idPrefix?: string;
   name: string;
   label: string;
   value: number;
@@ -112,7 +117,7 @@ function NumberField({
   error?: string;
   scale?: number;
 }) {
-  const id = "setting-" + name;
+  const id = `${idPrefix}-${name}`;
   return (
     <Field data-invalid={!!error}>
       <FieldLabel htmlFor={id}>{label}</FieldLabel>
@@ -239,6 +244,9 @@ export function SettingsEditor({
   const [initialSettings] = useState(settings);
   const overlay = useOverlayContext();
   const formId = useId();
+  const idPrefix = "setting";
+  const systemNameId = `${idPrefix}-system-name`;
+  const systemNameErrorId = `${idPrefix}-system-name-error`;
   function revealField(field: HTMLElement) {
     requestAnimationFrame(() => {
       if (field.isConnected && !field.matches(":disabled")) field.focus();
@@ -365,6 +373,20 @@ export function SettingsEditor({
     save.mutate(new FormData(event.currentTarget));
   }
 
+  function resetDraft() {
+    draft.form.current?.reset();
+    if (section === "display") {
+      setChartType(savedChartType);
+      setDashboardSections(savedDashboardSections);
+      setWorkItemsLayout(savedWorkItemsLayout);
+      setNotFoundDetail(savedNotFoundDetail ?? "");
+    }
+    setFieldErrors({});
+    setSavedMessage("");
+    save.reset();
+    requestAnimationFrame(() => draft.onChange());
+  }
+
   function recommendedProvider() {
     const values = {
       timeout_milliseconds: PROVIDER_TIMING_DEFAULTS.timeoutMilliseconds / 1000,
@@ -386,86 +408,113 @@ export function SettingsEditor({
     save.reset();
   }
   const providerCollection = (
-    <FieldGroup className="settings-fields">
-      <Button
-        type="button"
-        variant="outline"
-        className="w-fit col-span-full"
-        onClick={recommendedProvider}
-      >
-        采用推荐值
-      </Button>
-
-      <NumberField
-        name="timeout_milliseconds"
-        error={fieldErrors.timeout_milliseconds}
-        label="请求超时（秒）"
-        scale={1000}
-        value={
-          initialSettings.collection_policy?.timeout_milliseconds ??
-          PROVIDER_TIMING_DEFAULTS.timeoutMilliseconds
-        }
-        min={1000}
-        max={120000}
-      />
-      <NumberField
-        name="scan_interval_seconds"
-        error={fieldErrors.scan_interval_seconds}
-        label="常规查账间隔（秒）"
-        value={
-          initialSettings.collection_policy?.scan_interval_seconds ??
-          PROVIDER_TIMING_DEFAULTS.scanIntervalSeconds
-        }
-        min={5}
-        max={3600}
-        hint="无待付款订单时使用。"
-      />
-      <NumberField
-        name="active_scan_interval_seconds"
-        error={fieldErrors.active_scan_interval_seconds}
-        label="活跃查账间隔（秒）"
-        value={
-          initialSettings.collection_policy?.active_scan_interval_seconds ??
-          PROVIDER_TIMING_DEFAULTS.activeScanIntervalSeconds
-        }
-        min={5}
-        max={3600}
-        hint="有待付款订单时使用，不能大于常规查账间隔。"
-      />
-      <NumberField
-        name="minimum_scan_interval_seconds"
-        error={fieldErrors.minimum_scan_interval_seconds}
-        label="最小查账间隔（秒）"
-        value={initialSettings.collection_policy?.minimum_scan_interval_seconds ?? PROVIDER_TIMING_DEFAULTS.activeScanIntervalSeconds}
-        min={5}
-        max={3600}
-        hint="限制自动与收银台触发查账的最小间隔，且不能大于活跃查账间隔。"
-      />
-      <NumberField
-        name="safety_lag_seconds"
-        error={fieldErrors.safety_lag_seconds}
-        label="查账延迟（秒）"
-        value={
-          initialSettings.collection_policy?.safety_lag_seconds ??
-          PROVIDER_TIMING_DEFAULTS.safetyLagSeconds
-        }
-        min={5}
-        max={300}
-        hint="只查询早于当前时间指定秒数的账单，等待支付宝记录稳定。"
-      />
-      <NumberField
-        name="maximum_success_age_seconds"
-        error={fieldErrors.maximum_success_age_seconds}
-        label="查账有效时限（秒）"
-        value={
-          initialSettings.collection_policy?.maximum_success_age_seconds ??
-          PROVIDER_TIMING_DEFAULTS.maximumSuccessAgeSeconds
-        }
-        min={10}
-        max={86400}
-        hint="超过有效时限未成功查账的账号将暂停接收新订单，其未付款收银台暂不可用。网站仍可使用已配置的其他就绪账号。"
-      />
-    </FieldGroup>
+    <div className="flex min-w-0 flex-col gap-6">
+      {overlay && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="w-fit"
+          onClick={recommendedProvider}
+        >
+          <RotateCcw data-icon="inline-start" />
+          采用推荐值
+        </Button>
+      )}
+      <div className="settings-section-group">
+        <div className="flex flex-col gap-0.5">
+          <h3 className="settings-section-group-title">轮询频率</h3>
+          <p className="settings-section-group-desc">按当前是否存在待付款订单自动切换轮询节奏。</p>
+        </div>
+        <FieldGroup className="settings-fields-3">
+          <NumberField
+            idPrefix={idPrefix}
+            name="scan_interval_seconds"
+            error={fieldErrors.scan_interval_seconds}
+            label="常规查账间隔（秒）"
+            value={
+              initialSettings.collection_policy?.scan_interval_seconds ??
+              PROVIDER_TIMING_DEFAULTS.scanIntervalSeconds
+            }
+            min={5}
+            max={3600}
+            hint="无待付款订单时使用。"
+          />
+          <NumberField
+            idPrefix={idPrefix}
+            name="active_scan_interval_seconds"
+            error={fieldErrors.active_scan_interval_seconds}
+            label="活跃查账间隔（秒）"
+            value={
+              initialSettings.collection_policy?.active_scan_interval_seconds ??
+              PROVIDER_TIMING_DEFAULTS.activeScanIntervalSeconds
+            }
+            min={5}
+            max={3600}
+            hint="有待付款订单时使用，不能大于常规查账间隔。"
+          />
+          <NumberField
+            idPrefix={idPrefix}
+            name="minimum_scan_interval_seconds"
+            error={fieldErrors.minimum_scan_interval_seconds}
+            label="最小查账间隔（秒）"
+            value={initialSettings.collection_policy?.minimum_scan_interval_seconds ?? PROVIDER_TIMING_DEFAULTS.activeScanIntervalSeconds}
+            min={5}
+            max={3600}
+            hint="限制自动与收银台触发查账的最小间隔，且不能大于活跃查账间隔。"
+          />
+        </FieldGroup>
+      </div>
+      <Separator />
+      <div className="settings-section-group">
+        <div className="flex flex-col gap-0.5">
+          <h3 className="settings-section-group-title">超时与稳健保护</h3>
+          <p className="settings-section-group-desc">防止接口异常或账单延迟导致误判或漏单。</p>
+        </div>
+        <FieldGroup className="settings-fields-3">
+          <NumberField
+            idPrefix={idPrefix}
+            name="timeout_milliseconds"
+            error={fieldErrors.timeout_milliseconds}
+            label="请求超时（秒）"
+            scale={1000}
+            value={
+              initialSettings.collection_policy?.timeout_milliseconds ??
+              PROVIDER_TIMING_DEFAULTS.timeoutMilliseconds
+            }
+            min={1000}
+            max={120000}
+            hint="单次支付宝账单查询请求的最长等待时间。"
+          />
+          <NumberField
+            idPrefix={idPrefix}
+            name="safety_lag_seconds"
+            error={fieldErrors.safety_lag_seconds}
+            label="查账延迟（秒）"
+            value={
+              initialSettings.collection_policy?.safety_lag_seconds ??
+              PROVIDER_TIMING_DEFAULTS.safetyLagSeconds
+            }
+            min={5}
+            max={300}
+            hint="只查询早于当前时间指定秒数的账单，等待支付宝记录稳定。"
+          />
+          <NumberField
+            idPrefix={idPrefix}
+            name="maximum_success_age_seconds"
+            error={fieldErrors.maximum_success_age_seconds}
+            label="查账有效时限（秒）"
+            value={
+              initialSettings.collection_policy?.maximum_success_age_seconds ??
+              PROVIDER_TIMING_DEFAULTS.maximumSuccessAgeSeconds
+            }
+            min={10}
+            max={86400}
+            hint="超过有效时限未成功查账的账号将暂停接收新订单，其未付款收银台暂不可用。网站仍可使用已配置的其他就绪账号。"
+          />
+        </FieldGroup>
+      </div>
+    </div>
   );
   const backupFields = (
     <FieldGroup>
@@ -503,274 +552,299 @@ export function SettingsEditor({
   const displayRowClassName =
     "gap-2";
   const displayFields = (
-    <FieldGroup className="gap-6">
-      <Field
-        orientation="vertical"
-        className={displayRowClassName}
-        data-invalid={!!fieldErrors.system_name}
-      >
-        <FieldLabel htmlFor="setting-system-name">系统名称</FieldLabel>
-        <FieldContent className="min-w-0">
-          <Input
-            id="setting-system-name"
-            name="system_name"
-            required
-            maxLength={40}
-            defaultValue={initialSettings.display?.system_name ?? "PerPay"}
-            aria-invalid={!!fieldErrors.system_name}
-            aria-describedby={
-              fieldErrors.system_name ? "system-name-error" : undefined
-            }
-          />
-          {fieldErrors.system_name && (
-            <FieldError id="system-name-error">
-              {fieldErrors.system_name}
-            </FieldError>
-          )}
-        </FieldContent>
-      </Field>
-      <Field orientation="vertical" className={displayRowClassName} data-invalid={!!fieldErrors.dashboard_chart_type}>
-        <FieldLabel id={formId + "-chart-label"}>收款趋势默认图形</FieldLabel>
-        <FieldContent className="min-w-0">
-          <input type="hidden" name="dashboard_chart_type" value={chartType} />
-          <ToggleGroup data-settings-chart-default variant="outline" value={[chartType]}
-            aria-labelledby={formId + "-chart-label"}
-            aria-describedby={formId + "-chart-hint" + (fieldErrors.dashboard_chart_type ? " " + formId + "-chart-error" : "")}
-            aria-invalid={!!fieldErrors.dashboard_chart_type}
-            className="w-full max-w-full flex-wrap items-stretch max-md:w-fit"
-            onValueChange={values => {
-              const value = values[0];
-              if (value !== "AREA" && value !== "BAR" && value !== "LINE") return;
-              setChartType(value);
-              setSavedMessage("");
-              save.reset();
-              setFieldErrors(current => {
-                if (!current.dashboard_chart_type) return current;
-                const next = { ...current };
-                delete next.dashboard_chart_type;
-                return next;
-              });
-            }}>
-            {([["AREA", "面积图"], ["BAR", "柱状图"], ["LINE", "累计图"]] as const).map(([value, label]) =>
-              <ToggleGroupItem key={value} value={value} type="button" disabled={save.isPending}
-                aria-invalid={!!fieldErrors.dashboard_chart_type}
-                className="h-auto min-h-8 min-w-0 flex-[1_1_6rem] whitespace-normal py-2 max-md:flex-[0_1_auto] max-md:py-1">{label}</ToggleGroupItem>)}
-          </ToggleGroup>
-          <FieldDescription id={formId + "-chart-hint"}>用于未设置个人图形偏好的浏览器。</FieldDescription>
-          {fieldErrors.dashboard_chart_type && <FieldError id={formId + "-chart-error"}>{fieldErrors.dashboard_chart_type}</FieldError>}
-        </FieldContent>
-      </Field>
-      <Field
-        orientation="vertical"
-        className={displayRowClassName}
-        data-invalid={!!fieldErrors.dashboard_sections}
-      >
-        <FieldLabel id={formId + "-sections-label"}>总览显示模块</FieldLabel>
-        <FieldContent className="min-w-0">
-          <input
-            type="hidden"
-            name="dashboard_sections"
-            value={serializedDashboardSections}
-          />
-          <div
-            role="group"
-            data-settings-dashboard-sections
-            aria-labelledby={formId + "-sections-label"}
-            aria-describedby={
-              formId + "-sections-hint" +
-              (fieldErrors.dashboard_sections ? " " + formId + "-sections-error" : "")
-            }
-            className="settings-display-sections"
-          >
-            {DASHBOARD_SECTION_META.map((item) => {
-              const checked = dashboardSections[item.key];
-              const lockedLast = checked && enabledDashboardSectionCount <= 1;
-              const switchId = `${formId}-section-${item.key}`;
-              const hintId = `${switchId}-hint`;
-              return (
-                <div
-                  key={item.key}
-                  className="settings-display-section-row"
-                  data-checked={checked || undefined}
-                >
-                  <div className="settings-display-section-copy">
-                    <FieldLabel htmlFor={switchId} className="settings-display-section-label">
-                      {item.label}
-                    </FieldLabel>
-                    <FieldDescription id={hintId} className="settings-display-section-desc">
-                      {item.description}
-                    </FieldDescription>
-                  </div>
-                  <Switch
-                    id={switchId}
-                    checked={checked}
-                    disabled={save.isPending || lockedLast}
-                    aria-describedby={hintId}
-                    aria-invalid={!!fieldErrors.dashboard_sections}
-                    onCheckedChange={(nextChecked) => {
-                      if (!nextChecked && enabledDashboardSectionCount <= 1) return;
-                      setDashboardSections((current) => ({
-                        ...current,
-                        [item.key]: nextChecked,
-                      }));
-                      setSavedMessage("");
-                      save.reset();
-                      setFieldErrors((current) => {
-                        if (!current.dashboard_sections) return current;
-                        const next = { ...current };
-                        delete next.dashboard_sections;
-                        return next;
-                      });
-                    }}
-                  />
-                </div>
-              );
-            })}
-          </div>
-          <FieldDescription id={formId + "-sections-hint"}>
-            控制总览页展示的卡片模块，至少保留一项开启。
-          </FieldDescription>
-          {fieldErrors.dashboard_sections && (
-            <FieldError id={formId + "-sections-error"}>
-              {fieldErrors.dashboard_sections}
-            </FieldError>
-          )}
-        </FieldContent>
-      </Field>
-      <Field
-        orientation="vertical"
-        className={displayRowClassName}
-        data-invalid={!!fieldErrors.dashboard_work_items_layout}
-      >
-        <FieldLabel id={formId + "-work-layout-label"}>待处理排列方式</FieldLabel>
-        <FieldContent className="min-w-0">
-          <input
-            type="hidden"
-            name="dashboard_work_items_layout"
-            value={workItemsLayout}
-          />
-          <ToggleGroup
-            data-settings-work-items-layout
-            variant="outline"
-            value={[workItemsLayout]}
-            aria-labelledby={formId + "-work-layout-label"}
-            aria-describedby={
-              formId + "-work-layout-hint" +
-              (fieldErrors.dashboard_work_items_layout ? " " + formId + "-work-layout-error" : "")
-            }
-            aria-invalid={!!fieldErrors.dashboard_work_items_layout}
-            className="w-full max-w-full flex-wrap items-stretch max-md:w-fit"
-            onValueChange={(values) => {
-              const value = values[0];
-              if (value !== "STACKED" && value !== "SIDE_BY_SIDE") return;
-              setWorkItemsLayout(value);
-              setSavedMessage("");
-              save.reset();
-              setFieldErrors((current) => {
-                if (!current.dashboard_work_items_layout) return current;
-                const next = { ...current };
-                delete next.dashboard_work_items_layout;
-                return next;
-              });
-            }}
-          >
-            {([["STACKED", "独立成行"], ["SIDE_BY_SIDE", "与订单并排"]] as const).map(([value, label]) => (
-              <ToggleGroupItem
-                key={value}
-                value={value}
-                type="button"
-                disabled={save.isPending}
-                aria-invalid={!!fieldErrors.dashboard_work_items_layout}
-                className="h-auto min-h-8 min-w-0 flex-[1_1_7rem] whitespace-normal py-2 max-md:flex-[0_1_auto] max-md:py-1"
-              >
-                {label}
-              </ToggleGroupItem>
-            ))}
-          </ToggleGroup>
-          <FieldDescription id={formId + "-work-layout-hint"}>
-            {dashboardSections.work_items && dashboardSections.recent_orders
-              ? "宽屏下可选独立成行（双列卡片）或与订单并排；小屏或无待处理时自动上下排列。"
-              : "同时开启「待处理」与「最近订单」时生效；小屏或无待处理时自动上下排列。"}
-          </FieldDescription>
-          {fieldErrors.dashboard_work_items_layout && (
-            <FieldError id={formId + "-work-layout-error"}>
-              {fieldErrors.dashboard_work_items_layout}
-            </FieldError>
-          )}
-        </FieldContent>
-      </Field>
-      <Field
-        orientation="vertical"
-        className={displayRowClassName}
-        data-invalid={!!fieldErrors.checkout_not_found_detail}
-      >
-        <div className="flex items-center justify-between gap-2">
-          <FieldLabel htmlFor={formId + "-not-found-detail"}>订单不存在（404）说明</FieldLabel>
-          {notFoundDetail.length > 0 && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="xs"
-              className="h-auto px-1.5 py-0.5 text-xs text-muted-foreground hover:text-foreground"
-              disabled={save.isPending}
-              onClick={() => {
-                setNotFoundDetail("");
-                setSavedMessage("");
-                save.reset();
-                setFieldErrors((current) => {
-                  if (!current.checkout_not_found_detail) return current;
-                  const next = { ...current };
-                  delete next.checkout_not_found_detail;
-                  return next;
-                });
-              }}
-            >
-              恢复默认
-            </Button>
-          )}
+    <div className="flex min-w-0 flex-col gap-6">
+      <div className="settings-section-group">
+        <div className="flex flex-col gap-0.5">
+          <h3 className="settings-section-group-title">总览页面偏好</h3>
+          <p className="settings-section-group-desc">控制管理员总览页的默认图表、待处理排列与模块显隐。</p>
         </div>
-        <FieldContent className="min-w-0">
-          <Textarea
-            id={formId + "-not-found-detail"}
-            name="checkout_not_found_detail"
-            rows={2}
-            maxLength={CHECKOUT_TEXT_MAX_LENGTH}
-            placeholder={DEFAULT_CHECKOUT_COPY.notFoundDetail}
-            value={notFoundDetail}
-            aria-invalid={!!fieldErrors.checkout_not_found_detail}
-            aria-describedby={
-              formId +
-              "-not-found-hint" +
-              (fieldErrors.checkout_not_found_detail ? " " + formId + "-not-found-error" : "")
-            }
-            onChange={(event) => {
-              setNotFoundDetail(event.target.value);
-              setSavedMessage("");
-              save.reset();
-              setFieldErrors((current) => {
-                if (!current.checkout_not_found_detail) return current;
-                const next = { ...current };
-                delete next.checkout_not_found_detail;
-                return next;
-              });
-            }}
-          />
-          <FieldDescription id={formId + "-not-found-hint"}>
-            访问失效或不存在的收银台链接（404）时展示；留空即使用系统默认文案。各网站订单收银台文案请在网站“收银台展示”中配置。
-          </FieldDescription>
-          {fieldErrors.checkout_not_found_detail && (
-            <FieldError id={formId + "-not-found-error"}>
-              {fieldErrors.checkout_not_found_detail}
-            </FieldError>
-          )}
-        </FieldContent>
-      </Field>
-    </FieldGroup>
+        <FieldGroup className="gap-5">
+          <FieldGroup className="settings-fields">
+            <Field orientation="vertical" className={displayRowClassName} data-invalid={!!fieldErrors.dashboard_chart_type}>
+              <FieldLabel id={formId + "-chart-label"}>收款趋势默认图形</FieldLabel>
+              <FieldContent className="min-w-0">
+                <input type="hidden" name="dashboard_chart_type" value={chartType} />
+                <ToggleGroup data-settings-chart-default variant="outline" value={[chartType]}
+                  aria-labelledby={formId + "-chart-label"}
+                  aria-describedby={formId + "-chart-hint" + (fieldErrors.dashboard_chart_type ? " " + formId + "-chart-error" : "")}
+                  aria-invalid={!!fieldErrors.dashboard_chart_type}
+                  className="w-full max-w-full flex-wrap items-stretch max-md:w-fit"
+                  onValueChange={values => {
+                    const value = values[0];
+                    if (value !== "AREA" && value !== "BAR" && value !== "LINE") return;
+                    setChartType(value);
+                    setSavedMessage("");
+                    save.reset();
+                    setFieldErrors(current => {
+                      if (!current.dashboard_chart_type) return current;
+                      const next = { ...current };
+                      delete next.dashboard_chart_type;
+                      return next;
+                    });
+                  }}>
+                  {([["AREA", "面积图"], ["BAR", "柱状图"], ["LINE", "累计图"]] as const).map(([value, label]) =>
+                    <ToggleGroupItem key={value} value={value} type="button" disabled={save.isPending}
+                      aria-invalid={!!fieldErrors.dashboard_chart_type}
+                      className="h-auto min-h-8 min-w-0 flex-[1_1_5rem] whitespace-normal py-2 max-md:flex-[0_1_auto] max-md:py-1">{label}</ToggleGroupItem>)}
+                </ToggleGroup>
+                <FieldDescription id={formId + "-chart-hint"}>用于未设置个人图形偏好的浏览器。</FieldDescription>
+                {fieldErrors.dashboard_chart_type && <FieldError id={formId + "-chart-error"}>{fieldErrors.dashboard_chart_type}</FieldError>}
+              </FieldContent>
+            </Field>
+            <Field
+              orientation="vertical"
+              className={displayRowClassName}
+              data-invalid={!!fieldErrors.dashboard_work_items_layout}
+            >
+              <FieldLabel id={formId + "-work-layout-label"}>待处理排列方式</FieldLabel>
+              <FieldContent className="min-w-0">
+                <input
+                  type="hidden"
+                  name="dashboard_work_items_layout"
+                  value={workItemsLayout}
+                />
+                <ToggleGroup
+                  data-settings-work-items-layout
+                  variant="outline"
+                  value={[workItemsLayout]}
+                  aria-labelledby={formId + "-work-layout-label"}
+                  aria-describedby={
+                    formId + "-work-layout-hint" +
+                    (fieldErrors.dashboard_work_items_layout ? " " + formId + "-work-layout-error" : "")
+                  }
+                  aria-invalid={!!fieldErrors.dashboard_work_items_layout}
+                  className="w-full max-w-full flex-wrap items-stretch max-md:w-fit"
+                  onValueChange={(values) => {
+                    const value = values[0];
+                    if (value !== "STACKED" && value !== "SIDE_BY_SIDE") return;
+                    setWorkItemsLayout(value);
+                    setSavedMessage("");
+                    save.reset();
+                    setFieldErrors((current) => {
+                      if (!current.dashboard_work_items_layout) return current;
+                      const next = { ...current };
+                      delete next.dashboard_work_items_layout;
+                      return next;
+                    });
+                  }}
+                >
+                  {([["STACKED", "独立成行"], ["SIDE_BY_SIDE", "与订单并排"]] as const).map(([value, label]) => (
+                    <ToggleGroupItem
+                      key={value}
+                      value={value}
+                      type="button"
+                      disabled={save.isPending}
+                      aria-invalid={!!fieldErrors.dashboard_work_items_layout}
+                      className="h-auto min-h-8 min-w-0 flex-[1_1_6rem] whitespace-normal py-2 max-md:flex-[0_1_auto] max-md:py-1"
+                    >
+                      {label}
+                    </ToggleGroupItem>
+                  ))}
+                </ToggleGroup>
+                <FieldDescription id={formId + "-work-layout-hint"}>
+                  {dashboardSections.work_items && dashboardSections.recent_orders
+                    ? "宽屏下可选独立成行（双列卡片）或与订单并排；小屏或无待处理时自动上下排列。"
+                    : "同时开启「待处理」与「最近订单」时生效；小屏或无待处理时自动上下排列。"}
+                </FieldDescription>
+                {fieldErrors.dashboard_work_items_layout && (
+                  <FieldError id={formId + "-work-layout-error"}>
+                    {fieldErrors.dashboard_work_items_layout}
+                  </FieldError>
+                )}
+              </FieldContent>
+            </Field>
+          </FieldGroup>
+          <Field
+            orientation="vertical"
+            className={displayRowClassName}
+            data-invalid={!!fieldErrors.dashboard_sections}
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <FieldLabel id={formId + "-sections-label"}>总览显示模块</FieldLabel>
+              <Badge variant="secondary" className="tabular-nums">
+                已开启 {enabledDashboardSectionCount} / {DASHBOARD_SECTION_KEYS.length}
+              </Badge>
+            </div>
+            <FieldContent className="min-w-0">
+              <input
+                type="hidden"
+                name="dashboard_sections"
+                value={serializedDashboardSections}
+              />
+              <div
+                role="group"
+                data-settings-dashboard-sections
+                aria-labelledby={formId + "-sections-label"}
+                aria-describedby={
+                  formId + "-sections-hint" +
+                  (fieldErrors.dashboard_sections ? " " + formId + "-sections-error" : "")
+                }
+                className="settings-display-sections"
+              >
+                {DASHBOARD_SECTION_META.map((item) => {
+                  const checked = dashboardSections[item.key];
+                  const lockedLast = checked && enabledDashboardSectionCount <= 1;
+                  const switchId = `${formId}-section-${item.key}`;
+                  const hintId = `${switchId}-hint`;
+                  return (
+                    <div
+                      key={item.key}
+                      className="settings-display-section-row"
+                      data-checked={checked || undefined}
+                    >
+                      <div className="settings-display-section-copy">
+                        <FieldLabel htmlFor={switchId} className="settings-display-section-label">
+                          {item.label}
+                        </FieldLabel>
+                        <FieldDescription id={hintId} className="settings-display-section-desc">
+                          {item.description}
+                        </FieldDescription>
+                      </div>
+                      <Switch
+                        id={switchId}
+                        checked={checked}
+                        disabled={save.isPending || lockedLast}
+                        aria-describedby={hintId}
+                        aria-invalid={!!fieldErrors.dashboard_sections}
+                        onCheckedChange={(nextChecked) => {
+                          if (!nextChecked && enabledDashboardSectionCount <= 1) return;
+                          setDashboardSections((current) => ({
+                            ...current,
+                            [item.key]: nextChecked,
+                          }));
+                          setSavedMessage("");
+                          save.reset();
+                          setFieldErrors((current) => {
+                            if (!current.dashboard_sections) return current;
+                            const next = { ...current };
+                            delete next.dashboard_sections;
+                            return next;
+                          });
+                        }}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+              <FieldDescription id={formId + "-sections-hint"}>
+                控制总览页展示的卡片模块，至少保留一项开启。
+              </FieldDescription>
+              {fieldErrors.dashboard_sections && (
+                <FieldError id={formId + "-sections-error"}>
+                  {fieldErrors.dashboard_sections}
+                </FieldError>
+              )}
+            </FieldContent>
+          </Field>
+        </FieldGroup>
+      </div>
+      <Separator />
+      <div className="settings-section-group">
+        <div className="flex flex-col gap-0.5">
+          <h3 className="settings-section-group-title">品牌与失效收银台</h3>
+          <p className="settings-section-group-desc">设置后台实例名称以及全局 404 收银台提示文案。</p>
+        </div>
+        <FieldGroup className="gap-5">
+          <Field
+            orientation="vertical"
+            className={displayRowClassName}
+            data-invalid={!!fieldErrors.system_name}
+          >
+            <FieldLabel htmlFor={systemNameId}>系统名称</FieldLabel>
+            <FieldContent className="min-w-0">
+              <Input
+                id={systemNameId}
+                name="system_name"
+                required
+                maxLength={40}
+                defaultValue={initialSettings.display?.system_name ?? "PerPay"}
+                aria-invalid={!!fieldErrors.system_name}
+                aria-describedby={
+                  fieldErrors.system_name ? systemNameErrorId : undefined
+                }
+              />
+              {fieldErrors.system_name && (
+                <FieldError id={systemNameErrorId}>
+                  {fieldErrors.system_name}
+                </FieldError>
+              )}
+            </FieldContent>
+          </Field>
+          <Field
+            orientation="vertical"
+            className={displayRowClassName}
+            data-invalid={!!fieldErrors.checkout_not_found_detail}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <FieldLabel htmlFor={formId + "-not-found-detail"}>订单不存在（404）说明</FieldLabel>
+              {notFoundDetail.length > 0 && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="xs"
+                  className="h-auto px-1.5 py-0.5 text-xs text-muted-foreground hover:text-foreground"
+                  disabled={save.isPending}
+                  onClick={() => {
+                    setNotFoundDetail("");
+                    setSavedMessage("");
+                    save.reset();
+                    setFieldErrors((current) => {
+                      if (!current.checkout_not_found_detail) return current;
+                      const next = { ...current };
+                      delete next.checkout_not_found_detail;
+                      return next;
+                    });
+                  }}
+                >
+                  恢复默认
+                </Button>
+              )}
+            </div>
+            <FieldContent className="min-w-0">
+              <Textarea
+                id={formId + "-not-found-detail"}
+                name="checkout_not_found_detail"
+                rows={2}
+                maxLength={CHECKOUT_TEXT_MAX_LENGTH}
+                placeholder={DEFAULT_CHECKOUT_COPY.notFoundDetail}
+                value={notFoundDetail}
+                aria-invalid={!!fieldErrors.checkout_not_found_detail}
+                aria-describedby={
+                  formId +
+                  "-not-found-hint" +
+                  (fieldErrors.checkout_not_found_detail ? " " + formId + "-not-found-error" : "")
+                }
+                onChange={(event) => {
+                  setNotFoundDetail(event.target.value);
+                  setSavedMessage("");
+                  save.reset();
+                  setFieldErrors((current) => {
+                    if (!current.checkout_not_found_detail) return current;
+                    const next = { ...current };
+                    delete next.checkout_not_found_detail;
+                    return next;
+                  });
+                }}
+              />
+              <FieldDescription id={formId + "-not-found-hint"}>
+                访问失效或不存在的收银台链接（404）时展示；留空即使用系统默认文案。各网站订单收银台文案请在网站“收银台展示”中配置。
+              </FieldDescription>
+              {fieldErrors.checkout_not_found_detail && (
+                <FieldError id={formId + "-not-found-error"}>
+                  {fieldErrors.checkout_not_found_detail}
+                </FieldError>
+              )}
+            </FieldContent>
+          </Field>
+        </FieldGroup>
+      </div>
+    </div>
   );
   const advancedFields = (
     <FieldGroup>
       <FieldGroup className="settings-fields">
         <NumberField
+          idPrefix={idPrefix}
           name="checkout_key_rotation_days"
           error={fieldErrors.checkout_key_rotation_days}
           label="收银台链接密钥更换周期（天）"
@@ -780,6 +854,7 @@ export function SettingsEditor({
           hint="不影响已有订单链接，通常无需修改。"
         />
         <NumberField
+          idPrefix={idPrefix}
           name="checkout_terminal_observation_seconds"
           error={fieldErrors.checkout_terminal_observation_seconds}
           label="订单结束后收银台可查时长（秒）"
@@ -793,6 +868,12 @@ export function SettingsEditor({
   );
 
   const title = sections.find(([value]) => value === section)![1];
+  const sectionDescriptions: Readonly<Record<ConfigurationSection, string>> = {
+    "collection-policy": "控制支付宝账单轮询频率、请求超时与有效时限，所有收款账号共用此策略。",
+    display: "自定义总览页面默认展示、系统名称与失效收银台说明文案。",
+    advanced: "配置收银台链接密钥轮换周期与订单结束后公开状态可查时长，通常保持默认即可。",
+    backup: "设置自动备份的执行频率与保留份数；恢复数据需同时保管主密钥。",
+  };
   const fields = section === "collection-policy" ? providerCollection
     : section === "display" ? displayFields : section === "backup" ? backupFields : advancedFields;
 
@@ -809,9 +890,14 @@ export function SettingsEditor({
       />
       <Field orientation="horizontal" data-settings-actions className="w-full flex-wrap items-center justify-end gap-2">
         {draft.dirty && (
-          <span className="mr-auto text-sm text-muted-foreground" role="status">
+          <span className="settings-dirty-pill mr-auto" role="status">
             未保存
           </span>
+        )}
+        {!overlay && draft.dirty && (
+          <Button type="button" variant="outline" size="sm" disabled={save.isPending} onClick={resetDraft}>
+            重置
+          </Button>
         )}
         {overlay && <Button type="button" variant="outline" disabled={save.isPending} onClick={() => overlay.requestClose()}>关闭</Button>}
         <Button form={formId} type="submit" className="h-auto min-h-8 max-w-full whitespace-normal" disabled={!draft.dirty || save.isPending} aria-busy={save.isPending}>
@@ -829,7 +915,7 @@ export function SettingsEditor({
   return (
     <form
       id={formId}
-      className="w-full min-w-0"
+      className="settings-form-surface w-full min-w-0"
       ref={draft.form}
       onSubmit={submit}
       onInvalidCapture={(event) => {
@@ -857,20 +943,35 @@ export function SettingsEditor({
     >
       <FieldSet disabled={save.isPending}>
         <FieldGroup>
-          <Card>
+          <Card size="sm" data-settings-editor-card={section}>
             {!overlay && (
-              <CardHeader className={section === "display" ? "sr-only" : undefined}>
+              <CardHeader>
                 <CardTitle role="heading" aria-level={2}>{title}</CardTitle>
+                <CardDescription>{sectionDescriptions[section]}</CardDescription>
+                {section === "collection-policy" && (
+                  <CardAction>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={save.isPending}
+                      onClick={recommendedProvider}
+                    >
+                      <RotateCcw data-icon="inline-start" />
+                      采用推荐值
+                    </Button>
+                  </CardAction>
+                )}
               </CardHeader>
             )}
             <CardContent>
-              <FieldSet className={cn("min-w-0", section === "display" && !overlay && "max-w-2xl")}>
+              <FieldSet className="min-w-0">
                 <FieldLegend className="sr-only">{title}</FieldLegend>
                 {section === "backup" && <FieldDescription>恢复需要数据库备份和主密钥。</FieldDescription>}
                 {fields}
               </FieldSet>
             </CardContent>
-            {overlay ? <OverlayActions className="w-full">{actions}</OverlayActions> : <CardFooter>{actions}</CardFooter>}
+            {overlay ? <OverlayActions className="w-full">{actions}</OverlayActions> : <CardFooter className="settings-save-footer">{actions}</CardFooter>}
           </Card>
         </FieldGroup>
       </FieldSet>

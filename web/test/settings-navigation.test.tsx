@@ -32,45 +32,34 @@ function mount(width: number) {
   return { ...view, resize: mediaWidth(width) };
 }
 
-function closeEditor(dialog: HTMLElement) {
-  return within(dialog.querySelector<HTMLElement>("[data-overlay-actions]")!).getByRole("button", { name: "关闭" });
-}
-
 describe("responsive settings category navigation", () => {
-  it.each([320, 360, 390, 430, 844, 1023])("uses a category select at %ipx and keeps guarded routes", async width => {
+  it.each([320, 360, 390, 430, 844, 1023])("uses a category select at %ipx and protects inline drafts on route change", async width => {
     const view = mount(width);
     const user = userEvent.setup();
     const category = await screen.findByRole("combobox", { name: "设置分类" });
     expect(category).toHaveTextContent("界面显示");
     expect(screen.queryByRole("tablist", { name: "设置分类" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("textbox", { name: "系统名称" })).not.toBeInTheDocument();
-    await user.click(screen.getByRole("link", { name: "编辑界面显示" }));
-    const dialog = await screen.findByRole("dialog", { name: "编辑界面显示" });
-    const name = within(dialog).getByRole("textbox", { name: "系统名称" });
+    const name = screen.getByRole("textbox", { name: "系统名称" });
     fireEvent.change(name, { target: { value: "手机草稿" } });
-    await user.click(closeEditor(dialog));
+    await user.click(category);
+    await user.click(await screen.findByRole("option", { name: "查账设置" }));
     const guard = await screen.findByRole("alertdialog", { name: "放弃未保存的修改？" });
     expect(view.router.state.location.pathname).toBe("/settings/display");
     await user.click(within(guard).getByRole("button", { name: "继续编辑" }));
-    await waitFor(() => expect(closeEditor(dialog)).toHaveFocus());
+    await waitFor(() => expect(guard).not.toBeInTheDocument());
     expect(name).toHaveValue("手机草稿");
     expect(category).toHaveTextContent("界面显示");
-    await user.click(closeEditor(dialog));
-    await user.click(await screen.findByRole("button", { name: "放弃修改并继续" }));
-    await waitFor(() => expect(dialog).not.toBeInTheDocument());
     await user.click(category);
     await user.click(await screen.findByRole("option", { name: "查账设置" }));
+    await user.click(await screen.findByRole("button", { name: "放弃修改并继续" }));
     await waitFor(() => expect(view.router.state.location.pathname).toBe("/settings/collection-policy"));
-    expect(screen.getByRole("link", { name: "编辑查账设置" })).toBeVisible();
+    expect(screen.getByRole("spinbutton", { name: "常规查账间隔（秒）" })).toBeVisible();
     expect(view.writes()).toHaveLength(0);
   });
 
-  it("switches navigation at 1024px without remounting the edited form", async () => {
+  it("switches navigation at 1024px without remounting the inline edited form", async () => {
     const { resize } = mount(1023);
-    const user = userEvent.setup();
-    await user.click(await screen.findByRole("link", { name: "编辑界面显示" }));
-    const dialog = await screen.findByRole("dialog", { name: "编辑界面显示" });
-    const name = within(dialog).getByRole("textbox", { name: "系统名称" });
+    const name = await screen.findByRole("textbox", { name: "系统名称" });
     fireEvent.change(name, { target: { value: "旋转后保留" } });
     resize(1024);
     expect(document.querySelector('[role="tablist"][aria-label="设置分类"]')).toBeInTheDocument();
@@ -81,7 +70,7 @@ describe("responsive settings category navigation", () => {
     expect(name).toHaveValue("旋转后保留");
   });
 
-  it("keeps the desktop selection indicator and draft when navigation is canceled", async () => {
+  it("keeps the desktop selection indicator and inline draft when navigation is canceled", async () => {
     const view = mount(1440);
     const user = userEvent.setup();
     const tabs = await screen.findByRole("tablist", { name: "设置分类" });
@@ -90,13 +79,11 @@ describe("responsive settings category navigation", () => {
     const indicator = display.querySelector("[data-selection-indicator]");
     expect(indicator).toBeInTheDocument();
     display.focus();
-    await user.keyboard("{ArrowLeft}");
+    await user.keyboard("{ArrowUp}");
     expect(view.router.state.location.pathname).toBe("/settings/display");
     expect(display.querySelector("[data-selection-indicator]")).toBe(indicator);
 
-    await user.click(screen.getByRole("link", { name: "编辑界面显示" }));
-    const dialog = await screen.findByRole("dialog", { name: "编辑界面显示" });
-    const name = within(dialog).getByRole("textbox", { name: "系统名称" });
+    const name = screen.getByRole("textbox", { name: "系统名称" });
     fireEvent.change(name, { target: { value: "桌面草稿" } });
     await act(async () => { void view.router.navigate("/settings/collection-policy"); });
     const guard = await screen.findByRole("alertdialog", { name: "放弃未保存的修改？" });

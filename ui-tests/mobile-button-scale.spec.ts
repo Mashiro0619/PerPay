@@ -380,8 +380,7 @@ test.describe("compact mobile button visuals and separate touch targets", () => 
       await record(page, info, { compactChoices: "work-items", width, rangeBox });
 
       await page.goto(manifest.origin + "/admin/settings/display");
-      await page.getByRole("link", { name: "编辑界面显示", exact: true }).click();
-      const editor = page.locator("[data-overlay-content]");
+      const editor = page.locator('[data-settings-editor-card="display"]');
       const defaults = editor.getByRole("group", { name: "收款趋势默认图形", exact: true });
       const defaultGeometry = [];
       for (const name of ["面积图", "柱状图", "累计图"]) {

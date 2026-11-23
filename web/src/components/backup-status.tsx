@@ -12,6 +12,7 @@ import { RuntimeErrorDetails } from "@/components/runtime-error-details";
 import { SettingsSummary, type SettingsSummaryRow } from "@/components/settings-summary";
 import { ErrorNotice } from "@/components/request-state";
 import { CopyValue } from "@/components/copy-value";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { BackupFiles, backupFilesKey } from "@/components/backup-files";
 import { MaintenanceConfirmation, MaintenanceJobResult } from "@/components/maintenance-operation";
@@ -62,25 +63,53 @@ export function BackupOverview({ settings }: { settings: RuntimeSettings }) {
     !backup.backup_in_progress && !backup.recovery_required && !backup.clock_moved_backwards &&
     !backup.configuration_mismatch && backup.instance_matches !== false &&
     files.isSuccess && files.data.data.items.length === 0;
+  const statusBadge = status.isPending
+    ? <Badge variant="outline">读取中</Badge>
+    : !current
+      ? <Badge variant="outline">状态待确认</Badge>
+      : backup.backup_in_progress
+        ? <Badge variant="secondary">正在备份</Badge>
+        : notStarted || !backup.enabled
+          ? <Badge variant="outline">未启用</Badge>
+          : backup.ok && backup.backup_available && !backup.recovery_required && !backup.last_error_stage
+            ? <Badge variant="success">运行正常</Badge>
+            : <Badge variant="warning">待关注</Badge>;
+  const metricTiles = (
+    <div className="settings-metric-grid">
+      <div className="settings-metric-tile">
+        <span className="settings-metric-label">备份间隔</span>
+        <span className="settings-metric-value">{backupIntervalLabel(settings.backup.interval_seconds)}</span>
+      </div>
+      <div className="settings-metric-tile">
+        <span className="settings-metric-label">保留策略</span>
+        <span className="settings-metric-value">{settings.backup.keep_count} 份</span>
+      </div>
+      <div className="settings-metric-tile">
+        <span className="settings-metric-label">已保留备份</span>
+        <span className="settings-metric-value">{!backup || backup.retained_count === null ? "未记录" : `${backup.retained_count} 份`}</span>
+      </div>
+      <div className="settings-metric-tile">
+        <span className="settings-metric-label">最近成功</span>
+        <span className="settings-metric-value">{!backup || backup.last_success_at === null ? "尚未备份" : dateTime(backup.last_success_at)}</span>
+      </div>
+    </div>
+  );
   const rows: SettingsSummaryRow[] = [["任务状态", status.isPending ? "正在读取…" : !current ? "当前状态待确认" : backupStatusMessage(backup)]];
   if (backup && !notStarted) rows.push(
-    ["最近成功", backup.last_success_at === null ? "尚未成功备份" : dateTime(backup.last_success_at)],
     ["恢复校验", !current || backup.status === "unavailable" ? "待确认" : backup.backup_available ? "最近备份文件已验证可用" : "暂无已验证的可恢复备份文件"],
     ["最近内容校验", backup.content_verified_at === null ? "尚未通过校验" : dateTime(backup.content_verified_at)],
-    ["已保留备份", backup.retained_count === null ? "未记录数量" : backup.retained_count + " 份"],
     ...(current && backup.backup_available && backup.backup_name ? [["最近可用备份", <CopyValue value={backup.backup_name} label="复制备份文件名" />] as const] : []),
     ["下次计划", !current || backup.status === "unavailable" ? "待确认" : !backup.enabled ? "未启用" : backup.backup_in_progress ? "正在执行"
       : backup.configuration_mismatch || backup.recovery_required || backup.clock_moved_backwards || backup.last_error_stage ? "等待任务恢复"
         : backup.backup_required || backup.last_success_at === null ? "等待下一次备份执行"
           : dateTime(backup.last_success_at + (backup.interval_milliseconds ?? settings.backup.interval_seconds * 1000))],
   );
-  rows.push(["备份间隔", backupIntervalLabel(settings.backup.interval_seconds)], ["保留备份数量", settings.backup.keep_count + " 份"]);
-  return <div className="flex flex-col gap-3">
+  return <div className="flex flex-col gap-4">
     <ErrorNotice error={maintenance.error} retry={() => { void maintenance.refetch(); }} />
     <MaintenanceJobResult job={maintenance.active ?? maintenance.latest} />
     <ErrorNotice error={status.error} retry={() => { void status.refetch(); }} retainedData={!!backup} />
-    <SettingsSummary title="自动备份" rows={rows} editTo="/settings/backup/edit"
-      description={notStarted ? "可立即创建备份，也可编辑自动备份策略。" : undefined}
+    <SettingsSummary title="自动备份" badge={statusBadge} topContent={metricTiles} rows={rows} editTo="/settings/backup/edit"
+      description={notStarted ? "可立即创建备份，也可编辑自动备份策略。" : "定期备份在线数据库与运行配置，主密钥须另行妥善保管。"}
       actions={<BackupNowButton blocked={maintenance.blocked || !!backup?.backup_in_progress} />} />
     <BackupFiles blocked={maintenance.blocked || !!backup?.backup_in_progress} />
   </div>;

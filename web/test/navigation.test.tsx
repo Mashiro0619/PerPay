@@ -148,11 +148,10 @@ function mount(
 
 async function edit() {
   const user = userEvent.setup();
-  await user.click(await screen.findByRole("link", { name: "编辑查账设置" }));
   const field = await screen.findByLabelText("查账有效时限（秒）");
   await user.clear(field);
   await user.type(field, "450");
-  return { user, field, dialog: screen.getByRole("dialog", { name: "编辑查账设置" }) };
+  return { user, field };
 }
 
 function unloadIsBlocked() {
@@ -164,7 +163,7 @@ function unloadIsBlocked() {
 describe("navigation and draft protection", () => {
   it.each(["manager", "navigator"])("never queues sidebar logout while offline (%s)", async source => {
     const view = mount();
-    await screen.findByRole("link", { name: "编辑查账设置" });
+    await screen.findByLabelText("查账有效时限（秒）");
     const user = userEvent.setup();
     const online = vi.spyOn(navigator, "onLine", "get");
     const logouts = () => view.fetchMock.mock.calls.filter(([request]) => request.url.endsWith("/session/logout"));
@@ -300,7 +299,7 @@ describe("navigation and draft protection", () => {
     const user = userEvent.setup();
     await user.click(selector);
     await user.click(await screen.findByRole("option", { name: "查账设置" }));
-    await screen.findByRole("link", { name: "编辑查账设置" });
+    await screen.findByLabelText("查账有效时限（秒）");
     expect(view.router.state.location.pathname).toBe("/settings/collection-policy");
     expect(screen.getByRole("combobox", { name: "设置分类" })).toHaveTextContent("查账设置");
     expect(
@@ -309,9 +308,12 @@ describe("navigation and draft protection", () => {
   });
 
   it("preserves a dirty editor and its parent category when dismissal is cancelled", async () => {
-    const view = mount();
-    const selected = await screen.findByRole("tab", { name: "查账设置" });
-    const { user, field, dialog } = await edit();
+    const view = mount({ path: "/settings/collection-policy/edit" });
+    const dialog = await screen.findByRole("dialog", { name: "编辑查账设置" });
+    const user = userEvent.setup();
+    const field = await within(dialog).findByLabelText("查账有效时限（秒）");
+    await user.clear(field);
+    await user.type(field, "450");
     expect(document.querySelector("[data-admin-console]")).toHaveAttribute("inert");
     expect(dialog.closest("[data-admin-console]")).toBeNull();
     const close = within(dialog).getByRole("button", { name: "关闭" });
@@ -326,10 +328,6 @@ describe("navigation and draft protection", () => {
     await user.click(screen.getByRole("button", { name: "继续编辑" }));
     expect(view.router.state.location.pathname).toBe("/settings/collection-policy");
     expect(field).toHaveValue(450);
-    expect(selected).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
     expect(readOverlayTarget(view.router.state.location.search)?.pathname).toBe("/settings/collection-policy/edit");
     await waitFor(() => expect(close).toHaveFocus());
     expect(unloadIsBlocked()).toBe(true);
@@ -342,7 +340,7 @@ describe("navigation and draft protection", () => {
     const user = userEvent.setup();
     const selected = await screen.findByRole("tab", { name: "查账设置" });
     selected.focus();
-    await user.keyboard("{ArrowRight}");
+    await user.keyboard("{ArrowDown}");
     const security = screen.getByRole("tab", { name: "账户与安全" });
     expect(security).toHaveFocus();
     expect(selected).toHaveAttribute("aria-selected", "true");
@@ -377,7 +375,7 @@ describe("navigation and draft protection", () => {
   });
   it("uses the official account menu without duplicate branding or palette controls", async () => {
     const { container, fetchMock } = mount();
-    await screen.findByRole("link", { name: "编辑查账设置" });
+    await screen.findByLabelText("查账有效时限（秒）");
     const user = userEvent.setup();
     expect(screen.getByRole("link", { name: "PerPay" })).toBeVisible();
     expect(
@@ -544,15 +542,13 @@ describe("navigation and draft protection", () => {
 
   it("requires discarding the editor before logout and clears protected data on success", async () => {
     const { fetchMock } = mount();
-    const { user, dialog } = await edit();
-    await user.click(within(dialog).getByRole("button", { name: "关闭" }));
+    const { user } = await edit();
+    await user.click(screen.getByRole("button", { name: /账户菜单$/ }));
+    await user.click(await screen.findByRole("menuitem", { name: "退出登录" }));
     expect(
       fetchMock.mock.calls.some(([request]) => request.url.endsWith("/logout")),
     ).toBe(false);
-    await user.click(screen.getByRole("button", { name: "放弃修改并继续" }));
-    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-    await user.click(screen.getByRole("button", { name: /账户菜单$/ }));
-    await user.click(await screen.findByRole("menuitem", { name: "退出登录" }));
+    await user.click(await screen.findByRole("button", { name: "放弃修改并继续" }));
     expect(
       await screen.findByRole("heading", { name: "登录管理后台" }),
     ).toBeVisible();
@@ -560,26 +556,25 @@ describe("navigation and draft protection", () => {
     expect(unloadIsBlocked()).toBe(false);
   });
 
-  it("keeps cancelled edits, then preserves the saved settings summary when a later logout fails", async () => {
+  it("keeps cancelled edits, then preserves the saved settings when a later logout fails", async () => {
     mount({ logoutFailure: true });
-    const { user, field, dialog } = await edit();
-    await user.click(within(dialog).getByRole("button", { name: "关闭" }));
+    const { user, field } = await edit();
+    await user.click(screen.getByRole("button", { name: /账户菜单$/ }));
+    await user.click(await screen.findByRole("menuitem", { name: "退出登录" }));
     await user.click(await screen.findByRole("button", { name: "继续编辑" }));
     expect(field).toHaveValue(450);
     expect(unloadIsBlocked()).toBe(true);
-    await user.click(within(dialog).getByRole("button", { name: "关闭" }));
-    await user.click(await screen.findByRole("button", { name: "放弃修改并继续" }));
-    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     await user.click(screen.getByRole("button", { name: /账户菜单$/ }));
     await user.click(await screen.findByRole("menuitem", { name: "退出登录" }));
+    await user.click(await screen.findByRole("button", { name: "放弃修改并继续" }));
     expect(await screen.findByText(/服务处理失败/)).toBeVisible();
-    expect(screen.getByRole("link", { name: "编辑查账设置" })).toBeVisible();
+    expect(screen.getByLabelText("查账有效时限（秒）")).toBeVisible();
     expect(queryClient.getQueryData(["settings"])).toBeDefined();
   });
 
   it("clears dirty state after saving and does not prompt when values are reverted", async () => {
     mount();
-    const { user, field, dialog } = await edit();
+    const { user, field } = await edit();
     await user.clear(field);
     await user.type(field, "300");
     expect(unloadIsBlocked()).toBe(false);
@@ -588,8 +583,6 @@ describe("navigation and draft protection", () => {
     await user.click(screen.getByRole("button", { name: "保存" }));
     await screen.findByText(/已保存/);
     await waitFor(() => expect(unloadIsBlocked()).toBe(false));
-    await user.click(within(dialog).getByRole("button", { name: "关闭" }));
-    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     await user.click(screen.getByRole("tab", { name: "备份与恢复" }));
     await user.click(await screen.findByRole("link", { name: "编辑自动备份" }));
     expect(await screen.findByLabelText("备份间隔")).toBeVisible();
@@ -634,7 +627,7 @@ describe("navigation and draft protection", () => {
 
   it("uses the official mobile sidebar and restores its trigger on Escape", async () => {
     mount({ mobile: true });
-    await screen.findByRole("link", { name: "编辑查账设置" });
+    await screen.findByLabelText("查账有效时限（秒）");
     const user = userEvent.setup();
     const trigger = screen.getByRole("button", { name: "切换导航" });
     await user.click(trigger);
@@ -692,7 +685,7 @@ describe("responsive page actions", () => {
     "keeps settings actions together and moves them into the mobile menu without duplicates (mobile: %s)",
     async (mobile) => {
       const { container, router } = mount({ mobile, configured: true });
-      await screen.findByRole("link", { name: "编辑查账设置" });
+      await screen.findByLabelText("查账有效时限（秒）");
       const header = container.querySelector<HTMLElement>(".site-header")!;
       const pageHeading = screen.getByRole("heading", { name: "系统设置", level: 1 }).closest<HTMLElement>("[data-page-heading]")!;
       if (mobile) {
@@ -764,7 +757,7 @@ describe("responsive page actions", () => {
       ).length;
     const before = reads();
     const refresh = screen.getByRole("button", { name: "刷新" });
-    expect(refresh.closest("[data-slot=dialog-header]")).not.toBeNull();
+    expect(refresh.closest("[data-page-heading]")).not.toBeNull();
     await user.click(refresh);
     expect(await screen.findByRole("alertdialog")).toBeVisible();
     await user.click(screen.getByRole("button", { name: "继续编辑" }));

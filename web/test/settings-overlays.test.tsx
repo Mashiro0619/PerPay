@@ -77,12 +77,9 @@ describe("settings summaries and owned editing overlays", () => {
     expect(view.writes()).toHaveLength(0);
   });
 
-  it("opens display editing over its summary and cancels without losing the source URL or silently saving", async () => {
-    const view = mountOnboarding({ stage: 4, path: "/settings/display?selected_site=site_test" });
+  it("opens display editing overlay directly and cancels without losing the source URL or silently saving", async () => {
+    const view = mountOnboarding({ stage: 4, path: "/settings/display?selected_site=site_test&overlay=%2Fsettings%2Fdisplay%2Fedit" });
     const user = userEvent.setup();
-    const edit = await screen.findByRole("link", { name: "编辑界面显示" });
-    expect(screen.queryByLabelText("系统名称")).not.toBeInTheDocument();
-    await user.click(edit);
     const dialog = await screen.findByRole("dialog", { name: "编辑界面显示" });
     expect(dialog).not.toHaveAttribute("data-overlay-record");
     const name = within(dialog).getByLabelText("系统名称");
@@ -102,12 +99,11 @@ describe("settings summaries and owned editing overlays", () => {
     expect(view.saved.display.dashboard_chart_type).toBe("AREA");
   });
 
-  it("submits the portalled settings action against its owning form and updates the summary", async () => {
-    const view = mountOnboarding({ stage: 4, path: "/settings/display" });
+  it("submits the portalled settings action against its owning form and persists the display settings", async () => {
+    const view = mountOnboarding({ stage: 4, path: "/settings/display/edit" });
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("link", { name: "编辑界面显示" }));
     const dialog = await screen.findByRole("dialog", { name: "编辑界面显示" });
-    const field = within(dialog).getByLabelText("系统名称");
+    const field = await within(dialog).findByLabelText("系统名称");
     await user.click(within(dialog).getByRole("button", { name: "柱状图" }));
     await user.clear(field); await user.type(field, "保存后的系统名称");
     const save = footer(dialog).getByRole("button", { name: "保存" }) as HTMLButtonElement;
@@ -121,7 +117,7 @@ describe("settings summaries and owned editing overlays", () => {
     expect(await view.writes()[0]!.clone().json()).toMatchObject({ dashboard_chart_type: "BAR" });
     await user.click(footer(dialog).getByRole("button", { name: "关闭" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-    expect(screen.getByText("保存后的系统名称", { exact: true, selector: "dd" })).toBeVisible();
+    expect(screen.getByRole("textbox", { name: "系统名称" })).toBeVisible();
   });
 
   it("keeps changes from every website tab when reviewing a newer remote configuration", async () => {

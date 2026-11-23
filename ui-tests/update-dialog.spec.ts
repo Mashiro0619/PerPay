@@ -262,8 +262,7 @@ test("an automatic update waits for a dirty form and its discard confirmation", 
   const fixture = await createSettingsServer(epoch, { updateChecker: { check: async () => pending } });
   try {
     await page.setViewportSize({ width: 1440, height: 900 });
-    await open(page, fixture, "/admin/settings/collection-policy");
-    await page.getByRole("link", { name: "编辑查账设置", exact: true }).click();
+    await open(page, fixture, "/admin/settings/collection-policy?overlay=%2Fsettings%2Fcollection-policy%2Fedit");
     const field = page.getByLabel("查账有效时限（秒）", { exact: true });
     await field.fill("450");
     const response = page.waitForResponse(value => new URL(value.url()).pathname === "/api/admin/v1/system/update");

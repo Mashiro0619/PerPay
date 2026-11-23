@@ -100,6 +100,18 @@ function DashboardContent() {
   }
   const location = useLocation();
   const instanceId = status.data?.data.instance_id;
+  const serverSections = settings.data?.data.display?.dashboard_sections;
+  const serverWorkItemsLayout = settings.data?.data.display?.dashboard_work_items_layout;
+  useEffect(() => {
+    if (serverSections) {
+      writeCachedDashboardSections(normalizeDashboardSections(serverSections));
+    }
+  }, [serverSections]);
+  useEffect(() => {
+    if (serverWorkItemsLayout) {
+      writeCachedDashboardWorkItemsLayout(normalizeDashboardWorkItemsLayout(serverWorkItemsLayout));
+    }
+  }, [serverWorkItemsLayout]);
   if (
     !clientId && settings.data &&
     !settings.isError &&
@@ -154,18 +166,6 @@ function DashboardContent() {
         : siteNeedsAccount
           ? "本站尚未分配收款账号，请先选择支付宝账号。"
           : "本站已就绪，可以先发起一笔测试收款；正式接入时再配置 API 密钥与回调通知。";
-  const serverSections = settings.data?.data.display?.dashboard_sections;
-  const serverWorkItemsLayout = settings.data?.data.display?.dashboard_work_items_layout;
-  useEffect(() => {
-    if (serverSections) {
-      writeCachedDashboardSections(normalizeDashboardSections(serverSections));
-    }
-  }, [serverSections]);
-  useEffect(() => {
-    if (serverWorkItemsLayout) {
-      writeCachedDashboardWorkItemsLayout(normalizeDashboardWorkItemsLayout(serverWorkItemsLayout));
-    }
-  }, [serverWorkItemsLayout]);
   const visibleSections = serverSections
     ? normalizeDashboardSections(serverSections)
     : (readCachedDashboardSections() ?? DEFAULT_DASHBOARD_SECTIONS);

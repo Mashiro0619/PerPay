@@ -119,10 +119,13 @@ export function AlipayAccountList({ onSelect }: { onSelect?: (id: string) => voi
     { id: "name", label: "账号", layout: "identity", hideable: false, cell: account => onSelect
       ? <Button variant="link" className="h-auto justify-start p-0" onClick={() => onSelect(account.id)}>{account.name}</Button>
       : <Link data-row-link to={"/settings/accounts/" + encodeURIComponent(account.id)}>{account.name}</Link> },
-    { id: "status", label: "状态", layout: "status", summaryDefault: true, cell: account => <Badge variant={account.enabled && account.configured ? "secondary" : "outline"}>{accountState(account)}</Badge> },
-    { id: "health", label: "查账", layout: "status", summaryDefault: true, cell: account => accountHealth(account) },
-    { id: "app", label: "App ID", cell: account => account.app_id || "未配置" },
-    { id: "sites", label: "关联网站", layout: "number", cell: account => account.sites.length ? <span title={account.sites.map(site => site.name).join("、")}>{account.sites.length} 个网站</span> : "未分配" },
+    { id: "status", label: "状态", layout: "status", summaryDefault: true, cell: account => <Badge variant={account.enabled && account.configured ? "success" : "warning"}>{accountState(account)}</Badge> },
+    { id: "health", label: "查账", layout: "status", summaryDefault: true, cell: account => {
+      const label = accountHealth(account);
+      return <Badge variant={account.health?.collection_ready ? "secondary" : "outline"}>{label}</Badge>;
+    } },
+    { id: "app", label: "App ID", cell: account => account.app_id ? <span className="font-mono text-xs">{account.app_id}</span> : <span className="text-muted-foreground">未配置</span> },
+    { id: "sites", label: "关联网站", layout: "number", cell: account => account.sites.length ? <Badge variant="secondary" className="tabular-nums" title={account.sites.map(site => site.name).join("、")}>{account.sites.length} 个网站</Badge> : <span className="text-muted-foreground">未分配</span> },
     { id: "actions", label: "操作", layout: "actions", hideable: false, cell: account => onSelect
       ? <Button variant="outline" size="sm" onClick={() => onSelect(account.id)}>配置</Button>
       : <Link to={"/settings/accounts/" + encodeURIComponent(account.id)} className={buttonVariants({ variant: "outline", size: "sm" })} aria-label={"配置" + account.name}>配置</Link> },

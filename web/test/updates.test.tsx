@@ -84,7 +84,6 @@ const mount = (
 });
 
 async function editPolicy() {
-  if (!screen.queryByLabelText("查账有效时限（秒）")) await userEvent.setup().click(await screen.findByRole("link", { name: /编辑/ }));
   return screen.findByLabelText("查账有效时限（秒）");
 }
 
@@ -586,7 +585,6 @@ describe("automatic official update checks", () => {
       expect(
         view.fetchMock.mock.calls.filter(([request]) => isUpdate(request)),
       ).toHaveLength(1);
-      await userEvent.setup().click(screen.getByRole("button", { name: "关闭对话框" }));
       await userEvent
         .setup()
         .click(screen.getByRole("link", { name: "运行状态" }));

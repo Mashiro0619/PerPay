@@ -36,7 +36,6 @@ for (const width of [390, 1440]) test(`${width}: success notifications remain ac
   });
   await login(page, manifest);
   await page.goto(manifest.origin + "/admin/settings/display");
-  await page.getByRole("link", { name: "编辑界面显示", exact: true }).click();
   // Only this browser page permits the intercepted synthetic writes; the server stays read-only.
   await page.evaluate(() => delete document.documentElement.dataset.perpayDemo);
   const name = page.getByRole("textbox", { name: "系统名称", exact: true });

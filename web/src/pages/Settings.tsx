@@ -3,20 +3,20 @@ import { PageHeaderActionLink, PageHeaderActions } from "@/components/page-heade
 import { useEffect, useRef, useState } from "react";
 import { useIsMutating, useQuery, type UseQueryResult } from "@tanstack/react-query";
 import {
+  Archive,
+  Clock,
   DatabaseBackup,
-  KeyRound,
   Monitor,
-  SlidersHorizontal,
   Settings2,
+  ShieldCheck,
   Wallet,
+  Wrench,
 } from "lucide-react";
-import { Navigate, useParams } from "react-router";
+import { Navigate, useLocation, useParams } from "react-router";
 import { PageHeading } from "@/components/page-heading";
-import { ScrollingTabs } from "@/components/scrolling-tabs";
 import { SelectionMotionGroup, SelectionMotionIndicator } from "@/components/selection-motion";
 import { Link, useNavigate } from "@/navigation";
 import { SettingsEditor, sections, type ConfigurationSection } from "@/components/SettingsForms";
-import { SettingsSummary, type SettingsSummaryRow } from "@/components/settings-summary";
 import { ErrorNotice } from "@/components/request-state";
 import {
   api,
@@ -32,6 +32,7 @@ import { useOverlayCloseGuard } from "@/lib/overlay-context";
 import { Loading, QueryView, ReadPausedNotice } from "@/components/request-state";
 import { useSuccessToast } from "@/components/Feedback";
 import { buttonVariants } from "@/components/ui/button";
+import { Card, CardAction, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   Select,
@@ -49,24 +50,21 @@ import { backupFilesKey } from "@/components/backup-files";
 import { maintenanceKey } from "@/api/maintenance";
 import { useMaintenanceJobs } from "@/hooks/use-maintenance";
 import { MaintenanceJobResult } from "@/components/maintenance-operation";
-import { durationLabel } from "@/lib/format";
-import {
-  formatDashboardSectionsSummary,
-  formatDashboardWorkItemsLayout,
-} from "@/lib/dashboard-sections";
 
 const sectionIcons = {
   accounts: Wallet,
-  "collection-policy": SlidersHorizontal,
-  security: KeyRound,
+  "collection-policy": Clock,
+  security: ShieldCheck,
   backup: DatabaseBackup,
   display: Monitor,
-  advanced: SlidersHorizontal,
+  advanced: Wrench,
 };
 
 export default function Settings() {
   const { section: requestedSection } = useParams();
+  const location = useLocation();
   const navigate = useNavigate();
+  const overlayRoute = new URLSearchParams(location.search).get("overlay");
   const tabList = useRef<HTMLDivElement>(null);
   const categoryTrigger = useRef<HTMLButtonElement>(null);
   const isMobile = useIsMobile();
@@ -151,11 +149,16 @@ export default function Settings() {
             setSuccess("");
             void navigate("/settings/" + value);
           };
+          function handleInlineSaved(next: RuntimeSettings) {
+            queryClient.setQueryData(["settings"], { data: next });
+            void refreshOperationalData();
+          }
           return (
             <Tabs
+              orientation={isMobile ? "horizontal" : "vertical"}
               value={section}
               onValueChange={changeSection}
-              className="min-w-0 gap-6"
+              className={isMobile ? "min-w-0 gap-4" : "settings-shell"}
             >
               {isMobile ? (
                 <Select
@@ -181,15 +184,15 @@ export default function Settings() {
                   </SelectContent>
                 </Select>
               ) : (
-                <ScrollingTabs>
+                <div className="settings-rail">
                   <SelectionMotionGroup>
                     <TabsList
                       ref={tabList}
                       aria-label="设置分类"
                       activateOnFocus={false}
                       variant="line"
-                      data-selection-motion="underline"
-                      className="mb-1 min-w-max justify-start"
+                      data-selection-motion="fill"
+                      className="settings-rail-list"
                     >
                       {availableSections.map(([value, title]) => {
                         const Icon = sectionIcons[value];
@@ -197,47 +200,73 @@ export default function Settings() {
                           <TabsTrigger
                             key={value}
                             value={value}
-                            className="shrink-0"
-                            onFocus={(event) =>
-                              event.currentTarget.scrollIntoView({
-                                block: "nearest",
-                                inline: "nearest",
-                              })
-                            }
+                            className="settings-rail-item"
                           >
-                            <SelectionMotionIndicator active={section === value} variant="underline" />
+                            <SelectionMotionIndicator active={section === value} variant="fill" />
                             <Icon />
-                            {title}
+                            <span>{title}</span>
                           </TabsTrigger>
                         );
                       })}
                     </TabsList>
                   </SelectionMotionGroup>
-                </ScrollingTabs>
+                </div>
               )}
               <TabsContent
                 value={section}
+                className="min-w-0"
                 aria-label={isMobile ? availableSections.find(([value]) => value === section)?.[1] : undefined}
               >
                 <div
                   data-settings-content
-                  className="flex min-w-0 flex-col gap-4"
+                  className="settings-pane"
                   inert={refreshing}
                   aria-busy={refreshing}
                 >
-                  {section === "accounts" ? <AlipayAccountList /> : section === "backup" ? <>
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <p className="text-sm text-muted-foreground">历史数据可归档后长期保留，减少主库和日常备份体积。</p>
-                      <Link global to="/settings/archives" className={buttonVariants({ variant: "outline", size: "sm" })}>历史归档</Link>
-                    </div>
-                    <BackupOverview settings={data} />
-                  </> : section === "security" ? (
+                  {section === "accounts" ? (
+                    <AlipayAccountList />
+                  ) : section === "backup" ? (
+                    <>
+                      <BackupOverview settings={data} />
+                      <Card size="sm" data-settings-archives-card>
+                        <CardHeader>
+                          <CardTitle role="heading" aria-level={2} className="flex items-center gap-2">
+                            <Archive className="size-4 text-muted-foreground" aria-hidden="true" />
+                            历史归档
+                          </CardTitle>
+                          <CardDescription>
+                            历史数据可归档后长期保留，减少主库和日常备份体积。
+                          </CardDescription>
+                          <CardAction>
+                            <Link global to="/settings/archives" className={buttonVariants({ variant: "outline", size: "sm" })}>
+                              历史归档
+                            </Link>
+                          </CardAction>
+                        </CardHeader>
+                      </Card>
+                    </>
+                  ) : section === "security" ? (
                     <SecuritySettings
                       key={"security:" + editorVersion}
                       settings={data}
                     />
+                  ) : overlayRoute === "/settings/" + section + "/edit" ? (
+                    <Card size="sm" data-settings-editing-backdrop={section}>
+                      <CardHeader>
+                        <CardTitle role="heading" aria-level={2}>
+                          {availableSections.find(([value]) => value === section)?.[1]}
+                        </CardTitle>
+                        <CardDescription>正在弹窗中编辑当前配置。</CardDescription>
+                      </CardHeader>
+                    </Card>
                   ) : (
-                    <SettingsSummary title={availableSections.find(([value]) => value === section)?.[1] ?? "设置"} rows={settingsSummaryRows(data, section)} editTo={"/settings/" + section + "/edit"} />
+                    <SettingsEditor
+                      key={section + ":" + editorVersion}
+                      section={section}
+                      settings={data}
+                      onSaved={handleInlineSaved}
+                      onFeedback={setSuccess}
+                    />
                   )}
                 </div>
               </TabsContent>
@@ -256,21 +285,6 @@ function BackupSettingsPending({ settings }: { settings: UseQueryResult<RuntimeS
     <MaintenanceJobResult job={maintenance.active ?? maintenance.latest} />
     {!maintenance.active && !maintenance.requiresLogin && <QueryView query={settings}>{() => null}</QueryView>}
   </div>;
-}
-
-function settingsSummaryRows(settings: RuntimeSettings, section: Exclude<ConfigurationSection, "backup">): SettingsSummaryRow[] {
-  if (section === "collection-policy") {
-    const policy = settings.collection_policy;
-    return [["请求超时", policy?.timeout_milliseconds === undefined ? "未配置" : policy.timeout_milliseconds / 1000 + " 秒"], ["常规查账间隔", policy?.scan_interval_seconds === undefined ? "未配置" : policy.scan_interval_seconds + " 秒"], ["活跃 / 最小间隔", policy?.active_scan_interval_seconds === undefined ? "未配置" : policy.active_scan_interval_seconds + " / " + (policy.minimum_scan_interval_seconds ?? policy.active_scan_interval_seconds) + " 秒"], ["查账延迟", policy?.safety_lag_seconds === undefined ? "未配置" : policy.safety_lag_seconds + " 秒"], ["查账有效时限", policy?.maximum_success_age_seconds === undefined ? "未配置" : policy.maximum_success_age_seconds + " 秒"]];
-  }
-  if (section === "display") return [
-    ["系统名称", settings.display.system_name || "PerPay"],
-    ["收款趋势默认图形", { AREA: "面积图", BAR: "柱状图", LINE: "累计图" }[settings.display.dashboard_chart_type]],
-    ["总览显示模块", formatDashboardSectionsSummary(settings.display.dashboard_sections)],
-    ["待处理排列方式", formatDashboardWorkItemsLayout(settings.display.dashboard_work_items_layout)],
-    ["订单不存在（404）说明", settings.display.checkout_not_found_detail || "使用系统默认文案"],
-  ];
-  return [["收银台链接密钥更换周期", settings.advanced.checkout_key_rotation_days + " 天"], ["订单结束后收银台可查时长", durationLabel(settings.advanced.checkout_terminal_observation_seconds)]];
 }
 
 export function SettingsEditorOverlay() {

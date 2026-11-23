@@ -25,8 +25,7 @@ test("save and refresh feedback keep dimensions, stop decorative loops and recov
       if (holdRead) await new Promise<void>(resolve => { gate.release = resolve; });
       await route.continue();
     });
-    await page.goto(fixture.origin + "/admin/settings/display");
-    await page.getByRole("link", { name: "编辑界面显示", exact: true }).click();
+    await page.goto(fixture.origin + "/admin/settings/display?overlay=%2Fsettings%2Fdisplay%2Fedit");
     const editor = page.getByRole("dialog", { name: "编辑界面显示", exact: true });
     const name = page.getByRole("textbox", { name: "系统名称", exact: true });
     await name.fill("反馈验收名称");
