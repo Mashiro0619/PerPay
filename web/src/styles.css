@@ -1063,9 +1063,50 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 @media (hover: hover) {
   .overview-work-item:hover { background-color: var(--muted); }
 }
-.overview-work-content [data-row-link] { display: inline-block; min-height: 24px; align-content: center; }
-.overview-work-order-heading { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: 0.125rem 0.625rem; }
-.overview-work-order-context { display: flex; min-width: 0; flex: 1 1 9rem; align-items: center; gap: 0.5rem; }
+.overview-work-content [data-row-link] { display: inline-block; min-height: 20px; align-content: center; }
+.overview-work-header {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.25rem 0.625rem;
+}
+.overview-work-heading {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.5rem;
+}
+.overview-work-header > .overview-order-money-line {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+.overview-work-header:has(.list-money[data-wide="true"]) > .overview-order-money-line {
+  flex-basis: 100%;
+  margin-left: 0;
+  justify-content: flex-start;
+}
+.overview-work-meta {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.2rem 0.75rem;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--muted-foreground);
+}
+.overview-work-order-context {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 8rem;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.125rem 0.5rem;
+}
 .overview-work-order-context > .overview-work-product {
   display: -webkit-box;
   min-width: 0;
@@ -1073,39 +1114,59 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   flex: 0 1 auto;
   overflow: hidden;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  min-height: 24px;
-  align-content: center;
+  -webkit-line-clamp: 1;
+  color: var(--muted-foreground);
   overflow-wrap: anywhere;
 }
-.overview-work-order-context > .list-site-identity { display: inline-flex; flex: 0 0 auto; max-width: 45%; align-items: center; }
-.overview-work-order-context > .list-site-identity::before { content: "·"; margin-right: 0.5rem; }
-.overview-work-order-context > .list-site-identity > span { display: -webkit-box; min-width: 0; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
-.overview-work-order-heading > .overview-order-money-line { flex: 0 1 auto; margin-left: auto; }
-.overview-work-order-heading:has(.list-money[data-wide="true"]) > .overview-order-money-line { flex-basis: 100%; }
+@media (hover: hover) {
+  .overview-work-order-context > .overview-work-product:hover {
+    color: var(--foreground);
+  }
+}
+.overview-work-order-context > .list-site-identity {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  flex: 0 1 auto;
+  align-items: baseline;
+}
+.overview-work-order-context > .list-site-identity::before {
+  content: "·";
+  margin-right: 0.375rem;
+  color: var(--muted-foreground);
+}
+.overview-work-order-context > .list-site-identity > span {
+  display: -webkit-box;
+  min-width: 0;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+}
 
 .overview-work-fields {
   display: flex;
   min-width: 0;
+  flex: 0 0 auto;
   flex-wrap: wrap;
   align-items: baseline;
   margin: 0;
   gap: 0.125rem 0.75rem;
   color: var(--muted-foreground);
   font-size: 0.75rem;
-  line-height: 1.5;
+  line-height: 1.45;
 }
 .overview-work-order-reference { display: flex; min-width: 0; max-width: 100%; align-items: baseline; gap: 0.375rem; }
 .overview-work-fields dt, .overview-work-fields dd { min-width: 0; margin: 0; }
 .overview-work-fields dt { flex: none; white-space: nowrap; }
 .overview-work-order-reference .list-code { white-space: normal; overflow-wrap: anywhere; }
-.overview-work-time { display: flex; min-width: 0; align-items: baseline; gap: 0.375rem; }
+.overview-work-time { display: flex; min-width: 0; align-items: baseline; gap: 0.25rem; }
 .overview-work-time dd { white-space: nowrap; }
 .overview-work-content [data-row-link]:focus-visible,
 .overview-work-order-context > .overview-work-product:focus-visible { outline-offset: -2px; }
 @media (pointer: coarse) {
   .overview-work-content [data-row-link],
-  .overview-work-order-context > .overview-work-product { min-width: 40px; min-height: 40px; }
+  .overview-work-order-context > .overview-work-product,
+  .overview-work-order-context > .list-site-identity { min-width: 40px; min-height: 40px; align-items: center; align-content: center; }
   .overview-work-list a.list-code { min-height: 40px; align-content: center; }
   .overview-work-content > [data-slot="item-header"] { margin-bottom: 4px; }
 }
@@ -2880,8 +2941,8 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 [data-onboarding-workspace] > [data-slot="card"], [data-account-onboarding] > [data-slot="card"] { --card-spacing: 1rem; }
 [data-overview-layout] .overview-work-fields { display: flex; min-width: 0; flex-wrap: wrap; gap: 0.25rem 0.75rem; }
 [data-overview-layout] .overview-work-order-reference { display: none; }
-[data-overview-layout] .overview-work-item { padding-block: 0.625rem; }
-[data-overview-layout] .overview-work-content { gap: 0.25rem; }
+[data-overview-layout] .overview-work-item { padding-block: 0.5rem; }
+[data-overview-layout] .overview-work-content { gap: 0.2rem; }
 [data-overview-layout] .overview-order-summary { gap: 0.375rem; }
 [data-overview-layout] .overview-order-summary .overview-order-meta { display: flex; flex-wrap: nowrap; gap: 0.5rem; overflow: hidden; }
 [data-overview-layout] .overview-order-summary .overview-order-reference > span:first-child { display: none; }
@@ -2901,9 +2962,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 [data-overview-layout] .overview-work-fields { align-items: center; justify-content: space-between; }
 .overview-work-site { min-width: 0; max-width: 100%; }
 .overview-work-site .list-site-identity > span { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
-.overview-work-order-heading .overview-work-order-context { flex-basis: 0; }
-.overview-work-order-heading .overview-work-product { color: var(--foreground); }
-.overview-work-order-heading .overview-order-money-line .list-money { font-size: 1rem; }
+.overview-work-header .overview-order-money-line .list-money { font-size: 0.875rem; }
 .overview-work-content > [data-slot="item-header"] { margin-bottom: 0; }
 @container summary (min-width: 14rem) {
   .overview-orders [data-summary-layout="order"] .list-summary-heading:not(:has(.list-money[data-wide="true"])) { grid-template-columns: minmax(0, 1fr) max-content; gap: 0.75rem; }
@@ -2914,14 +2973,12 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 @container summary (max-width: 14rem) {
   .overview-summary-statuses, .overview-summary-statuses .overview-record-stack { align-items: flex-start; }
 }
-@container overview-work (max-width: 12rem) {
-  .overview-work-content > [data-slot="item-header"] { flex-wrap: wrap; align-items: flex-start; }
-  .overview-work-content > [data-slot="item-header"] > [data-slot="item-title"] { flex-basis: 100%; }
-  .overview-work-content > [data-slot="item-header"] > [data-slot="item-actions"] { min-width: 0; max-width: 100%; }
+@container overview-work (max-width: 17rem) {
+  .overview-work-header { flex-direction: column; align-items: flex-start; }
+  .overview-work-header > .overview-order-money-line { margin-left: 0; justify-content: flex-start; }
   .overview-work-content [data-slot="badge"] { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
-  .overview-work-order-heading { flex-direction: column; align-items: flex-start; }
-  .overview-work-order-heading .overview-work-order-context { flex: none; width: 100%; }
-  .overview-work-order-heading > .overview-order-money-line { margin-left: 0; justify-content: flex-start; }
+  .overview-work-meta { flex-direction: column; align-items: flex-start; }
+  .overview-work-order-context { flex: none; width: 100%; }
   .overview-work-time { flex-wrap: wrap; }
   .overview-work-time dd, .overview-work-time .list-time, .overview-work-list .list-money { white-space: normal; overflow-wrap: anywhere; }
 }

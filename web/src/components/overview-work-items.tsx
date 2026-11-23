@@ -76,23 +76,31 @@ export function OverviewWorkItems({ items }: { items: readonly AdminWorkItem[] }
             aria-label={reason + (order ? "，" + order.product_name : "")}
           >
             <ItemContent className="overview-work-content">
-              <ItemHeader className="min-w-0">
-                <ItemTitle className="min-w-0 max-w-full flex-1 line-clamp-2 wrap-anywhere">
-                  <Link
-                    data-row-link
-                    className="list-primary-link"
-                    aria-label={action + "：" + reason + (order ? "，" + order.product_name : "")}
-                    title={reason}
-                    to={workItemHref(item)}
-                  >
-                    {reason}
-                  </Link>
-                </ItemTitle>
-                <ItemActions><WorkStatus item={item} /></ItemActions>
+              <ItemHeader className="overview-work-header min-w-0">
+                <div className="overview-work-heading min-w-0 flex-1">
+                  <ItemTitle className="min-w-0 max-w-full line-clamp-2 wrap-anywhere">
+                    <Link
+                      data-row-link
+                      className="list-primary-link"
+                      aria-label={action + "：" + reason + (order ? "，" + order.product_name : "")}
+                      title={reason}
+                      to={workItemHref(item)}
+                    >
+                      {reason}
+                    </Link>
+                  </ItemTitle>
+                  <WorkStatus item={item} />
+                </div>
+                {order && (
+                  <ItemActions className="overview-order-money-line shrink-0" title="应付金额">
+                    <span className="record-list-meta">应付</span>
+                    <ListMoney value={order.payable_amount_cents} label="应付金额" />
+                  </ItemActions>
+                )}
               </ItemHeader>
               {order ? (
-                <div className="overview-work-order-heading">
-                  <ItemDescription className="overview-work-order-context line-clamp-none">
+                <div className="overview-work-meta">
+                  <div className="overview-work-order-context">
                     <Link
                       className="overview-work-product"
                       aria-label={"查看订单：" + order.product_name}
@@ -101,46 +109,49 @@ export function OverviewWorkItems({ items }: { items: readonly AdminWorkItem[] }
                     >
                       {order.product_name}
                     </Link>
-                  </ItemDescription>
-                  <ItemActions className="overview-order-money-line" title="应付金额">
-                    <span className="record-list-meta">应付</span>
-                    <ListMoney value={order.payable_amount_cents} label="应付金额" />
-                  </ItemActions>
+                    {!clientId && (
+                      <SiteIdentity clientId={order.api_client_id} name={order.site_name} />
+                    )}
+                  </div>
+                  <dl className="overview-work-fields">
+                    {order.product_name !== order.merchant_order_no && (
+                      <div className="overview-work-order-reference">
+                        <dt>商户订单号</dt>
+                        <dd className="list-code" title={order.merchant_order_no}>{order.merchant_order_no}</dd>
+                      </div>
+                    )}
+                    <div className="overview-work-time">
+                      <dt>提醒</dt>
+                      <dd><ListDateTime value={item.actionable_at} inline /></dd>
+                    </div>
+                  </dl>
                 </div>
               ) : (
-                <ItemDescription className="line-clamp-none flex min-w-0 flex-wrap gap-2 wrap-anywhere">
-                  <span>{orderId ? "订单摘要暂不可用" : "未关联订单"}</span>
-                  {orderId && (
-                    <Link
-                      className="list-code"
-                      title={orderId}
-                      aria-label={"查看订单，内部订单编号（PerPay）：" + orderId}
-                      to={"/orders/" + orderId}
-                    >
-                      内部订单编号（PerPay） {orderId}
-                    </Link>
-                  )}
-                  {ledgerIdentity && (
-                    <span className="list-code" title={ledgerIdentity}>{ledgerLabel} {ledgerIdentity}</span>
-                  )}
-                </ItemDescription>
+                <>
+                  <ItemDescription className="line-clamp-none flex min-w-0 flex-wrap gap-2 wrap-anywhere">
+                    <span>{orderId ? "订单摘要暂不可用" : "未关联订单"}</span>
+                    {orderId && (
+                      <Link
+                        className="list-code"
+                        title={orderId}
+                        aria-label={"查看订单，内部订单编号（PerPay）：" + orderId}
+                        to={"/orders/" + orderId}
+                      >
+                        内部订单编号（PerPay） {orderId}
+                      </Link>
+                    )}
+                    {ledgerIdentity && (
+                      <span className="list-code" title={ledgerIdentity}>{ledgerLabel} {ledgerIdentity}</span>
+                    )}
+                  </ItemDescription>
+                  <dl className="overview-work-fields">
+                    <div className="overview-work-time">
+                      <dt>提醒</dt>
+                      <dd><ListDateTime value={item.actionable_at} inline /></dd>
+                    </div>
+                  </dl>
+                </>
               )}
-              <dl className="overview-work-fields">
-                {!clientId && order && <div className="overview-work-site">
-                  <dt className="sr-only">网站</dt>
-                  <dd><SiteIdentity clientId={order.api_client_id} name={order.site_name} /></dd>
-                </div>}
-                {order && order.product_name !== order.merchant_order_no && (
-                  <div className="overview-work-order-reference">
-                    <dt>商户订单号</dt>
-                    <dd className="list-code" title={order.merchant_order_no}>{order.merchant_order_no}</dd>
-                  </div>
-                )}
-                <div className="overview-work-time">
-                  <dt>提醒</dt>
-                  <dd><ListDateTime value={item.actionable_at} inline /></dd>
-                </div>
-              </dl>
               {item.type === "NOTIFICATION_FAILURE" && !item.ended &&
                 ["PENDING", "RETRY_WAIT"].includes(item.status) && item.next_attempt_at && (
                 <ItemDescription className="line-clamp-none wrap-anywhere">
