@@ -47,6 +47,7 @@ it("persists validated display settings with CSRF, revisions and audit without c
       checkout_not_found_detail: null,
       dashboard_chart_type: "AREA",
       dashboard_sections: DEFAULT_DASHBOARD_SECTIONS,
+      dashboard_work_items_layout: "STACKED",
     });
     assert.equal(
       (
@@ -83,6 +84,7 @@ it("persists validated display settings with CSRF, revisions and audit without c
       checkout_not_found_detail: null,
       dashboard_chart_type: "BAR",
       dashboard_sections: DEFAULT_DASHBOARD_SECTIONS,
+      dashboard_work_items_layout: "STACKED",
     });
     assert.deepEqual(saved.provider, original.provider);
     assert.deepEqual(saved.collection, original.collection);
@@ -211,6 +213,7 @@ it("upgrades schema 23 with presentation defaults while preserving revisions, co
         checkout_not_found_detail: null,
         dashboard_chart_type: "AREA",
         dashboard_sections: DEFAULT_DASHBOARD_SECTIONS,
+        dashboard_work_items_layout: "STACKED",
       });
       assert.deepEqual(settings.siteStore()!.get("default")!.configuration.policy.display, {
         checkout_name: "PerPay",
@@ -526,5 +529,72 @@ it("validates, persists, restores default and renders global 404 checkout copy",
     });
     assert.equal(cleared.status, 200);
     assert.equal(services.settings.instanceView().display.checkout_not_found_detail, null);
+  });
+});
+
+it("validates, persists, preserves and audits dashboard_work_items_layout preference", async () => {
+  await withHttpFixture(async ({ app, database, services }) => {
+    const auth = await login(app);
+    const headers = financialHeaders(auth);
+    const save = (body: unknown) => app.request("/api/admin/v1/settings/display", {
+      method: "PUT", headers, body: JSON.stringify(body),
+    });
+
+    const initial = services.settings.instanceView();
+    assert.equal(initial.display.dashboard_work_items_layout, "STACKED");
+
+    const rejected = await save({
+      revision: initial.revision,
+      dashboard_chart_type: "AREA",
+      dashboard_work_items_layout: "THREE_COLUMN",
+    });
+    assert.equal(rejected.status, 422);
+
+    const updated = await save({
+      revision: initial.revision,
+      dashboard_chart_type: "AREA",
+      dashboard_work_items_layout: "SIDE_BY_SIDE",
+    });
+    assert.equal(updated.status, 200);
+    assert.equal(services.settings.instanceView().display.dashboard_work_items_layout, "SIDE_BY_SIDE");
+    assert.equal(services.settings.display().dashboardWorkItemsLayout, "SIDE_BY_SIDE");
+
+    // Omitting dashboard_work_items_layout preserves the saved preference.
+    const preserved = await save({
+      revision: initial.revision + 1,
+      system_name: "并排看板",
+      dashboard_chart_type: "BAR",
+    });
+    assert.equal(preserved.status, 200);
+    assert.equal(services.settings.instanceView().display.dashboard_work_items_layout, "SIDE_BY_SIDE");
+
+    const audit = database.read((c) =>
+      c.prepare(
+        `SELECT context.context_json FROM audit_events event
+           JOIN audit_event_context context USING(event_id)
+          WHERE event.action = 'settings.display_updated'
+          ORDER BY event.rowid ASC`,
+      ).all(),
+    ) as { context_json: string }[];
+    assert.equal(audit.length, 2);
+    const firstContext = JSON.parse(audit[0]!.context_json) as StoredAuditContext;
+    assert.deepEqual(firstContext.changes, [
+      { field: "dashboard_work_items_layout", kind: "value", before: "STACKED", after: "SIDE_BY_SIDE" },
+    ]);
+    const secondContext = JSON.parse(audit[1]!.context_json) as StoredAuditContext;
+    assert.equal(secondContext.changes.some((c) => c.field === "dashboard_work_items_layout"), false);
+
+    database.close();
+    const reopened = await AppDatabase.open(services.config.databasePath);
+    try {
+      const settings = new RuntimeSettingsService({
+        store: new RuntimeSettingsStore(reopened, services.config.masterKey),
+      });
+      settings.initialize();
+      assert.equal(settings.instanceView().display.dashboard_work_items_layout, "SIDE_BY_SIDE");
+      assert.equal(reopened.integrityCheck().ok, true);
+    } finally {
+      reopened.close();
+    }
   });
 });

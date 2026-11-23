@@ -1,24 +1,41 @@
 import {
   DASHBOARD_SECTION_KEYS,
+  DASHBOARD_WORK_ITEMS_LAYOUTS,
   DEFAULT_DASHBOARD_SECTIONS,
+  DEFAULT_DASHBOARD_WORK_ITEMS_LAYOUT,
   hasVisibleDashboardSection,
   normalizeDashboardSections,
+  normalizeDashboardWorkItemsLayout,
   parseDashboardSectionsJson,
   serializeDashboardSections,
   type DashboardSectionKey,
   type DashboardSections,
+  type DashboardWorkItemsLayout,
 } from "../../../src/shared/dashboard-sections";
 
 export {
   DASHBOARD_SECTION_KEYS,
+  DASHBOARD_WORK_ITEMS_LAYOUTS,
   DEFAULT_DASHBOARD_SECTIONS,
+  DEFAULT_DASHBOARD_WORK_ITEMS_LAYOUT,
   hasVisibleDashboardSection,
   normalizeDashboardSections,
+  normalizeDashboardWorkItemsLayout,
   parseDashboardSectionsJson,
   serializeDashboardSections,
   type DashboardSectionKey,
   type DashboardSections,
+  type DashboardWorkItemsLayout,
 };
+
+export const DASHBOARD_WORK_ITEMS_LAYOUT_LABELS: Readonly<Record<DashboardWorkItemsLayout, string>> = {
+  STACKED: "独立成行",
+  SIDE_BY_SIDE: "与订单并排",
+};
+
+export function formatDashboardWorkItemsLayout(value: unknown): string {
+  return DASHBOARD_WORK_ITEMS_LAYOUT_LABELS[normalizeDashboardWorkItemsLayout(value)];
+}
 
 export const DASHBOARD_SECTION_META: ReadonlyArray<{
   readonly key: DashboardSectionKey;
@@ -81,6 +98,26 @@ export function readCachedDashboardSections(): DashboardSections | null {
 export function writeCachedDashboardSections(sections: DashboardSections): void {
   try {
     window.localStorage.setItem(STORAGE_KEY, serializeDashboardSections(sections));
+  } catch {
+    // Ignore storage quota or private browsing errors.
+  }
+}
+
+const WORK_ITEMS_LAYOUT_STORAGE_KEY = "perpay:dashboard-work-items-layout";
+
+export function readCachedDashboardWorkItemsLayout(): DashboardWorkItemsLayout | null {
+  try {
+    const raw = window.localStorage.getItem(WORK_ITEMS_LAYOUT_STORAGE_KEY);
+    if (raw === "STACKED" || raw === "SIDE_BY_SIDE") return raw;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export function writeCachedDashboardWorkItemsLayout(layout: DashboardWorkItemsLayout): void {
+  try {
+    window.localStorage.setItem(WORK_ITEMS_LAYOUT_STORAGE_KEY, layout);
   } catch {
     // Ignore storage quota or private browsing errors.
   }

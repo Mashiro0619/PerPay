@@ -10124,6 +10124,11 @@ components:
     DashboardChartType:
       type: string
       enum: [AREA, BAR, LINE]
+    DashboardWorkItemsLayout:
+      type: string
+      enum: [STACKED, SIDE_BY_SIDE]
+      default: STACKED
+      description: Controls whether the pending work items panel occupies its own full-width row (STACKED) or appears alongside recent orders on wide screens (SIDE_BY_SIDE).
     DashboardSections:
       type: object
       additionalProperties: false
@@ -10184,6 +10189,8 @@ components:
           $ref: "#/components/schemas/DashboardChartType"
         dashboard_sections:
           $ref: "#/components/schemas/DashboardSections"
+        dashboard_work_items_layout:
+          $ref: "#/components/schemas/DashboardWorkItemsLayout"
     BackupSettings:
       type: object
       additionalProperties: false
@@ -10341,6 +10348,8 @@ components:
           $ref: "#/components/schemas/DashboardChartType"
         dashboard_sections:
           $ref: "#/components/schemas/DashboardSections"
+        dashboard_work_items_layout:
+          $ref: "#/components/schemas/DashboardWorkItemsLayout"
     BackupSettingsRequest:
       type: object
       additionalProperties: false

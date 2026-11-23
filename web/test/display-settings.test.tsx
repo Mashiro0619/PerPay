@@ -41,7 +41,7 @@ describe("instance display settings", () => {
     expect(form.querySelector("[data-slot=card-content] > [data-slot=field-set]")).toHaveClass("max-w-2xl");
     const displayFields = name.closest('[data-slot="field-group"]')!;
     const rows = [...displayFields.children];
-    expect(rows).toHaveLength(4);
+    expect(rows).toHaveLength(5);
     for (const row of rows) {
       expect(row).toHaveAttribute("data-orientation", "vertical");
       expect(row).not.toContainElement(row.querySelector("label input"));
@@ -50,13 +50,16 @@ describe("instance display settings", () => {
     expect(rows[1]).toContainElement(chart);
     const sections = screen.getByRole("group", { name: "总览显示模块" });
     expect(rows[2]).toContainElement(sections);
+    const workItemsLayout = screen.getByRole("group", { name: "待处理排列方式" });
+    expect(rows[3]).toContainElement(workItemsLayout);
     const notFound = screen.getByRole("textbox", { name: "订单不存在（404）说明" });
-    expect(rows[3]).toContainElement(notFound);
+    expect(rows[4]).toContainElement(notFound);
     expect(notFound).toHaveAttribute("maxlength", "200");
     for (const label of ["核心指标", "收款趋势", "各网站概览", "待处理", "最近订单"]) {
       expect(within(sections).getByRole("switch", { name: label })).toBeChecked();
     }
     expect(new FormData(form).get("dashboard_chart_type")).toBe("AREA");
+    expect(new FormData(form).get("dashboard_work_items_layout")).toBe("STACKED");
     expect(chart).toHaveAccessibleDescription("用于未设置个人图形偏好的浏览器。");
     expect(sections).toHaveAccessibleDescription("控制总览页展示的卡片模块，至少保留一项开启。");
     expect(form.querySelector('[data-slot="card-header"]')).toHaveClass("sr-only");
@@ -327,5 +330,44 @@ describe("instance display settings", () => {
       revision: initial.revision,
       checkout_not_found_detail: null,
     });
+  });
+
+  it("toggles pending work-items layout between stacked and side-by-side and only sends when changed", async () => {
+    const requests: Request[] = [];
+    const saved: RuntimeSettings = {
+      ...settings,
+      revision: settings.revision + 1,
+      display: {
+        ...settings.display,
+        dashboard_work_items_layout: "SIDE_BY_SIDE",
+      },
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (request: Request) => {
+        requests.push(request);
+        return json({ data: saved });
+      }),
+    );
+    const { onSaved } = mount();
+    const user = userEvent.setup();
+    const group = screen.getByRole("group", { name: "待处理排列方式" });
+    expect(within(group).getByRole("button", { name: "独立成行" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(group).getByRole("button", { name: "与订单并排" })).toHaveAttribute("aria-pressed", "false");
+
+    await user.click(within(group).getByRole("button", { name: "与订单并排" }));
+    expect(screen.getByText("未保存")).toBeVisible();
+    await user.click(within(group).getByRole("button", { name: "独立成行" }));
+    expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
+
+    await user.click(within(group).getByRole("button", { name: "与订单并排" }));
+    await user.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalledWith(saved));
+    expect(requests).toHaveLength(1);
+    expect(await requests[0]!.json()).toMatchObject({
+      revision: settings.revision,
+      dashboard_work_items_layout: "SIDE_BY_SIDE",
+    });
+    expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
   });
 });

@@ -18,9 +18,13 @@ import {
 } from "@/lib/onboarding";
 import {
   DEFAULT_DASHBOARD_SECTIONS,
+  DEFAULT_DASHBOARD_WORK_ITEMS_LAYOUT,
   normalizeDashboardSections,
+  normalizeDashboardWorkItemsLayout,
   readCachedDashboardSections,
+  readCachedDashboardWorkItemsLayout,
   writeCachedDashboardSections,
+  writeCachedDashboardWorkItemsLayout,
 } from "@/lib/dashboard-sections";
 import { OverviewWorkItems } from "@/components/overview-work-items";
 import { SectionCards } from "@/components/section-cards";
@@ -151,14 +155,23 @@ function DashboardContent() {
           ? "本站尚未分配收款账号，请先选择支付宝账号。"
           : "本站已就绪，可以先发起一笔测试收款；正式接入时再配置 API 密钥与回调通知。";
   const serverSections = settings.data?.data.display?.dashboard_sections;
+  const serverWorkItemsLayout = settings.data?.data.display?.dashboard_work_items_layout;
   useEffect(() => {
     if (serverSections) {
       writeCachedDashboardSections(normalizeDashboardSections(serverSections));
     }
   }, [serverSections]);
+  useEffect(() => {
+    if (serverWorkItemsLayout) {
+      writeCachedDashboardWorkItemsLayout(normalizeDashboardWorkItemsLayout(serverWorkItemsLayout));
+    }
+  }, [serverWorkItemsLayout]);
   const visibleSections = serverSections
     ? normalizeDashboardSections(serverSections)
     : (readCachedDashboardSections() ?? DEFAULT_DASHBOARD_SECTIONS);
+  const workItemsLayout = serverWorkItemsLayout
+    ? normalizeDashboardWorkItemsLayout(serverWorkItemsLayout)
+    : (readCachedDashboardWorkItemsLayout() ?? DEFAULT_DASHBOARD_WORK_ITEMS_LAYOUT);
   const showSummaryCards = visibleSections.summary_cards;
   const showTrend = visibleSections.trend;
   const showSites = !clientId && visibleSections.site_overview;
@@ -187,7 +200,12 @@ function DashboardContent() {
     />}
   </div> : null;
   const sites = showSites ? <SiteOverviewList key="sites" range={range} /> : null;
-  const records = (showWorkItems || showRecentOrders) ? <div key="records" className="overview-records" data-work-empty={(showWorkItems && workEmpty) || undefined}>
+  const records = (showWorkItems || showRecentOrders) ? <div
+    key="records"
+    className="overview-records"
+    data-work-layout={workItemsLayout === "SIDE_BY_SIDE" ? "side-by-side" : "stacked"}
+    data-work-empty={(showWorkItems && workEmpty) || undefined}
+  >
     {showWorkItems && <Card size="sm" className="overview-record-panel overview-work-panel" role="region" aria-labelledby="overview-work-title">
       <CardHeader className="overview-records-header">
         <CardTitle id="overview-work-title" role="heading" aria-level={2} aria-label={clientId ? "本站待处理" : "全部待处理"} className="flex items-center gap-2">

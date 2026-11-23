@@ -18,6 +18,7 @@ import {
   backupSettingsInputSchema,
   collectionSettingsInputSchema,
   DEFAULT_DASHBOARD_SECTIONS,
+  DEFAULT_DASHBOARD_WORK_ITEMS_LAYOUT,
   displaySettingsInputSchema,
   generateProviderApplicationKey,
   parseProviderApplicationPrivateKey,
@@ -38,6 +39,7 @@ import {
   type BackupSettingsInput,
   type DashboardChartType,
   type DashboardSections,
+  type DashboardWorkItemsLayout,
   type DisplaySettingsInput,
   type CollectionSettingsInput,
   type ApiCredentialSnapshot,
@@ -131,6 +133,7 @@ export interface RuntimeSettingsView {
     readonly checkout_not_found_detail: string | null;
     readonly dashboard_chart_type: DashboardChartType;
     readonly dashboard_sections: DashboardSections;
+    readonly dashboard_work_items_layout: DashboardWorkItemsLayout;
   };
   readonly secrets: Readonly<Record<RuntimeSecretName, ReturnType<RuntimeSettingsStore["secretMetadata"]>>>;
 }
@@ -143,7 +146,14 @@ export type InstanceSettingsView = Omit<RuntimeSettingsView,
   readonly completion: Omit<RuntimeSettingsView["completion"], "api" | "notifications"> & { readonly sites: boolean };
   readonly collection: { readonly code_payload: string } | null;
   readonly provider: Pick<NonNullable<RuntimeSettingsView["provider"]>, "environment" | "app_id" | "platform_public_key" | "provider_account_key"> | null;
-  readonly display: Pick<RuntimeSettingsView["display"], "system_name" | "checkout_not_found_detail" | "dashboard_chart_type" | "dashboard_sections">;
+  readonly display: Pick<
+    RuntimeSettingsView["display"],
+    | "system_name"
+    | "checkout_not_found_detail"
+    | "dashboard_chart_type"
+    | "dashboard_sections"
+    | "dashboard_work_items_layout"
+  >;
   readonly secrets: Pick<RuntimeSettingsView["secrets"], "provider_private_key" | "provider_public_key">;
 };
 
@@ -276,6 +286,7 @@ export class RuntimeSettingsService {
         checkout_not_found_detail: snapshot.display.checkoutNotFoundDetail ?? null,
         dashboard_chart_type: snapshot.display.dashboardChartType,
         dashboard_sections: snapshot.display.dashboardSections ?? DEFAULT_DASHBOARD_SECTIONS,
+        dashboard_work_items_layout: snapshot.display.dashboardWorkItemsLayout ?? DEFAULT_DASHBOARD_WORK_ITEMS_LAYOUT,
       },
       secrets: { provider_private_key: this.#store.secretMetadata("provider_private_key"), provider_public_key: this.#store.secretMetadata("provider_public_key") },
     };
@@ -382,6 +393,7 @@ export class RuntimeSettingsService {
         checkout_not_found_detail: snapshot.display?.checkoutNotFoundDetail ?? null,
         dashboard_chart_type: snapshot.display?.dashboardChartType ?? "AREA",
         dashboard_sections: snapshot.display?.dashboardSections ?? DEFAULT_DASHBOARD_SECTIONS,
+        dashboard_work_items_layout: snapshot.display?.dashboardWorkItemsLayout ?? DEFAULT_DASHBOARD_WORK_ITEMS_LAYOUT,
       },
       secrets: {
         api_secret: this.#store.secretMetadata("api_secret"),

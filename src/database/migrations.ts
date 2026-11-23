@@ -5066,4 +5066,13 @@ export const migrations: readonly Migration[] = [
         CHECK (checkout_not_found_detail IS NULL OR length(trim(checkout_not_found_detail)) BETWEEN 1 AND 200);
     `,
   },
+  {
+    version: 51,
+    name: "dashboard_work_items_layout",
+    sql: `
+      ALTER TABLE runtime_configuration
+        ADD COLUMN dashboard_work_items_layout TEXT NOT NULL DEFAULT 'STACKED'
+        CHECK (dashboard_work_items_layout IN ('STACKED', 'SIDE_BY_SIDE'));
+    `,
+  },
 ] as const;

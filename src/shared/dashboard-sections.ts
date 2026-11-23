@@ -1,3 +1,18 @@
+export const DASHBOARD_WORK_ITEMS_LAYOUTS = [
+  "STACKED",
+  "SIDE_BY_SIDE",
+] as const;
+
+export type DashboardWorkItemsLayout = (typeof DASHBOARD_WORK_ITEMS_LAYOUTS)[number];
+
+export const DEFAULT_DASHBOARD_WORK_ITEMS_LAYOUT: DashboardWorkItemsLayout = "STACKED";
+
+export function normalizeDashboardWorkItemsLayout(
+  value: unknown,
+): DashboardWorkItemsLayout {
+  return value === "SIDE_BY_SIDE" ? "SIDE_BY_SIDE" : "STACKED";
+}
+
 export const DASHBOARD_SECTION_KEYS = [
   "summary_cards",
   "trend",

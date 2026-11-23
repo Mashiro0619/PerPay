@@ -50,7 +50,10 @@ import { maintenanceKey } from "@/api/maintenance";
 import { useMaintenanceJobs } from "@/hooks/use-maintenance";
 import { MaintenanceJobResult } from "@/components/maintenance-operation";
 import { durationLabel } from "@/lib/format";
-import { formatDashboardSectionsSummary } from "@/lib/dashboard-sections";
+import {
+  formatDashboardSectionsSummary,
+  formatDashboardWorkItemsLayout,
+} from "@/lib/dashboard-sections";
 
 const sectionIcons = {
   accounts: Wallet,
@@ -264,6 +267,7 @@ function settingsSummaryRows(settings: RuntimeSettings, section: Exclude<Configu
     ["系统名称", settings.display.system_name || "PerPay"],
     ["收款趋势默认图形", { AREA: "面积图", BAR: "柱状图", LINE: "累计图" }[settings.display.dashboard_chart_type]],
     ["总览显示模块", formatDashboardSectionsSummary(settings.display.dashboard_sections)],
+    ["待处理排列方式", formatDashboardWorkItemsLayout(settings.display.dashboard_work_items_layout)],
     ["订单不存在（404）说明", settings.display.checkout_not_found_detail || "使用系统默认文案"],
   ];
   return [["收银台链接密钥更换周期", settings.advanced.checkout_key_rotation_days + " 天"], ["订单结束后收银台可查时长", durationLabel(settings.advanced.checkout_terminal_observation_seconds)]];

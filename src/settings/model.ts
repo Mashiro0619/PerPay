@@ -6,9 +6,12 @@ import {
   CHECKOUT_TEXT_PATTERN,
 } from "../shared/checkout-display.ts";
 import {
+  DASHBOARD_WORK_ITEMS_LAYOUTS,
   DEFAULT_DASHBOARD_SECTIONS,
+  DEFAULT_DASHBOARD_WORK_ITEMS_LAYOUT,
   hasVisibleDashboardSection,
   type DashboardSections,
+  type DashboardWorkItemsLayout,
 } from "../shared/dashboard-sections.ts";
 import {
   createHash,
@@ -137,7 +140,12 @@ export interface AdvancedSettings {
 }
 
 export type DashboardChartType = "AREA" | "BAR" | "LINE";
-export { DEFAULT_DASHBOARD_SECTIONS, type DashboardSections };
+export {
+  DEFAULT_DASHBOARD_SECTIONS,
+  DEFAULT_DASHBOARD_WORK_ITEMS_LAYOUT,
+  type DashboardSections,
+  type DashboardWorkItemsLayout,
+};
 
 export interface DisplaySettings {
   readonly systemName?: string;
@@ -146,6 +154,7 @@ export interface DisplaySettings {
   readonly checkoutNotFoundDetail?: string | null;
   readonly dashboardChartType: DashboardChartType;
   readonly dashboardSections?: DashboardSections;
+  readonly dashboardWorkItemsLayout?: DashboardWorkItemsLayout;
 }
 
 export interface BackupSettings {
@@ -163,7 +172,14 @@ export interface InstanceRuntimeSettingsSnapshot {
   readonly provider: ProviderSettings | null;
   readonly advanced: AdvancedSettings;
   readonly backup: BackupSettings;
-  readonly display: Pick<DisplaySettings, "systemName" | "checkoutNotFoundDetail" | "dashboardChartType" | "dashboardSections">;
+  readonly display: Pick<
+    DisplaySettings,
+    | "systemName"
+    | "checkoutNotFoundDetail"
+    | "dashboardChartType"
+    | "dashboardSections"
+    | "dashboardWorkItemsLayout"
+  >;
   readonly activeProviderAccountKey: string | null;
 }
 
@@ -309,6 +325,7 @@ export const displaySettingsInputSchema = z.object({
   checkout_not_found_detail: checkoutOptionalTextSchema().optional(),
   dashboard_chart_type: z.enum(["AREA", "BAR", "LINE"]),
   dashboard_sections: dashboardSectionsSchema.optional(),
+  dashboard_work_items_layout: z.enum(DASHBOARD_WORK_ITEMS_LAYOUTS).optional(),
 }).strict();
 
 export const backupSettingsInputSchema = z.object({
@@ -329,6 +346,7 @@ export const instanceDisplayInputSchema = displaySettingsInputSchema.pick({
   checkout_not_found_detail: true,
   dashboard_chart_type: true,
   dashboard_sections: true,
+  dashboard_work_items_layout: true,
 }).strict();
 export type InstanceDisplayInput = z.infer<typeof instanceDisplayInputSchema>;
 

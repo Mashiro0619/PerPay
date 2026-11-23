@@ -40,10 +40,13 @@ import {
   DASHBOARD_SECTION_META,
   hasVisibleDashboardSection,
   normalizeDashboardSections,
+  normalizeDashboardWorkItemsLayout,
   serializeDashboardSections,
   writeCachedDashboardSections,
+  writeCachedDashboardWorkItemsLayout,
   type DashboardSectionKey,
   type DashboardSections,
+  type DashboardWorkItemsLayout,
 } from "@/lib/dashboard-sections";
 import {
   Select,
@@ -254,6 +257,10 @@ export function SettingsEditor({
   );
   const [savedDashboardSections, setSavedDashboardSections] = useState<DashboardSections>(dashboardSections);
   const serializedDashboardSections = serializeDashboardSections(dashboardSections);
+  const [workItemsLayout, setWorkItemsLayout] = useState<DashboardWorkItemsLayout>(() =>
+    normalizeDashboardWorkItemsLayout(initialSettings.display?.dashboard_work_items_layout),
+  );
+  const [savedWorkItemsLayout, setSavedWorkItemsLayout] = useState<DashboardWorkItemsLayout>(workItemsLayout);
   const [notFoundDetail, setNotFoundDetail] = useState<string>(
     initialSettings.display?.checkout_not_found_detail ?? "",
   );
@@ -282,6 +289,7 @@ export function SettingsEditor({
         settings,
         savedChartType,
         savedDashboardSections,
+        savedWorkItemsLayout,
         savedNotFoundDetail,
       );
     },
@@ -302,6 +310,11 @@ export function SettingsEditor({
         setSavedDashboardSections(savedSections);
         writeCachedDashboardSections(savedSections);
         form.set("dashboard_sections", serializeDashboardSections(savedSections));
+        const savedLayout = normalizeDashboardWorkItemsLayout(data.display?.dashboard_work_items_layout);
+        setWorkItemsLayout(savedLayout);
+        setSavedWorkItemsLayout(savedLayout);
+        writeCachedDashboardWorkItemsLayout(savedLayout);
+        form.set("dashboard_work_items_layout", savedLayout);
         const savedNotFound = data.display?.checkout_not_found_detail ?? null;
         setNotFoundDetail(savedNotFound ?? "");
         setSavedNotFoundDetail(savedNotFound);
@@ -326,7 +339,7 @@ export function SettingsEditor({
   useEffect(() => {
     // Wait until the disabled fieldset is released; FormData omits inputs inside a disabled fieldset.
     if (section === "display" && !save.isPending) draft.onChange();
-  }, [chartType, serializedDashboardSections, notFoundDetail, section]);
+  }, [chartType, serializedDashboardSections, workItemsLayout, notFoundDetail, section]);
   // Submitted saves retain the existing draft-confirmation flow in DraftProvider.
   useEffect(() => {
     // A mutation can publish field errors before its disabled fieldset is released.
@@ -334,9 +347,11 @@ export function SettingsEditor({
     const name = Object.keys(fieldErrors)[0] ?? "";
     const field = name === "dashboard_chart_type"
       ? draft.form.current?.querySelector<HTMLElement>('[data-settings-chart-default] [aria-pressed="true"]')
-      : name === "dashboard_sections"
-        ? draft.form.current?.querySelector<HTMLElement>('[data-settings-dashboard-sections] [data-slot="switch"]:not([aria-disabled="true"])')
-        : draft.form.current?.elements.namedItem(name);
+      : name === "dashboard_work_items_layout"
+        ? draft.form.current?.querySelector<HTMLElement>('[data-settings-work-items-layout] [aria-pressed="true"]')
+        : name === "dashboard_sections"
+          ? draft.form.current?.querySelector<HTMLElement>('[data-settings-dashboard-sections] [data-slot="switch"]:not([aria-disabled="true"])')
+          : draft.form.current?.elements.namedItem(name);
     if (!(field instanceof HTMLElement)) return;
     revealField(field);
     requestAnimationFrame(() => field.focus());
@@ -625,6 +640,68 @@ export function SettingsEditor({
       <Field
         orientation="vertical"
         className={displayRowClassName}
+        data-invalid={!!fieldErrors.dashboard_work_items_layout}
+      >
+        <FieldLabel id={formId + "-work-layout-label"}>待处理排列方式</FieldLabel>
+        <FieldContent className="min-w-0">
+          <input
+            type="hidden"
+            name="dashboard_work_items_layout"
+            value={workItemsLayout}
+          />
+          <ToggleGroup
+            data-settings-work-items-layout
+            variant="outline"
+            value={[workItemsLayout]}
+            aria-labelledby={formId + "-work-layout-label"}
+            aria-describedby={
+              formId + "-work-layout-hint" +
+              (fieldErrors.dashboard_work_items_layout ? " " + formId + "-work-layout-error" : "")
+            }
+            aria-invalid={!!fieldErrors.dashboard_work_items_layout}
+            className="w-full max-w-full flex-wrap items-stretch max-md:w-fit"
+            onValueChange={(values) => {
+              const value = values[0];
+              if (value !== "STACKED" && value !== "SIDE_BY_SIDE") return;
+              setWorkItemsLayout(value);
+              setSavedMessage("");
+              save.reset();
+              setFieldErrors((current) => {
+                if (!current.dashboard_work_items_layout) return current;
+                const next = { ...current };
+                delete next.dashboard_work_items_layout;
+                return next;
+              });
+            }}
+          >
+            {([["STACKED", "独立成行"], ["SIDE_BY_SIDE", "与订单并排"]] as const).map(([value, label]) => (
+              <ToggleGroupItem
+                key={value}
+                value={value}
+                type="button"
+                disabled={save.isPending}
+                aria-invalid={!!fieldErrors.dashboard_work_items_layout}
+                className="h-auto min-h-8 min-w-0 flex-[1_1_7rem] whitespace-normal py-2 max-md:flex-[0_1_auto] max-md:py-1"
+              >
+                {label}
+              </ToggleGroupItem>
+            ))}
+          </ToggleGroup>
+          <FieldDescription id={formId + "-work-layout-hint"}>
+            {dashboardSections.work_items && dashboardSections.recent_orders
+              ? "宽屏下可选独立成行（双列卡片）或与订单并排；小屏或无待处理时自动上下排列。"
+              : "同时开启「待处理」与「最近订单」时生效；小屏或无待处理时自动上下排列。"}
+          </FieldDescription>
+          {fieldErrors.dashboard_work_items_layout && (
+            <FieldError id={formId + "-work-layout-error"}>
+              {fieldErrors.dashboard_work_items_layout}
+            </FieldError>
+          )}
+        </FieldContent>
+      </Field>
+      <Field
+        orientation="vertical"
+        className={displayRowClassName}
         data-invalid={!!fieldErrors.checkout_not_found_detail}
       >
         <div className="flex items-center justify-between gap-2">
@@ -807,6 +884,7 @@ async function saveSettings(
   settings: RuntimeSettings,
   savedChartType: DashboardChartType,
   savedDashboardSections: DashboardSections,
+  savedWorkItemsLayout: DashboardWorkItemsLayout,
   savedNotFoundDetail: string | null,
 ): Promise<RuntimeSettings> {
   const revision = settings.revision;
@@ -852,6 +930,11 @@ async function saveSettings(
     const sectionsChanged =
       serializeDashboardSections(parsedSections) !== serializeDashboardSections(savedDashboardSections);
     const serverSections = settings.display?.dashboard_sections;
+    const selectedWorkItemsLayout = text("dashboard_work_items_layout");
+    if (selectedWorkItemsLayout !== "STACKED" && selectedWorkItemsLayout !== "SIDE_BY_SIDE") {
+      throw new SettingsInputError("dashboard_work_items_layout", "请选择有效的待处理排列方式。");
+    }
+    const workItemsLayoutChanged = selectedWorkItemsLayout !== savedWorkItemsLayout;
     const rawNotFound = text("checkout_not_found_detail");
     const nextNotFound = rawNotFound === "" ? null : rawNotFound;
     const notFoundChanged = nextNotFound !== savedNotFoundDetail;
@@ -869,6 +952,9 @@ async function saveSettings(
               : serverSections
                 ? { dashboard_sections: normalizeDashboardSections(serverSections) }
                 : {}),
+            ...(workItemsLayoutChanged
+              ? { dashboard_work_items_layout: selectedWorkItemsLayout }
+              : {}),
             ...(notFoundChanged
               ? { checkout_not_found_detail: nextNotFound }
               : {}),

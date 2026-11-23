@@ -47,7 +47,7 @@ const fieldLabels: Readonly<Record<string, string>> = {
   checkout_payment_instructions: "待付款指引文案", checkout_adjustment_hint: "金额微调提示文案", checkout_notice: "收银台自定义公告",
   checkout_confirmed_detail: "付款成功说明", checkout_expired_detail: "付款时间已过说明", checkout_disputed_detail: "付款待商家核实说明", checkout_closed_detail: "订单已关闭说明",
   checkout_not_found_detail: "订单不存在（404）说明",
-  dashboard_chart_type: "收款趋势默认图形", dashboard_sections: "总览显示模块",
+  dashboard_chart_type: "收款趋势默认图形", dashboard_sections: "总览显示模块", dashboard_work_items_layout: "待处理排列方式",
   "dashboard_sections.summary_cards": "总览模块：核心指标", "dashboard_sections.trend": "总览模块：收款趋势", "dashboard_sections.site_overview": "总览模块：各网站概览", "dashboard_sections.work_items": "总览模块：待处理", "dashboard_sections.recent_orders": "总览模块：最近订单",
   order_ttl_seconds: "收银台有效期（秒）", allow_zero_amount_offset: "允许原价起（从 ¥0.00 开始加价）", amount_offset_maximum_cents: "最大加价金额（分）", amount_reuse_cooldown_seconds: "同金额冷却时长（秒）", pending_order_limit: "待付款订单上限（笔）",
   app_id: "App ID", environment: "支付宝环境", code_payload: "收款码", collection_code_payload: "收款码",
@@ -179,12 +179,20 @@ const chartTypeLabels: Readonly<Record<string, string>> = {
   LINE: "累计图",
 };
 
+const workItemsLayoutLabels: Readonly<Record<string, string>> = {
+  STACKED: "独立成行",
+  SIDE_BY_SIDE: "与订单并排",
+};
+
 export function auditValue(value: AuditJsonValue | undefined, field?: string): string {
   if (value === undefined) return "未记录";
   if (value === null) return "未设置";
   if (typeof value === "boolean") return value ? "是" : "否";
   if (field === "dashboard_chart_type" && typeof value === "string" && chartTypeLabels[value]) {
     return chartTypeLabels[value]!;
+  }
+  if (field === "dashboard_work_items_layout" && typeof value === "string" && workItemsLayoutLabels[value]) {
+    return workItemsLayoutLabels[value]!;
   }
   if (field === "dashboard_sections" && typeof value === "object" && !Array.isArray(value)) {
     return formatDashboardSectionsSummary(value as Readonly<Record<string, unknown>>);

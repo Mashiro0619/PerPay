@@ -852,6 +852,7 @@ export type AdvancedSettings = {
     checkout_terminal_observation_seconds: number;
 };
 export type DashboardChartType = 'AREA' | 'BAR' | 'LINE';
+export type DashboardWorkItemsLayout = 'STACKED' | 'SIDE_BY_SIDE';
 export type DashboardSections = {
     summary_cards: boolean;
     trend: boolean;
@@ -867,6 +868,7 @@ export type DisplaySettings = {
     checkout_not_found_detail?: string | null;
     dashboard_chart_type: DashboardChartType;
     dashboard_sections?: DashboardSections;
+    dashboard_work_items_layout?: DashboardWorkItemsLayout;
 };
 export type BackupSettings = {
     interval_seconds: number;
@@ -919,6 +921,7 @@ export type DisplaySettingsRequest = {
     checkout_not_found_detail?: string | null;
     dashboard_chart_type: DashboardChartType;
     dashboard_sections?: DashboardSections;
+    dashboard_work_items_layout?: DashboardWorkItemsLayout;
 };
 export type BackupSettingsRequest = {
     revision: number;

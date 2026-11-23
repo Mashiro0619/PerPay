@@ -2,17 +2,22 @@ import { screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { DashboardSections, ListSiteOverviewResponse } from "../src/api/client";
 import { auditChangeValues, auditFieldLabel } from "../src/lib/audit";
-import { writeCachedDashboardSections } from "../src/lib/dashboard-sections";
+import {
+  writeCachedDashboardSections,
+  writeCachedDashboardWorkItemsLayout,
+} from "../src/lib/dashboard-sections";
 import { json } from "./fixtures";
 import { configuredThrough, mountOnboarding } from "./onboarding-fixture";
 
 afterEach(() => {
   window.localStorage.removeItem("perpay:dashboard-sections");
+  window.localStorage.removeItem("perpay:dashboard-work-items-layout");
 });
 
 function mountOverviewWithSections(
   sections: DashboardSections,
   path = "/",
+  workItemsLayout?: "STACKED" | "SIDE_BY_SIDE",
 ) {
   const base = configuredThrough(4);
   const customSettings = {
@@ -20,6 +25,7 @@ function mountOverviewWithSections(
     display: {
       ...base.display,
       dashboard_sections: sections,
+      ...(workItemsLayout ? { dashboard_work_items_layout: workItemsLayout } : {}),
     },
   };
   return mountOnboarding({
@@ -223,8 +229,56 @@ describe("dashboard section visibility", () => {
     expect(siteOverviewRequests).toBe(0);
   });
 
+  it("applies dashboard_work_items_layout on the overview and displays it in settings summary", async () => {
+    const view = mountOverviewWithSections(
+      {
+        summary_cards: true,
+        trend: true,
+        site_overview: true,
+        work_items: true,
+        recent_orders: true,
+      },
+      "/",
+      "SIDE_BY_SIDE",
+    );
+    await waitFor(() => {
+      expect(view.container.querySelector(".overview-records")).toHaveAttribute("data-work-layout", "side-by-side");
+    });
+
+    mountOverviewWithSections(
+      {
+        summary_cards: true,
+        trend: true,
+        site_overview: true,
+        work_items: true,
+        recent_orders: true,
+      },
+      "/settings/display",
+      "SIDE_BY_SIDE",
+    );
+    expect(await screen.findByText("待处理排列方式", { exact: true, selector: "dt" })).toBeVisible();
+    expect(screen.getByText("与订单并排", { exact: true, selector: "dd" })).toBeVisible();
+  });
+
+  it("uses cached work-items layout on cold load before settings arrive", async () => {
+    writeCachedDashboardWorkItemsLayout("SIDE_BY_SIDE");
+    const view = mountOnboarding({
+      stage: 4,
+      path: "/",
+      handle: (request) => {
+        if (new URL(request.url).pathname === "/api/admin/v1/settings") {
+          return new Promise<Response>(() => {});
+        }
+        return undefined;
+      },
+    });
+    expect(await screen.findByRole("heading", { name: "最近订单" })).toBeVisible();
+    expect(view.container.querySelector(".overview-records")).toHaveAttribute("data-work-layout", "side-by-side");
+  });
+
   it("formats display audit labels and values in Chinese without leaking raw JSON", () => {
     expect(auditFieldLabel("dashboard_sections.trend")).toBe("总览模块：收款趋势");
+    expect(auditFieldLabel("dashboard_work_items_layout")).toBe("待处理排列方式");
     expect(auditFieldLabel("target_version")).toBe("目标版本");
     expect(auditFieldLabel("previous_version")).toBe("更新前版本");
     expect(auditFieldLabel("create_backup")).toBe("更新前备份");
@@ -234,6 +288,12 @@ describe("dashboard section visibility", () => {
       before: "AREA",
       after: "BAR",
     })).toEqual(["面积图", "柱状图"]);
+    expect(auditChangeValues({
+      field: "dashboard_work_items_layout",
+      kind: "value",
+      before: "STACKED",
+      after: "SIDE_BY_SIDE",
+    })).toEqual(["独立成行", "与订单并排"]);
     expect(auditChangeValues({
       field: "dashboard_sections",
       kind: "value",

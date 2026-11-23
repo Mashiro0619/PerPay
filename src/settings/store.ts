@@ -15,6 +15,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { auditChanges, type AuditChange } from "../audit/context.ts";
 import { collectionCodeError } from "../shared/collection-code.ts";
 import {
+  normalizeDashboardWorkItemsLayout,
   parseDashboardSectionsJson,
   serializeDashboardSections,
 } from "../shared/dashboard-sections.ts";
@@ -34,6 +35,7 @@ import {
   type AdvancedSettingsInput,
   type BackupSettingsInput,
   type DashboardChartType,
+  type DashboardWorkItemsLayout,
   type DisplaySettingsInput,
   type DisplaySettings,
   type CollectionSettingsInput,
@@ -58,7 +60,7 @@ const SETTINGS_AUDIT_FIELDS = [
   "provider_maximum_success_age_milliseconds", "webhook_enabled", "webhook_allowed_origin", "webhook_timeout_milliseconds",
   "webhook_maximum_attempts", "webhook_retry_base_milliseconds", "webhook_retry_maximum_milliseconds",
   "checkout_key_rotation_days", "checkout_terminal_observation_seconds", "backup_interval_seconds", "backup_keep_count",
-  "system_name", "checkout_help_url", "checkout_show_product_name", "checkout_not_found_detail", "dashboard_chart_type",
+  "system_name", "checkout_help_url", "checkout_show_product_name", "checkout_not_found_detail", "dashboard_chart_type", "dashboard_work_items_layout",
   "dashboard_sections.summary_cards", "dashboard_sections.trend", "dashboard_sections.site_overview", "dashboard_sections.work_items", "dashboard_sections.recent_orders",
   "api_secret", "webhook_secret", "provider_private_key", "provider_public_key", "pending_private_key",
 ] as const;
@@ -115,6 +117,7 @@ interface ConfigurationRow {
   readonly checkout_not_found_detail?: string | null;
   readonly dashboard_chart_type: DashboardChartType;
   readonly dashboard_sections?: string;
+  readonly dashboard_work_items_layout?: DashboardWorkItemsLayout;
   readonly updated_at: bigint | number;
 }
 
@@ -223,6 +226,7 @@ export class RuntimeSettingsStore {
         checkoutNotFoundDetail: row.checkout_not_found_detail ?? null,
         dashboardChartType: row.dashboard_chart_type,
         dashboardSections: parseDashboardSectionsJson(row.dashboard_sections),
+        dashboardWorkItemsLayout: normalizeDashboardWorkItemsLayout(row.dashboard_work_items_layout),
       };
     });
   }
@@ -866,6 +870,7 @@ export class RuntimeSettingsStore {
       assertRevision(connection, input.revision);
       const columns = runtimeConfigurationColumns(connection);
       const hasSectionsColumn = columns.has("dashboard_sections");
+      const hasWorkItemsLayoutColumn = columns.has("dashboard_work_items_layout");
       const hasNotFoundDetailColumn = columns.has("checkout_not_found_detail");
       const assignments = [
         "revision = revision + 1",
@@ -879,6 +884,10 @@ export class RuntimeSettingsStore {
       if (hasSectionsColumn) {
         assignments.push("dashboard_sections = COALESCE(?, dashboard_sections)");
         params.push(input.dashboard_sections ? serializeDashboardSections(input.dashboard_sections) : null);
+      }
+      if (hasWorkItemsLayoutColumn && input.dashboard_work_items_layout !== undefined) {
+        assignments.push("dashboard_work_items_layout = ?");
+        params.push(input.dashboard_work_items_layout);
       }
       if (hasNotFoundDetailColumn && input.checkout_not_found_detail !== undefined) {
         assignments.push("checkout_not_found_detail = ?");
@@ -904,6 +913,7 @@ export class RuntimeSettingsStore {
       assertRevision(connection, input.revision);
       const columns = runtimeConfigurationColumns(connection);
       const hasSectionsColumn = columns.has("dashboard_sections");
+      const hasWorkItemsLayoutColumn = columns.has("dashboard_work_items_layout");
       const hasNotFoundDetailColumn = columns.has("checkout_not_found_detail");
       const assignments = [
         "revision = revision + 1",
@@ -922,6 +932,10 @@ export class RuntimeSettingsStore {
       if (hasSectionsColumn) {
         assignments.push("dashboard_sections = COALESCE(?, dashboard_sections)");
         params.push(input.dashboard_sections ? serializeDashboardSections(input.dashboard_sections) : null);
+      }
+      if (hasWorkItemsLayoutColumn && input.dashboard_work_items_layout !== undefined) {
+        assignments.push("dashboard_work_items_layout = ?");
+        params.push(input.dashboard_work_items_layout);
       }
       if (hasNotFoundDetailColumn && input.checkout_not_found_detail !== undefined) {
         assignments.push("checkout_not_found_detail = ?");
@@ -942,6 +956,9 @@ export class RuntimeSettingsStore {
           : {}),
         dashboard_chart_type: input.dashboard_chart_type,
         ...(input.dashboard_sections ? { dashboard_sections: input.dashboard_sections } : {}),
+        ...(input.dashboard_work_items_layout !== undefined
+          ? { dashboard_work_items_layout: input.dashboard_work_items_layout }
+          : {}),
         system_name: input.system_name ?? current.system_name,
         checkout_help_url: input.checkout_help_url ?? current.checkout_help_url,
         payment_revision_changed: false,
@@ -1012,6 +1029,7 @@ export class RuntimeSettingsStore {
           checkoutNotFoundDetail: row.checkout_not_found_detail ?? null,
           dashboardChartType: row.dashboard_chart_type,
           dashboardSections: parseDashboardSectionsJson(row.dashboard_sections),
+          dashboardWorkItemsLayout: normalizeDashboardWorkItemsLayout(row.dashboard_work_items_layout),
         },
         activeProviderAccountKey: row.provider_account_key,
       };
@@ -1128,6 +1146,7 @@ export class RuntimeSettingsStore {
         checkoutNotFoundDetail: row.checkout_not_found_detail ?? null,
         dashboardChartType: row.dashboard_chart_type,
         dashboardSections: parseDashboardSectionsJson(row.dashboard_sections),
+        dashboardWorkItemsLayout: normalizeDashboardWorkItemsLayout(row.dashboard_work_items_layout),
       },
       activeProviderAccountKey: row.provider_account_key,
     };

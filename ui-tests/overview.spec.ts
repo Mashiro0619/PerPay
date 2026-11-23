@@ -433,3 +433,45 @@ test("recent order headers and tables switch at the same measured container boun
     await record(page, info, { recentOrdersContainer: target, stackedControl: stacked, geometry });
   }
 });
+
+test("pending work items layout switches between stacked and side-by-side", async ({ page, manifest }, info) => {
+  await login(page, manifest);
+  let requestedLayout: "STACKED" | "SIDE_BY_SIDE" = "SIDE_BY_SIDE";
+  await page.route("**/api/admin/v1/settings", async (route) => {
+    const response = await route.fetch();
+    const json = await response.json();
+    if (json?.data?.display) {
+      json.data.display.dashboard_work_items_layout = requestedLayout;
+    }
+    await route.fulfill({ response, json });
+  });
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.evaluate(() => localStorage.setItem("perpay:content-width", "compact"));
+
+  await page.goto(manifest.origin + "/admin/");
+  await expect(page.locator(".overview-records")).toHaveAttribute("data-work-layout", "side-by-side");
+  await expect(page.locator(".overview-work-list")).toBeVisible();
+  await expect(page.locator('[data-business-table="overview-recent-orders"]')).toHaveAttribute("data-list-layout", "table");
+
+  const sideBySide = await page.evaluate(() => ({
+    recordColumns: getComputedStyle(document.querySelector(".overview-records")!).gridTemplateColumns.split(" ").map(parseFloat),
+    workColumns: Math.max(1, getComputedStyle(document.querySelector(".overview-work-list")!).gridTemplateColumns.split(" ").filter(v => v && v !== "none").length),
+  }));
+  expect(sideBySide.recordColumns).toHaveLength(2);
+  expect(sideBySide.recordColumns[0]).toBeGreaterThanOrEqual(384);
+  expect(sideBySide.recordColumns[0]).toBeLessThanOrEqual(464);
+  expect(sideBySide.workColumns).toBe(1);
+  await record(page, info, { sideBySide });
+
+  requestedLayout = "STACKED";
+  await page.goto(manifest.origin + "/admin/");
+  await expect(page.locator(".overview-records")).toHaveAttribute("data-work-layout", "stacked");
+  await expect(page.locator(".overview-work-list")).toBeVisible();
+  const stacked = await page.evaluate(() => ({
+    recordColumns: getComputedStyle(document.querySelector(".overview-records")!).gridTemplateColumns.split(" ").map(parseFloat),
+    workColumns: Math.max(1, getComputedStyle(document.querySelector(".overview-work-list")!).gridTemplateColumns.split(" ").filter(v => v && v !== "none").length),
+  }));
+  expect(stacked.recordColumns).toHaveLength(1);
+  expect(stacked.workColumns).toBe(2);
+});
