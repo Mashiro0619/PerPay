@@ -255,7 +255,7 @@ describe("checkout payment layout", () => {
     const badges = container.querySelectorAll(
       '[data-slot="card-action"] [data-slot="badge"]',
     );
-    expect(badges).toHaveLength(2);
+    expect(badges).toHaveLength(1);
     for (const badge of badges) {
       expect(badge).toHaveTextContent("等待状态确认");
     }
@@ -290,7 +290,7 @@ describe("checkout payment layout", () => {
       const badges = container.querySelectorAll(
         '[data-slot="card-action"] [data-slot="badge"]',
       );
-      expect(badges).toHaveLength(2);
+      expect(badges).toHaveLength(1);
       for (const badge of badges) {
         expect(badge).not.toHaveTextContent("待付款");
       }
