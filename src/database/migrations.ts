@@ -5057,4 +5057,13 @@ export const migrations: readonly Migration[] = [
         CHECK (json_valid(dashboard_sections));
     `,
   },
+  {
+    version: 50,
+    name: "checkout_custom_display",
+    sql: `
+      ALTER TABLE runtime_configuration
+        ADD COLUMN checkout_not_found_detail TEXT
+        CHECK (checkout_not_found_detail IS NULL OR length(trim(checkout_not_found_detail)) BETWEEN 1 AND 200);
+    `,
+  },
 ] as const;

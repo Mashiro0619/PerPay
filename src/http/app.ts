@@ -596,14 +596,15 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
         serverTime: dependencies.clock?.() ?? Date.now(),
         demoMode: dependencies.demoMode ?? false,
         systemName: checkout?.display?.name ?? publicSystemName(dependencies),
-        helpUrl: checkout?.display ? checkout.display.helpUrl : publicCheckoutHelp(dependencies),
+        helpUrl: checkout?.display ? checkout.display.help_url : publicCheckoutHelp(dependencies),
+        notFoundDetail: publicCheckoutNotFoundDetail(dependencies),
       checkoutToken: token,
       internalReturnUrl: new URL(
         `/api/public/v1/checkouts/${encodeURIComponent(token)}/return`,
         dependencies.config.publicOrigin,
       ).href,
       checkout,
-      showProductName: checkout?.display?.showProductName ?? checkoutProductNameVisible(dependencies),
+      showProductName: checkout?.display?.show_product_name ?? checkoutProductNameVisible(dependencies),
       qrImageUrl: checkout?.paymentInstructions === null || checkout === null
         ? null
         : `/api/public/v1/checkouts/${encodeURIComponent(token)}/qr.svg`,
@@ -2255,6 +2256,14 @@ function publicSystemName(dependencies: AppDependencies): string {
     return dependencies.settings?.display().systemName ?? "PerPay";
   } catch {
     return "PerPay";
+  }
+}
+
+function publicCheckoutNotFoundDetail(dependencies: AppDependencies): string | null {
+  try {
+    return dependencies.settings?.display().checkoutNotFoundDetail ?? null;
+  } catch {
+    return null;
   }
 }
 
@@ -4163,7 +4172,7 @@ function serializeWebhookAttempt(attempt: WebhookAttempt) {
 
 function serializePublicCheckout(checkout: PublicCheckoutProjection) {
   return {
-    ...(checkout.display ? { display: { name: checkout.display.name, help_url: checkout.display.helpUrl, show_product_name: checkout.display.showProductName } } : {}),
+    ...(checkout.display ? { display: checkout.display } : {}),
     merchant_order_no: checkout.merchantOrderNo,
     requested_amount_cents: checkout.requestedAmountCents,
     currency: checkout.currency,

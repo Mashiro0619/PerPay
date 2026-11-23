@@ -41,7 +41,7 @@ describe("instance display settings", () => {
     expect(form.querySelector("[data-slot=card-content] > [data-slot=field-set]")).toHaveClass("max-w-2xl");
     const displayFields = name.closest('[data-slot="field-group"]')!;
     const rows = [...displayFields.children];
-    expect(rows).toHaveLength(3);
+    expect(rows).toHaveLength(4);
     for (const row of rows) {
       expect(row).toHaveAttribute("data-orientation", "vertical");
       expect(row).not.toContainElement(row.querySelector("label input"));
@@ -50,6 +50,9 @@ describe("instance display settings", () => {
     expect(rows[1]).toContainElement(chart);
     const sections = screen.getByRole("group", { name: "总览显示模块" });
     expect(rows[2]).toContainElement(sections);
+    const notFound = screen.getByRole("textbox", { name: "订单不存在（404）说明" });
+    expect(rows[3]).toContainElement(notFound);
+    expect(notFound).toHaveAttribute("maxlength", "200");
     for (const label of ["核心指标", "收款趋势", "各网站概览", "待处理", "最近订单"]) {
       expect(within(sections).getByRole("switch", { name: label })).toBeChecked();
     }
@@ -284,6 +287,45 @@ describe("instance display settings", () => {
       system_name: "新名称",
       dashboard_chart_type: "AREA",
       dashboard_sections: remoteSections,
+    });
+  });
+
+  it("edits and restores the global 404 checkout copy", async () => {
+    const requests: Request[] = [];
+    const customDetail = "订单已失效，请联系客服重新获取支付链接。";
+    const initial: RuntimeSettings = {
+      ...settings,
+      display: {
+        ...settings.display,
+        checkout_not_found_detail: customDetail,
+      },
+    };
+    const cleared: RuntimeSettings = {
+      ...initial,
+      revision: initial.revision + 1,
+      display: {
+        ...initial.display,
+        checkout_not_found_detail: null,
+      },
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (request: Request) => {
+        requests.push(request);
+        return json({ data: cleared });
+      }),
+    );
+    const { onSaved } = mount(initial);
+    const user = userEvent.setup();
+    const field = screen.getByRole("textbox", { name: "订单不存在（404）说明" });
+    expect(field).toHaveValue(customDetail);
+    await user.click(screen.getByRole("button", { name: "恢复默认" }));
+    expect(field).toHaveValue("");
+    await user.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalledWith(cleared));
+    expect(await requests[0]!.json()).toMatchObject({
+      revision: initial.revision,
+      checkout_not_found_detail: null,
     });
   });
 });

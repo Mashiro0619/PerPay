@@ -19,7 +19,12 @@ import {
 
 type DatabaseOwner = Pick<AppDatabase, "read" | "write" | "instanceId">;
 const SITE_POLICY_AUDIT_FIELDS = ["orders.order_ttl_seconds", "orders.allow_zero_amount_offset", "orders.amount_offset_maximum_cents", "orders.amount_reuse_cooldown_seconds", "orders.pending_order_limit",
-  "display.checkout_name", "display.checkout_help_url", "display.checkout_show_product_name", "notification_delivery.timeout_milliseconds",
+  "display.checkout_name", "display.checkout_help_url", "display.checkout_help_label", "display.checkout_show_product_name",
+  "display.checkout_show_merchant_order_no", "display.checkout_show_countdown", "display.checkout_show_amount_adjustment",
+  "display.checkout_show_qr_tools", "display.checkout_show_alipay_launch", "display.checkout_show_theme_toggle",
+  "display.checkout_payment_instructions", "display.checkout_adjustment_hint", "display.checkout_notice",
+  "display.checkout_confirmed_detail", "display.checkout_expired_detail", "display.checkout_disputed_detail", "display.checkout_closed_detail",
+  "notification_delivery.timeout_milliseconds",
   "notification_delivery.maximum_attempts", "notification_delivery.retry_base_seconds", "notification_delivery.retry_maximum_seconds"];
 const SITE_AUDIT_FIELDS = ["name", "accepting_orders", "notifications_enabled", "notification_origin", "return_origin", "collection.mode", "collection.accounts",
   ...SITE_POLICY_AUDIT_FIELDS.map(field => "policy." + field)];

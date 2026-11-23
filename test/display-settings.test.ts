@@ -13,6 +13,7 @@ import {
   RuntimeSettingsService,
   RuntimeSettingsStore,
 } from "../src/settings/index.ts";
+import { DEFAULT_SITE_CHECKOUT_DISPLAY_EXTRAS } from "../src/shared/checkout-display.ts";
 import { readCheckoutInitial } from "./checkout-view-fixture.ts";
 import { displaySettingsDowngradeSql } from "./display-schema-fixture.ts";
 import {
@@ -43,6 +44,7 @@ it("persists validated display settings with CSRF, revisions and audit without c
       });
     assert.deepEqual(original.display, {
       system_name: "PerPay",
+      checkout_not_found_detail: null,
       dashboard_chart_type: "AREA",
       dashboard_sections: DEFAULT_DASHBOARD_SECTIONS,
     });
@@ -78,6 +80,7 @@ it("persists validated display settings with CSRF, revisions and audit without c
     assert.equal(saved.payment_revision, original.payment_revision);
     assert.deepEqual(saved.display, {
       system_name: "星河收款",
+      checkout_not_found_detail: null,
       dashboard_chart_type: "BAR",
       dashboard_sections: DEFAULT_DASHBOARD_SECTIONS,
     });
@@ -205,10 +208,16 @@ it("upgrades schema 23 with presentation defaults while preserving revisions, co
       assert.deepEqual(after.provider, before.provider);
       assert.deepEqual(after.display, {
         system_name: "PerPay",
+        checkout_not_found_detail: null,
         dashboard_chart_type: "AREA",
         dashboard_sections: DEFAULT_DASHBOARD_SECTIONS,
       });
-      assert.deepEqual(settings.siteStore()!.get("default")!.configuration.policy.display, { checkout_name: "PerPay", checkout_help_url: null, checkout_show_product_name: true });
+      assert.deepEqual(settings.siteStore()!.get("default")!.configuration.policy.display, {
+        checkout_name: "PerPay",
+        checkout_help_url: null,
+        checkout_show_product_name: true,
+        ...DEFAULT_SITE_CHECKOUT_DISPLAY_EXTRAS,
+      });
       const actual = snapshot(upgraded);
       const auditIndex = tables.indexOf("audit_events");
       const originalAuditCount = evidence[auditIndex]!.length;
@@ -475,5 +484,47 @@ it("validates, persists, audits and preserves dashboard section visibility setti
     } finally {
       reopened.close();
     }
+  });
+});
+
+it("validates, persists, restores default and renders global 404 checkout copy", async () => {
+  await withHttpFixture(async ({ app, services }) => {
+    const auth = await login(app);
+    const headers = financialHeaders(auth);
+    const save = (body: unknown) => app.request("/api/admin/v1/settings/display", {
+      method: "PUT", headers, body: JSON.stringify(body),
+    });
+    const initial = services.settings.instanceView();
+    assert.equal(initial.display.checkout_not_found_detail, null);
+
+    const rejected = await save({
+      revision: initial.revision,
+      dashboard_chart_type: "AREA",
+      checkout_not_found_detail: "bad\u0007copy",
+    });
+    assert.equal(rejected.status, 422);
+
+    const customDetail = "该支付链接已失效，请返回商户重新发起付款。";
+    const saved = await save({
+      revision: initial.revision,
+      dashboard_chart_type: "AREA",
+      checkout_not_found_detail: `  ${customDetail}  `,
+    });
+    assert.equal(saved.status, 200);
+    assert.equal(services.settings.instanceView().display.checkout_not_found_detail, customDetail);
+
+    const notFoundPage = await app.request("/checkout/pct1_" + "A".repeat(43));
+    assert.equal(notFoundPage.status, 404);
+    const html = await notFoundPage.text();
+    assert.equal(readCheckoutInitial(html).notFoundDetail, customDetail);
+    assert.ok(html.includes(customDetail));
+
+    const cleared = await save({
+      revision: initial.revision + 1,
+      dashboard_chart_type: "AREA",
+      checkout_not_found_detail: "",
+    });
+    assert.equal(cleared.status, 200);
+    assert.equal(services.settings.instanceView().display.checkout_not_found_detail, null);
   });
 });

@@ -114,7 +114,7 @@ describe("business website HTTP boundaries", () => {
       assert.equal("notifications" in data, false);
       assert.deepEqual(Object.keys(data.collection), ["code_payload"]);
       assert.deepEqual(Object.keys(data.secrets).sort(), ["provider_private_key", "provider_public_key"]);
-      assert.deepEqual(Object.keys(data.display).sort(), ["dashboard_chart_type", "dashboard_sections", "system_name"]);
+      assert.deepEqual(Object.keys(data.display).sort(), ["checkout_not_found_detail", "dashboard_chart_type", "dashboard_sections", "system_name"]);
       assert.equal("scan_interval_seconds" in data.provider, false);
       const before = f.sites.get("default");
       const saved = await f.app.request("/api/admin/v1/settings/display", { method: "PUT", headers: f.headers,

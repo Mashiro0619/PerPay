@@ -26,6 +26,7 @@ export interface CheckoutPageInput {
   readonly demoMode?: boolean;
   readonly systemName?: string;
   readonly helpUrl?: string | null;
+  readonly notFoundDetail?: string | null;
   readonly checkoutToken: string;
   readonly internalReturnUrl?: string;
   readonly checkout: PublicCheckoutProjection | null;
@@ -71,12 +72,21 @@ export function renderCheckoutPage(input: CheckoutPageInput): string {
     throw new Error("公开收银台尚未构建，请运行 npm run build:checkout");
   const missing = input.checkout === null && input.initialError?.status === 404;
   const order = input.checkout;
+  const showProductName =
+    input.showProductName === false
+      ? false
+      : (order?.display?.show_product_name ?? true);
+  const showMerchantOrderNo = order?.display?.show_merchant_order_no ?? true;
+  const orderDisplay = order?.display
+    ? { ...order.display, show_product_name: showProductName }
+    : undefined;
   const initial: CheckoutInitial = {
     systemName: input.systemName ?? "PerPay",
     helpUrl: checkoutHelpUrl(input.helpUrl),
+    ...(input.notFoundDetail !== undefined ? { notFoundDetail: input.notFoundDetail } : {}),
     serverTime: input.serverTime ?? Date.now(),
     demoMode: input.demoMode ?? false,
-    showProductName: input.showProductName !== false,
+    showProductName,
     apiUrl: missing ? "" : checkoutApiPath(input.checkoutToken),
     ...(input.internalReturnUrl ? { internalReturnUrl: input.internalReturnUrl } : {}),
     qrUrl: missing
@@ -89,10 +99,11 @@ export function renderCheckoutPage(input: CheckoutPageInput): string {
     initialError: input.initialError,
     checkout: order
       ? {
-          merchant_order_no: order.merchantOrderNo,
+          ...(orderDisplay ? { display: orderDisplay } : {}),
+          merchant_order_no: showMerchantOrderNo ? order.merchantOrderNo : "",
           requested_amount_cents: order.requestedAmountCents,
           currency: order.currency,
-          product_name: input.showProductName === false ? "" : order.productName,
+          product_name: showProductName ? order.productName : "",
           return_url: merchantReturnUrl(order.returnUrl, input.internalReturnUrl),
           payment_instructions: order.paymentInstructions
             ? {
@@ -118,9 +129,11 @@ export function renderCheckoutPage(input: CheckoutPageInput): string {
         }
       : null,
   };
-  const title =
-    (order?.merchantOrderNo ??
-      checkoutCopy[initialCheckoutState(initial)].heading) + " | " + initial.systemName + " 收银台";
+  const titleSubject =
+    order && showMerchantOrderNo
+      ? order.merchantOrderNo
+      : checkoutCopy[initialCheckoutState(initial)].heading;
+  const title = titleSubject + " | " + initial.systemName + " 收银台";
   return (
     '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="color-scheme" content="light dark"><meta name="theme-color" content="#ffffff"><meta name="robots" content="noindex, nofollow, noarchive"><title>' +
     escapeHtml(title) +

@@ -1,4 +1,5 @@
 import { SiteError, type SiteStore } from "../sites/store.ts";
+import { siteDisplayToPublic } from "../shared/checkout-display.ts";
 import type { EpayOrderCreation } from "../epay/order.ts";
 import type { AlipayAccountSnapshot } from "../alipay-accounts/model.ts";
 import { collectionCandidates } from "./account-allocation.ts";
@@ -338,7 +339,7 @@ export class OrderService {
     const site = this.#sites?.get(aggregate.order.apiClientId);
     if (this.#sites && !site) throw new Error("checkout website configuration is missing");
     return {
-      ...(site ? { display: { name: site.configuration.policy.display.checkout_name, helpUrl: site.configuration.policy.display.checkout_help_url, showProductName: site.configuration.policy.display.checkout_show_product_name } } : {}),
+      ...(site ? { display: siteDisplayToPublic(site.configuration.policy.display) } : {}),
       merchantOrderNo: aggregate.order.merchantOrderNo,
       requestedAmountCents: aggregate.order.requestedAmountCents,
       currency: aggregate.order.currency,

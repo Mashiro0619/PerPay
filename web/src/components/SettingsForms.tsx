@@ -12,6 +12,10 @@ import { onlineManager, useMutation, useQueryClient } from "@tanstack/react-quer
 import { Save } from "lucide-react";
 import { PROVIDER_TIMING_DEFAULTS } from "../../../src/shared/provider-defaults";
 import {
+  CHECKOUT_TEXT_MAX_LENGTH,
+  DEFAULT_CHECKOUT_COPY,
+} from "../../../src/shared/checkout-display";
+import {
   ApiError,
   api,
   result,
@@ -29,6 +33,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   DASHBOARD_SECTION_KEYS,
@@ -249,6 +254,12 @@ export function SettingsEditor({
   );
   const [savedDashboardSections, setSavedDashboardSections] = useState<DashboardSections>(dashboardSections);
   const serializedDashboardSections = serializeDashboardSections(dashboardSections);
+  const [notFoundDetail, setNotFoundDetail] = useState<string>(
+    initialSettings.display?.checkout_not_found_detail ?? "",
+  );
+  const [savedNotFoundDetail, setSavedNotFoundDetail] = useState<string | null>(
+    initialSettings.display?.checkout_not_found_detail ?? null,
+  );
   const mounted = useRef(false);
   const localFeedback = useSuccessToast();
   // A parent that remounts this editor after saving keeps the same toast owner.
@@ -265,7 +276,14 @@ export function SettingsEditor({
     mutationFn: (form: FormData) => {
       if (!onlineManager.isOnline() || !navigator.onLine)
         throw new Error("网络已断开，设置未提交。恢复连接后请重新提交。");
-      return saveSettings(section, form, settings, savedChartType, savedDashboardSections);
+      return saveSettings(
+        section,
+        form,
+        settings,
+        savedChartType,
+        savedDashboardSections,
+        savedNotFoundDetail,
+      );
     },
     onSuccess: (data, form) => {
       if (!mounted.current) {
@@ -284,6 +302,10 @@ export function SettingsEditor({
         setSavedDashboardSections(savedSections);
         writeCachedDashboardSections(savedSections);
         form.set("dashboard_sections", serializeDashboardSections(savedSections));
+        const savedNotFound = data.display?.checkout_not_found_detail ?? null;
+        setNotFoundDetail(savedNotFound ?? "");
+        setSavedNotFoundDetail(savedNotFound);
+        form.set("checkout_not_found_detail", savedNotFound ?? "");
       }
       draft.markSaved(form);
       const message = section === "backup" ? "备份策略已保存" : "已保存";
@@ -304,7 +326,7 @@ export function SettingsEditor({
   useEffect(() => {
     // Wait until the disabled fieldset is released; FormData omits inputs inside a disabled fieldset.
     if (section === "display" && !save.isPending) draft.onChange();
-  }, [chartType, serializedDashboardSections, section]);
+  }, [chartType, serializedDashboardSections, notFoundDetail, section]);
   // Submitted saves retain the existing draft-confirmation flow in DraftProvider.
   useEffect(() => {
     // A mutation can publish field errors before its disabled fieldset is released.
@@ -600,6 +622,72 @@ export function SettingsEditor({
           )}
         </FieldContent>
       </Field>
+      <Field
+        orientation="vertical"
+        className={displayRowClassName}
+        data-invalid={!!fieldErrors.checkout_not_found_detail}
+      >
+        <div className="flex items-center justify-between gap-2">
+          <FieldLabel htmlFor={formId + "-not-found-detail"}>订单不存在（404）说明</FieldLabel>
+          {notFoundDetail.length > 0 && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="xs"
+              className="h-auto px-1.5 py-0.5 text-xs text-muted-foreground hover:text-foreground"
+              disabled={save.isPending}
+              onClick={() => {
+                setNotFoundDetail("");
+                setSavedMessage("");
+                save.reset();
+                setFieldErrors((current) => {
+                  if (!current.checkout_not_found_detail) return current;
+                  const next = { ...current };
+                  delete next.checkout_not_found_detail;
+                  return next;
+                });
+              }}
+            >
+              恢复默认
+            </Button>
+          )}
+        </div>
+        <FieldContent className="min-w-0">
+          <Textarea
+            id={formId + "-not-found-detail"}
+            name="checkout_not_found_detail"
+            rows={2}
+            maxLength={CHECKOUT_TEXT_MAX_LENGTH}
+            placeholder={DEFAULT_CHECKOUT_COPY.notFoundDetail}
+            value={notFoundDetail}
+            aria-invalid={!!fieldErrors.checkout_not_found_detail}
+            aria-describedby={
+              formId +
+              "-not-found-hint" +
+              (fieldErrors.checkout_not_found_detail ? " " + formId + "-not-found-error" : "")
+            }
+            onChange={(event) => {
+              setNotFoundDetail(event.target.value);
+              setSavedMessage("");
+              save.reset();
+              setFieldErrors((current) => {
+                if (!current.checkout_not_found_detail) return current;
+                const next = { ...current };
+                delete next.checkout_not_found_detail;
+                return next;
+              });
+            }}
+          />
+          <FieldDescription id={formId + "-not-found-hint"}>
+            访问失效或不存在的收银台链接（404）时展示；留空即使用系统默认文案。各网站订单收银台文案请在网站“收银台展示”中配置。
+          </FieldDescription>
+          {fieldErrors.checkout_not_found_detail && (
+            <FieldError id={formId + "-not-found-error"}>
+              {fieldErrors.checkout_not_found_detail}
+            </FieldError>
+          )}
+        </FieldContent>
+      </Field>
     </FieldGroup>
   );
   const advancedFields = (
@@ -719,6 +807,7 @@ async function saveSettings(
   settings: RuntimeSettings,
   savedChartType: DashboardChartType,
   savedDashboardSections: DashboardSections,
+  savedNotFoundDetail: string | null,
 ): Promise<RuntimeSettings> {
   const revision = settings.revision;
   const text = (key: string) => String(form.get(key) ?? "").trim();
@@ -763,6 +852,9 @@ async function saveSettings(
     const sectionsChanged =
       serializeDashboardSections(parsedSections) !== serializeDashboardSections(savedDashboardSections);
     const serverSections = settings.display?.dashboard_sections;
+    const rawNotFound = text("checkout_not_found_detail");
+    const nextNotFound = rawNotFound === "" ? null : rawNotFound;
+    const notFoundChanged = nextNotFound !== savedNotFoundDetail;
     return (
       await result(
         api.updateDisplaySettings({
@@ -777,6 +869,9 @@ async function saveSettings(
               : serverSections
                 ? { dashboard_sections: normalizeDashboardSections(serverSections) }
                 : {}),
+            ...(notFoundChanged
+              ? { checkout_not_found_detail: nextNotFound }
+              : {}),
           },
         }),
       )

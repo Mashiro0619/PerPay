@@ -1,11 +1,13 @@
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import {
+  checkoutOptionalTextSchema,
   collectionSettingsInputSchema,
   displaySettingsInputSchema,
   parseWebhookOrigin,
   webhookSettingsInputSchema,
 } from "../settings/model.ts";
+import { CHECKOUT_HELP_LABEL_MAX_LENGTH } from "../shared/checkout-display.ts";
 
 /** A website identity is independent of its credentials and collection source. */
 export const siteClientIdSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$/);
@@ -47,7 +49,21 @@ export const siteOrderPolicySchema = z.object({
 export const siteDisplaySchema = z.object({
   checkout_name: nameSchema,
   checkout_help_url: displaySettingsInputSchema.shape.checkout_help_url.unwrap(),
+  checkout_help_label: checkoutOptionalTextSchema(CHECKOUT_HELP_LABEL_MAX_LENGTH).default(null),
   checkout_show_product_name: z.boolean(),
+  checkout_show_merchant_order_no: z.boolean().default(true),
+  checkout_show_countdown: z.boolean().default(true),
+  checkout_show_amount_adjustment: z.boolean().default(true),
+  checkout_show_qr_tools: z.boolean().default(true),
+  checkout_show_alipay_launch: z.boolean().default(true),
+  checkout_show_theme_toggle: z.boolean().default(true),
+  checkout_payment_instructions: checkoutOptionalTextSchema().default(null),
+  checkout_adjustment_hint: checkoutOptionalTextSchema().default(null),
+  checkout_notice: checkoutOptionalTextSchema().default(null),
+  checkout_confirmed_detail: checkoutOptionalTextSchema().default(null),
+  checkout_expired_detail: checkoutOptionalTextSchema().default(null),
+  checkout_disputed_detail: checkoutOptionalTextSchema().default(null),
+  checkout_closed_detail: checkoutOptionalTextSchema().default(null),
 }).strict();
 
 export const siteNotificationPolicySchema = z.object({

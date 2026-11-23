@@ -22,7 +22,21 @@ const fields = [
   ["integration", "policy.notification_delivery.retry_maximum_seconds", "最大重试间隔（秒）"],
   ["display", "policy.display.checkout_name", "收银台名称"],
   ["display", "policy.display.checkout_help_url", "帮助链接"],
+  ["display", "policy.display.checkout_help_label", "帮助链接文案"],
   ["display", "policy.display.checkout_show_product_name", "显示商品名称"],
+  ["display", "policy.display.checkout_show_merchant_order_no", "显示商家订单号"],
+  ["display", "policy.display.checkout_show_countdown", "显示剩余支付倒计时"],
+  ["display", "policy.display.checkout_show_amount_adjustment", "显示金额微调说明与明细"],
+  ["display", "policy.display.checkout_show_qr_tools", "显示二维码工具栏"],
+  ["display", "policy.display.checkout_show_alipay_launch", "显示“打开支付宝”快捷按钮"],
+  ["display", "policy.display.checkout_show_theme_toggle", "显示顶部外观切换"],
+  ["display", "policy.display.checkout_payment_instructions", "待付款指引文案"],
+  ["display", "policy.display.checkout_adjustment_hint", "金额微调提示文案"],
+  ["display", "policy.display.checkout_notice", "收银台自定义公告"],
+  ["display", "policy.display.checkout_confirmed_detail", "付款成功说明"],
+  ["display", "policy.display.checkout_expired_detail", "付款时间已过说明"],
+  ["display", "policy.display.checkout_disputed_detail", "付款待商家核实说明"],
+  ["display", "policy.display.checkout_closed_detail", "订单已关闭说明"],
 ] as const;
 
 type FieldPath = (typeof fields)[number][1];

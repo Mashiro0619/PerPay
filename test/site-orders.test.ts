@@ -28,9 +28,11 @@ describe("website orders on the shared payment engine", () => {
       const configuration = a.configuration;
       configuration.policy.display.checkout_name = "A 的收银台";
       configuration.policy.display.checkout_show_product_name = false;
+      configuration.policy.display.checkout_expired_detail = "超时请联系客服补单。";
       f.sites.update(a.clientId, { revision: 0, configuration }, audit);
       assert.equal(f.orders.publicCheckout(first.checkoutToken).display?.name, "A 的收银台");
-      assert.equal(f.orders.publicCheckout(first.checkoutToken).display?.showProductName, false);
+      assert.equal(f.orders.publicCheckout(first.checkoutToken).display?.show_product_name, false);
+      assert.equal(f.orders.publicCheckout(first.checkoutToken).display?.expired_detail, "超时请联系客服补单。");
       assert.equal(f.orders.publicCheckout(second.checkoutToken).display?.name, "PerPay");
     } finally { f.close(); }
   });

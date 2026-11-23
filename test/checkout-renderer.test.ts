@@ -348,4 +348,58 @@ describe("public checkout SSR", () => {
     assert.equal(alipayQrLaunchUrl("javascript:alert(1)"), null);
     assert.equal(alipayQrLaunchUrl("alipays://platformapi/startapp?appId=20000123"), null);
   });
+
+  it("applies site custom display flags, custom copy and global 404 copy on SSR without leaking hidden order numbers", () => {
+    const customExpired: PublicCheckoutProjection = {
+      ...checkout,
+      display: {
+        name: "自定义商户",
+        help_url: "https://help.example.com",
+        help_label: "联系售后",
+        show_product_name: false,
+        show_merchant_order_no: false,
+        show_countdown: false,
+        show_amount_adjustment: false,
+        show_qr_tools: false,
+        show_alipay_launch: false,
+        show_theme_toggle: false,
+        payment_instructions: null,
+        adjustment_hint: null,
+        notice: "客服工作时间 09:00-21:00",
+        confirmed_detail: null,
+        expired_detail: "订单已超时，请联系店铺补发链接。",
+        disputed_detail: null,
+        closed_detail: null,
+      },
+      paymentInstructions: null,
+      checkout: { ...checkout.checkout, status: "EXPIRED" },
+    };
+    const html = renderCheckoutPage({
+      checkoutToken: "pct1_custom_expired",
+      checkout: customExpired,
+      qrImageUrl: null,
+      initialError: null,
+    });
+    const initial = readCheckoutInitial(html);
+    assert.equal(initial.checkout?.product_name, "");
+    assert.equal(initial.checkout?.merchant_order_no, "");
+    assert.doesNotMatch(html, /merchant-order-1|测试订单|data-product-name|data-merchant-order-no|checkout-theme-control/);
+    assert.match(checkoutText(html), /订单已超时，请联系店铺补发链接。/);
+    assert.match(checkoutText(html), /客服工作时间 09:00-21:00/);
+    assert.match(checkoutText(html), /联系售后/);
+
+    const custom404 = renderCheckoutPage({
+      checkoutToken: "pct1_missing",
+      checkout: null,
+      qrImageUrl: null,
+      notFoundDetail: "该付款页已作废，请在原订单页重新发起。",
+      initialError: {
+        status: 404,
+        code: "checkout_not_found",
+        message: "not found",
+        retryAfterSeconds: null,
+      },
+    });
+    assert.match(checkoutText(custom404), /该付款页已作废，请在原订单页重新发起。/);
+  });
 });

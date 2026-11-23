@@ -186,10 +186,10 @@ describe("checkout payment layout", () => {
     const mobileTimer = within(payment).getByRole("timer");
     const desktopTimer = within(summary).getByRole("timer");
     expect(mobileTimer.closest('[data-slot="card-action"]')).toHaveClass(
-      "lg:hidden",
+      "md:hidden",
     );
     expect(desktopTimer.closest('[data-slot="card-header"]')).toHaveClass(
-      "hidden", "lg:flex",
+      "hidden", "md:flex",
     );
     expect(container.querySelectorAll("[data-countdown]")).toHaveLength(2);
     for (const timer of [mobileTimer, desktopTimer]) {
@@ -444,7 +444,7 @@ describe("checkout compact order summary", () => {
       const summary = screen.getByRole("region", { name: "订单信息" });
       const actions = container.querySelector("[data-checkout-actions]");
       expect(actions).not.toHaveClass("mt-auto");
-      expect(actions).toHaveClass("lg:col-start-1", "lg:row-start-2");
+      expect(actions).toHaveClass("md:col-start-1", "md:row-start-2");
       expect(
         container.querySelectorAll("[data-checkout-actions]"),
       ).toHaveLength(1);
@@ -1255,16 +1255,16 @@ describe("mobile one-click Alipay launch", () => {
       }),
     );
 
-    // Before the first poll completes, a deferred button is rendered (lg:hidden for mobile)
+    // Before the first poll completes, a deferred button is rendered (md:hidden for mobile)
     const deferredButton = screen.getByRole("button", { name: "打开支付宝" });
-    expect(deferredButton).toHaveClass("lg:hidden");
+    expect(deferredButton).toHaveClass("md:hidden");
 
     // After the 1500ms initial poll returns collection_code_payload, it upgrades to a direct <a> scheme link
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1500);
     });
     const link = screen.getByRole("link", { name: "打开支付宝" });
-    expect(link).toHaveClass("lg:hidden");
+    expect(link).toHaveClass("md:hidden");
     expect(link).toHaveAttribute(
       "href",
       "alipays://platformapi/startapp?saId=10000007&qrcode=https%3A%2F%2Fqr.alipay.com%2Ffkx12345",

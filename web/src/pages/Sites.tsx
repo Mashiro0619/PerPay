@@ -109,11 +109,33 @@ function siteSummaryRows(site: Site, section: string): SettingsSummaryRow[] {
     ["最多发送次数", count(policy.notification_delivery.maximum_attempts) + " 次"],
     ["首次 / 最大重试间隔", policy.notification_delivery.retry_base_seconds + " / " + policy.notification_delivery.retry_maximum_seconds + " 秒"],
   ];
-  if (section === "display") return [
-    ["收银台名称", policy.display.checkout_name],
-    ["显示商品名称", policy.display.checkout_show_product_name ? "开启" : "关闭"],
-    ["帮助链接", policy.display.checkout_help_url || "未设置"],
-  ];
+  if (section === "display") {
+    const d = policy.display;
+    const hiddenModules = [
+      d.checkout_show_merchant_order_no === false && "商家订单号",
+      d.checkout_show_countdown === false && "倒计时",
+      d.checkout_show_amount_adjustment === false && "微调明细",
+      d.checkout_show_qr_tools === false && "二维码工具",
+      d.checkout_show_alipay_launch === false && "打开支付宝",
+      d.checkout_show_theme_toggle === false && "外观切换",
+    ].filter(Boolean) as string[];
+    const customCopyNames = [
+      d.checkout_payment_instructions && "付款指引",
+      d.checkout_adjustment_hint && "微调提示",
+      d.checkout_notice && "自定义公告",
+      d.checkout_confirmed_detail && "付款成功",
+      d.checkout_expired_detail && "已过期",
+      d.checkout_disputed_detail && "待核实",
+      d.checkout_closed_detail && "已关闭",
+    ].filter(Boolean) as string[];
+    return [
+      ["收银台名称", d.checkout_name],
+      ["显示商品名称", d.checkout_show_product_name ? "开启" : "关闭"],
+      ["其他显示模块", hiddenModules.length ? `已隐藏：${hiddenModules.join("、")}` : "全部开启"],
+      ["自定义文案", customCopyNames.length ? `已自定义 ${customCopyNames.length} 项（${customCopyNames.join("、")}）` : "全部使用默认文案"],
+      ["帮助链接", d.checkout_help_url ? (d.checkout_help_label ? `${d.checkout_help_label}（${d.checkout_help_url}）` : d.checkout_help_url) : "未设置"],
+    ];
+  }
   return [
     ["业务网站名称", value.name],
     ["新订单", value.accepting_orders ? "允许接单" : "暂停接单"],

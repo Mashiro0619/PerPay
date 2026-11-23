@@ -2,6 +2,10 @@ import { collectionPolicyFields, validateCollectionPolicy } from "./collection-p
 import type { AdminAccess } from "./admin-access.ts";
 import { checkoutHelpUrl } from "../shared/checkout-help.ts";
 import {
+  CHECKOUT_TEXT_MAX_LENGTH,
+  CHECKOUT_TEXT_PATTERN,
+} from "../shared/checkout-display.ts";
+import {
   DEFAULT_DASHBOARD_SECTIONS,
   hasVisibleDashboardSection,
   type DashboardSections,
@@ -139,6 +143,7 @@ export interface DisplaySettings {
   readonly systemName?: string;
   readonly checkoutHelpUrl?: string | null;
   readonly checkoutShowProductName: boolean;
+  readonly checkoutNotFoundDetail?: string | null;
   readonly dashboardChartType: DashboardChartType;
   readonly dashboardSections?: DashboardSections;
 }
@@ -158,7 +163,7 @@ export interface InstanceRuntimeSettingsSnapshot {
   readonly provider: ProviderSettings | null;
   readonly advanced: AdvancedSettings;
   readonly backup: BackupSettings;
-  readonly display: Pick<DisplaySettings, "systemName" | "dashboardChartType" | "dashboardSections">;
+  readonly display: Pick<DisplaySettings, "systemName" | "checkoutNotFoundDetail" | "dashboardChartType" | "dashboardSections">;
   readonly activeProviderAccountKey: string | null;
 }
 
@@ -278,11 +283,30 @@ export const dashboardSectionsSchema = z.object({
   "请至少保留一项总览显示模块。",
 );
 
+export function checkoutOptionalTextSchema(maxLength = CHECKOUT_TEXT_MAX_LENGTH) {
+  return z
+    .string()
+    .transform((value) => {
+      const trimmed = value.trim();
+      return trimmed === "" ? null : trimmed;
+    })
+    .refine(
+      (value) => value === null || Array.from(value).length <= maxLength,
+      `最多可填写 ${maxLength} 个字符`,
+    )
+    .refine(
+      (value) => value === null || CHECKOUT_TEXT_PATTERN.test(value),
+      "内容不能包含控制字符",
+    )
+    .nullable();
+}
+
 export const displaySettingsInputSchema = z.object({
   checkout_help_url: z.string().refine(value => checkoutHelpUrl(value) !== null, "请填写有效的 HTTPS 公网帮助链接（最多 2048 字节）").nullable().optional(),
   system_name: z.string().trim().min(1).max(40).regex(/^[^\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]+$/u, "名称不能包含控制字符").optional(),
   revision: z.number().int().nonnegative(),
   checkout_show_product_name: z.boolean(),
+  checkout_not_found_detail: checkoutOptionalTextSchema().optional(),
   dashboard_chart_type: z.enum(["AREA", "BAR", "LINE"]),
   dashboard_sections: dashboardSectionsSchema.optional(),
 }).strict();
@@ -299,7 +323,13 @@ export type WebhookSettingsInput = z.infer<typeof webhookSettingsInputSchema>;
 export type AdvancedSettingsInput = z.infer<typeof advancedSettingsInputSchema>;
 export type BackupSettingsInput = z.infer<typeof backupSettingsInputSchema>;
 export type DisplaySettingsInput = z.infer<typeof displaySettingsInputSchema>;
-export const instanceDisplayInputSchema = displaySettingsInputSchema.pick({ revision: true, system_name: true, dashboard_chart_type: true, dashboard_sections: true }).strict();
+export const instanceDisplayInputSchema = displaySettingsInputSchema.pick({
+  revision: true,
+  system_name: true,
+  checkout_not_found_detail: true,
+  dashboard_chart_type: true,
+  dashboard_sections: true,
+}).strict();
 export type InstanceDisplayInput = z.infer<typeof instanceDisplayInputSchema>;
 
 export function providerEndpoint(environment: ProviderEnvironment): ProviderSettings["endpoint"] {

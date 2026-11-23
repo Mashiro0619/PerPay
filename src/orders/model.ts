@@ -1,4 +1,5 @@
 import type { ListPosition } from "../shared/list-query.ts";
+import type { PublicCheckoutDisplay } from "../shared/checkout-display.ts";
 import { createHash } from "node:crypto";
 
 import { z } from "zod";
@@ -323,7 +324,7 @@ export interface AdminOrderPageProjection {
 
 /** Public checkout data selected by a high-entropy token; it intentionally contains no token or internal IDs. */
 export interface PublicCheckoutProjection {
-  readonly display?: { readonly name: string; readonly helpUrl: string | null; readonly showProductName: boolean };
+  readonly display?: PublicCheckoutDisplay;
   readonly merchantOrderNo: string;
   readonly requestedAmountCents: number;
   readonly currency: Currency;

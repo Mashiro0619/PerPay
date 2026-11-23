@@ -1,4 +1,10 @@
 import { checkoutHelpUrl } from "./checkout-help.ts";
+import {
+  CHECKOUT_HELP_LABEL_MAX_LENGTH,
+  CHECKOUT_TEXT_MAX_LENGTH,
+  normalizeCheckoutOptionalText,
+  type PublicCheckoutDisplay,
+} from "./checkout-display.ts";
 import { collectionCodeError } from "./collection-code.ts";
 import type { CheckoutVerification } from "./checkout-verification.ts";
 export type CheckoutViewState =
@@ -12,7 +18,7 @@ export type CheckoutViewState =
   | "UNAVAILABLE";
 export interface CheckoutViewOrder {
   verification?: CheckoutVerification;
-  display?: { name: string; help_url: string | null; show_product_name: boolean };
+  display?: PublicCheckoutDisplay;
   merchant_order_no: string;
   requested_amount_cents: number;
   currency: "CNY";
@@ -40,6 +46,7 @@ export interface CheckoutInitial {
   systemName?: string;
   helpUrl?: string | null;
   showProductName?: boolean;
+  notFoundDetail?: string | null;
   checkout: CheckoutViewOrder | null;
   initialError: {
     status: 404 | 429 | 503;
@@ -232,10 +239,41 @@ function parseVerification(value: unknown): CheckoutVerification {
   };
 }
 
+function parseOptionalBoolean(value: unknown, fallback = true): boolean {
+  if (value === undefined) return fallback;
+  if (typeof value !== "boolean") throw new TypeError("checkout display response is invalid");
+  return value;
+}
+
+function parseOptionalText(value: unknown, maxLength = CHECKOUT_TEXT_MAX_LENGTH): string | null {
+  if (value === undefined) return null;
+  const normalized = normalizeCheckoutOptionalText(value, maxLength);
+  if (normalized === undefined) throw new TypeError("checkout display response is invalid");
+  return normalized;
+}
+
 function parseDisplay(value: unknown): NonNullable<CheckoutViewOrder["display"]> {
   const item = record(value);
   if (typeof item.name !== "string" || !item.name || item.name.length > 128 || typeof item.show_product_name !== "boolean" || (item.help_url !== null && typeof item.help_url !== "string")) {
     throw new TypeError("checkout display response is invalid");
   }
-  return { name: item.name, help_url: checkoutHelpUrl(item.help_url), show_product_name: item.show_product_name };
+  return {
+    name: item.name,
+    help_url: checkoutHelpUrl(item.help_url),
+    help_label: parseOptionalText(item.help_label, CHECKOUT_HELP_LABEL_MAX_LENGTH),
+    show_product_name: item.show_product_name,
+    show_merchant_order_no: parseOptionalBoolean(item.show_merchant_order_no),
+    show_countdown: parseOptionalBoolean(item.show_countdown),
+    show_amount_adjustment: parseOptionalBoolean(item.show_amount_adjustment),
+    show_qr_tools: parseOptionalBoolean(item.show_qr_tools),
+    show_alipay_launch: parseOptionalBoolean(item.show_alipay_launch),
+    show_theme_toggle: parseOptionalBoolean(item.show_theme_toggle),
+    payment_instructions: parseOptionalText(item.payment_instructions),
+    adjustment_hint: parseOptionalText(item.adjustment_hint),
+    notice: parseOptionalText(item.notice),
+    confirmed_detail: parseOptionalText(item.confirmed_detail),
+    expired_detail: parseOptionalText(item.expired_detail),
+    disputed_detail: parseOptionalText(item.disputed_detail),
+    closed_detail: parseOptionalText(item.closed_detail),
+  };
 }

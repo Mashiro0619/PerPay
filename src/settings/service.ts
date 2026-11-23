@@ -128,6 +128,7 @@ export interface RuntimeSettingsView {
     readonly system_name: string;
     readonly checkout_help_url: string | null;
     readonly checkout_show_product_name: boolean;
+    readonly checkout_not_found_detail: string | null;
     readonly dashboard_chart_type: DashboardChartType;
     readonly dashboard_sections: DashboardSections;
   };
@@ -142,7 +143,7 @@ export type InstanceSettingsView = Omit<RuntimeSettingsView,
   readonly completion: Omit<RuntimeSettingsView["completion"], "api" | "notifications"> & { readonly sites: boolean };
   readonly collection: { readonly code_payload: string } | null;
   readonly provider: Pick<NonNullable<RuntimeSettingsView["provider"]>, "environment" | "app_id" | "platform_public_key" | "provider_account_key"> | null;
-  readonly display: Pick<RuntimeSettingsView["display"], "system_name" | "dashboard_chart_type" | "dashboard_sections">;
+  readonly display: Pick<RuntimeSettingsView["display"], "system_name" | "checkout_not_found_detail" | "dashboard_chart_type" | "dashboard_sections">;
   readonly secrets: Pick<RuntimeSettingsView["secrets"], "provider_private_key" | "provider_public_key">;
 };
 
@@ -272,6 +273,7 @@ export class RuntimeSettingsService {
       backup: { interval_seconds: snapshot.backup.intervalSeconds, keep_count: snapshot.backup.keepCount },
       display: {
         system_name: snapshot.display.systemName ?? "PerPay",
+        checkout_not_found_detail: snapshot.display.checkoutNotFoundDetail ?? null,
         dashboard_chart_type: snapshot.display.dashboardChartType,
         dashboard_sections: snapshot.display.dashboardSections ?? DEFAULT_DASHBOARD_SECTIONS,
       },
@@ -377,6 +379,7 @@ export class RuntimeSettingsService {
         system_name: snapshot.display?.systemName ?? "PerPay",
         checkout_help_url: snapshot.display?.checkoutHelpUrl ?? null,
         checkout_show_product_name: snapshot.display?.checkoutShowProductName ?? true,
+        checkout_not_found_detail: snapshot.display?.checkoutNotFoundDetail ?? null,
         dashboard_chart_type: snapshot.display?.dashboardChartType ?? "AREA",
         dashboard_sections: snapshot.display?.dashboardSections ?? DEFAULT_DASHBOARD_SECTIONS,
       },

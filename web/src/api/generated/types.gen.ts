@@ -864,6 +864,7 @@ export type DisplaySettings = {
     system_name?: SystemName;
     checkout_help_url?: string | null;
     checkout_show_product_name?: boolean;
+    checkout_not_found_detail?: string | null;
     dashboard_chart_type: DashboardChartType;
     dashboard_sections?: DashboardSections;
 };
@@ -915,6 +916,7 @@ export type DisplaySettingsRequest = {
     checkout_help_url?: string | null;
     revision: number;
     checkout_show_product_name?: boolean;
+    checkout_not_found_detail?: string | null;
     dashboard_chart_type: DashboardChartType;
     dashboard_sections?: DashboardSections;
 };
@@ -1169,7 +1171,21 @@ export type PublicCheckoutEnvelope = {
         display?: {
             name: string;
             help_url: string | null;
+            help_label?: string | null;
             show_product_name: boolean;
+            show_merchant_order_no?: boolean;
+            show_countdown?: boolean;
+            show_amount_adjustment?: boolean;
+            show_qr_tools?: boolean;
+            show_alipay_launch?: boolean;
+            show_theme_toggle?: boolean;
+            payment_instructions?: string | null;
+            adjustment_hint?: string | null;
+            notice?: string | null;
+            confirmed_detail?: string | null;
+            expired_detail?: string | null;
+            disputed_detail?: string | null;
+            closed_detail?: string | null;
         };
         verification?: CheckoutVerification;
         merchant_order_no: MerchantOrderNumber;
@@ -1780,7 +1796,21 @@ export type SitePolicy = {
     display: {
         checkout_name: string;
         checkout_help_url: string | null;
+        checkout_help_label?: string | null;
         checkout_show_product_name: boolean;
+        checkout_show_merchant_order_no?: boolean;
+        checkout_show_countdown?: boolean;
+        checkout_show_amount_adjustment?: boolean;
+        checkout_show_qr_tools?: boolean;
+        checkout_show_alipay_launch?: boolean;
+        checkout_show_theme_toggle?: boolean;
+        checkout_payment_instructions?: string | null;
+        checkout_adjustment_hint?: string | null;
+        checkout_notice?: string | null;
+        checkout_confirmed_detail?: string | null;
+        checkout_expired_detail?: string | null;
+        checkout_disputed_detail?: string | null;
+        checkout_closed_detail?: string | null;
     };
     notification_delivery: {
         timeout_milliseconds: number;

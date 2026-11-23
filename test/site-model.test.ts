@@ -11,10 +11,11 @@ import {
   updateSiteInputSchema,
   type SitePolicy,
 } from "../src/sites/model.ts";
+import { DEFAULT_SITE_CHECKOUT_DISPLAY_EXTRAS } from "../src/shared/checkout-display.ts";
 
 const policy = (): SitePolicy => ({
   orders: { order_ttl_seconds: 300, allow_zero_amount_offset: false, amount_offset_maximum_cents: 99, amount_reuse_cooldown_seconds: 60, pending_order_limit: null },
-  display: { checkout_name: "PerPay", checkout_help_url: null, checkout_show_product_name: true },
+  display: { checkout_name: "PerPay", checkout_help_url: null, checkout_show_product_name: true, ...DEFAULT_SITE_CHECKOUT_DISPLAY_EXTRAS },
   notification_delivery: { timeout_milliseconds: 5000, maximum_attempts: 12, retry_base_seconds: 5, retry_maximum_seconds: 3600 },
 });
 const configuration = () => ({ name: "网站 A", accepting_orders: true, notifications_enabled: false, notification_origin: null as string | null, return_origin: null as string | null, policy: policy() });
@@ -109,10 +110,37 @@ describe("complete website configuration", () => {
     });
     assert.equal(zeroRejectedWhenDisabled.success, false);
   });
-  it("rejects unsafe display configuration", () => {
-    for (const patch of [{ checkout_name: "" }, { checkout_name: "bad\u0000name" }, { checkout_help_url: "javascript:alert(1)" }, { checkout_help_url: "http://help.example.com" }]) {
+  it("rejects unsafe display configuration and normalizes optional custom copy defaults", () => {
+    for (const patch of [
+      { checkout_name: "" },
+      { checkout_name: "bad\u0000name" },
+      { checkout_help_url: "javascript:alert(1)" },
+      { checkout_help_url: "http://help.example.com" },
+      { checkout_help_label: "a".repeat(25) },
+      { checkout_expired_detail: "bad\u0007text" },
+      { checkout_notice: "a".repeat(201) },
+    ]) {
       assert.equal(sitePolicySchema.safeParse({ ...policy(), display: { ...policy().display, ...patch } }).success, false);
     }
+    const legacyDisplay = sitePolicySchema.parse({
+      ...policy(),
+      display: { checkout_name: "PerPay", checkout_help_url: null, checkout_show_product_name: true },
+    });
+    assert.equal(legacyDisplay.display.checkout_show_merchant_order_no, true);
+    assert.equal(legacyDisplay.display.checkout_expired_detail, null);
+
+    const normalized = sitePolicySchema.parse({
+      ...policy(),
+      display: {
+        ...policy().display,
+        checkout_help_label: "  联系客服  ",
+        checkout_expired_detail: "   ",
+        checkout_notice: " 付款后自动发货 ",
+      },
+    });
+    assert.equal(normalized.display.checkout_help_label, "联系客服");
+    assert.equal(normalized.display.checkout_expired_detail, null);
+    assert.equal(normalized.display.checkout_notice, "付款后自动发货");
   });
   it("accepts historical identity but generates distinct non-default IDs", () => {
     assert.equal(siteClientIdSchema.parse("default"), "default");

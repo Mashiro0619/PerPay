@@ -10174,6 +10174,12 @@ components:
           default: true
           description: Shows the product name on checkout pages; order APIs and notification payloads are unchanged.
           deprecated: true
+        checkout_not_found_detail:
+          type:
+            - string
+            - "null"
+          maxLength: 200
+          description: Optional custom description shown on the 404 checkout page when no order is found; null uses the built-in default copy.
         dashboard_chart_type:
           $ref: "#/components/schemas/DashboardChartType"
         dashboard_sections:
@@ -10325,6 +10331,12 @@ components:
         checkout_show_product_name:
           type: boolean
           deprecated: true
+        checkout_not_found_detail:
+          type:
+            - string
+            - "null"
+          maxLength: 200
+          description: Optional custom description shown on the 404 checkout page; omit to preserve, null or empty string to restore default copy.
         dashboard_chart_type:
           $ref: "#/components/schemas/DashboardChartType"
         dashboard_sections:
@@ -11051,7 +11063,21 @@ components:
               properties:
                 name: { type: string, minLength: 1, maxLength: 128 }
                 help_url: { type: [string, 'null'] }
+                help_label: { type: [string, 'null'], maxLength: 24 }
                 show_product_name: { type: boolean }
+                show_merchant_order_no: { type: boolean }
+                show_countdown: { type: boolean }
+                show_amount_adjustment: { type: boolean }
+                show_qr_tools: { type: boolean }
+                show_alipay_launch: { type: boolean }
+                show_theme_toggle: { type: boolean }
+                payment_instructions: { type: [string, 'null'], maxLength: 200 }
+                adjustment_hint: { type: [string, 'null'], maxLength: 200 }
+                notice: { type: [string, 'null'], maxLength: 200 }
+                confirmed_detail: { type: [string, 'null'], maxLength: 200 }
+                expired_detail: { type: [string, 'null'], maxLength: 200 }
+                disputed_detail: { type: [string, 'null'], maxLength: 200 }
+                closed_detail: { type: [string, 'null'], maxLength: 200 }
             verification: { $ref: '#/components/schemas/CheckoutVerification' }
             merchant_order_no: { $ref: '#/components/schemas/MerchantOrderNumber' }
             requested_amount_cents: { type: integer }
@@ -12738,8 +12764,66 @@ components:
               anyOf:
                 - type: string
                 - type: "null"
+            checkout_help_label:
+              type:
+                - string
+                - "null"
+              maxLength: 24
             checkout_show_product_name:
               type: boolean
+            checkout_show_merchant_order_no:
+              type: boolean
+              default: true
+            checkout_show_countdown:
+              type: boolean
+              default: true
+            checkout_show_amount_adjustment:
+              type: boolean
+              default: true
+            checkout_show_qr_tools:
+              type: boolean
+              default: true
+            checkout_show_alipay_launch:
+              type: boolean
+              default: true
+            checkout_show_theme_toggle:
+              type: boolean
+              default: true
+            checkout_payment_instructions:
+              type:
+                - string
+                - "null"
+              maxLength: 200
+            checkout_adjustment_hint:
+              type:
+                - string
+                - "null"
+              maxLength: 200
+            checkout_notice:
+              type:
+                - string
+                - "null"
+              maxLength: 200
+            checkout_confirmed_detail:
+              type:
+                - string
+                - "null"
+              maxLength: 200
+            checkout_expired_detail:
+              type:
+                - string
+                - "null"
+              maxLength: 200
+            checkout_disputed_detail:
+              type:
+                - string
+                - "null"
+              maxLength: 200
+            checkout_closed_detail:
+              type:
+                - string
+                - "null"
+              maxLength: 200
           required:
             - checkout_name
             - checkout_help_url
