@@ -6,7 +6,7 @@ import { AlertDialogFooter } from "../src/components/ui/alert-dialog";
 import { SheetFooter } from "../src/components/ui/sheet";
 import { ToastDockContext, useToastDockRegistry } from "../src/lib/toast-layout";
 
-const rects = new Map<string, { y: number; height: number }>();
+const rects = new Map<string, { x?: number; y: number; width?: number; height: number }>();
 const resizeObservers: Array<{ callback: ResizeObserverCallback; targets: Set<Element>; disconnect: ReturnType<typeof vi.fn> }> = [];
 
 function DockProvider({ children }: { children: ReactNode }) {
@@ -38,7 +38,7 @@ beforeEach(() => {
   });
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
     const rect = rects.get(this.dataset.testid ?? "") ?? { y: 0, height: 0 };
-    return DOMRect.fromRect({ x: 0, y: rect.y, width: 400, height: rect.height });
+    return DOMRect.fromRect({ x: rect.x ?? 0, y: rect.y, width: rect.width ?? 400, height: rect.height });
   });
 });
 
@@ -203,5 +203,25 @@ describe("foreground toast footer docking", () => {
     expect(objectRef.current).toBeNull();
     expect(cleanup.mock.calls.length).toBe(cleanupCalls + 1);
     expect(resizeObservers.every(item => item.targets.size === 0)).toBe(true);
+  });
+
+  it("leaves the toast in the bottom-right corner when the footer is horizontally clear on desktop", async () => {
+    rects.set("popup", { x: 460, y: 120, width: 520, height: 600 });
+    rects.set("footer", { x: 460, y: 650, width: 520, height: 70 });
+    rects.set("viewport", { x: 1040, y: 784, width: 384, height: 0 });
+    render(
+      <DockProvider>
+        <div data-testid="viewport" data-slot="toast-viewport" />
+        <Surface id="popup">
+          <DialogFooter data-testid="footer">保存</DialogFooter>
+        </Surface>
+      </DockProvider>,
+    );
+    expect(screen.getByTestId("dock").textContent).toBe("none");
+
+    // When the viewport narrows and overlaps the footer horizontally, docking activates.
+    rects.set("viewport", { x: 900, y: 784, width: 384, height: 0 });
+    act(() => { window.dispatchEvent(new Event("resize")); });
+    await waitFor(() => expect(currentDock()).toEqual({ bottom: 162, maxHeight: 506 }));
   });
 });

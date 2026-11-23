@@ -145,10 +145,11 @@ for (const layout of [
           expect(Number.isFinite(toast.maxHeight), "the notification has a finite height limit").toBe(true);
           expect(toast.maxHeight).toBeGreaterThan(0);
           expect(toast.box.height).toBeLessThanOrEqual(toast.maxHeight + 1);
+          const horizontallySeparated = toast.box.right <= geometry.footer.x + 1 || toast.box.x >= geometry.footer.right - 1;
           const aboveFooter = toast.box.bottom <= geometry.footer.y + 1;
           const belowFooter = toast.box.y >= geometry.footer.bottom - 1;
-          expect(aboveFooter || belowFooter, "the notification leaves the footer unobstructed").toBe(true);
-          if (belowFooter) {
+          expect(horizontallySeparated || aboveFooter || belowFooter, "the notification leaves the footer unobstructed").toBe(true);
+          if (!horizontallySeparated && belowFooter) {
             expect(toast.box.bottom).toBeLessThanOrEqual(Math.min(geometry.dialog.bottom, geometry.viewport.height) + 1);
             expect(toast.box.bottom - toast.maxHeight, "feedback can grow only inside the space below the footer").toBeGreaterThanOrEqual(geometry.footer.bottom - 1);
           }

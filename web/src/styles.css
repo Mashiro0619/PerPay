@@ -64,6 +64,7 @@
 .admin-settings-layout [data-slot="field"] { min-width: 0; }
 .admin-settings-layout input[type="number"] { width: 100%; max-width: 12rem; }
 .admin-settings-layout [data-slot="field"][data-orientation="horizontal"] { max-width: 28rem; }
+.admin-settings-layout [data-settings-actions][data-slot="field"][data-orientation="horizontal"] { max-width: none; }
 .admin-settings-layout [data-slot="field"][data-orientation="horizontal"] > [data-slot="field-label"] { flex: 0 1 auto; }
 .admin-settings-layout [data-alipay-account-editor] [data-slot="field"][data-orientation="horizontal"] { max-width: none; align-items: center; }
 [data-account-list] { container: account-settings / inline-size; }

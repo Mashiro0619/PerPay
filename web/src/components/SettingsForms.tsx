@@ -642,7 +642,12 @@ export function SettingsEditor({
             : save.error
         }
       />
-      <Field orientation="horizontal" className="flex-wrap justify-end">
+      <Field orientation="horizontal" data-settings-actions className="w-full flex-wrap items-center justify-end gap-2">
+        {draft.dirty && (
+          <span className="mr-auto text-sm text-muted-foreground" role="status">
+            未保存
+          </span>
+        )}
         {overlay && <Button type="button" variant="outline" disabled={save.isPending} onClick={() => overlay.requestClose()}>关闭</Button>}
         <Button form={formId} type="submit" className="h-auto min-h-8 max-w-full whitespace-normal" disabled={!draft.dirty || save.isPending} aria-busy={save.isPending}>
           {save.isPending ? (
@@ -652,11 +657,6 @@ export function SettingsEditor({
           )}
           保存
         </Button>
-        {draft.dirty && (
-          <span className="text-sm text-muted-foreground" role="status">
-            未保存
-          </span>
-        )}
       </Field>
     </FieldGroup>
   );
