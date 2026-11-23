@@ -173,14 +173,11 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
     (!order ||
       ["UNPAID", "EXPIRED", "CLOSED", "UNAVAILABLE", "RATE_LIMITED"].includes(state.visual));
   const blocked = state.busy || state.unavailable || state.retryAt > Date.now();
-  const twoColumn = Boolean(order && (canPay || awaitingStartup));
-  const desktopWidth = twoColumn
+  const desktopWidth = order
     ? showProductName === false
       ? "lg:max-w-3xl lg:px-6"
       : "lg:max-w-[54rem] xl:max-w-[58rem] lg:px-6"
-    : order
-      ? "max-w-[44rem] sm:px-6"
-      : "max-w-[36rem] sm:px-6";
+    : "max-w-[29rem]";
   const reloadPath = initial.apiUrl.startsWith("/api/public/v1/checkouts/")
     ? "/checkout/" + initial.apiUrl.slice("/api/public/v1/checkouts/".length)
     : "";
@@ -200,13 +197,13 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
   const terminalIcon = !canPay && !awaitingStartup ? (
     <div className="checkout-state-icon" data-tone={stateTone} aria-hidden="true">
       {state.visual === "CONFIRMED" ? (
-        <CheckCircle2 className="size-[1.125rem]" />
+        <CheckCircle2 className="size-5" />
       ) : state.visual === "EXPIRED" || state.suspended ? (
-        <Clock className="size-[1.125rem]" />
+        <Clock className="size-5" />
       ) : state.visual === "CLOSED" ? (
-        <Ban className="size-[1.125rem]" />
+        <Ban className="size-5" />
       ) : (
-        <AlertCircle className="size-[1.125rem]" />
+        <AlertCircle className="size-5" />
       )}
     </div>
   ) : null;
@@ -347,9 +344,9 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
     <CardFooter
       className={cn(
         "checkout-actions flex flex-col items-stretch gap-2.5 border-t-0 bg-transparent",
-        twoColumn
+        order
           ? "pt-0 pb-1 lg:col-start-1 lg:row-start-2 lg:rounded-none lg:px-8 lg:pt-0 lg:pb-8"
-          : "px-6 pt-0 pb-6 sm:flex-row-reverse sm:items-center sm:justify-between sm:gap-4 sm:px-8 sm:pt-0 sm:pb-8",
+          : "px-6 pt-0 pb-6 sm:px-8 sm:pb-8",
       )}
       data-checkout-actions
     >
@@ -358,10 +355,7 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
           href={returnUrl}
           className={buttonVariants({
             size: "lg",
-            className: cn(
-              "checkout-query-action h-auto min-h-10 py-2",
-              twoColumn ? "w-full" : "w-full sm:w-auto sm:min-w-[9.5rem] sm:px-5",
-            ),
+            className: "checkout-query-action h-auto min-h-10 w-full py-2",
           })}
         >
           <ArrowLeft aria-hidden="true" data-icon="inline-start" />
@@ -373,9 +367,7 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
           className={cn(
             canLaunchAlipay
               ? "checkout-primary-actions flex w-full flex-wrap items-stretch gap-2 lg:flex-col"
-              : twoColumn
-                ? "flex w-full flex-col items-stretch"
-                : "flex w-full flex-col items-stretch sm:w-auto sm:shrink-0",
+              : "flex w-full flex-col items-stretch",
           )}
         >
           {canLaunchAlipay &&
@@ -421,9 +413,7 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                   desktopQueryIsPrimary && "checkout-desktop-primary",
                   canLaunchAlipay
                     ? "min-w-0 flex-[1_1_9.5rem] lg:w-full lg:flex-none"
-                    : twoColumn
-                      ? "w-full"
-                      : "w-full sm:w-auto sm:min-w-[9.5rem] sm:px-5",
+                    : "w-full",
                 )}
                 disabled={blocked}
                 aria-busy={state.busy || undefined}
@@ -459,7 +449,7 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
       )}
       <p
         className={cn(
-          "text-center text-sm text-muted-foreground sm:text-left",
+          "text-center text-sm text-muted-foreground lg:text-left",
           !(launchHint || state.feedback) && "sr-only",
         )}
         role="status"
@@ -506,22 +496,21 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
         <Card
           className={cn(
             "checkout-card",
-            twoColumn
-              ? "lg:grid lg:grid-cols-[minmax(0,1.15fr)_auto_minmax(0,0.85fr)] lg:grid-rows-[1fr_auto] lg:gap-0 lg:py-0"
-              : "checkout-card-terminal gap-0 py-0",
+            order
+              ? "pb-0 lg:grid lg:grid-cols-[minmax(0,1.15fr)_auto_minmax(0,0.85fr)] lg:grid-rows-[1fr_auto] lg:gap-0 lg:py-0"
+              : "gap-5 py-6 sm:py-8",
           )}
           data-checkout-layout
           data-has-order={!!order}
         >
           <div
             className={cn(
-              "flex min-w-0 flex-col",
-              twoColumn
-                ? "gap-3 lg:col-start-1 lg:row-start-1 lg:gap-4 lg:pt-8 lg:pb-5"
-                : order
-                  ? "p-6 sm:grid sm:grid-cols-[minmax(0,1fr)_12.5rem] sm:items-center sm:gap-6 sm:p-8"
-                  : cn("px-6 pt-6 sm:px-8 sm:pt-8", hasActions ? "pb-5 sm:pb-6" : "pb-6 sm:pb-8"),
-              twoColumn && !canPay && "lg:justify-center",
+              "flex min-w-0 flex-col gap-3",
+              order &&
+                (hasActions
+                  ? "lg:col-start-1 lg:row-start-1 lg:gap-4 lg:pt-8 lg:pb-5"
+                  : "lg:col-start-1 lg:row-start-1 lg:row-span-2 lg:gap-4 lg:py-8"),
+              order && !canPay && "lg:justify-center",
             )}
             data-checkout-payment
           >
@@ -542,93 +531,57 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                   {statusBadge}
                 </CardAction>
               </CardHeader>
-            ) : awaitingStartup ? (
-              <CardHeader className="checkout-terminal-header flex flex-col items-center gap-2.5 text-center lg:px-8">
-                <CardAction className={cn("self-end", order && "lg:hidden")}>
-                  {statusBadge}
-                </CardAction>
+            ) : (
+              <CardHeader
+                className={cn(
+                  "checkout-terminal-header flex flex-col items-center gap-2.5 text-center",
+                  order ? "lg:px-8" : "px-6 sm:px-8",
+                )}
+              >
+                {terminalIcon}
                 <CardTitle className="w-full">
                   <h1
                     tabIndex={-1}
                     ref={heading}
-                    className="flex items-center justify-center gap-2 text-xl font-semibold tracking-tight outline-none lg:text-2xl"
+                    className={cn(
+                      "text-xl font-semibold tracking-tight outline-none lg:text-2xl",
+                      awaitingStartup && "flex items-center justify-center gap-2",
+                    )}
                     data-status-heading
                   >
-                    <AlipayLogo />
+                    {awaitingStartup && <AlipayLogo />}
                     <span>{headingText}</span>
                   </h1>
                 </CardTitle>
-                <CardDescription className="max-w-sm text-balance text-center leading-relaxed">
-                  页面正在准备中，请稍候；如长时间未显示二维码，请刷新页面或更换浏览器打开。
-                </CardDescription>
-              </CardHeader>
-            ) : (
-              <CardHeader className="checkout-terminal-header block p-0">
-                <div className="grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3.5 gap-y-2 sm:gap-y-1.5">
-                  {terminalIcon}
-                  <div
-                    className={cn(
-                      "flex min-w-0 flex-wrap items-center justify-between gap-2",
-                      order && "sm:justify-start sm:gap-2.5",
-                    )}
-                  >
-                    <CardTitle className="min-w-0">
-                      <h1
-                        tabIndex={-1}
-                        ref={heading}
-                        className="text-lg font-semibold tracking-tight outline-none sm:text-xl"
-                        data-status-heading
-                      >
-                        {headingText}
-                      </h1>
-                    </CardTitle>
-                    <CardAction className="shrink-0 self-center">
-                      {statusBadge}
-                    </CardAction>
-                  </div>
-                  {(state.suspended || copy.detail) && (
-                    <CardDescription className="col-span-2 text-balance leading-relaxed sm:col-span-1 sm:col-start-2">
-                      {state.suspended
+                <CardAction className={cn("self-center", order && "lg:hidden")}>
+                  {statusBadge}
+                </CardAction>
+                {(awaitingStartup || state.suspended || copy.detail) && (
+                  <CardDescription className="max-w-sm text-balance text-center leading-relaxed">
+                    {awaitingStartup
+                      ? "页面正在准备中，请稍候；如长时间未显示二维码，请刷新页面或更换浏览器打开。"
+                      : state.suspended
                         ? "付款时间已到，正在为您确认订单状态。"
                         : copy.detail}
-                    </CardDescription>
-                  )}
-                </div>
+                  </CardDescription>
+                )}
               </CardHeader>
             )}
             {order && (
-              <CardContent
-                className={cn(
-                  "flex min-w-0 flex-col",
-                  twoColumn ? "gap-3 lg:px-8" : "px-0 pt-5 pb-0 sm:pt-0",
-                )}
-              >
-                <div className={twoColumn ? "checkout-amount-block" : "w-full min-w-0"}>
+              <CardContent className="flex min-w-0 flex-col gap-3 lg:px-8">
+                <div className="checkout-amount-block">
                   <div
-                    className={cn(
-                      "flex w-full min-w-0 flex-wrap items-baseline gap-2",
-                      twoColumn
-                        ? "justify-center text-center"
-                        : "justify-between gap-x-3 gap-y-1 sm:flex-col sm:items-end sm:justify-center sm:gap-0.5 sm:text-right",
-                    )}
+                    className="flex w-full min-w-0 flex-wrap items-baseline justify-center gap-2 text-center"
                     data-checkout-amount
                   >
                     <span
-                      className={cn(
-                        "shrink-0 text-muted-foreground",
-                        twoColumn ? "text-sm" : "text-sm sm:text-xs",
-                      )}
+                      className="shrink-0 text-sm text-muted-foreground"
                       data-amount-label
                     >
                       {amountLabel}
                     </span>
                     <strong
-                      className={cn(
-                        "min-w-0 font-semibold tracking-tight whitespace-nowrap tabular-nums",
-                        twoColumn
-                          ? "text-[1.75rem] lg:text-[2.125rem]"
-                          : "text-[1.75rem] sm:text-[2rem]",
-                      )}
+                      className="min-w-0 text-[1.75rem] font-semibold tracking-tight whitespace-nowrap tabular-nums lg:text-[2.125rem]"
                       data-payable-amount
                       data-checkout-money-digits={amountIntegerDigits}
                     >
@@ -780,58 +733,26 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
               </CardContent>
             )}
           </div>
-          {twoColumn && actions}
+          {actions}
           {order && (
             <>
-              {twoColumn ? (
-                <>
-                  <div className="px-4 lg:hidden">
-                    <Separator />
-                  </div>
-                  <Separator orientation="vertical" className="hidden lg:col-start-2 lg:row-start-1 lg:row-span-2 lg:block" />
-                </>
-              ) : (
-                <div className="px-6 sm:px-8">
-                  <Separator />
-                </div>
-              )}
+              <div className="px-4 lg:hidden">
+                <Separator />
+              </div>
+              <Separator orientation="vertical" className="hidden lg:col-start-2 lg:row-start-1 lg:row-span-2 lg:block" />
               <section
                 aria-label="订单信息"
-                className={cn(
-                  "checkout-summary flex min-w-0 flex-col",
-                  twoColumn
-                    ? "gap-5 pb-(--card-spacing) lg:col-start-3 lg:row-start-1 lg:row-span-2 lg:p-8"
-                    : cn(
-                        "gap-4 px-6 pt-5 sm:px-8 sm:pt-6",
-                        hasActions ? "pb-5 sm:pb-6" : "pb-6 sm:pb-8",
-                      ),
-                )}
+                className="checkout-summary flex min-w-0 flex-col gap-5 pb-(--card-spacing) lg:col-start-3 lg:row-start-1 lg:row-span-2 lg:p-8"
                 data-checkout-summary
               >
-                {twoColumn && (
-                  <CardHeader className="hidden min-w-0 flex-wrap items-center justify-between gap-2 lg:flex lg:px-0">
-                    <CardTitle className="min-w-0">
-                      <h2 className="text-base font-semibold tracking-tight">订单信息</h2>
-                    </CardTitle>
-                    <CardAction className="min-w-0 max-w-full self-center">{statusBadge}</CardAction>
-                  </CardHeader>
-                )}
-                <CardContent
-                  className={cn(
-                    "flex min-w-0 flex-1 flex-col gap-4",
-                    twoColumn ? "lg:px-0" : "px-0",
-                  )}
-                >
-                  <dl
-                    className={cn(
-                      "min-w-0 text-sm",
-                      twoColumn
-                        ? "flex flex-col gap-3.5 lg:gap-4"
-                        : showProductName !== false
-                          ? "grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6"
-                          : "flex flex-col gap-3.5",
-                    )}
-                  >
+                <CardHeader className="hidden min-w-0 flex-wrap items-center justify-between gap-2 lg:flex lg:px-0">
+                  <CardTitle className="min-w-0">
+                    <h2 className="text-base font-semibold tracking-tight">订单信息</h2>
+                  </CardTitle>
+                  <CardAction className="min-w-0 max-w-full self-center">{statusBadge}</CardAction>
+                </CardHeader>
+                <CardContent className="flex min-w-0 flex-1 flex-col gap-4 lg:px-0">
+                  <dl className="flex min-w-0 flex-col gap-3.5 text-sm lg:gap-4">
                     {showProductName !== false && (
                       <div className="flex flex-col gap-1">
                         <dt className="text-xs text-muted-foreground">商品</dt>
@@ -890,7 +811,6 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
               </section>
             </>
           )}
-          {!twoColumn && actions}
         </Card>
         {helpUrl && (
           <p className="checkout-help-row text-right text-sm text-muted-foreground" data-checkout-help>
