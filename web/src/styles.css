@@ -1077,7 +1077,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   min-width: 0;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.25rem 0.5rem;
+  gap: 0.25rem 0.375rem;
 }
 .overview-work-header > .overview-order-money-line {
   flex: 0 0 auto;
@@ -1094,7 +1094,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   flex-wrap: wrap;
   align-items: baseline;
   justify-content: space-between;
-  gap: 0.2rem 0.75rem;
+  gap: 0.2rem 0.625rem;
   font-size: 0.75rem;
   line-height: 1.45;
   color: var(--muted-foreground);
@@ -1127,13 +1127,8 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   display: inline-flex;
   min-width: 0;
   max-width: 100%;
-  flex: 0 1 auto;
+  flex: 0 0 auto;
   align-items: baseline;
-}
-.overview-work-order-context > .list-site-identity::before {
-  content: "·";
-  margin-right: 0.375rem;
-  color: var(--muted-foreground);
 }
 .overview-work-order-context > .list-site-identity > span {
   display: -webkit-box;
@@ -1141,6 +1136,48 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   overflow: hidden;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 1;
+}
+@container overview-work (min-width: 20rem) {
+  .overview-work-header:not(:has(.list-money[data-wide="true"])) {
+    flex-wrap: nowrap;
+    align-items: center;
+  }
+  .overview-work-heading {
+    flex-wrap: nowrap;
+  }
+  .overview-work-heading > [data-slot="item-title"] {
+    flex: 0 1 auto;
+    -webkit-line-clamp: 1;
+  }
+  .overview-work-heading [data-row-link] {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .overview-work-heading > [data-slot="badge"] {
+    flex-shrink: 0;
+  }
+  .overview-work-meta {
+    flex-wrap: nowrap;
+  }
+  .overview-work-order-context {
+    flex-wrap: nowrap;
+  }
+  .overview-work-order-context > .overview-work-product {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .overview-work-order-context > .list-site-identity {
+    max-width: 45%;
+  }
+  .overview-work-order-context > .list-site-identity::before {
+    content: "·";
+    margin-right: 0.375rem;
+    color: var(--muted-foreground);
+  }
 }
 
 .overview-work-fields {
