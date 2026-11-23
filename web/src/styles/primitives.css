@@ -15,6 +15,13 @@
   a {
     touch-action: manipulation;
   }
+  button:not(:disabled, [aria-disabled="true"], [data-disabled]),
+  [role="button"]:not([aria-disabled="true"], [data-disabled]),
+  [role="tab"]:not([aria-disabled="true"], [data-disabled]),
+  [role="switch"]:not([aria-disabled="true"], [data-disabled]),
+  [role="checkbox"]:not([aria-disabled="true"], [data-disabled]) {
+    cursor: pointer;
+  }
   [hidden] {
     display: none !important;
   }
