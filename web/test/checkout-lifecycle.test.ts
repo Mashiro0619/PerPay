@@ -185,7 +185,7 @@ describe("checkout payment layout", () => {
     const summary = screen.getByRole("region", { name: "订单信息" });
     const mobileTimer = within(payment).getByRole("timer");
     const desktopTimer = within(summary).getByRole("timer");
-    expect(mobileTimer.closest('[data-slot="card-header"]')).toHaveClass(
+    expect(mobileTimer.closest('[data-slot="card-action"]')).toHaveClass(
       "lg:hidden",
     );
     expect(desktopTimer.closest('[data-slot="card-header"]')).toHaveClass(

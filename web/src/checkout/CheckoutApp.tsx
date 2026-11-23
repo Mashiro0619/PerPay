@@ -4,7 +4,10 @@ import { cn } from "cn";
 import { useEffect, useRef, useState, useSyncExternalStore, type MouseEvent } from "react";
 import {
   AlertCircle,
+  ArrowLeft,
+  Ban,
   CheckCircle2,
+  Clock,
   Download,
   ExternalLink,
   Maximize,
@@ -52,6 +55,7 @@ import { createCheckoutController } from "./controller";
 import { useQrDownload } from "./use-qr-download";
 import { AlipayLogo } from "./AlipayLogo";
 import "./checkout-layout.css";
+
 export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
   const [controller] = useState(() => createCheckoutController(initial));
   const state = useSyncExternalStore(
@@ -169,27 +173,47 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
     (!order ||
       ["UNPAID", "EXPIRED", "CLOSED", "UNAVAILABLE", "RATE_LIMITED"].includes(state.visual));
   const blocked = state.busy || state.unavailable || state.retryAt > Date.now();
-  const desktopWidth =
-    order &&
-    (showProductName === false
+  const desktopWidth = order
+    ? showProductName === false
       ? "lg:max-w-3xl lg:px-6"
-      : "lg:max-w-5xl lg:px-6 xl:max-w-6xl");
+      : "lg:max-w-[54rem] lg:px-6"
+    : "max-w-[28rem]";
   const reloadPath = initial.apiUrl.startsWith("/api/public/v1/checkouts/")
     ? "/checkout/" + initial.apiUrl.slice("/api/public/v1/checkouts/".length)
     : "";
-  const paymentHeading = (
-    <CardTitle className="w-full">
-      <h1
-        tabIndex={-1}
-        ref={heading}
-        className="flex items-center justify-center gap-2 text-xl font-semibold outline-none lg:text-2xl"
-        data-status-heading
-      >
-        <AlipayLogo />
-        {awaitingStartup ? "正在加载收银台…" : state.suspended ? "请暂勿付款" : copy.heading}
-      </h1>
-    </CardTitle>
-  );
+
+  const stateTone: "success" | "warning" | "danger" | "neutral" =
+    state.visual === "CONFIRMED"
+      ? "success"
+      : state.visual === "DISPUTED" ||
+          state.visual === "NOT_FOUND" ||
+          state.visual === "UNAVAILABLE" ||
+          state.visual === "RATE_LIMITED"
+        ? "danger"
+        : state.visual === "EXPIRED" || state.suspended
+          ? "warning"
+          : "neutral";
+
+  const terminalIcon = !canPay && !awaitingStartup ? (
+    <div className="checkout-state-icon" data-tone={stateTone} aria-hidden="true">
+      {state.visual === "CONFIRMED" ? (
+        <CheckCircle2 className="size-5" />
+      ) : state.visual === "EXPIRED" || state.suspended ? (
+        <Clock className="size-5" />
+      ) : state.visual === "CLOSED" ? (
+        <Ban className="size-5" />
+      ) : (
+        <AlertCircle className="size-5" />
+      )}
+    </div>
+  ) : null;
+
+  const headingText = awaitingStartup
+    ? "正在加载收银台…"
+    : state.suspended
+      ? "请暂勿付款"
+      : copy.heading;
+
   const statusBadge = (
     <Badge
       className="h-auto min-h-5 max-w-full whitespace-normal"
@@ -223,6 +247,7 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
       )}
     </Badge>
   );
+
   const exactPayableText = (cents / 100).toFixed(2);
   function handleDirectAlipayLaunch(event: MouseEvent<HTMLAnchorElement>) {
     if (state.unavailable) {
@@ -311,17 +336,30 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
       if (launchToken.current === token) setLaunchingAlipay(false);
     }
   }
+
+  const desktopQueryIsPrimary = canPay && !returnUrl;
+
   const actions = (canLaunchAlipay || retryAllowed || returnUrl) && (
     <CardFooter
       className={cn(
-        "flex flex-col items-stretch gap-3",
-        order && "lg:col-start-1 lg:row-start-2 lg:rounded-none lg:px-8 lg:py-6",
+        "checkout-actions flex flex-col items-stretch gap-2.5 border-t-0 bg-transparent",
+        order && "pt-0 pb-1 lg:col-start-1 lg:row-start-2 lg:rounded-none lg:px-8 lg:pt-0 lg:pb-7",
       )}
       data-checkout-actions
     >
       {returnUrl && (
-        <a href={returnUrl} className={buttonVariants({ className: "checkout-query-action w-full" })}>
-          <CheckCircle2 data-icon="inline-start" />
+        <a
+          href={returnUrl}
+          className={buttonVariants({
+            size: "lg",
+            className: "checkout-query-action h-auto min-h-10 w-full py-2",
+          })}
+        >
+          {state.visual === "CONFIRMED" ? (
+            <CheckCircle2 aria-hidden="true" data-icon="inline-start" />
+          ) : (
+            <ArrowLeft aria-hidden="true" data-icon="inline-start" />
+          )}
           {state.visual === "CONFIRMED" ? "返回商家" : "返回商家处理"}
         </a>
       )}
@@ -339,18 +377,20 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                 href={directLaunchUrl}
                 className={buttonVariants({
                   variant: "default",
-                  className: "checkout-query-action flex-auto lg:hidden",
+                  size: "lg",
+                  className: "checkout-query-action h-auto min-h-10 flex-auto py-2 lg:hidden",
                 })}
                 data-alipay-launch
                 onClick={handleDirectAlipayLaunch}
               >
-                <ExternalLink data-icon="inline-start" />
+                <ExternalLink aria-hidden="true" data-icon="inline-start" />
                 打开支付宝
               </a>
             ) : (
               <Button
                 variant="default"
-                className="checkout-query-action flex-auto lg:hidden"
+                size="lg"
+                className="checkout-query-action h-auto min-h-10 flex-auto py-2 lg:hidden"
                 disabled={launchingAlipay || state.unavailable}
                 aria-busy={launchingAlipay || undefined}
                 data-alipay-launch
@@ -359,7 +399,7 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                 {launchingAlipay ? (
                   <Spinner aria-hidden="true" data-icon="inline-start" />
                 ) : (
-                  <ExternalLink data-icon="inline-start" />
+                  <ExternalLink aria-hidden="true" data-icon="inline-start" />
                 )}
                 打开支付宝
               </Button>
@@ -367,9 +407,11 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
           {retryAllowed &&
             (state.initialized ? (
               <Button
-                variant="outline"
+                variant={!order && !returnUrl ? "default" : "outline"}
+                size="lg"
                 className={cn(
-                  "checkout-query-action",
+                  "checkout-query-action h-auto min-h-10 py-2",
+                  desktopQueryIsPrimary && "checkout-desktop-primary",
                   canLaunchAlipay
                     ? "min-w-0 flex-[1_1_9.5rem] lg:w-full lg:flex-none"
                     : "w-full",
@@ -386,7 +428,7 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                 {state.busy ? (
                   <Spinner aria-hidden="true" data-icon="inline-start" />
                 ) : (
-                  <RefreshCw data-icon="inline-start" />
+                  <RefreshCw aria-hidden="true" data-icon="inline-start" />
                 )}
                 {!order ? "重新获取订单" : canPay ? "我已付款，查询状态" : "刷新付款状态"}
               </Button>
@@ -395,11 +437,12 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                 href={reloadPath}
                 className={buttonVariants({
                   variant: "outline",
-                  className: "checkout-query-action w-full",
+                  size: "lg",
+                  className: "checkout-query-action h-auto min-h-10 w-full py-2",
                 })}
                 data-checkout-reload
               >
-                <RefreshCw data-icon="inline-start" />
+                <RefreshCw aria-hidden="true" data-icon="inline-start" />
                 刷新页面
               </a>
             ))}
@@ -417,114 +460,155 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
       </p>
     </CardFooter>
   );
+
   // Balanced tracks center the content; intrinsic height keeps short screens scrollable.
   return (
     <div
-      className="grid h-svh min-h-min grid-cols-[minmax(0,1fr)] grid-rows-[1fr_auto_1fr]"
+      className="checkout-stage grid h-svh min-h-min grid-cols-[minmax(0,1fr)] grid-rows-[1fr_auto_1fr]"
       data-checkout-page
     >
       <header
         className={cn(
-          "mx-auto flex min-w-0 w-full max-w-lg items-center justify-between gap-4 self-start px-4 py-4 sm:py-6",
+          "checkout-topbar mx-auto flex min-w-0 w-full max-w-lg items-center justify-between gap-4 self-start px-4 pt-4 pb-2 sm:pt-6 sm:pb-3",
           desktopWidth,
         )}
       >
-        <span className="flex min-w-0 items-center gap-2 font-semibold">
-          <WalletCards className="size-5 shrink-0" />
-          <span className="truncate" title={systemName}>
+        <span className="checkout-brand">
+          <span className="checkout-brand-mark" aria-hidden="true">
+            <WalletCards className="size-4" />
+          </span>
+          <span className="truncate font-semibold tracking-tight text-foreground" title={systemName}>
             {systemName}
           </span>
         </span>
-        <ThemeControl />
+        <ThemeControl className="checkout-theme-control shrink-0" />
       </header>
       <main
         className={cn(
-          "mx-auto flex min-w-0 w-full max-w-lg flex-col gap-4 px-4 py-4 sm:py-8",
+          "mx-auto flex min-w-0 w-full max-w-lg flex-col gap-3 px-4 py-3 sm:py-6",
           desktopWidth,
         )}
         id="checkout-main"
         data-checkout-root
       >
         {state.message && (
-          <Alert role="status">
-            <AlertCircle />
+          <Alert role="status" className="checkout-notice-banner">
+            <AlertCircle aria-hidden="true" />
             <AlertDescription>{state.message}</AlertDescription>
           </Alert>
         )}
         <Card
           className={cn(
+            "checkout-card",
             order &&
-              "lg:grid lg:grid-cols-[minmax(0,1.1fr)_auto_minmax(0,1fr)] lg:grid-rows-[1fr_auto] lg:gap-0 lg:py-0",
+              "lg:grid lg:grid-cols-[minmax(0,1.15fr)_auto_minmax(0,0.85fr)] lg:grid-rows-[1fr_auto] lg:gap-0 lg:py-0",
           )}
           data-checkout-layout
           data-has-order={!!order}
         >
           <div
             className={cn(
-              "flex min-w-0 flex-col gap-4",
-              order && "lg:col-start-1 lg:row-start-1 lg:gap-5 lg:py-8",
+              "flex min-w-0 flex-col gap-3",
+              order && "lg:col-start-1 lg:row-start-1 lg:gap-4 lg:pt-7 lg:pb-5",
               order && !canPay && "lg:justify-center",
             )}
             data-checkout-payment
           >
-            <CardHeader
-              className={cn(
-                "flex flex-col items-center gap-3 lg:px-8",
-                canPay && "lg:hidden",
-              )}
-            >
-              <CardAction
-                className={cn(
-                  "self-end",
-                  order && "lg:hidden",
+            {canPay ? (
+              <CardHeader className="checkout-pay-header flex flex-row items-center justify-between gap-3 lg:justify-center lg:px-8">
+                <CardTitle className="min-w-0">
+                  <h1
+                    tabIndex={-1}
+                    ref={heading}
+                    className="flex items-center gap-2 text-lg font-semibold tracking-tight outline-none lg:justify-center lg:text-xl"
+                    data-status-heading
+                  >
+                    <AlipayLogo />
+                    <span>{headingText}</span>
+                  </h1>
+                </CardTitle>
+                <CardAction className="shrink-0 self-center lg:hidden">
+                  {statusBadge}
+                </CardAction>
+              </CardHeader>
+            ) : (
+              <CardHeader className="checkout-terminal-header flex flex-col items-center gap-2.5 text-center lg:px-8">
+                <CardAction className={cn("self-end", order && "lg:hidden")}>
+                  {statusBadge}
+                </CardAction>
+                {terminalIcon}
+                <CardTitle className="w-full">
+                  <h1
+                    tabIndex={-1}
+                    ref={heading}
+                    className={cn(
+                      "text-xl font-semibold tracking-tight outline-none lg:text-2xl",
+                      awaitingStartup && "flex items-center justify-center gap-2",
+                    )}
+                    data-status-heading
+                  >
+                    {awaitingStartup && <AlipayLogo />}
+                    <span>{headingText}</span>
+                  </h1>
+                </CardTitle>
+                {(awaitingStartup || state.suspended || copy.detail) && (
+                  <CardDescription className="max-w-sm text-center leading-relaxed">
+                    {awaitingStartup
+                      ? "页面正在准备中，请稍候；如长时间未显示二维码，请刷新页面或更换浏览器打开。"
+                      : state.suspended
+                        ? "付款时间已到，正在为您确认订单状态。"
+                        : copy.detail}
+                  </CardDescription>
                 )}
-              >
-                {statusBadge}
-              </CardAction>
-              {!canPay && paymentHeading}
-              {(awaitingStartup || state.suspended || copy.detail) && (
-                <CardDescription className="text-center">
-                  {awaitingStartup
-                    ? "页面正在准备中，请稍候；如长时间未显示二维码，请刷新页面或更换浏览器打开。"
-                    : state.suspended
-                      ? "付款时间已到，正在为您确认订单状态。"
-                      : copy.detail}
-                </CardDescription>
-              )}
-            </CardHeader>
+              </CardHeader>
+            )}
             {order && (
               <CardContent className="flex min-w-0 flex-col gap-3 lg:px-8">
-                {canPay && paymentHeading}
-                <div
-                  className="flex min-w-0 flex-wrap items-baseline justify-center gap-2 text-center"
-                  data-checkout-amount
-                >
-                  <span
-                    className="shrink-0 text-sm text-muted-foreground"
-                    data-amount-label
+                <div className="checkout-amount-block">
+                  <div
+                    className="flex w-full min-w-0 flex-wrap items-baseline justify-center gap-2 text-center"
+                    data-checkout-amount
                   >
-                    {amountLabel}
-                  </span>
-                  <strong
-                    className="min-w-0 text-2xl font-semibold tracking-tight whitespace-nowrap tabular-nums lg:text-3xl"
-                    data-payable-amount
-                    data-checkout-money-digits={amountIntegerDigits}
-                  >
-                    {formattedAmount}
-                  </strong>
-                  {canPay && (
-                    <CopyValue
-                      value={(cents / 100).toFixed(2)}
-                      label="复制应付金额"
-                      buttonOnly
-                    />
+                    <span
+                      className="shrink-0 text-sm text-muted-foreground"
+                      data-amount-label
+                    >
+                      {amountLabel}
+                    </span>
+                    <strong
+                      className="min-w-0 text-[1.75rem] font-semibold tracking-tight whitespace-nowrap tabular-nums lg:text-[2.125rem]"
+                      data-payable-amount
+                      data-checkout-money-digits={amountIntegerDigits}
+                    >
+                      {formattedAmount}
+                    </strong>
+                    {canPay && (
+                      <CopyValue
+                        value={(cents / 100).toFixed(2)}
+                        label="复制应付金额"
+                        buttonOnly
+                      />
+                    )}
+                  </div>
+                  {canPay && adjustmentCents > 0 && (
+                    <p
+                      className="checkout-offset-pill"
+                      data-checkout-amount-hint
+                    >
+                      <span className="sm:hidden">
+                        含核对微调 +{checkoutMoney(adjustmentCents)}，勿改金额
+                      </span>
+                      <span className="hidden sm:inline">
+                        为自动核对已微调 +{checkoutMoney(adjustmentCents)}，请按此金额付款，无需改回原价
+                      </span>
+                    </p>
                   )}
                 </div>
                 {canPay && (
                   <>
                     {qrFailed ? (
                       <Alert variant="destructive" data-checkout-qr-failed>
-                        <AlertCircle />
+                        <AlertCircle aria-hidden="true" />
                         <AlertTitle>二维码加载失败</AlertTitle>
                         <AlertDescription>
                           <Button
@@ -542,45 +626,44 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                     ) : (
                       <>
                         <div className="flex justify-center">
-                          <img
-                            ref={qrImage}
-                            src={qrSource}
-                            width={256}
-                            height={256}
-                            className="h-auto w-60 max-w-full rounded-lg bg-white lg:w-72 xl:w-80"
-                            alt="用于支付此订单的支付宝付款二维码"
-                            data-qr-image
-                            onLoad={() => setQrFailed(false)}
-                            onError={() => {
-                              setQrFailed(true);
-                              setExpanded(false);
-                            }}
-                          />
+                          <div className="checkout-qr-frame">
+                            <img
+                              ref={qrImage}
+                              src={qrSource}
+                              width={240}
+                              height={240}
+                              className="block h-auto max-w-full bg-white"
+                              alt="用于支付此订单的支付宝付款二维码"
+                              data-qr-image
+                              onLoad={() => setQrFailed(false)}
+                              onError={() => {
+                                setQrFailed(true);
+                                setExpanded(false);
+                              }}
+                            />
+                          </div>
                         </div>
-                        <p className="text-center text-sm text-muted-foreground" data-checkout-payment-instructions>
+                        <p className="text-balance text-center text-[0.8125rem] leading-relaxed text-muted-foreground lg:text-sm" data-checkout-payment-instructions>
                           <span className="lg:hidden">
                             {canLaunchAlipay
-                              ? `点“打开支付宝”或扫码，严格按 ${formattedAmount} 付款，勿改金额。`
-                              : `保存或截图后用支付宝扫码，严格按 ${formattedAmount} 付款，勿改金额。`}
+                              ? `点“打开支付宝”或扫码，严格按 ${formattedAmount} 付款`
+                              : `保存二维码后用支付宝扫码，严格按 ${formattedAmount} 付款`}
                           </span>
-                          <span className="hidden lg:inline">请打开支付宝“扫一扫”，严格按 {formattedAmount} 付款，切勿修改金额。</span>
+                          <span className="hidden lg:inline">
+                            打开支付宝“扫一扫”，严格按 {formattedAmount} 付款，切勿修改金额。
+                          </span>
                         </p>
-                        {adjustmentCents > 0 && (
-                          <p className="hidden text-center text-xs text-muted-foreground sm:block" data-checkout-amount-hint>
-                            为自动核对付款，金额已微调 +{checkoutMoney(adjustmentCents)}，无需改回原价。
-                          </p>
-                        )}
-                        <div className="flex flex-wrap justify-center gap-2">
+                        <div className="checkout-qr-tools flex flex-wrap justify-center gap-1.5">
                           <Dialog open={expanded} onOpenChange={setExpanded}>
-                            <DialogTrigger render={<Button variant="outline" />}>
-                              <Maximize data-icon="inline-start" />
+                            <DialogTrigger render={<Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground" />}>
+                              <Maximize aria-hidden="true" data-icon="inline-start" />
                               放大二维码
                             </DialogTrigger>
                             <DialogContent className="checkout-qr-dialog" showCloseButton={false}>
                               <DialogHeader className="checkout-qr-header">
                                 <DialogTitle>付款二维码</DialogTitle>
                                 <DialogClose render={<Button variant="ghost" size="icon-sm" aria-label="关闭二维码" />}>
-                                  <X />
+                                  <X aria-hidden="true" />
                                 </DialogClose>
                               </DialogHeader>
                               <div className="checkout-qr-body">
@@ -613,7 +696,9 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                             </DialogContent>
                           </Dialog>
                           <Button
-                            variant="outline"
+                            variant="ghost"
+                            size="sm"
+                            className="text-muted-foreground hover:text-foreground"
                             disabled={download.busy || state.unavailable}
                             onClick={download.save}
                           >
@@ -623,7 +708,7 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                                 data-icon="inline-start"
                               />
                             ) : (
-                              <Download data-icon="inline-start" />
+                              <Download aria-hidden="true" data-icon="inline-start" />
                             )}
                             保存二维码
                           </Button>
@@ -632,7 +717,7 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                     )}
                     {download.message && (
                       <p
-                        className="text-sm text-muted-foreground"
+                        className="text-center text-sm text-muted-foreground"
                         role="status"
                       >
                         {download.message}
@@ -652,27 +737,27 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
               <Separator orientation="vertical" className="hidden lg:col-start-2 lg:row-start-1 lg:row-span-2 lg:block" />
               <section
                 aria-label="订单信息"
-                className="flex min-w-0 flex-col gap-5 lg:col-start-3 lg:row-start-1 lg:row-span-2 lg:self-center lg:px-6 lg:py-8"
+                className="checkout-summary flex min-w-0 flex-col gap-5 pb-(--card-spacing) lg:col-start-3 lg:row-start-1 lg:row-span-2 lg:px-7 lg:py-7"
                 data-checkout-summary
               >
-                <CardHeader className="hidden min-w-0 flex-wrap items-start justify-between gap-3 lg:flex lg:px-0">
+                <CardHeader className="hidden min-w-0 flex-wrap items-center justify-between gap-2 lg:flex lg:px-0">
                   <CardTitle className="min-w-0">
-                    <h2>订单信息</h2>
+                    <h2 className="text-base font-semibold tracking-tight">订单信息</h2>
                   </CardTitle>
-                  <CardAction className="min-w-0 max-w-full self-start">{statusBadge}</CardAction>
+                  <CardAction className="min-w-0 max-w-full self-center">{statusBadge}</CardAction>
                 </CardHeader>
-                <CardContent className="flex min-w-0 flex-col gap-4 lg:px-0">
-                  <dl className="flex min-w-0 flex-col gap-3 text-sm lg:gap-5">
+                <CardContent className="flex min-w-0 flex-1 flex-col gap-4 lg:px-0">
+                  <dl className="flex min-w-0 flex-col gap-3.5 text-sm lg:gap-4">
                     {showProductName !== false && (
                       <div className="flex flex-col gap-1">
-                        <dt className="text-muted-foreground">商品</dt>
-                        <dd className="wrap-anywhere" data-product-name>
+                        <dt className="text-xs text-muted-foreground">商品</dt>
+                        <dd className="font-medium text-foreground wrap-anywhere" data-product-name>
                           {order.product_name}
                         </dd>
                       </div>
                     )}
                     <div className="flex flex-col gap-1">
-                      <dt className="text-muted-foreground">商家订单号</dt>
+                      <dt className="text-xs text-muted-foreground">商家订单号</dt>
                       <dd className="min-w-0" data-merchant-order-no>
                         <CopyValue
                           value={order.merchant_order_no}
@@ -682,13 +767,31 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                     </div>
                   </dl>
                   {canPay && adjustmentCents > 0 && (
-                    <p className="text-xs text-muted-foreground sm:hidden" data-checkout-amount-hint-mobile>
-                      金额说明：原价 {checkoutMoney(order.requested_amount_cents)}，已微调 +{checkoutMoney(adjustmentCents)} 用于自动核对付款，无需改回原价。
-                    </p>
+                    <div className="checkout-breakdown">
+                      <div className="checkout-breakdown-row">
+                        <span className="text-muted-foreground">商品原价</span>
+                        <span className="tabular-nums text-foreground">
+                          {checkoutMoney(order.requested_amount_cents)}
+                        </span>
+                      </div>
+                      <div className="checkout-breakdown-row">
+                        <span className="text-muted-foreground">自动核对微调</span>
+                        <span className="tabular-nums text-foreground">
+                          +{checkoutMoney(adjustmentCents)}
+                        </span>
+                      </div>
+                      <Separator />
+                      <div className="checkout-breakdown-row font-medium">
+                        <span className="text-foreground">实际应付</span>
+                        <span className="tabular-nums text-foreground">
+                          {formattedAmount}
+                        </span>
+                      </div>
+                    </div>
                   )}
                   {order.refund.status !== "NONE" && (
-                    <Alert>
-                      <AlertCircle />
+                    <Alert className="checkout-refund-alert">
+                      <AlertCircle aria-hidden="true" />
                       <AlertTitle>
                         {order.refund.status === "FULL"
                           ? "订单已有全额退款记录"
@@ -705,12 +808,12 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
           )}
         </Card>
         {helpUrl && (
-          <p className="text-right text-sm text-muted-foreground" data-checkout-help>
+          <p className="checkout-help-row text-right text-sm text-muted-foreground" data-checkout-help>
             <a
               href={helpUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="rounded-sm hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
+              className="checkout-help-link rounded-sm hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
             >
               商家帮助
             </a>
