@@ -3128,6 +3128,8 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   }
 }
 .auth-card {
+  position: relative;
+  overflow: visible;
   --card-spacing: clamp(20px, 5vw, 28px);
   border-radius: 1rem;
   background: var(--card);
@@ -3135,6 +3137,39 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
     inset 0 1px 0 color-mix(in oklch, var(--foreground) 8%, transparent),
     0 1px 2px oklch(0 0 0 / 6%),
     0 20px 44px -22px oklch(0 0 0 / 22%);
+}
+.auth-state-icon {
+  display: inline-flex;
+  width: 2.5rem;
+  height: 2.5rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.75rem;
+  margin-bottom: 0.375rem;
+  background-color: var(--danger);
+  color: var(--danger-foreground);
+}
+.auth-state-message {
+  font-size: 0.875rem;
+  line-height: 1.55;
+  color: var(--muted-foreground);
+}
+.auth-loading-row {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding-block: 0.25rem;
+  font-size: 0.875rem;
+  color: var(--muted-foreground);
+}
+.auth-card [data-slot="alert"]:not(.auth-status-alert) {
+  border-color: transparent;
+  background-color: var(--danger);
+  color: var(--danger-foreground);
+}
+.auth-card [data-slot="alert"]:not(.auth-status-alert) [data-slot="alert-description"],
+.auth-card [data-slot="alert"]:not(.auth-status-alert) [data-slot="button"] {
+  color: var(--danger-foreground);
 }
 .auth-card-header {
   gap: 0.375rem;
@@ -3202,34 +3237,31 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
     transform: translateX(2px);
   }
 }
-.auth-recovery-anchor {
-  position: relative;
+.auth-recovery-row {
   display: flex;
   width: 100%;
   min-width: 0;
-  justify-content: center;
-  margin-top: -0.5rem;
+  justify-content: flex-end;
+  margin-top: -0.25rem;
 }
 .auth-recovery-trigger {
   color: var(--muted-foreground);
   font-weight: 400;
-  background-color: var(--background);
-  box-shadow: 0 0 14px 6px var(--background);
+  margin-inline-end: -0.25rem;
 }
 .auth-recovery-trigger:hover,
 .auth-recovery-trigger[aria-expanded="true"] {
   color: var(--foreground);
-  background-color: var(--muted);
 }
 .auth-recovery-chevron {
   transition: transform var(--motion-fast, 140ms) var(--motion-ease-move, ease);
 }
-.auth-recovery-trigger[aria-expanded="true"] .auth-recovery-chevron {
+.auth-recovery-trigger:is([aria-expanded="true"], [data-panel-open]) .auth-recovery-chevron {
   transform: rotate(180deg);
 }
 .auth-recovery-popover {
   position: absolute;
-  top: calc(100% + 0.5rem);
+  top: calc(100% + 0.625rem);
   inset-inline: 0;
   z-index: 20;
   padding-bottom: 1rem;

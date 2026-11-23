@@ -12,10 +12,8 @@ import {
   subscribeRestoreSessionHold,
   type AdminSessionEnvelope,
 } from "@/api/client";
-import { AuthShell } from "@/components/auth-shell";
-import { ErrorNotice, Loading } from "@/components/request-state";
+import { AuthErrorCard, AuthLoadingCard, AuthShell } from "@/components/auth-shell";
 import { LoginForm } from "@/components/login-form";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { clearOnboardingDeferrals } from "@/lib/onboarding";
 import { OVERLAY_HISTORY_KEY, OVERLAY_PARAMETER, legacyOverlayLocation, overlayBackground, stateRecord } from "@/lib/overlay-navigation";
 const SessionContext = createContext<{
@@ -75,36 +73,22 @@ export function AuthBoundary({ children }: { children: ReactNode }) {
   if (session.isPending)
     return (
       <AuthShell>
-        <Card className="auth-card min-w-0">
-          <CardHeader className="auth-card-header">
-            <CardTitle className="auth-card-title">
-              <h1 className="w-full">正在检查登录状态</h1>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Loading label="正在检查登录状态…" />
-          </CardContent>
-        </Card>
+        <AuthLoadingCard
+          title="正在检查登录状态"
+          label="正在检查登录状态…"
+        />
       </AuthShell>
     );
   if (session.isError && !session.data && !rejected) {
     return (
       <AuthShell>
-        <Card className="auth-card min-w-0">
-          <CardHeader className="auth-card-header">
-            <CardTitle className="auth-card-title">
-              <h1 className="w-full">无法检查登录状态</h1>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ErrorNotice
-              error={session.error}
-              retry={() => {
-                void session.refetch();
-              }}
-            />
-          </CardContent>
-        </Card>
+        <AuthErrorCard
+          title="无法检查登录状态"
+          error={session.error}
+          retry={() => {
+            void session.refetch();
+          }}
+        />
       </AuthShell>
     );
   }

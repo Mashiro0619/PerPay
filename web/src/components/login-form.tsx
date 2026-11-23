@@ -10,14 +10,13 @@ import {
   ExternalLink,
   Eye,
   EyeOff,
-  HelpCircle,
   Lock,
 } from "lucide-react";
 import { api, ApiError, result } from "@/api/client";
 import { previewInstanceChanged } from "@/demo-mode";
 import { MIN_ADMIN_PASSWORD_CHARACTERS, validatePassword } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { AuthShell } from "@/components/auth-shell";
+import { AuthErrorCard, AuthShell } from "@/components/auth-shell";
 import { ErrorNotice } from "@/components/request-state";
 import { Button } from "@/components/ui/button";
 import {
@@ -257,6 +256,18 @@ export function LoginForm({ onLogin }: { onLogin: () => void }) {
     }
   }
 
+  if (initialized === null) {
+    return (
+      <AuthShell adminAuth>
+        <AuthErrorCard
+          title={title}
+          error={new Error("无法读取初始化状态，请检查服务后重试。")}
+          retry={() => window.location.reload()}
+        />
+      </AuthShell>
+    );
+  }
+
   return (
     <AuthShell adminAuth>
       <Card className="auth-card min-w-0">
@@ -270,20 +281,14 @@ export function LoginForm({ onLogin }: { onLogin: () => void }) {
             </CardDescription>
           )}
         </CardHeader>
-        <CardContent className="flex min-w-0 flex-col gap-4">
-          {initialized === null ? (
-            <ErrorNotice
-              error={new Error("无法读取初始化状态，请检查服务后重试。")}
-              retry={() => window.location.reload()}
-            />
-          ) : (
-            <form
-              className="min-w-0"
-              noValidate={setup}
-              onSubmit={(event) => {
-                void submit(event);
-              }}
-            >
+        <CardContent className="flex min-w-0 flex-col gap-3">
+          <form
+            className="min-w-0"
+            noValidate={setup}
+            onSubmit={(event) => {
+              void submit(event);
+            }}
+          >
               <FieldGroup className="gap-4 sm:gap-5">
                 {(configured || alreadyInitialized) && !setup && (
                   <Alert className="auth-status-alert">
@@ -526,57 +531,55 @@ export function LoginForm({ onLogin }: { onLogin: () => void }) {
                 </Field>
               </FieldGroup>
             </form>
+          {initialized === true && (
+            <div ref={recoveryRef} className="auth-recovery-row">
+              <Collapsible
+                open={recoveryOpen}
+                onOpenChange={setRecoveryOpen}
+                className="flex w-full min-w-0 justify-end"
+              >
+                <CollapsibleTrigger
+                  render={
+                    <Button
+                      ref={recoveryTriggerRef}
+                      variant="ghost"
+                      size="sm"
+                      className="auth-recovery-trigger h-auto min-h-7 max-w-full px-2 py-1"
+                    />
+                  }
+                >
+                  <span>忘记密码？</span>
+                  <ChevronDown
+                    aria-hidden="true"
+                    data-icon="inline-end"
+                    className="auth-recovery-chevron"
+                  />
+                </CollapsibleTrigger>
+                <CollapsibleContent className="auth-recovery-popover">
+                  <div className="auth-recovery-panel">
+                    <FieldDescription className="wrap-anywhere leading-relaxed">
+                      请联系服务器管理员停服重设，无需删除数据。
+                    </FieldDescription>
+                    <a
+                      data-external-link
+                      className="auth-recovery-link"
+                      href="https://github.com/Mashiro0619/PerPay/blob/main/docs/maintenance.md#忘记管理员密码"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      查看恢复步骤
+                      <ExternalLink
+                        aria-hidden="true"
+                        className="auth-recovery-link-icon"
+                      />
+                    </a>
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
+            </div>
           )}
         </CardContent>
       </Card>
-      {initialized === true && (
-        <div ref={recoveryRef} className="auth-recovery-anchor">
-          <Collapsible
-            open={recoveryOpen}
-            onOpenChange={setRecoveryOpen}
-            className="flex w-full min-w-0 flex-col items-center"
-          >
-            <CollapsibleTrigger
-              render={
-                <Button
-                  ref={recoveryTriggerRef}
-                  variant="ghost"
-                  size="sm"
-                  className="auth-recovery-trigger h-auto min-h-8 max-w-full whitespace-normal px-3 py-1.5"
-                />
-              }
-            >
-              <HelpCircle aria-hidden="true" data-icon="inline-start" />
-              <span>忘记密码？</span>
-              <ChevronDown
-                aria-hidden="true"
-                data-icon="inline-end"
-                className="auth-recovery-chevron"
-              />
-            </CollapsibleTrigger>
-            <CollapsibleContent className="auth-recovery-popover">
-              <div className="auth-recovery-panel">
-                <FieldDescription className="wrap-anywhere leading-relaxed">
-                  请联系服务器管理员停服重设，无需删除数据。
-                </FieldDescription>
-                <a
-                  data-external-link
-                  className="auth-recovery-link"
-                  href="https://github.com/Mashiro0619/PerPay/blob/main/docs/maintenance.md#忘记管理员密码"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  查看恢复步骤
-                  <ExternalLink
-                    aria-hidden="true"
-                    className="auth-recovery-link-icon"
-                  />
-                </a>
-              </div>
-            </CollapsibleContent>
-          </Collapsible>
-        </div>
-      )}
     </AuthShell>
   );
 }
