@@ -26,9 +26,14 @@ import {
   FieldSet,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  CheckoutDisplayPreview,
+  type CheckoutPreviewState,
+  type CheckoutPreviewViewport,
+} from "@/components/CheckoutDisplayPreview";
 import { cn } from "@/lib/utils";
 
 type SiteDisplayToggleKey =
@@ -71,8 +76,8 @@ const SITE_DISPLAY_TOGGLES: ReadonlyArray<{
   },
   {
     key: "checkout_show_amount_adjustment",
-    label: "显示金额微调说明与明细",
-    description: "展示微调提示与原价/微调拆解；应付金额始终保留以防付错。",
+    label: "显示金额微调明细",
+    description: "在订单信息区展示原价与自动核对微调拆解；应付金额始终保留以防付错。",
   },
   {
     key: "checkout_show_qr_tools",
@@ -106,8 +111,8 @@ const SITE_DISPLAY_COPY_FIELDS: ReadonlyArray<{
   {
     key: "checkout_adjustment_hint",
     label: "金额微调提示文案",
-    placeholder: DEFAULT_CHECKOUT_COPY.adjustmentHintDesktop,
-    hint: "支持 {offset} 代表微调金额（如 ¥0.01）；留空使用系统默认提示。",
+    placeholder: "选填，例如：为自动核对已微调 +{offset}，请按此金额付款",
+    hint: "选填，支持 {offset} 代表微调金额（如 ¥0.01）；留空不额外展示（右侧明细区已展示微调）。",
   },
   {
     key: "checkout_notice",
@@ -170,11 +175,35 @@ export function SitePolicyFields({
     errors["configuration.policy.notification_delivery.timeout_milliseconds"] ??
     errors["policy.notification_delivery.timeout_milliseconds"];
   const [advanced, setAdvanced] = useState(false);
+  const [displaySubTab, setDisplaySubTab] = useState<
+    "basic" | "modules" | "copy" | "preview"
+  >("basic");
+  const [previewState, setPreviewState] =
+    useState<CheckoutPreviewState>("UNPAID");
+  const [previewViewport, setPreviewViewport] =
+    useState<CheckoutPreviewViewport>("desktop");
   const notificationPolicyOpen = expandedNotificationPolicy || advanced;
   const content = useRef<HTMLDivElement>(null);
   const failedAdvanced = Object.keys(errors).some((key) =>
     key.includes("notification_delivery."),
   );
+  useEffect(() => {
+    const displayErrorKey = Object.keys(errors).find((key) =>
+      key.includes("display."),
+    );
+    if (!displayErrorKey) return;
+    if (
+      displayErrorKey.endsWith(".checkout_name") ||
+      displayErrorKey.endsWith(".checkout_help_url") ||
+      displayErrorKey.endsWith(".checkout_show_product_name")
+    ) {
+      setDisplaySubTab("basic");
+    } else if (displayErrorKey.includes("checkout_show_")) {
+      setDisplaySubTab("modules");
+    } else {
+      setDisplaySubTab("copy");
+    }
+  }, [errors]);
   useEffect(() => {
     if (failedAdvanced) setAdvanced(true);
   }, [errors, failedAdvanced]);
@@ -292,144 +321,200 @@ export function SitePolicyFields({
         </FieldSet>
       )}
       {(!section || section === "display") && (
-        <FieldSet disabled={disabled} className="gap-6">
+        <FieldSet disabled={disabled} className="gap-4">
           <FieldLegend className={section ? "sr-only" : undefined}>收银台展示</FieldLegend>
-          <div className="flex flex-col gap-4">
-            <SiteTextField
-              label="收银台名称"
-              fullWidth
-              required
-              maxLength={40}
-              error={error("display.checkout_name")}
-              value={value.display.checkout_name}
-              onChange={(text) =>
-                change((p) => {
-                  p.display.checkout_name = text;
-                })
+          <Tabs
+            value={displaySubTab}
+            onValueChange={(next) => {
+              if (
+                next === "basic" ||
+                next === "modules" ||
+                next === "copy" ||
+                next === "preview"
+              ) {
+                setDisplaySubTab(next);
               }
-            />
-            <SiteTextField
-              label="帮助链接"
-              type="url"
-              placeholder="https://help.example.com"
-              error={error("display.checkout_help_url")}
-              value={value.display.checkout_help_url ?? ""}
-              onChange={(text) =>
-                change((p) => {
-                  p.display.checkout_help_url = text || null;
-                })
-              }
-            />
-            <OptionalCopyField
-              id={displayId + "-help-label"}
-              label="帮助链接文案"
-              placeholder={`默认：${DEFAULT_CHECKOUT_HELP_LABEL}`}
-              hint="仅在配置帮助链接后展示；留空使用“商家帮助”。"
-              maxLength={CHECKOUT_HELP_LABEL_MAX_LENGTH}
-              value={value.display.checkout_help_label ?? ""}
-              error={error("display.checkout_help_label")}
-              disabled={disabled}
-              multiline={false}
-              onChange={(text) =>
-                change((p) => {
-                  p.display.checkout_help_label = text === "" ? null : text;
-                })
-              }
-            />
-          </div>
-          <Separator />
-          <Field orientation="vertical" className="gap-2" data-disabled={disabled}>
-            <FieldLabel id={displayId + "-modules-label"}>收银台显示模块</FieldLabel>
-            <FieldContent className="min-w-0">
-              <div
-                role="group"
-                aria-labelledby={displayId + "-modules-label"}
-                className="settings-display-sections"
-                data-site-display-toggles
-              >
-                {SITE_DISPLAY_TOGGLES.map((item) => {
-                  const checked = value.display[item.key] ?? true;
-                  const switchId = `${displayId}-${item.key}`;
-                  const hintId = `${switchId}-hint`;
-                  return (
-                    <div
-                      key={item.key}
-                      className="settings-display-section-row"
-                      data-checked={checked || undefined}
-                    >
-                      <div className="settings-display-section-copy">
-                        <FieldLabel htmlFor={switchId} className="settings-display-section-label">
-                          {item.label}
-                        </FieldLabel>
-                        <FieldDescription id={hintId} className="settings-display-section-desc">
-                          {item.description}
-                        </FieldDescription>
-                      </div>
-                      <Switch
-                        id={switchId}
-                        disabled={disabled}
-                        checked={checked}
-                        aria-describedby={hintId}
-                        onCheckedChange={(nextChecked) =>
-                          change((p) => {
-                            p.display[item.key] = nextChecked;
-                          })
-                        }
-                      />
-                    </div>
-                  );
-                })}
-              </div>
-            </FieldContent>
-          </Field>
-          <Separator />
-          <div className="flex flex-col gap-4" data-site-display-copy>
-            <div className="flex flex-wrap items-start justify-between gap-2">
-              <div className="flex flex-col gap-1">
-                <p className="text-sm font-medium text-foreground">收银台文案自定义</p>
-                <p className="text-xs text-muted-foreground">
-                  所有文案均提供系统默认内容；输入框留空即自动使用默认文案，可随时恢复默认。
-                </p>
-              </div>
-              {hasCustomCheckoutCopy && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={disabled}
-                  onClick={() =>
+            }}
+          >
+            <TabsList
+              aria-label="收银台展示子分组"
+              className="grid w-full grid-cols-4"
+              activateOnFocus={false}
+            >
+              <TabsTrigger value="basic">基础</TabsTrigger>
+              <TabsTrigger value="modules">模块</TabsTrigger>
+              <TabsTrigger value="copy">文案</TabsTrigger>
+              <TabsTrigger value="preview">预览</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="basic" className="pt-3">
+              <div className="flex flex-col gap-4">
+                <SiteTextField
+                  label="收银台名称"
+                  fullWidth
+                  required
+                  maxLength={40}
+                  error={error("display.checkout_name")}
+                  value={value.display.checkout_name}
+                  onChange={(text) =>
                     change((p) => {
-                      p.display.checkout_help_label = null;
-                      for (const item of SITE_DISPLAY_COPY_FIELDS) {
-                        p.display[item.key] = null;
-                      }
+                      p.display.checkout_name = text;
                     })
                   }
-                >
-                  <RotateCcw aria-hidden="true" data-icon="inline-start" />
-                  恢复全部默认文案
-                </Button>
-              )}
-            </div>
-            {SITE_DISPLAY_COPY_FIELDS.map((item) => (
-              <OptionalCopyField
-                key={item.key}
-                id={`${displayId}-${item.key}`}
-                label={item.label}
-                placeholder={item.placeholder}
-                hint={item.hint}
-                maxLength={CHECKOUT_TEXT_MAX_LENGTH}
-                value={value.display[item.key] ?? ""}
-                error={error(`display.${item.key}`)}
-                disabled={disabled}
-                onChange={(text) =>
-                  change((p) => {
-                    p.display[item.key] = text === "" ? null : text;
-                  })
-                }
+                />
+                <SiteTextField
+                  label="帮助链接"
+                  type="url"
+                  placeholder="https://help.example.com"
+                  error={error("display.checkout_help_url")}
+                  value={value.display.checkout_help_url ?? ""}
+                  onChange={(text) =>
+                    change((p) => {
+                      p.display.checkout_help_url = text || null;
+                    })
+                  }
+                />
+                <Field orientation="horizontal" data-disabled={disabled}>
+                  <FieldLabel htmlFor={displayId + "-show-product-basic"}>
+                    显示商品名称
+                  </FieldLabel>
+                  <Switch
+                    id={displayId + "-show-product-basic"}
+                    disabled={disabled}
+                    checked={value.display.checkout_show_product_name}
+                    onCheckedChange={(checked) =>
+                      change((p) => {
+                        p.display.checkout_show_product_name = checked;
+                      })
+                    }
+                  />
+                </Field>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="modules" className="pt-3">
+              <Field orientation="vertical" className="gap-2" data-disabled={disabled}>
+                <FieldLabel id={displayId + "-modules-label"} className="sr-only">
+                  收银台显示模块
+                </FieldLabel>
+                <FieldContent className="min-w-0">
+                  <div
+                    role="group"
+                    aria-labelledby={displayId + "-modules-label"}
+                    className="settings-display-sections"
+                    data-site-display-toggles
+                  >
+                    {SITE_DISPLAY_TOGGLES.map((item) => {
+                      const checked = value.display[item.key] ?? true;
+                      const switchId = `${displayId}-${item.key}`;
+                      const hintId = `${switchId}-hint`;
+                      return (
+                        <div
+                          key={item.key}
+                          className="settings-display-section-row"
+                          data-checked={checked || undefined}
+                        >
+                          <div className="settings-display-section-copy">
+                            <FieldLabel htmlFor={switchId} className="settings-display-section-label">
+                              {item.label}
+                            </FieldLabel>
+                            <FieldDescription id={hintId} className="settings-display-section-desc">
+                              {item.description}
+                            </FieldDescription>
+                          </div>
+                          <Switch
+                            id={switchId}
+                            disabled={disabled}
+                            checked={checked}
+                            aria-describedby={hintId}
+                            onCheckedChange={(nextChecked) =>
+                              change((p) => {
+                                p.display[item.key] = nextChecked;
+                              })
+                            }
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                </FieldContent>
+              </Field>
+            </TabsContent>
+
+            <TabsContent value="copy" className="pt-3">
+              <div className="flex flex-col gap-4" data-site-display-copy>
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <p className="text-xs text-muted-foreground">
+                    所有文案均提供系统默认内容；留空即使用默认文案，可随时恢复默认。
+                  </p>
+                  {hasCustomCheckoutCopy && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={disabled}
+                      onClick={() =>
+                        change((p) => {
+                          p.display.checkout_help_label = null;
+                          for (const item of SITE_DISPLAY_COPY_FIELDS) {
+                            p.display[item.key] = null;
+                          }
+                        })
+                      }
+                    >
+                      <RotateCcw aria-hidden="true" data-icon="inline-start" />
+                      恢复全部默认文案
+                    </Button>
+                  )}
+                </div>
+                <OptionalCopyField
+                  id={displayId + "-help-label"}
+                  label="帮助链接文案"
+                  placeholder={`默认：${DEFAULT_CHECKOUT_HELP_LABEL}`}
+                  hint="仅在配置帮助链接后展示；留空使用“商家帮助”。"
+                  maxLength={CHECKOUT_HELP_LABEL_MAX_LENGTH}
+                  value={value.display.checkout_help_label ?? ""}
+                  error={error("display.checkout_help_label")}
+                  disabled={disabled}
+                  multiline={false}
+                  onChange={(text) =>
+                    change((p) => {
+                      p.display.checkout_help_label = text === "" ? null : text;
+                    })
+                  }
+                />
+                {SITE_DISPLAY_COPY_FIELDS.map((item) => (
+                  <OptionalCopyField
+                    key={item.key}
+                    id={`${displayId}-${item.key}`}
+                    label={item.label}
+                    placeholder={item.placeholder}
+                    hint={item.hint}
+                    maxLength={CHECKOUT_TEXT_MAX_LENGTH}
+                    value={value.display[item.key] ?? ""}
+                    error={error(`display.${item.key}`)}
+                    disabled={disabled}
+                    onChange={(text) =>
+                      change((p) => {
+                        p.display[item.key] = text === "" ? null : text;
+                      })
+                    }
+                  />
+                ))}
+              </div>
+            </TabsContent>
+
+            <TabsContent value="preview" className="pt-3">
+              <CheckoutDisplayPreview
+                display={value.display}
+                previewState={previewState}
+                onPreviewStateChange={setPreviewState}
+                viewport={previewViewport}
+                onViewportChange={setPreviewViewport}
+                compact
               />
-            ))}
-          </div>
+            </TabsContent>
+          </Tabs>
         </FieldSet>
       )}
       {(!section || section === "integration") && (

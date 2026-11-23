@@ -374,6 +374,7 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
       ? "付款时间已到，正在为您确认订单状态。"
       : statusDetail
     : "";
+  const showOpenInstructions = Boolean(canPay && !qrFailed);
   const sideBySideTerminalActions = Boolean(!canPay && returnUrl && retryAllowed);
 
   const hasOrderProduct = Boolean(order && showProductName && order.product_name);
@@ -386,6 +387,9 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
   );
   const hasSummaryPanel = Boolean(order && (hasSummaryBody || terminalNoteText));
   const useTwoColumns = hasSummaryPanel;
+  const hasRightFooterNote = Boolean(
+    useTwoColumns && (terminalNoteText || showOpenInstructions),
+  );
 
   const desktopWidth = order
     ? !useTwoColumns
@@ -421,7 +425,7 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                   "md:order-none md:col-start-1 md:row-start-2 md:rounded-none md:px-6 md:pt-0 md:pb-6 lg:px-8 lg:pb-8",
               )
             : cn(
-                "pt-0",
+                "order-3 pt-0 md:order-none",
                 hasSummaryBody ? "pb-1" : "pb-(--card-spacing)",
                 useTwoColumns &&
                   "md:col-start-1 md:row-start-2 md:rounded-none md:px-6 md:pt-0 md:pb-6 lg:px-8 lg:pb-8",
@@ -606,7 +610,7 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
           <div
             className={cn(
               "flex min-w-0 flex-col",
-              isTerminalOrder ? "order-1 gap-4 md:order-none" : "gap-3",
+              isTerminalOrder ? "order-1 gap-4 md:order-none" : "order-1 gap-3 md:order-none",
               order &&
                 useTwoColumns &&
                 (hasActions
@@ -721,32 +725,38 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                 </div>
               </CardHeader>
             ) : (
-              <CardHeader className="checkout-terminal-header flex flex-col items-center gap-3 px-6 text-center sm:px-8">
-                <CardAction className="self-center">
-                  <Badge
-                    className="h-auto min-h-6 max-w-full gap-1.5 px-2.5 py-1 whitespace-normal"
-                    variant={
-                      ["DISPUTED", "NOT_FOUND"].includes(state.visual)
-                        ? "destructive"
-                        : "secondary"
-                    }
-                  >
-                    <AlertCircle aria-hidden="true" />
-                    {copy.badge}
-                  </Badge>
-                </CardAction>
-                <CardTitle className="w-full">
-                  <h1
-                    tabIndex={-1}
-                    ref={heading}
-                    className="text-xl font-semibold tracking-tight outline-none lg:text-2xl"
-                    data-status-heading
-                  >
-                    {headingText}
-                  </h1>
-                </CardTitle>
+              <CardHeader className="checkout-terminal-header flex flex-col gap-3 px-6 sm:px-8">
+                <div className="flex w-full min-w-0 items-center justify-between gap-3">
+                  <div className="flex min-w-0 items-center gap-2.5">
+                    <div className="checkout-state-icon" data-tone={stateTone} aria-hidden="true">
+                      <AlertCircle />
+                    </div>
+                    <CardTitle className="min-w-0">
+                      <h1
+                        tabIndex={-1}
+                        ref={heading}
+                        className="text-lg font-semibold tracking-tight outline-none sm:text-xl"
+                        data-status-heading
+                      >
+                        {headingText}
+                      </h1>
+                    </CardTitle>
+                  </div>
+                  <CardAction className="shrink-0 self-center">
+                    <Badge
+                      className="h-auto min-h-5 max-w-full whitespace-normal"
+                      variant={
+                        ["DISPUTED", "NOT_FOUND"].includes(state.visual)
+                          ? "destructive"
+                          : "secondary"
+                      }
+                    >
+                      {copy.badge}
+                    </Badge>
+                  </CardAction>
+                </div>
                 {statusDetail && (
-                  <CardDescription className="max-w-sm text-balance text-center leading-relaxed" data-checkout-status-detail>
+                  <CardDescription className="text-sm leading-relaxed text-muted-foreground" data-checkout-status-detail>
                     {statusDetail}
                   </CardDescription>
                 )}
@@ -780,23 +790,12 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                       />
                     )}
                   </div>
-                  {showAdjustmentDetails && (
+                  {customAdjustmentHint && (
                     <p
                       className="checkout-offset-pill"
                       data-checkout-amount-hint
                     >
-                      {customAdjustmentHint ? (
-                        customAdjustmentHint
-                      ) : (
-                        <>
-                          <span className="sm:hidden">
-                            含核对微调 +{formattedAdjustment}，勿改金额
-                          </span>
-                          <span className="hidden sm:inline">
-                            为自动核对已微调 +{formattedAdjustment}，请按此金额付款，无需改回原价
-                          </span>
-                        </>
-                      )}
+                      {customAdjustmentHint}
                     </p>
                   )}
                 </div>
@@ -839,22 +838,6 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                             />
                           </div>
                         </div>
-                        <p className="text-balance text-center text-[0.8125rem] leading-relaxed text-muted-foreground lg:text-sm" data-checkout-payment-instructions>
-                          {customPaymentInstructions ? (
-                            customPaymentInstructions
-                          ) : (
-                            <>
-                              <span className="md:hidden">
-                                {canLaunchAlipay
-                                  ? `点“打开支付宝”或扫码，严格按 ${formattedAmount} 付款`
-                                  : `保存二维码后用支付宝扫码，严格按 ${formattedAmount} 付款`}
-                              </span>
-                              <span className="hidden md:inline">
-                                打开支付宝“扫一扫”，严格按 {formattedAmount} 付款，切勿修改金额。
-                              </span>
-                            </>
-                          )}
-                        </p>
                         {showQrTools && (
                           <div className="checkout-qr-tools flex flex-wrap justify-center gap-1.5" data-checkout-qr-tools>
                             <Dialog open={expanded} onOpenChange={setExpanded}>
@@ -932,6 +915,35 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
               </CardContent>
             )}
           </div>
+          {showOpenInstructions && (
+            <div
+              className={cn(
+                "order-2 -mt-1 px-(--card-spacing) text-center text-[0.8125rem] leading-relaxed text-muted-foreground",
+                useTwoColumns &&
+                  "md:order-none md:col-start-3 md:row-start-2 md:mt-0 md:self-end md:px-6 md:pt-0 md:pb-6 md:text-left md:text-sm lg:px-8 lg:pb-8",
+              )}
+              data-checkout-payment-instructions
+            >
+              <div className={cn(useTwoColumns && "md:border-t md:border-border/70 md:pt-4")}>
+                <p className="mx-auto max-w-[22rem] text-balance md:mx-0 md:max-w-none">
+                  {customPaymentInstructions ? (
+                    customPaymentInstructions
+                  ) : (
+                    <>
+                      <span className="md:hidden">
+                        {canLaunchAlipay
+                          ? `点“打开支付宝”或扫码，严格按 ${formattedAmount} 付款`
+                          : `保存二维码后用支付宝扫码，严格按 ${formattedAmount} 付款`}
+                      </span>
+                      <span className="hidden md:inline">
+                        打开支付宝“扫一扫”，严格按 {formattedAmount} 付款，切勿修改金额。
+                      </span>
+                    </>
+                  )}
+                </p>
+              </div>
+            </div>
+          )}
           {terminalNoteText && (
             <div
               className={cn(
@@ -950,7 +962,7 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
           {order && hasSummaryPanel && (
             <>
               {hasSummaryBody && (
-                <div className={cn("px-(--card-spacing) md:hidden", isTerminalOrder && "order-3")}>
+                <div className={cn("px-(--card-spacing) md:hidden", isTerminalOrder ? "order-3" : "order-4")}>
                   <Separator />
                 </div>
               )}
@@ -962,8 +974,8 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                   hasSummaryBody ? "flex" : "hidden",
                   isTerminalOrder
                     ? cn("order-4", hasActions ? "pb-0" : "pb-(--card-spacing)")
-                    : "pb-(--card-spacing)",
-                  terminalNoteText
+                    : "order-5 pb-(--card-spacing)",
+                  hasRightFooterNote
                     ? "md:px-6 md:pt-6 md:pb-4 lg:px-8 lg:pt-8"
                     : "md:row-span-2 md:p-6 lg:p-8",
                 )}
@@ -978,9 +990,9 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                 {hasSummaryBody && (
                   <CardContent className="flex min-w-0 flex-1 flex-col gap-3.5 md:gap-4 md:px-0">
                     {hasOrderMeta && (
-                      <dl className="checkout-receipt-list flex min-w-0 flex-col gap-2.5 text-sm md:gap-4">
+                      <dl className="checkout-receipt-list flex min-w-0 flex-col gap-2.5 text-[0.8125rem] md:gap-4 md:text-sm">
                         {hasOrderProduct && (
-                          <div className="checkout-receipt-row flex items-baseline justify-between gap-4 md:flex-col md:items-stretch md:gap-1">
+                          <div className="checkout-receipt-row flex items-baseline justify-between gap-3 md:flex-col md:items-stretch md:gap-1">
                             <dt className="shrink-0 text-xs text-muted-foreground">商品</dt>
                             <dd className="min-w-0 text-right font-medium text-foreground wrap-anywhere md:text-left" data-product-name>
                               {order.product_name}
@@ -988,7 +1000,7 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                           </div>
                         )}
                         {hasOrderNumber && (
-                          <div className="checkout-receipt-row flex items-baseline justify-between gap-4 md:flex-col md:items-stretch md:gap-1">
+                          <div className="checkout-receipt-row flex items-baseline justify-between gap-3 md:flex-col md:items-stretch md:gap-1">
                             <dt className="shrink-0 text-xs text-muted-foreground">商家订单号</dt>
                             <dd className="checkout-receipt-value min-w-0" data-merchant-order-no>
                               <CopyValue

@@ -315,6 +315,9 @@
 }
 
 @media (pointer: coarse) {
+  [data-checkout-layout] button {
+    scroll-margin-block: 8px;
+  }
   [data-checkout-layout]:not([data-terminal-order]) [data-checkout-summary] {
     padding-bottom: calc(var(--card-spacing, 1rem) + 6px);
   }

@@ -33,6 +33,7 @@ import { useDirtyDraft } from "@/drafts";
 import { ErrorNotice, QueryView } from "@/components/request-state";
 import { useSuccessToast } from "@/components/Feedback";
 import { SitePolicyFields, SiteTextField } from "@/components/SitePolicyFields";
+import { CheckoutDisplayStudio } from "@/components/CheckoutDisplayStudio";
 import { SiteCollectionFields } from "@/components/site-collection-fields";
 import { accountState, alipayAccountsQuery, type AlipayAccount, type SiteCollection } from "@/lib/alipay-accounts";
 import { siteTimeoutError, siteTimeoutSeconds } from "@/lib/site-timeout";
@@ -186,7 +187,7 @@ export function SiteSettingsPage() {
   const query = useQuery(siteEditorQueryOptions(clientId));
   const selected = siteSections.find(item => item.value === section);
   if (!selected) return <ErrorNotice error={new Error("网站设置分组不存在")} />;
-  return <div className="admin-settings-layout flex min-w-0 flex-col gap-4">
+  return <div className="admin-settings-layout flex min-w-0 flex-col gap-4" data-site-settings-section={section}>
     <PageHeading title="网站设置" />
     <div className="site-settings-navigation flex min-w-0 items-center gap-2">
       <Tabs className="min-w-0 flex-1" value={section} onValueChange={value => { if (value) void navigate("/sites/" + encodeURIComponent(clientId!) + "/settings/" + value); }}>
@@ -199,10 +200,16 @@ export function SiteSettingsPage() {
         aria-label={"编辑" + selected.label}
       ><Pencil data-icon="inline-start" />编辑</Link>
     </div>
-    <QueryView query={query}>{({ site }) => <>
-      <SettingsSummary title={selected.label} rows={siteSummaryRows(site, section)} hideHeading />
-      {section === "integration" && <SiteIntegrationAssistant site={site} onReloadSite={() => { void query.refetch(); }} />}
-    </>}</QueryView>
+    <QueryView query={query}>{({ site }) => (
+      section === "display" ? (
+        <CheckoutDisplayStudio site={site} onCacheSite={cacheSite} />
+      ) : (
+        <>
+          <SettingsSummary title={selected.label} rows={siteSummaryRows(site, section)} hideHeading />
+          {section === "integration" && <SiteIntegrationAssistant site={site} onReloadSite={() => { void query.refetch(); }} />}
+        </>
+      )
+    )}</QueryView>
   </div>;
 }
 

@@ -110,6 +110,16 @@ describe("admin-customizable checkout display and copy", () => {
     expect(container.querySelector("[data-payable-amount]")).toHaveTextContent("¥19.01");
   });
 
+  it("omits the redundant default offset pill while keeping the breakdown ledger", () => {
+    const { container } = render(<CheckoutApp initial={makeInitial(makeOrder())} />);
+    expect(container.querySelector("[data-checkout-amount-hint]")).toBeNull();
+    expect(container.querySelector("[data-checkout-breakdown]")).toHaveTextContent("自动核对微调");
+    expect(container.querySelector("[data-checkout-payment-instructions]")).toHaveClass(
+      "md:col-start-3",
+      "md:row-start-2",
+    );
+  });
+
   it("renders custom payment instructions, adjustment hint, notice, help label and template tokens", () => {
     const order = makeOrder(
       {},
