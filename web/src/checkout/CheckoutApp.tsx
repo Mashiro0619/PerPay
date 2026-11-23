@@ -925,7 +925,12 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
               data-checkout-payment-instructions
             >
               <div className={cn(useTwoColumns && "md:border-t md:border-border/70 md:pt-4")}>
-                <p className="mx-auto max-w-[22rem] text-balance md:mx-0 md:max-w-none">
+                <p
+                  className={cn(
+                    "mx-auto max-w-[22rem] text-balance",
+                    useTwoColumns && "md:mx-0 md:max-w-none md:text-wrap",
+                  )}
+                >
                   {customPaymentInstructions ? (
                     customPaymentInstructions
                   ) : (
@@ -954,7 +959,14 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
               data-checkout-terminal-note
             >
               <div className={cn(useTwoColumns && "md:border-t md:border-border/70 md:pt-4")}>
-                <p className="mx-auto max-w-[22rem] text-balance md:mx-0 md:max-w-none">{terminalNoteText}</p>
+                <p
+                  className={cn(
+                    "mx-auto max-w-[22rem] text-balance",
+                    useTwoColumns && "md:mx-0 md:max-w-none md:text-wrap",
+                  )}
+                >
+                  {terminalNoteText}
+                </p>
               </div>
             </div>
           )}
