@@ -52,6 +52,9 @@ describe("first-deployment authentication presentation", () => {
     expect(trigger).toHaveAttribute("aria-expanded", "false");
     await user.keyboard(" ");
     expect(trigger).toHaveAttribute("aria-expanded", "true");
+    await user.keyboard("{Escape}");
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    expect(trigger).toHaveFocus();
   });
 
   it.each(["/", "/login", "/setup"])(

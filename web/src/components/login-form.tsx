@@ -24,7 +24,6 @@ import {
   Card,
   CardContent,
   CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -74,20 +73,18 @@ export function LoginForm({ onLogin }: { onLogin: () => void }) {
       : setup
         ? `初始化 ${systemName}`
         : "登录管理后台";
-  const description =
-    initialized === null
-      ? null
-      : setup
-        ? "先创建管理员，再登录配置收款。"
-        : "请输入管理员密码以进入管理控制台。";
+  const description = setup ? "先创建管理员，再登录配置收款。" : null;
 
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
   const [setupToken, setSetupToken] = useState("");
   const tokenInput = useRef<HTMLInputElement | null>(null);
+  const recoveryRef = useRef<HTMLDivElement | null>(null);
+  const recoveryTriggerRef = useRef<HTMLButtonElement | null>(null);
   const [visible, setVisible] = useState(false);
   const [remember, setRemember] = useState(false);
   const [capsLock, setCapsLock] = useState(false);
+  const [recoveryOpen, setRecoveryOpen] = useState(false);
   const [pending, setPending] = useState(false);
   const submitting = useRef(false);
   const [error, setError] = useState<unknown>(null);
@@ -128,7 +125,33 @@ export function LoginForm({ onLogin }: { onLogin: () => void }) {
     setSetupToken("");
     setRemember(false);
     setCapsLock(false);
+    setRecoveryOpen(false);
   }, [title, systemName]);
+
+  useEffect(() => {
+    if (!recoveryOpen) return;
+    function onPointerDown(event: PointerEvent) {
+      if (
+        recoveryRef.current &&
+        event.target instanceof Node &&
+        !recoveryRef.current.contains(event.target)
+      ) {
+        setRecoveryOpen(false);
+      }
+    }
+    function onKeyDown(event: globalThis.KeyboardEvent) {
+      if (event.key === "Escape") {
+        setRecoveryOpen(false);
+        recoveryTriggerRef.current?.focus();
+      }
+    }
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [recoveryOpen]);
 
   useEffect(() => {
     if (initialized === true && location.pathname === "/setup")
@@ -283,7 +306,6 @@ export function LoginForm({ onLogin }: { onLogin: () => void }) {
                       name="setup-token"
                       className="auth-input"
                       type="password"
-                      placeholder="粘贴启动日志中的 setup_token"
                       autoComplete="off"
                       autoCapitalize="none"
                       spellCheck={false}
@@ -338,7 +360,6 @@ export function LoginForm({ onLogin }: { onLogin: () => void }) {
                       name="password"
                       className="h-full"
                       type={visible ? "text" : "password"}
-                      placeholder={setup ? "至少 6 位字符" : "请输入管理员密码"}
                       autoComplete={setup ? "new-password" : "current-password"}
                       required
                       value={password}
@@ -411,7 +432,6 @@ export function LoginForm({ onLogin }: { onLogin: () => void }) {
                       name="password-confirmation"
                       className="auth-input"
                       type={visible ? "text" : "password"}
-                      placeholder="请再次输入密码"
                       autoComplete="new-password"
                       required
                       value={confirmation}
@@ -508,52 +528,55 @@ export function LoginForm({ onLogin }: { onLogin: () => void }) {
             </form>
           )}
         </CardContent>
-        {initialized === true && (
-          <CardFooter className="auth-card-footer">
-            <Collapsible className="flex w-full min-w-0 flex-col gap-2.5">
-              <CollapsibleTrigger
-                render={
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="auth-recovery-trigger h-auto min-h-8 w-full justify-between whitespace-normal px-2 py-1.5"
-                  />
-                }
-              >
-                <span className="inline-flex items-center gap-1.5">
-                  <HelpCircle aria-hidden="true" />
-                  <span>忘记密码？</span>
-                </span>
-                <ChevronDown
-                  aria-hidden="true"
-                  data-icon="inline-end"
-                  className="transition-transform group-data-panel-open/button:rotate-180 motion-reduce:transition-none"
-                />
-              </CollapsibleTrigger>
-              <CollapsibleContent className="w-full min-w-0">
-                <div className="auth-recovery-panel">
-                  <FieldDescription className="wrap-anywhere leading-relaxed">
-                    请联系服务器管理员停服重设，无需删除数据。
-                  </FieldDescription>
-                  <a
-                    data-external-link
-                    className="auth-recovery-link"
-                    href="https://github.com/Mashiro0619/PerPay/blob/main/docs/maintenance.md#忘记管理员密码"
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    查看恢复步骤
-                    <ExternalLink
-                      aria-hidden="true"
-                      className="auth-recovery-link-icon"
-                    />
-                  </a>
-                </div>
-              </CollapsibleContent>
-            </Collapsible>
-          </CardFooter>
-        )}
       </Card>
+      {initialized === true && (
+        <div ref={recoveryRef} className="auth-recovery-anchor">
+          <Collapsible
+            open={recoveryOpen}
+            onOpenChange={setRecoveryOpen}
+            className="flex w-full min-w-0 flex-col items-center"
+          >
+            <CollapsibleTrigger
+              render={
+                <Button
+                  ref={recoveryTriggerRef}
+                  variant="ghost"
+                  size="sm"
+                  className="auth-recovery-trigger h-auto min-h-8 max-w-full whitespace-normal px-3 py-1.5"
+                />
+              }
+            >
+              <HelpCircle aria-hidden="true" data-icon="inline-start" />
+              <span>忘记密码？</span>
+              <ChevronDown
+                aria-hidden="true"
+                data-icon="inline-end"
+                className="auth-recovery-chevron"
+              />
+            </CollapsibleTrigger>
+            <CollapsibleContent className="auth-recovery-popover">
+              <div className="auth-recovery-panel">
+                <FieldDescription className="wrap-anywhere leading-relaxed">
+                  请联系服务器管理员停服重设，无需删除数据。
+                </FieldDescription>
+                <a
+                  data-external-link
+                  className="auth-recovery-link"
+                  href="https://github.com/Mashiro0619/PerPay/blob/main/docs/maintenance.md#忘记管理员密码"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  查看恢复步骤
+                  <ExternalLink
+                    aria-hidden="true"
+                    className="auth-recovery-link-icon"
+                  />
+                </a>
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+        </div>
+      )}
     </AuthShell>
   );
 }
