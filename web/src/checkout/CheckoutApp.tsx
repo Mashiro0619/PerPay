@@ -194,16 +194,16 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
           ? "warning"
           : "neutral";
 
-  const terminalIcon = !canPay && !awaitingStartup ? (
+  const terminalIcon = order && !canPay && !awaitingStartup ? (
     <div className="checkout-state-icon" data-tone={stateTone} aria-hidden="true">
       {state.visual === "CONFIRMED" ? (
-        <CheckCircle2 className="size-5" />
+        <CheckCircle2 />
       ) : state.visual === "EXPIRED" || state.suspended ? (
-        <Clock className="size-5" />
+        <Clock />
       ) : state.visual === "CLOSED" ? (
-        <Ban className="size-5" />
+        <Ban />
       ) : (
-        <AlertCircle className="size-5" />
+        <AlertCircle />
       )}
     </div>
   ) : null;
@@ -531,38 +531,84 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                   {statusBadge}
                 </CardAction>
               </CardHeader>
-            ) : (
-              <CardHeader
-                className={cn(
-                  "checkout-terminal-header flex flex-col items-center gap-2.5 text-center",
-                  order ? "lg:px-8" : "px-6 sm:px-8",
+            ) : awaitingStartup ? (
+              <CardHeader className="checkout-terminal-header flex flex-col gap-2.5 lg:items-center lg:px-8 lg:text-center">
+                <div className="flex w-full min-w-0 items-center justify-between gap-3 lg:justify-center">
+                  <CardTitle className="min-w-0">
+                    <h1
+                      tabIndex={-1}
+                      ref={heading}
+                      className="flex items-center gap-2 text-lg font-semibold tracking-tight outline-none lg:justify-center lg:text-2xl"
+                      data-status-heading
+                    >
+                      <AlipayLogo />
+                      <span>{headingText}</span>
+                    </h1>
+                  </CardTitle>
+                  <CardAction className={cn("shrink-0 self-center", order && "lg:hidden")}>
+                    {statusBadge}
+                  </CardAction>
+                </div>
+                <CardDescription className="text-balance leading-relaxed lg:max-w-sm lg:text-center">
+                  页面正在准备中，请稍候；如长时间未显示二维码，请刷新页面或更换浏览器打开。
+                </CardDescription>
+              </CardHeader>
+            ) : order ? (
+              <CardHeader className="checkout-terminal-header flex flex-col gap-2.5 lg:items-center lg:px-8 lg:text-center">
+                <div className="flex w-full min-w-0 items-center justify-between gap-3 lg:flex-col lg:justify-center lg:gap-2.5">
+                  <div className="flex min-w-0 items-center gap-2.5 lg:flex-col lg:gap-3">
+                    {terminalIcon}
+                    <CardTitle className="min-w-0 lg:w-full">
+                      <h1
+                        tabIndex={-1}
+                        ref={heading}
+                        className="text-lg font-semibold tracking-tight outline-none lg:text-2xl"
+                        data-status-heading
+                      >
+                        {headingText}
+                      </h1>
+                    </CardTitle>
+                  </div>
+                  <CardAction className="shrink-0 self-center lg:hidden">
+                    {statusBadge}
+                  </CardAction>
+                </div>
+                {(state.suspended || copy.detail) && (
+                  <CardDescription className="text-balance leading-relaxed lg:max-w-sm lg:text-center">
+                    {state.suspended
+                      ? "付款时间已到，正在为您确认订单状态。"
+                      : copy.detail}
+                  </CardDescription>
                 )}
-              >
-                {terminalIcon}
+              </CardHeader>
+            ) : (
+              <CardHeader className="checkout-terminal-header flex flex-col items-center gap-3 px-6 text-center sm:px-8">
+                <CardAction className="self-center">
+                  <Badge
+                    className="h-auto min-h-6 max-w-full gap-1.5 px-2.5 py-1 whitespace-normal"
+                    variant={
+                      ["DISPUTED", "NOT_FOUND"].includes(state.visual)
+                        ? "destructive"
+                        : "secondary"
+                    }
+                  >
+                    <AlertCircle aria-hidden="true" />
+                    {copy.badge}
+                  </Badge>
+                </CardAction>
                 <CardTitle className="w-full">
                   <h1
                     tabIndex={-1}
                     ref={heading}
-                    className={cn(
-                      "text-xl font-semibold tracking-tight outline-none lg:text-2xl",
-                      awaitingStartup && "flex items-center justify-center gap-2",
-                    )}
+                    className="text-xl font-semibold tracking-tight outline-none lg:text-2xl"
                     data-status-heading
                   >
-                    {awaitingStartup && <AlipayLogo />}
-                    <span>{headingText}</span>
+                    {headingText}
                   </h1>
                 </CardTitle>
-                <CardAction className={cn("self-center", order && "lg:hidden")}>
-                  {statusBadge}
-                </CardAction>
-                {(awaitingStartup || state.suspended || copy.detail) && (
+                {copy.detail && (
                   <CardDescription className="max-w-sm text-balance text-center leading-relaxed">
-                    {awaitingStartup
-                      ? "页面正在准备中，请稍候；如长时间未显示二维码，请刷新页面或更换浏览器打开。"
-                      : state.suspended
-                        ? "付款时间已到，正在为您确认订单状态。"
-                        : copy.detail}
+                    {copy.detail}
                   </CardDescription>
                 )}
               </CardHeader>
