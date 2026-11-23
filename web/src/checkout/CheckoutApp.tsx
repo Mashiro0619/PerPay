@@ -339,6 +339,13 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
 
   const desktopQueryIsPrimary = canPay && !returnUrl;
   const hasActions = Boolean(canLaunchAlipay || retryAllowed || returnUrl);
+  const terminalNoteText =
+    order && !canPay && !awaitingStartup
+      ? state.suspended
+        ? "付款时间已到，正在为您确认订单状态。"
+        : copy.detail
+      : "";
+  const sideBySideTerminalActions = Boolean(!canPay && returnUrl && retryAllowed);
 
   const actions = hasActions && (
     <CardFooter
@@ -350,103 +357,110 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
       )}
       data-checkout-actions
     >
-      {returnUrl && (
-        <a
-          href={returnUrl}
-          className={buttonVariants({
-            size: "lg",
-            className: "checkout-query-action h-auto min-h-10 w-full py-2",
-          })}
-        >
-          <ArrowLeft aria-hidden="true" data-icon="inline-start" />
-          {state.visual === "CONFIRMED" ? "返回商家" : "返回商家处理"}
-        </a>
-      )}
-      {(canLaunchAlipay || retryAllowed) && (
-        <div
-          className={cn(
-            canLaunchAlipay
-              ? "checkout-primary-actions flex w-full flex-wrap items-stretch gap-2 lg:flex-col"
-              : "flex w-full flex-col items-stretch",
-          )}
-        >
-          {canLaunchAlipay &&
-            (directLaunchUrl && !state.unavailable ? (
-              <a
-                href={directLaunchUrl}
-                className={buttonVariants({
-                  variant: "default",
-                  size: "lg",
-                  className: "checkout-query-action h-auto min-h-10 flex-auto py-2 lg:hidden",
-                })}
-                data-alipay-launch
-                onClick={handleDirectAlipayLaunch}
-              >
-                <ExternalLink aria-hidden="true" data-icon="inline-start" />
-                打开支付宝
-              </a>
-            ) : (
-              <Button
-                variant="default"
-                size="lg"
-                className="checkout-query-action h-auto min-h-10 flex-auto py-2 lg:hidden"
-                disabled={launchingAlipay || state.unavailable}
-                aria-busy={launchingAlipay || undefined}
-                data-alipay-launch
-                onClick={() => void handleDeferredAlipayLaunch()}
-              >
-                {launchingAlipay ? (
-                  <Spinner aria-hidden="true" data-icon="inline-start" />
-                ) : (
+      <div
+        className={cn(
+          "flex w-full flex-col items-stretch gap-2.5",
+          sideBySideTerminalActions && "lg:grid lg:grid-cols-2",
+        )}
+      >
+        {returnUrl && (
+          <a
+            href={returnUrl}
+            className={buttonVariants({
+              size: "lg",
+              className: "checkout-query-action h-auto min-h-10 w-full py-2",
+            })}
+          >
+            <ArrowLeft aria-hidden="true" data-icon="inline-start" />
+            {state.visual === "CONFIRMED" ? "返回商家" : "返回商家处理"}
+          </a>
+        )}
+        {(canLaunchAlipay || retryAllowed) && (
+          <div
+            className={cn(
+              canLaunchAlipay
+                ? "checkout-primary-actions flex w-full flex-wrap items-stretch gap-2 lg:flex-col"
+                : "flex w-full flex-col items-stretch",
+            )}
+          >
+            {canLaunchAlipay &&
+              (directLaunchUrl && !state.unavailable ? (
+                <a
+                  href={directLaunchUrl}
+                  className={buttonVariants({
+                    variant: "default",
+                    size: "lg",
+                    className: "checkout-query-action h-auto min-h-10 flex-auto py-2 lg:hidden",
+                  })}
+                  data-alipay-launch
+                  onClick={handleDirectAlipayLaunch}
+                >
                   <ExternalLink aria-hidden="true" data-icon="inline-start" />
-                )}
-                打开支付宝
-              </Button>
-            ))}
-          {retryAllowed &&
-            (state.initialized ? (
-              <Button
-                variant={!order && !returnUrl ? "default" : "outline"}
-                size="lg"
-                className={cn(
-                  "checkout-query-action h-auto min-h-10 py-2",
-                  desktopQueryIsPrimary && "checkout-desktop-primary",
-                  canLaunchAlipay
-                    ? "min-w-0 flex-[1_1_9.5rem] lg:w-full lg:flex-none"
-                    : "w-full",
-                )}
-                disabled={blocked}
-                aria-busy={state.busy || undefined}
-                onClick={() => {
-                  launchToken.current += 1;
-                  setLaunchingAlipay(false);
-                  setLaunchHint("");
-                  void controller.refresh(true);
-                }}
-              >
-                {state.busy ? (
-                  <Spinner aria-hidden="true" data-icon="inline-start" />
-                ) : (
+                  打开支付宝
+                </a>
+              ) : (
+                <Button
+                  variant="default"
+                  size="lg"
+                  className="checkout-query-action h-auto min-h-10 flex-auto py-2 lg:hidden"
+                  disabled={launchingAlipay || state.unavailable}
+                  aria-busy={launchingAlipay || undefined}
+                  data-alipay-launch
+                  onClick={() => void handleDeferredAlipayLaunch()}
+                >
+                  {launchingAlipay ? (
+                    <Spinner aria-hidden="true" data-icon="inline-start" />
+                  ) : (
+                    <ExternalLink aria-hidden="true" data-icon="inline-start" />
+                  )}
+                  打开支付宝
+                </Button>
+              ))}
+            {retryAllowed &&
+              (state.initialized ? (
+                <Button
+                  variant={!order && !returnUrl ? "default" : "outline"}
+                  size="lg"
+                  className={cn(
+                    "checkout-query-action h-auto min-h-10 py-2",
+                    desktopQueryIsPrimary && "checkout-desktop-primary",
+                    canLaunchAlipay
+                      ? "min-w-0 flex-[1_1_9.5rem] lg:w-full lg:flex-none"
+                      : "w-full",
+                  )}
+                  disabled={blocked}
+                  aria-busy={state.busy || undefined}
+                  onClick={() => {
+                    launchToken.current += 1;
+                    setLaunchingAlipay(false);
+                    setLaunchHint("");
+                    void controller.refresh(true);
+                  }}
+                >
+                  {state.busy ? (
+                    <Spinner aria-hidden="true" data-icon="inline-start" />
+                  ) : (
+                    <RefreshCw aria-hidden="true" data-icon="inline-start" />
+                  )}
+                  {!order ? "重新获取订单" : canPay ? "我已付款，查询状态" : "刷新付款状态"}
+                </Button>
+              ) : (
+                <a
+                  href={reloadPath}
+                  className={buttonVariants({
+                    variant: "outline",
+                    size: "lg",
+                    className: "checkout-query-action h-auto min-h-10 w-full py-2",
+                  })}
+                  data-checkout-reload
+                >
                   <RefreshCw aria-hidden="true" data-icon="inline-start" />
-                )}
-                {!order ? "重新获取订单" : canPay ? "我已付款，查询状态" : "刷新付款状态"}
-              </Button>
-            ) : (
-              <a
-                href={reloadPath}
-                className={buttonVariants({
-                  variant: "outline",
-                  size: "lg",
-                  className: "checkout-query-action h-auto min-h-10 w-full py-2",
-                })}
-                data-checkout-reload
-              >
-                <RefreshCw aria-hidden="true" data-icon="inline-start" />
-                刷新页面
-              </a>
-            ))}
-        </div>
-      )}
+                  刷新页面
+                </a>
+              ))}
+          </div>
+        )}
+      </div>
       <p
         className={cn(
           "text-center text-sm text-muted-foreground lg:text-left",
@@ -497,7 +511,10 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
           className={cn(
             "checkout-card",
             order
-              ? "pb-0 lg:grid lg:grid-cols-[minmax(0,1.15fr)_auto_minmax(0,0.85fr)] lg:grid-rows-[1fr_auto] lg:gap-0 lg:py-0"
+              ? cn(
+                  "pb-0 lg:grid lg:grid-cols-[minmax(0,1.15fr)_auto_minmax(0,0.85fr)] lg:grid-rows-[1fr_auto] lg:gap-0 lg:py-0",
+                  !canPay && !awaitingStartup && "lg:min-h-[19.5rem]",
+                )
               : "gap-5 py-6 sm:py-8",
           )}
           data-checkout-layout
@@ -573,13 +590,6 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                     {statusBadge}
                   </CardAction>
                 </div>
-                {(state.suspended || copy.detail) && (
-                  <CardDescription className="text-balance leading-relaxed lg:max-w-sm lg:text-center">
-                    {state.suspended
-                      ? "付款时间已到，正在为您确认订单状态。"
-                      : copy.detail}
-                  </CardDescription>
-                )}
               </CardHeader>
             ) : (
               <CardHeader className="checkout-terminal-header flex flex-col items-center gap-3 px-6 text-center sm:px-8">
@@ -779,6 +789,16 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
               </CardContent>
             )}
           </div>
+          {terminalNoteText && (
+            <div
+              className="px-4 text-center text-sm leading-relaxed text-muted-foreground lg:col-start-3 lg:row-start-2 lg:self-end lg:px-8 lg:pt-0 lg:pb-8 lg:text-left"
+              data-checkout-terminal-note
+            >
+              <div className="lg:border-t lg:border-border/70 lg:pt-4">
+                <p className="text-balance">{terminalNoteText}</p>
+              </div>
+            </div>
+          )}
           {actions}
           {order && (
             <>
@@ -788,7 +808,12 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
               <Separator orientation="vertical" className="hidden lg:col-start-2 lg:row-start-1 lg:row-span-2 lg:block" />
               <section
                 aria-label="订单信息"
-                className="checkout-summary flex min-w-0 flex-col gap-5 pb-(--card-spacing) lg:col-start-3 lg:row-start-1 lg:row-span-2 lg:p-8"
+                className={cn(
+                  "checkout-summary flex min-w-0 flex-col gap-5 pb-(--card-spacing) lg:col-start-3 lg:row-start-1",
+                  terminalNoteText
+                    ? "lg:px-8 lg:pt-8 lg:pb-4"
+                    : "lg:row-span-2 lg:p-8",
+                )}
                 data-checkout-summary
               >
                 <CardHeader className="hidden min-w-0 flex-wrap items-center justify-between gap-2 lg:flex lg:px-0">
