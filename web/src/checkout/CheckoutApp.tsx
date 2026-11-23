@@ -177,8 +177,10 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
   const desktopWidth = twoColumn
     ? showProductName === false
       ? "lg:max-w-3xl lg:px-6"
-      : "lg:max-w-[54rem] lg:px-6"
-    : "max-w-[29rem]";
+      : "lg:max-w-[54rem] xl:max-w-[58rem] lg:px-6"
+    : order
+      ? "max-w-[44rem] sm:px-6"
+      : "max-w-[36rem] sm:px-6";
   const reloadPath = initial.apiUrl.startsWith("/api/public/v1/checkouts/")
     ? "/checkout/" + initial.apiUrl.slice("/api/public/v1/checkouts/".length)
     : "";
@@ -346,8 +348,8 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
       className={cn(
         "checkout-actions flex flex-col items-stretch gap-2.5 border-t-0 bg-transparent",
         twoColumn
-          ? "pt-0 pb-1 lg:col-start-1 lg:row-start-2 lg:rounded-none lg:px-8 lg:pt-0 lg:pb-7"
-          : "px-6 pt-0 pb-6",
+          ? "pt-0 pb-1 lg:col-start-1 lg:row-start-2 lg:rounded-none lg:px-8 lg:pt-0 lg:pb-8"
+          : "px-6 pt-0 pb-6 sm:flex-row-reverse sm:items-center sm:justify-between sm:gap-4 sm:px-8 sm:pt-0 sm:pb-8",
       )}
       data-checkout-actions
     >
@@ -356,7 +358,10 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
           href={returnUrl}
           className={buttonVariants({
             size: "lg",
-            className: "checkout-query-action h-auto min-h-10 w-full py-2",
+            className: cn(
+              "checkout-query-action h-auto min-h-10 py-2",
+              twoColumn ? "w-full" : "w-full sm:w-auto sm:min-w-[9.5rem] sm:px-5",
+            ),
           })}
         >
           <ArrowLeft aria-hidden="true" data-icon="inline-start" />
@@ -368,7 +373,9 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
           className={cn(
             canLaunchAlipay
               ? "checkout-primary-actions flex w-full flex-wrap items-stretch gap-2 lg:flex-col"
-              : "flex w-full flex-col items-stretch",
+              : twoColumn
+                ? "flex w-full flex-col items-stretch"
+                : "flex w-full flex-col items-stretch sm:w-auto sm:shrink-0",
           )}
         >
           {canLaunchAlipay &&
@@ -414,7 +421,9 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                   desktopQueryIsPrimary && "checkout-desktop-primary",
                   canLaunchAlipay
                     ? "min-w-0 flex-[1_1_9.5rem] lg:w-full lg:flex-none"
-                    : "w-full",
+                    : twoColumn
+                      ? "w-full"
+                      : "w-full sm:w-auto sm:min-w-[9.5rem] sm:px-5",
                 )}
                 disabled={blocked}
                 aria-busy={state.busy || undefined}
@@ -450,7 +459,7 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
       )}
       <p
         className={cn(
-          "text-center text-sm text-muted-foreground lg:text-left",
+          "text-center text-sm text-muted-foreground sm:text-left",
           !(launchHint || state.feedback) && "sr-only",
         )}
         role="status"
@@ -468,10 +477,7 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
       data-checkout-page
     >
       <header
-        className={cn(
-          "checkout-topbar mx-auto flex min-w-0 w-full max-w-lg items-center justify-between gap-4 self-start px-4 pt-4 pb-2 sm:pt-6 sm:pb-3",
-          desktopWidth,
-        )}
+        className="checkout-topbar flex min-w-0 w-full items-center justify-between gap-4 self-start px-4 pt-4 pb-2 sm:px-6 sm:pt-5 sm:pb-2 lg:px-8 lg:pt-6"
       >
         <span className="checkout-brand">
           <span className="checkout-brand-mark" aria-hidden="true">
@@ -511,8 +517,10 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
             className={cn(
               "flex min-w-0 flex-col",
               twoColumn
-                ? "gap-3 lg:col-start-1 lg:row-start-1 lg:gap-4 lg:pt-7 lg:pb-5"
-                : "gap-0",
+                ? "gap-3 lg:col-start-1 lg:row-start-1 lg:gap-4 lg:pt-8 lg:pb-5"
+                : order
+                  ? "p-6 sm:grid sm:grid-cols-[minmax(0,1fr)_12.5rem] sm:items-center sm:gap-6 sm:p-8"
+                  : cn("px-6 pt-6 sm:px-8 sm:pt-8", hasActions ? "pb-5 sm:pb-6" : "pb-6 sm:pb-8"),
               twoColumn && !canPay && "lg:justify-center",
             )}
             data-checkout-payment
@@ -555,15 +563,15 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                 </CardDescription>
               </CardHeader>
             ) : (
-              <CardHeader
-                className={cn(
-                  "checkout-terminal-header flex flex-col gap-3 px-6 pt-6",
-                  order || hasActions ? "pb-0" : "pb-6",
-                )}
-              >
-                <div className="flex w-full min-w-0 items-center justify-between gap-3">
-                  <div className="flex min-w-0 items-center gap-3">
-                    {terminalIcon}
+              <CardHeader className="checkout-terminal-header block p-0">
+                <div className="grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3.5 gap-y-2 sm:gap-y-1.5">
+                  {terminalIcon}
+                  <div
+                    className={cn(
+                      "flex min-w-0 flex-wrap items-center justify-between gap-2",
+                      order && "sm:justify-start sm:gap-2.5",
+                    )}
+                  >
                     <CardTitle className="min-w-0">
                       <h1
                         tabIndex={-1}
@@ -574,25 +582,25 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                         {headingText}
                       </h1>
                     </CardTitle>
+                    <CardAction className="shrink-0 self-center">
+                      {statusBadge}
+                    </CardAction>
                   </div>
-                  <CardAction className="shrink-0 self-center">
-                    {statusBadge}
-                  </CardAction>
+                  {(state.suspended || copy.detail) && (
+                    <CardDescription className="col-span-2 text-balance leading-relaxed sm:col-span-1 sm:col-start-2">
+                      {state.suspended
+                        ? "付款时间已到，正在为您确认订单状态。"
+                        : copy.detail}
+                    </CardDescription>
+                  )}
                 </div>
-                {(state.suspended || copy.detail) && (
-                  <CardDescription className="text-balance leading-relaxed">
-                    {state.suspended
-                      ? "付款时间已到，正在为您确认订单状态。"
-                      : copy.detail}
-                  </CardDescription>
-                )}
               </CardHeader>
             )}
             {order && (
               <CardContent
                 className={cn(
                   "flex min-w-0 flex-col",
-                  twoColumn ? "gap-3 lg:px-8" : "px-6 pt-5 pb-5",
+                  twoColumn ? "gap-3 lg:px-8" : "px-0 pt-5 pb-0 sm:pt-0",
                 )}
               >
                 <div className={twoColumn ? "checkout-amount-block" : "w-full min-w-0"}>
@@ -601,12 +609,15 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                       "flex w-full min-w-0 flex-wrap items-baseline gap-2",
                       twoColumn
                         ? "justify-center text-center"
-                        : "justify-between gap-x-3 gap-y-1",
+                        : "justify-between gap-x-3 gap-y-1 sm:flex-col sm:items-end sm:justify-center sm:gap-0.5 sm:text-right",
                     )}
                     data-checkout-amount
                   >
                     <span
-                      className="shrink-0 text-sm text-muted-foreground"
+                      className={cn(
+                        "shrink-0 text-muted-foreground",
+                        twoColumn ? "text-sm" : "text-sm sm:text-xs",
+                      )}
                       data-amount-label
                     >
                       {amountLabel}
@@ -780,7 +791,7 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                   <Separator orientation="vertical" className="hidden lg:col-start-2 lg:row-start-1 lg:row-span-2 lg:block" />
                 </>
               ) : (
-                <div className="px-6">
+                <div className="px-6 sm:px-8">
                   <Separator />
                 </div>
               )}
@@ -789,8 +800,11 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                 className={cn(
                   "checkout-summary flex min-w-0 flex-col",
                   twoColumn
-                    ? "gap-5 pb-(--card-spacing) lg:col-start-3 lg:row-start-1 lg:row-span-2 lg:px-7 lg:py-7"
-                    : cn("gap-4 px-6 pt-5", hasActions ? "pb-5" : "pb-6"),
+                    ? "gap-5 pb-(--card-spacing) lg:col-start-3 lg:row-start-1 lg:row-span-2 lg:p-8"
+                    : cn(
+                        "gap-4 px-6 pt-5 sm:px-8 sm:pt-6",
+                        hasActions ? "pb-5 sm:pb-6" : "pb-6 sm:pb-8",
+                      ),
                 )}
                 data-checkout-summary
               >
@@ -808,7 +822,16 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                     twoColumn ? "lg:px-0" : "px-0",
                   )}
                 >
-                  <dl className="flex min-w-0 flex-col gap-3.5 text-sm lg:gap-4">
+                  <dl
+                    className={cn(
+                      "min-w-0 text-sm",
+                      twoColumn
+                        ? "flex flex-col gap-3.5 lg:gap-4"
+                        : showProductName !== false
+                          ? "grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6"
+                          : "flex flex-col gap-3.5",
+                    )}
+                  >
                     {showProductName !== false && (
                       <div className="flex flex-col gap-1">
                         <dt className="text-xs text-muted-foreground">商品</dt>

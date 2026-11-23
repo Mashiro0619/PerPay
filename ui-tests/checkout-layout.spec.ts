@@ -11,7 +11,7 @@ test("checkout keeps one query before order information on phones and scales the
       return { card: rect("[data-checkout-layout]"), amount: rect("[data-checkout-amount]"), qr: rect("[data-qr-image]"),
         actions: rect("[data-checkout-actions]"), summary: rect("[data-checkout-summary]") };
     });
-    expect(bounds.qr.width).toBe(width! >= 1280 ? 240 : width! >= 1024 ? 224 : Math.max(168, Math.min(height! - 368, 224)));
+    expect(bounds.qr.width).toBe(width! >= 1280 ? 256 : width! >= 1024 ? 224 : Math.max(168, Math.min(height! - 368, 224)));
     const alipayLaunch = page.locator("[data-alipay-launch]");
     if (width! < 1024) {
       await expect(alipayLaunch).toBeVisible();
@@ -21,7 +21,7 @@ test("checkout keeps one query before order information on phones and scales the
     } else {
       await expect(alipayLaunch).toBeHidden();
       expect(bounds.summary.x).toBeGreaterThan(bounds.qr.x);
-      expect(bounds.card.width).toBe(Math.min(864, width!) - 48);
+      expect(bounds.card.width).toBe(Math.min(width! >= 1280 ? 928 : 864, width!) - 48);
       expect(Math.abs(bounds.actions.bottom - bounds.card.bottom)).toBeLessThanOrEqual(1);
       expect(bounds.summary.y).toBeGreaterThanOrEqual(bounds.card.y - 1);
       expect(bounds.summary.bottom).toBeLessThanOrEqual(bounds.card.bottom + 1);

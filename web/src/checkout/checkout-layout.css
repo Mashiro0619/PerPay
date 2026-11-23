@@ -197,7 +197,7 @@
 }
 
 @media (min-width: 1280px) {
-  [data-qr-image] { width: 240px; height: auto; }
+  [data-qr-image] { width: 256px; height: auto; }
 }
 
 .checkout-query-action {
@@ -280,7 +280,9 @@
 }
 
 @media (pointer: coarse) {
-  [data-checkout-summary] { padding-bottom: 6px; }
+  [data-checkout-layout]:not(.checkout-card-terminal) [data-checkout-summary] {
+    padding-bottom: calc(var(--card-spacing, 1rem) + 6px);
+  }
 }
 
 @media (max-width: 1023px) {
