@@ -99,7 +99,7 @@
 @media (hover: hover) {
   .settings-rail-item:hover:not([aria-selected="true"]) {
     color: var(--foreground);
-    background: color-mix(in oklch, var(--muted) 55%, transparent);
+    background: color-mix(in oklab, var(--muted) 55%, transparent);
   }
 }
 .settings-rail-item svg {
@@ -152,7 +152,7 @@
   gap: 0.75rem 1.25rem;
   border-radius: var(--radius-lg);
   border: 1px solid var(--console-hairline, var(--border));
-  background: color-mix(in oklch, var(--muted) 18%, var(--card));
+  background: color-mix(in oklab, var(--muted) 18%, var(--card));
   padding: 0.875rem 1rem;
 }
 .settings-metric-grid {
@@ -178,7 +178,7 @@
   gap: 0.25rem;
   border-radius: var(--radius-lg);
   border: 1px solid var(--console-hairline, var(--border));
-  background: color-mix(in oklch, var(--muted) 18%, var(--card));
+  background: color-mix(in oklab, var(--muted) 18%, var(--card));
   padding: 0.75rem 0.875rem;
 }
 .settings-metric-label {
@@ -218,7 +218,7 @@
 }
 @media (hover: hover) {
   .settings-link-row:hover {
-    background: color-mix(in oklch, var(--muted) 55%, var(--card));
+    background: color-mix(in oklab, var(--muted) 55%, var(--card));
   }
 }
 .settings-link-row:focus-visible {
@@ -235,7 +235,7 @@
   justify-content: center;
   border-radius: var(--radius-md);
   border: 1px solid var(--console-hairline, var(--border));
-  background: color-mix(in oklch, var(--muted) 35%, var(--card));
+  background: color-mix(in oklab, var(--muted) 35%, var(--card));
   color: var(--muted-foreground);
 }
 .settings-link-copy {
@@ -258,7 +258,7 @@
 }
 .settings-save-footer {
   border-top: 1px solid var(--console-hairline, var(--border));
-  background: color-mix(in oklch, var(--muted) 38%, var(--card));
+  background: color-mix(in oklab, var(--muted) 38%, var(--card));
   padding-block: 0.625rem;
 }
 .settings-dirty-pill {
@@ -284,7 +284,7 @@
   gap: 0.25rem;
   border-radius: var(--radius-lg);
   border: 1px solid var(--console-hairline, var(--border));
-  background: color-mix(in oklch, var(--muted) 18%, var(--card));
+  background: color-mix(in oklab, var(--muted) 18%, var(--card));
   padding: 0.625rem 0.875rem;
 }
 .settings-key-list {
@@ -294,7 +294,7 @@
   overflow: hidden;
   border-radius: var(--radius-lg);
   border: 1px solid var(--console-hairline, var(--border));
-  background: color-mix(in oklch, var(--muted) 14%, var(--card));
+  background: color-mix(in oklab, var(--muted) 14%, var(--card));
 }
 .settings-key-row {
   display: flex;
@@ -307,8 +307,8 @@
   border-top: 1px solid var(--console-hairline, var(--border));
 }
 .settings-danger-card {
-  --tw-ring-color: color-mix(in oklch, var(--destructive) 28%, var(--border));
-  background: color-mix(in oklch, var(--destructive) 3%, var(--card));
+  --tw-ring-color: color-mix(in oklab, var(--destructive) 28%, var(--border));
+  background: color-mix(in oklab, var(--destructive) 3%, var(--card));
 }
 .settings-danger-card > [data-slot="card-header"] {
   align-items: center;
@@ -804,7 +804,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   overflow: hidden;
   border-radius: var(--radius-lg);
   border: 1px solid var(--console-hairline, var(--border));
-  background: color-mix(in oklch, var(--muted) 18%, var(--card));
+  background: color-mix(in oklab, var(--muted) 18%, var(--card));
 }
 .site-overview-grid {
   display: grid;
@@ -837,7 +837,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   .site-overview-card {
     border-radius: var(--radius-lg);
     border: 1px solid var(--console-hairline, var(--border));
-    background: color-mix(in oklch, var(--muted) 18%, var(--card));
+    background: color-mix(in oklab, var(--muted) 18%, var(--card));
   }
   .site-overview-card-surface {
     padding: 0.6875rem 0.875rem;
@@ -858,13 +858,13 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 }
 @media (hover: hover) {
   .site-overview-card:hover {
-    background: color-mix(in oklch, var(--foreground) 4.5%, var(--card));
+    background: color-mix(in oklab, var(--foreground) 4.5%, var(--card));
   }
 }
 .site-overview-card:focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: -2px;
-  background: color-mix(in oklch, var(--foreground) 4.5%, var(--card));
+  background: color-mix(in oklab, var(--foreground) 4.5%, var(--card));
 }
 .site-overview-card-surface {
   container-name: site-overview-card;
@@ -892,7 +892,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   font-weight: 500;
   font-variant-numeric: tabular-nums;
   line-height: 1.3;
-  color: color-mix(in oklch, var(--foreground) 58%, var(--card));
+  color: color-mix(in oklab, var(--foreground) 58%, var(--card));
 }
 .site-overview-card[data-top-rank="true"] .site-overview-rank {
   font-weight: 600;
@@ -925,7 +925,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   padding-inline: 0.375rem;
   font-size: 0.625rem;
   line-height: 1;
-  color: color-mix(in oklch, var(--foreground) 68%, var(--card));
+  color: color-mix(in oklab, var(--foreground) 68%, var(--card));
   border-color: var(--console-hairline, var(--border));
 }
 .site-overview-row-amount {
@@ -971,7 +971,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   min-width: 0;
   font-size: 0.75rem;
   line-height: 1.3;
-  color: color-mix(in oklch, var(--foreground) 68%, var(--card));
+  color: color-mix(in oklab, var(--foreground) 68%, var(--card));
   font-variant-numeric: tabular-nums;
 }
 .site-overview-work-indicator {
@@ -996,12 +996,12 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   background: currentColor;
 }
 .site-overview-card[data-zero="true"] .site-overview-card-amount {
-  color: color-mix(in oklch, var(--foreground) 68%, var(--card));
+  color: color-mix(in oklab, var(--foreground) 68%, var(--card));
   font-weight: 500;
 }
 .site-overview-card[data-accepting-orders="false"] .site-overview-card-amount,
 .site-overview-card[data-accepting-orders="false"] .site-overview-card-title {
-  color: color-mix(in oklch, var(--foreground) 68%, var(--card));
+  color: color-mix(in oklab, var(--foreground) 68%, var(--card));
 }
 .site-overview-card-title {
   display: -webkit-box;
@@ -1042,7 +1042,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   margin-top: 0.125rem;
   overflow: hidden;
   border-radius: 999px;
-  color: color-mix(in oklch, var(--chart-1) 78%, var(--card));
+  color: color-mix(in oklab, var(--chart-1) 78%, var(--card));
   transition: color var(--console-motion-fast, 140ms) var(--console-ease, ease);
 }
 @media (hover: hover) {
@@ -1051,13 +1051,13 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   }
 }
 .site-overview-card[data-accepting-orders="false"] .site-overview-amount-bar {
-  color: color-mix(in oklch, var(--muted-foreground) 55%, transparent);
+  color: color-mix(in oklab, var(--muted-foreground) 55%, transparent);
 }
 .site-overview-amount-track {
-  fill: color-mix(in oklch, var(--foreground) 6%, transparent);
+  fill: color-mix(in oklab, var(--foreground) 6%, transparent);
 }
 .site-overview-card[data-zero="true"] .site-overview-amount-track {
-  fill: color-mix(in oklch, var(--foreground) 4%, transparent);
+  fill: color-mix(in oklab, var(--foreground) 4%, transparent);
 }
 .site-overview-mobile-toggle { min-width: 0; }
 .site-overview-footer {
@@ -1219,7 +1219,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   overflow: hidden;
   border-radius: var(--radius-lg);
   border: 1px solid var(--console-hairline, var(--border));
-  background: color-mix(in oklch, var(--muted) 18%, var(--card));
+  background: color-mix(in oklab, var(--muted) 18%, var(--card));
 }
 .settings-display-section-row {
   display: flex;
@@ -1235,7 +1235,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 }
 @media (hover: hover) {
   .settings-display-section-row:hover {
-    background: color-mix(in oklch, var(--foreground) 3.5%, var(--card));
+    background: color-mix(in oklab, var(--foreground) 3.5%, var(--card));
   }
 }
 .settings-display-section-copy {
@@ -1381,7 +1381,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   }
   @media (hover: hover) {
     [data-overview-layout] .overview-work-item:hover {
-      border-color: color-mix(in oklch, var(--foreground) 16%, var(--border));
+      border-color: color-mix(in oklab, var(--foreground) 16%, var(--border));
     }
   }
 }
@@ -1735,7 +1735,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   font-size: 0.75rem;
   font-weight: 500;
   color: var(--muted-foreground);
-  background: color-mix(in oklch, var(--muted) 30%, transparent);
+  background: color-mix(in oklab, var(--muted) 30%, transparent);
 }
 .runtime-status-table :is(th, td):first-child { padding-left: 1rem; }
 .runtime-status-table :is(th, td):last-child { padding-right: 1rem; }
@@ -1775,7 +1775,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   padding: 0.75rem 0.875rem;
   border-radius: var(--radius-lg);
   border: 1px solid var(--border);
-  background: color-mix(in oklch, var(--muted) 42%, var(--card));
+  background: color-mix(in oklab, var(--muted) 42%, var(--card));
   font-size: 0.8125rem;
   line-height: 1.5;
   overflow-wrap: anywhere;
@@ -1821,7 +1821,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   padding: 0.75rem;
   border-radius: var(--radius-lg);
   border: 1px solid var(--border);
-  background: color-mix(in oklch, var(--muted) 40%, var(--card));
+  background: color-mix(in oklab, var(--muted) 40%, var(--card));
 }
 .system-update-status {
   min-width: 0;
@@ -2036,9 +2036,9 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   --console-motion-fast: var(--motion-fast);
   --console-motion: var(--motion-base);
   --console-ease: var(--motion-ease-enter);
-  --console-page: color-mix(in oklch, var(--background) 96%, var(--muted));
-  --console-hairline: color-mix(in oklch, var(--foreground) 9%, transparent);
-  --console-shadow: 0 1px 2px color-mix(in oklch, var(--foreground) 3%, transparent);
+  --console-page: color-mix(in oklab, var(--background) 96%, var(--muted));
+  --console-hairline: color-mix(in oklab, var(--foreground) 9%, transparent);
+  --console-shadow: 0 1px 2px color-mix(in oklab, var(--foreground) 3%, transparent);
   --console-stat-size: 1.75rem;
   --console-stat-tracking: -0.035em;
 }
@@ -2080,7 +2080,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-md);
-  background: color-mix(in oklch, var(--muted) 75%, transparent);
+  background: color-mix(in oklab, var(--muted) 75%, transparent);
   color: var(--muted-foreground);
 }
 [data-admin-console] .overview-kpi-card[data-interactive="true"] {
@@ -2088,8 +2088,8 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 }
 @media (hover: hover) {
   [data-admin-console] .overview-kpi-card[data-interactive="true"]:hover {
-    --tw-ring-color: color-mix(in oklch, var(--foreground) 18%, transparent);
-    box-shadow: var(--tw-ring-offset-shadow, 0 0 transparent), var(--tw-ring-shadow, 0 0 transparent), 0 3px 10px color-mix(in oklch, var(--foreground) 5%, transparent);
+    --tw-ring-color: color-mix(in oklab, var(--foreground) 18%, transparent);
+    box-shadow: var(--tw-ring-offset-shadow, 0 0 transparent), var(--tw-ring-shadow, 0 0 transparent), 0 3px 10px color-mix(in oklab, var(--foreground) 5%, transparent);
   }
 }
 [data-admin-console] .trend-card,
@@ -2099,7 +2099,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   padding: 0.75rem 1rem;
   border-radius: var(--radius-lg);
   border: 1px solid var(--console-hairline);
-  background: color-mix(in oklch, var(--muted) 34%, var(--card));
+  background: color-mix(in oklab, var(--muted) 34%, var(--card));
   align-items: start;
 }
 @container card (min-width: 28.001rem) {
@@ -2230,7 +2230,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   padding: 0.625rem;
   border-radius: var(--radius-lg);
   border: 1px solid var(--console-hairline, var(--border));
-  background: color-mix(in oklch, var(--muted) 22%, var(--card));
+  background: color-mix(in oklab, var(--muted) 22%, var(--card));
 }
 .daily-cal-grid-wrap {
   display: flex;
@@ -2280,11 +2280,11 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
       &::-webkit-scrollbar-thumb {
         border: 1.5px solid transparent;
         border-radius: 999px;
-        background: color-mix(in oklch, var(--muted-foreground) 24%, transparent);
+        background: color-mix(in oklab, var(--muted-foreground) 24%, transparent);
         background-clip: padding-box;
       }
       &:is(:hover, :focus-within)::-webkit-scrollbar-thumb {
-        background: color-mix(in oklch, var(--muted-foreground) 48%, transparent);
+        background: color-mix(in oklab, var(--muted-foreground) 48%, transparent);
         background-clip: padding-box;
       }
     }
@@ -2293,7 +2293,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 .daily-cal-pad {
   min-height: 3.125rem;
   border-radius: var(--radius-md);
-  border: 1px dashed color-mix(in oklch, var(--foreground) 7%, transparent);
+  border: 1px dashed color-mix(in oklab, var(--foreground) 7%, transparent);
   background: transparent;
 }
 .daily-cal-slot {
@@ -2325,19 +2325,19 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
     box-shadow var(--console-motion-fast, 140ms) var(--console-ease, ease);
 }
 .daily-cal-cell[data-cal-level="0"] { background: var(--card); }
-.daily-cal-cell[data-cal-level="1"] { background: color-mix(in oklch, var(--foreground) 3.5%, var(--card)); }
-.daily-cal-cell[data-cal-level="2"] { background: color-mix(in oklch, var(--foreground) 6.5%, var(--card)); }
-.daily-cal-cell[data-cal-level="3"] { background: color-mix(in oklch, var(--foreground) 10%, var(--card)); }
-.daily-cal-cell[data-cal-level="4"] { background: color-mix(in oklch, var(--foreground) 13.5%, var(--card)); }
+.daily-cal-cell[data-cal-level="1"] { background: color-mix(in oklab, var(--foreground) 3.5%, var(--card)); }
+.daily-cal-cell[data-cal-level="2"] { background: color-mix(in oklab, var(--foreground) 6.5%, var(--card)); }
+.daily-cal-cell[data-cal-level="3"] { background: color-mix(in oklab, var(--foreground) 10%, var(--card)); }
+.daily-cal-cell[data-cal-level="4"] { background: color-mix(in oklab, var(--foreground) 13.5%, var(--card)); }
 @media (hover: hover) {
   .daily-cal-cell:hover {
-    border-color: color-mix(in oklch, var(--foreground) 28%, transparent);
+    border-color: color-mix(in oklab, var(--foreground) 28%, transparent);
   }
-  .daily-cal-cell[data-cal-level="0"]:hover { background: color-mix(in oklch, var(--foreground) 2.5%, var(--card)); }
-  .daily-cal-cell[data-cal-level="1"]:hover { background: color-mix(in oklch, var(--foreground) 5.5%, var(--card)); }
-  .daily-cal-cell[data-cal-level="2"]:hover { background: color-mix(in oklch, var(--foreground) 8.5%, var(--card)); }
-  .daily-cal-cell[data-cal-level="3"]:hover { background: color-mix(in oklch, var(--foreground) 12%, var(--card)); }
-  .daily-cal-cell[data-cal-level="4"]:hover { background: color-mix(in oklch, var(--foreground) 15%, var(--card)); }
+  .daily-cal-cell[data-cal-level="0"]:hover { background: color-mix(in oklab, var(--foreground) 2.5%, var(--card)); }
+  .daily-cal-cell[data-cal-level="1"]:hover { background: color-mix(in oklab, var(--foreground) 5.5%, var(--card)); }
+  .daily-cal-cell[data-cal-level="2"]:hover { background: color-mix(in oklab, var(--foreground) 8.5%, var(--card)); }
+  .daily-cal-cell[data-cal-level="3"]:hover { background: color-mix(in oklab, var(--foreground) 12%, var(--card)); }
+  .daily-cal-cell[data-cal-level="4"]:hover { background: color-mix(in oklab, var(--foreground) 15%, var(--card)); }
 }
 .daily-cal-cell[data-selected="true"] {
   border-color: var(--foreground);
@@ -2368,7 +2368,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   font-size: 0.75rem;
   line-height: 1.2;
   font-weight: 500;
-  color: color-mix(in oklch, var(--foreground) 72%, var(--card));
+  color: color-mix(in oklab, var(--foreground) 72%, var(--card));
 }
 .daily-cal-date-short { display: none; }
 .daily-cal-cell[data-daily-today="true"] .daily-cal-date time {
@@ -2386,7 +2386,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   color: var(--foreground);
 }
 .daily-cal-mark-low {
-  color: color-mix(in oklch, var(--foreground) 68%, var(--card));
+  color: color-mix(in oklab, var(--foreground) 68%, var(--card));
 }
 .daily-cal-mark-icon {
   display: block;
@@ -2414,7 +2414,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 }
 .daily-cal-cell[data-daily-zero="true"] .daily-cal-amount {
   font-weight: 400;
-  color: color-mix(in oklch, var(--foreground) 68%, var(--card));
+  color: color-mix(in oklab, var(--foreground) 68%, var(--card));
 }
 .daily-cal-cell-foot {
   display: flex;
@@ -2430,7 +2430,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   white-space: nowrap;
   font-size: 0.6875rem;
   line-height: 1.15;
-  color: color-mix(in oklch, var(--foreground) 72%, var(--card));
+  color: color-mix(in oklab, var(--foreground) 72%, var(--card));
 }
 .daily-cal-delta {
   flex: none;
@@ -2438,7 +2438,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   font-size: 0.625rem;
   line-height: 1.15;
   font-variant-numeric: tabular-nums;
-  color: color-mix(in oklch, var(--foreground) 68%, var(--card));
+  color: color-mix(in oklab, var(--foreground) 68%, var(--card));
 }
 .daily-cal-delta[data-delta-sign="up"] {
   font-weight: 500;
@@ -2451,7 +2451,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   overflow: hidden;
   border-radius: var(--radius-lg);
   border: 1px solid var(--console-hairline, var(--border));
-  background: color-mix(in oklch, var(--muted) 22%, var(--card));
+  background: color-mix(in oklab, var(--muted) 22%, var(--card));
 }
 .daily-cal-detail-header {
   display: flex;
@@ -2462,7 +2462,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   gap: 0.5rem 0.75rem;
   padding: 0.625rem 0.875rem;
   border-bottom: 1px solid var(--console-hairline, var(--border));
-  background: color-mix(in oklch, var(--muted) 34%, var(--card));
+  background: color-mix(in oklab, var(--muted) 34%, var(--card));
 }
 .daily-cal-detail-identity {
   display: flex;
@@ -2479,10 +2479,10 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   color: var(--foreground);
 }
 .daily-cal-detail-weekday {
-  color: color-mix(in oklch, var(--foreground) 70%, var(--card));
+  color: color-mix(in oklab, var(--foreground) 70%, var(--card));
 }
 .daily-cal-delta-badge {
-  color: color-mix(in oklch, var(--foreground) 72%, var(--card));
+  color: color-mix(in oklab, var(--foreground) 72%, var(--card));
   font-weight: 400;
 }
 .daily-cal-detail-actions {
@@ -2518,7 +2518,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   border-left: 1px solid var(--console-hairline, var(--border));
 }
 .daily-cal-detail-cell dt {
-  color: color-mix(in oklch, var(--foreground) 68%, var(--card));
+  color: color-mix(in oklab, var(--foreground) 68%, var(--card));
   font-size: 0.75rem;
   line-height: 1.35;
   white-space: nowrap;
@@ -2547,13 +2547,13 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   font-weight: 600;
 }
 .daily-cal-warn-action {
-  border-color: color-mix(in oklch, var(--warning-foreground) 24%, transparent);
+  border-color: color-mix(in oklab, var(--warning-foreground) 24%, transparent);
   background: var(--warning);
   color: var(--warning-foreground);
 }
 @media (hover: hover) {
   .daily-cal-warn-action:hover {
-    background: color-mix(in oklch, var(--warning) 86%, var(--warning-foreground));
+    background: color-mix(in oklab, var(--warning) 86%, var(--warning-foreground));
     color: var(--warning-foreground);
   }
 }
@@ -3497,11 +3497,11 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
     ),
     radial-gradient(
       ellipse 64% 44% at 50% -6%,
-      color-mix(in oklch, var(--foreground) 6.5%, transparent),
+      color-mix(in oklab, var(--foreground) 6.5%, transparent),
       transparent 72%
     ),
-    linear-gradient(to right, color-mix(in oklch, var(--foreground) 4.5%, transparent) 1px, transparent 1px),
-    linear-gradient(to bottom, color-mix(in oklch, var(--foreground) 4.5%, transparent) 1px, transparent 1px);
+    linear-gradient(to right, color-mix(in oklab, var(--foreground) 4.5%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in oklab, var(--foreground) 4.5%, transparent) 1px, transparent 1px);
   background-size: 100% 100%, 100% 100%, 40px 40px, 40px 40px;
   background-position: center, center top, center top, center top;
   background-repeat: no-repeat, no-repeat, repeat, repeat;
@@ -3513,7 +3513,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   justify-content: flex-end;
 }
 .auth-theme-control button {
-  border-color: color-mix(in oklch, var(--border) 90%, transparent);
+  border-color: color-mix(in oklab, var(--border) 90%, transparent);
   background-color: var(--card);
   box-shadow: 0 1px 2px oklch(0 0 0 / 5%);
 }
@@ -3553,10 +3553,10 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   justify-content: center;
   border-radius: 0.75rem;
   color: var(--foreground);
-  background: color-mix(in oklch, var(--card) 90%, var(--foreground) 10%);
-  border: 1px solid color-mix(in oklch, var(--foreground) 14%, transparent);
+  background: color-mix(in oklab, var(--card) 90%, var(--foreground) 10%);
+  border: 1px solid color-mix(in oklab, var(--foreground) 14%, transparent);
   box-shadow:
-    inset 0 1px 0 color-mix(in oklch, var(--foreground) 10%, transparent),
+    inset 0 1px 0 color-mix(in oklab, var(--foreground) 10%, transparent),
     0 4px 12px -4px oklch(0 0 0 / 16%);
   transition:
     border-color var(--motion-fast, 140ms) var(--motion-ease-move, ease),
@@ -3564,7 +3564,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 }
 @media (hover: hover) {
   .auth-brand:hover .auth-brand-mark {
-    border-color: color-mix(in oklch, var(--foreground) 24%, transparent);
+    border-color: color-mix(in oklab, var(--foreground) 24%, transparent);
     transform: translateY(-1px);
   }
 }
@@ -3575,7 +3575,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   border-radius: 1rem;
   background: var(--card);
   box-shadow:
-    inset 0 1px 0 color-mix(in oklch, var(--foreground) 8%, transparent),
+    inset 0 1px 0 color-mix(in oklab, var(--foreground) 8%, transparent),
     0 1px 2px oklch(0 0 0 / 6%),
     0 20px 44px -22px oklch(0 0 0 / 22%);
 }
@@ -3658,7 +3658,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 .auth-status-alert {
   background: var(--success);
   color: var(--success-foreground);
-  border-color: color-mix(in oklch, var(--success-foreground) 22%, transparent);
+  border-color: color-mix(in oklab, var(--success-foreground) 22%, transparent);
 }
 .auth-status-alert [data-slot="alert-description"] {
   color: var(--success-foreground);
@@ -3716,7 +3716,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   border: 1px solid var(--border);
   background-color: var(--popover);
   box-shadow:
-    inset 0 1px 0 color-mix(in oklch, var(--foreground) 7%, transparent),
+    inset 0 1px 0 color-mix(in oklab, var(--foreground) 7%, transparent),
     0 12px 28px -12px oklch(0 0 0 / 28%);
   padding: 0.875rem 1rem;
 }
@@ -3729,7 +3729,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   color: var(--foreground);
   text-decoration: underline;
   text-underline-offset: 3px;
-  text-decoration-color: color-mix(in oklch, var(--foreground) 32%, transparent);
+  text-decoration-color: color-mix(in oklab, var(--foreground) 32%, transparent);
   transition: text-decoration-color var(--motion-fast, 140ms) var(--motion-ease-move, ease);
 }
 .auth-recovery-link:hover {
@@ -3792,7 +3792,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 }
 .checkout-preview-segment-btn:hover {
   color: var(--foreground);
-  background-color: color-mix(in oklch, var(--foreground) 5%, transparent);
+  background-color: color-mix(in oklab, var(--foreground) 5%, transparent);
 }
 .checkout-preview-segment-btn[data-active="true"] {
   border-color: var(--border);
@@ -3833,11 +3833,11 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
     ),
     radial-gradient(
       ellipse 64% 42% at 50% -6%,
-      color-mix(in oklch, var(--foreground) 6.5%, transparent),
+      color-mix(in oklab, var(--foreground) 6.5%, transparent),
       transparent 72%
     ),
-    linear-gradient(to right, color-mix(in oklch, var(--foreground) 4.2%, transparent) 1px, transparent 1px),
-    linear-gradient(to bottom, color-mix(in oklch, var(--foreground) 4.2%, transparent) 1px, transparent 1px);
+    linear-gradient(to right, color-mix(in oklab, var(--foreground) 4.2%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in oklab, var(--foreground) 4.2%, transparent) 1px, transparent 1px);
   background-size: 100% 100%, 100% 100%, 32px 32px, 32px 32px;
   background-position: center, center top, center top, center top;
   background-repeat: no-repeat, no-repeat, repeat, repeat;
@@ -3845,7 +3845,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 .checkout-preview-mobile-frame {
   max-width: 22rem;
   border-radius: 1.5rem;
-  border: 1px solid color-mix(in oklch, var(--border) 90%, transparent);
+  border: 1px solid color-mix(in oklab, var(--border) 90%, transparent);
   background-color: var(--background);
   padding: 0.875rem;
   box-shadow: 0 12px 32px -18px oklch(0 0 0 / 28%);
@@ -3869,12 +3869,12 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   justify-content: center;
   border-radius: 0.5rem;
   color: var(--foreground);
-  background: color-mix(in oklch, var(--card) 90%, var(--foreground) 10%);
-  border: 1px solid color-mix(in oklch, var(--foreground) 14%, transparent);
+  background: color-mix(in oklab, var(--card) 90%, var(--foreground) 10%);
+  border: 1px solid color-mix(in oklab, var(--foreground) 14%, transparent);
 }
 .checkout-preview-card {
   box-shadow:
-    inset 0 1px 0 color-mix(in oklch, var(--foreground) 8%, transparent),
+    inset 0 1px 0 color-mix(in oklab, var(--foreground) 8%, transparent),
     0 1px 2px oklch(0 0 0 / 6%),
     0 18px 36px -22px oklch(0 0 0 / 24%);
 }
@@ -3951,7 +3951,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   overflow: hidden;
   border-radius: 0.75rem;
   background-color: #ffffff;
-  border: 1px solid color-mix(in oklch, var(--foreground) 12%, transparent);
+  border: 1px solid color-mix(in oklab, var(--foreground) 12%, transparent);
   box-shadow: 0 6px 18px -12px oklch(0 0 0 / 28%);
 }
 .checkout-preview-help-link {
@@ -3979,7 +3979,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 }
 @media (hover: hover) {
   .checkout-preview-hotspot:hover {
-    outline-color: color-mix(in oklch, var(--foreground) 45%, transparent);
+    outline-color: color-mix(in oklab, var(--foreground) 45%, transparent);
   }
 }
 .checkout-preview-hotspot[data-active="true"],
@@ -4044,7 +4044,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
     background-color 140ms ease;
 }
 .checkout-preview-optional-slot:hover {
-  border-color: color-mix(in oklch, var(--foreground) 45%, var(--border));
+  border-color: color-mix(in oklab, var(--foreground) 45%, var(--border));
   color: var(--foreground);
   background-color: var(--muted);
 }
@@ -4075,7 +4075,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   color: var(--muted-foreground);
 }
 .checkout-studio-row-active {
-  background-color: color-mix(in oklch, var(--foreground) 6%, var(--card));
+  background-color: color-mix(in oklab, var(--foreground) 6%, var(--card));
 }
 .checkout-studio-field {
   border-radius: var(--radius-lg);
@@ -4084,7 +4084,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   transition: background-color 140ms ease;
 }
 .checkout-studio-field-active {
-  background-color: color-mix(in oklch, var(--foreground) 4.5%, transparent);
+  background-color: color-mix(in oklab, var(--foreground) 4.5%, transparent);
 }
 .checkout-studio-restore-chip,
 .checkout-studio-token-chip {
@@ -4106,8 +4106,8 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 }
 .checkout-studio-restore-chip:hover:not(:disabled),
 .checkout-studio-token-chip:hover:not(:disabled) {
-  background-color: color-mix(in oklch, var(--foreground) 10%, var(--muted));
-  border-color: color-mix(in oklch, var(--foreground) 25%, var(--border));
+  background-color: color-mix(in oklab, var(--foreground) 10%, var(--muted));
+  border-color: color-mix(in oklab, var(--foreground) 25%, var(--border));
 }
 .checkout-studio-restore-chip:focus-visible,
 .checkout-studio-token-chip:focus-visible {

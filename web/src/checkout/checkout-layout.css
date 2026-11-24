@@ -28,11 +28,11 @@
     ),
     radial-gradient(
       ellipse 64% 42% at 50% -6%,
-      color-mix(in oklch, var(--foreground) 6.5%, transparent),
+      color-mix(in oklab, var(--foreground) 6.5%, transparent),
       transparent 72%
     ),
-    linear-gradient(to right, color-mix(in oklch, var(--foreground) 4.2%, transparent) 1px, transparent 1px),
-    linear-gradient(to bottom, color-mix(in oklch, var(--foreground) 4.2%, transparent) 1px, transparent 1px);
+    linear-gradient(to right, color-mix(in oklab, var(--foreground) 4.2%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in oklab, var(--foreground) 4.2%, transparent) 1px, transparent 1px);
   background-size: 100% 100%, 100% 100%, 40px 40px, 40px 40px;
   background-position: center, center top, center top, center top;
   background-repeat: no-repeat, no-repeat, repeat, repeat;
@@ -59,15 +59,15 @@
   justify-content: center;
   border-radius: 0.625rem;
   color: var(--foreground);
-  background: color-mix(in oklch, var(--card) 90%, var(--foreground) 10%);
-  border: 1px solid color-mix(in oklch, var(--foreground) 14%, transparent);
+  background: color-mix(in oklab, var(--card) 90%, var(--foreground) 10%);
+  border: 1px solid color-mix(in oklab, var(--foreground) 14%, transparent);
   box-shadow:
-    inset 0 1px 0 color-mix(in oklch, var(--foreground) 10%, transparent),
+    inset 0 1px 0 color-mix(in oklab, var(--foreground) 10%, transparent),
     0 3px 10px -4px oklch(0 0 0 / 16%);
 }
 
 .checkout-theme-control button {
-  border-color: color-mix(in oklch, var(--border) 90%, transparent);
+  border-color: color-mix(in oklab, var(--border) 90%, transparent);
   background-color: var(--card);
   box-shadow: 0 1px 2px oklch(0 0 0 / 5%);
 }
@@ -79,7 +79,7 @@
   border-radius: 1rem;
   background-color: var(--card);
   box-shadow:
-    inset 0 1px 0 color-mix(in oklch, var(--foreground) 8%, transparent),
+    inset 0 1px 0 color-mix(in oklab, var(--foreground) 8%, transparent),
     0 1px 2px oklch(0 0 0 / 6%),
     0 22px 48px -24px oklch(0 0 0 / 24%);
 }
@@ -168,7 +168,7 @@
   overflow: hidden;
   border-radius: 0.875rem;
   background-color: #ffffff;
-  border: 1px solid color-mix(in oklch, var(--foreground) 12%, transparent);
+  border: 1px solid color-mix(in oklab, var(--foreground) 12%, transparent);
   box-shadow: 0 8px 22px -14px oklch(0 0 0 / 28%);
 }
 
@@ -214,7 +214,7 @@
     color: var(--primary-foreground);
   }
   .checkout-desktop-primary:hover:not(:disabled) {
-    background-color: color-mix(in oklch, var(--primary) 86%, var(--card));
+    background-color: color-mix(in oklab, var(--primary) 86%, var(--card));
     color: var(--primary-foreground);
   }
 }

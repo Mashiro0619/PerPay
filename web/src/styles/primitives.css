@@ -210,3 +210,82 @@ a:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 @media (pointer: coarse) {
   [data-overlay-viewport="dialog"] :is([data-slot="dialog-footer"], [data-slot="alert-dialog-footer"]) button { min-height: max(36px, 2rem); }
 }
+
+/* Forced Colors Mode (Windows High Contrast): system colors strip box-shadow
+   focus rings and background fills, so reinforce focus, selection, and control
+   boundaries with native outline and border keywords. */
+@media (forced-colors: active) {
+  :where(
+    a,
+    button,
+    input,
+    select,
+    textarea,
+    summary,
+    [tabindex],
+    [data-slot="button"],
+    [data-slot="input"],
+    [data-slot="textarea"],
+    [data-slot="select-trigger"],
+    [data-slot="checkbox"],
+    [data-slot="switch"],
+    [data-slot="toggle"],
+    [data-slot="toggle-group-item"],
+    [data-slot="tabs-trigger"],
+    [data-slot="sidebar-menu-button"],
+    [data-slot="dropdown-menu-item"],
+    [data-slot="dropdown-menu-radio-item"],
+    [data-slot="dropdown-menu-checkbox-item"],
+    [data-slot="dropdown-menu-sub-trigger"],
+    [data-slot="toast"]
+  ):focus-visible,
+  [data-slot="input-group"]:has([data-slot="input-group-control"]:focus-visible) {
+    outline: 2px solid Highlight !important;
+    outline-offset: 2px;
+  }
+
+  :where([data-slot="tabs-trigger"][data-active], [role="tab"][aria-selected="true"]) {
+    border-color: Highlight;
+    border-block-end: 2px solid Highlight;
+  }
+
+  :where(
+    [data-slot="toggle"][aria-pressed="true"],
+    [data-slot="toggle-group-item"][aria-pressed="true"],
+    .settings-rail-item[aria-selected="true"],
+    [data-slot="sidebar-menu-button"][data-active="true"]
+  ) {
+    border: 1px solid Highlight;
+  }
+
+  [data-selection-indicator="fill"] {
+    border: 1px solid Highlight;
+  }
+
+  [data-selection-indicator="underline"] {
+    border-block-end: 2px solid Highlight;
+  }
+
+  [data-slot="switch"] {
+    border: 1px solid ButtonText;
+  }
+  [data-slot="switch"][data-checked] {
+    border-color: Highlight;
+  }
+  [data-slot="switch-thumb"] {
+    border: 1px solid ButtonText;
+    background-color: ButtonText;
+  }
+
+  [data-slot="checkbox"] {
+    border-color: ButtonText;
+  }
+  [data-slot="checkbox"][data-checked] {
+    border-color: Highlight;
+  }
+
+  [data-slot="spinner"] {
+    forced-color-adjust: none;
+    color: CanvasText;
+  }
+}

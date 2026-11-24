@@ -140,6 +140,7 @@ function ComparisonRows({
             <div className="flex flex-wrap items-baseline gap-2">
               <span className="text-[0.8125rem] leading-5 font-medium text-foreground">{row.name}</span>
               {row.invalid && <span className="text-xs font-medium text-destructive" data-comparison-invalid>异常</span>}
+              {!row.invalid && row.differs && <span className="text-xs font-medium text-destructive" data-comparison-diff>差异</span>}
             </div>
             <dl className="flex min-w-0 flex-col gap-2 text-sm leading-5">
               <div className="flex min-w-0 flex-col gap-0.5">
@@ -194,6 +195,7 @@ function ComparisonRows({
               <TableCell className={cn("whitespace-pre-wrap wrap-anywhere", (row.differs || row.invalid) && "font-medium text-destructive")}>
                 {row.incoming ?? "未提供"}
                 {row.invalid && <span className="ml-1.5 text-xs font-medium" data-comparison-invalid>（异常）</span>}
+                {!row.invalid && row.differs && <span className="ml-1.5 text-xs font-medium" data-comparison-diff>（差异）</span>}
               </TableCell>
               <TableCell className="whitespace-pre-wrap wrap-anywhere">
                 {row.existing ?? "未提供"}

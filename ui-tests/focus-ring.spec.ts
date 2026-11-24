@@ -76,7 +76,7 @@ async function focusGeometry(control: Locator) {
       viewport: { left: viewport?.offsetLeft ?? 0, top: viewport?.offsetTop ?? 0,
         right: (viewport?.offsetLeft ?? 0) + (viewport?.width ?? innerWidth),
         bottom: (viewport?.offsetTop ?? 0) + (viewport?.height ?? innerHeight) },
-      expectedColor: color(document.documentElement.classList.contains("dark") ? "oklch(0.556 0 0 / 0.5)" : "oklch(0.708 0 0 / 0.5)"),
+      expectedColor: color(document.documentElement.classList.contains("dark") ? "oklch(0.8 0 0 / 0.5)" : "oklch(0.45 0 0 / 0.5)"),
       centerHit: element === hit || element.contains(hit),
     };
   });

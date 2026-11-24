@@ -53,6 +53,7 @@ const pairs = [
   ["primary-foreground", "primary"],
   ["secondary-foreground", "secondary"],
   ["muted-foreground", "card"],
+  ["muted-foreground", "muted"],
   ["sidebar-foreground", "sidebar"],
   ["accent-foreground", "accent"],
   ["destructive", "background"],
@@ -62,11 +63,15 @@ const pairs = [
 ];
 describe("official Neutral theme", () => {
   for (const mode of [":root", ".dark", ":root:not([data-theme])"])
-    it(mode + " gives opaque focus indicators at least 3:1 on adjacent surfaces", () => {
+    it(mode + " gives opaque focus indicators and input boundaries at least 3:1 on adjacent surfaces", () => {
       const tokens = variables(mode);
       expect(tokens["sidebar-ring"]).toBe("var(--ring)");
       for (const surface of ["background", "card", "popover", "secondary", "sidebar", "sidebar-accent"]) {
         expect(contrast(luminance(tokens.ring!), luminance(tokens[surface]!))).toBeGreaterThanOrEqual(3);
+        expect(contrast(luminance(tokens["input-ring"]!), luminance(tokens[surface]!))).toBeGreaterThanOrEqual(3);
+      }
+      for (const surface of ["background", "card", "muted"]) {
+        expect(contrast(luminance(tokens.input!), luminance(tokens[surface]!))).toBeGreaterThanOrEqual(3);
       }
     });
   for (const mode of [":root", ".dark", ":root:not([data-theme])"])
@@ -83,12 +88,18 @@ describe("official Neutral theme", () => {
         ).toBeGreaterThanOrEqual(4.5);
       },
     );
-  it("provides system dark mode via color-scheme, light-dark(), and no-JS fallback without palette overrides", () => {
+  it("provides system dark mode via color-scheme, light-dark(), Forced Colors Mode, and oklab color-mix", () => {
+    const primitivesCss = readFileSync(resolve(process.cwd(), "web/src/styles/primitives.css"), "utf8");
+    const stylesCss = readFileSync(resolve(process.cwd(), "web/src/styles.css"), "utf8");
+    const checkoutCss = readFileSync(resolve(process.cwd(), "web/src/checkout/checkout-layout.css"), "utf8");
     expect(css).toContain("color-scheme: light dark;");
     expect(css).toContain("@supports (color: light-dark(white, black))");
     expect(css).toContain(":root:not([data-theme])");
     expect(css).toContain("@media (prefers-color-scheme: dark)");
     expect(css).not.toMatch(/data-palette|perpay:palette|status-refund/);
+    expect(primitivesCss).toContain("@media (forced-colors: active)");
+    expect(stylesCss).not.toMatch(/color-mix\(in oklch/i);
+    expect(checkoutCss).not.toMatch(/color-mix\(in oklch/i);
   });
 });
 
