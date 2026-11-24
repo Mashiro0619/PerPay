@@ -312,7 +312,7 @@ export function WorkItemsTable({
               basis: "container" as const,
             },
             cell: (item: AdminWorkItem) => (
-              <div className="flex min-w-0 flex-col items-center gap-0.5">
+              <div className="business-cell-stack flex min-w-0 flex-col items-center gap-0.5">
                 <ListDateTime value={item.ignored_at} />
                 {item.ignored_by && (
                   <span
