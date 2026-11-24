@@ -31,10 +31,17 @@ export function useListSize<T extends HTMLElement = HTMLDivElement>() {
 
     const throttled = createRafCoalescer(measure);
     measure();
+    let initialObserve = true;
     const observer =
       typeof ResizeObserver === "undefined"
         ? null
-        : new ResizeObserver(throttled.schedule);
+        : new ResizeObserver(() => {
+            if (initialObserve) {
+              initialObserve = false;
+              return;
+            }
+            throttled.schedule();
+          });
     if (ref.current) observer?.observe(ref.current);
     window.addEventListener("resize", throttled.schedule);
     return () => {

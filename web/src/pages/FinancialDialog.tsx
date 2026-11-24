@@ -251,7 +251,7 @@ export function FinancialDialog({
             {clientId ? "仅可关联本站订单；跨站流水或账本冲突请到「对账（全部网站）」处理。" : "关联支付宝收入后确认订单收款。"}
           </DialogDescription>
         </DialogHeader>
-        <form className="contents" onSubmit={submit}>
+        <form className="contents" noValidate onSubmit={submit}>
           <FieldGroup data-overlay-step-scroll className="-mx-4 min-h-0 flex-1 w-auto overflow-y-auto px-4 pt-4 pb-4">
             {save.recovery && (
               <OperationRecoveryNotice

@@ -22,6 +22,7 @@ import { Field, FieldLabel, FieldLegend, FieldDescription, FieldError, FieldSet,
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 
 export function SecuritySettings({ settings }: { settings: RuntimeSettings }) {
+  const linkId = useId();
   return <div className="flex min-w-0 flex-col gap-4" data-security-summary>
     <SettingsSummary
       title="管理员 IP 白名单"
@@ -48,19 +49,19 @@ export function SecuritySettings({ settings }: { settings: RuntimeSettings }) {
       </CardHeader>
       <CardContent>
         <div className="settings-link-list">
-          <Link to="/sites" data-settings-link-row className="settings-link-row">
+          <Link to="/sites" data-settings-link-row className="settings-link-row" aria-labelledby={linkId + "-sites-title"} aria-describedby={linkId + "-sites-desc"}>
             <span className="settings-link-icon" aria-hidden="true"><Globe className="size-4" /></span>
             <span className="settings-link-copy">
-              <span className="settings-link-title">业务网站密钥与网站 ID</span>
-              <span className="settings-link-desc">查看或轮换各网站的原生 API、通知与易支付密钥</span>
+              <span id={linkId + "-sites-title"} className="settings-link-title">业务网站密钥与网站 ID</span>
+              <span id={linkId + "-sites-desc"} className="settings-link-desc">查看或轮换各网站的原生 API、通知与易支付密钥</span>
             </span>
             <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
           </Link>
-          <Link to="/settings/accounts" data-settings-link-row className="settings-link-row">
+          <Link to="/settings/accounts" data-settings-link-row className="settings-link-row" aria-labelledby={linkId + "-accounts-title"} aria-describedby={linkId + "-accounts-desc"}>
             <span className="settings-link-icon" aria-hidden="true"><KeyRound className="size-4" /></span>
             <span className="settings-link-copy">
-              <span className="settings-link-title">在支付宝账号中管理应用密钥</span>
-              <span className="settings-link-desc">生成、更换或核对开放平台应用公钥与支付宝公钥</span>
+              <span id={linkId + "-accounts-title"} className="settings-link-title">在支付宝账号中管理应用密钥</span>
+              <span id={linkId + "-accounts-desc"} className="settings-link-desc">生成、更换或核对开放平台应用公钥与支付宝公钥</span>
             </span>
             <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
           </Link>
@@ -71,11 +72,13 @@ export function SecuritySettings({ settings }: { settings: RuntimeSettings }) {
             target="_blank"
             rel="noopener noreferrer"
             className="settings-link-row"
+            aria-labelledby={linkId + "-docs-title"}
+            aria-describedby={linkId + "-docs-desc"}
           >
             <span className="settings-link-icon" aria-hidden="true"><BookOpen className="size-4" /></span>
             <span className="settings-link-copy">
-              <span className="settings-link-title">接入文档</span>
-              <span className="settings-link-desc">阅读原生 API 签名规范、回调验证与易支付接入指南</span>
+              <span id={linkId + "-docs-title"} className="settings-link-title">接入文档</span>
+              <span id={linkId + "-docs-desc"} className="settings-link-desc">阅读原生 API 签名规范、回调验证与易支付接入指南</span>
             </span>
             <ExternalLink className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
           </a>
