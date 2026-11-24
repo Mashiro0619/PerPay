@@ -202,22 +202,17 @@ for (const state of ["login", "setup"] as const) {
         await expect(password).toBeFocused();
         await expect(password).toBeInViewport({ ratio: 1 });
         if (state === "login") {
-          const recovery = auth.getByRole("button", { name: "忘记密码？", exact: true });
+          const recovery = auth.getByRole("link", { name: "忘记密码？", exact: true });
           await recovery.focus();
           await expect(recovery).toBeFocused();
-          await page.keyboard.press("Enter");
-          await expect(recovery).toHaveAttribute("aria-expanded", "true");
-          const help = auth.getByRole("link", { name: "查看恢复步骤", exact: true });
-          await page.keyboard.press("Tab");
-          await expect(help).toBeFocused();
-          await expect(help).toBeInViewport({ ratio: 1 });
-          await verify(width, textPercent, "open");
+          await expect(recovery).toBeInViewport({ ratio: 1 });
+          await expect(recovery).toHaveAttribute(
+            "href",
+            "https://github.com/Mashiro0619/PerPay/blob/main/docs/maintenance.md#忘记管理员密码",
+          );
+          await expect(recovery).toHaveAttribute("target", "_blank");
+          await expect(recovery).toHaveAttribute("rel", "noopener noreferrer");
           if (width === 320 && textPercent === 200) await screenshot(page, info, "auth-login-320-enlarged-recovery");
-          await page.keyboard.press("Shift+Tab");
-          await expect(recovery).toBeFocused();
-          await page.keyboard.press("Space");
-          await expect(recovery).toHaveAttribute("aria-expanded", "false");
-          await expect(help).toHaveCount(0);
         } else if (width === 320 && textPercent === 200) {
           await screenshot(page, info, "auth-setup-320-enlarged");
         }

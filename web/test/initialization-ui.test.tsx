@@ -34,27 +34,17 @@ function mount(initialized: string | null, path = "/login", tokenRequired: strin
 }
 
 describe("first-deployment authentication presentation", () => {
-  it("uses a non-link disclosure for password recovery while keeping its help link", async () => {
+  it("links password recovery directly to the GitHub maintenance guide", () => {
     mount("true");
-    const user = userEvent.setup();
-    const trigger = screen.getByRole("button", { name: "忘记密码？" });
-    expect(trigger).not.toHaveClass("hover:underline");
-    expect(trigger).toHaveClass("focus-visible:ring-3");
-    expect(trigger).toHaveAttribute("aria-expanded", "false");
-    await user.click(trigger);
-    expect(trigger).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByRole("link", { name: "查看恢复步骤" })).toHaveAttribute(
+    const recovery = screen.getByRole("link", { name: "忘记密码？" });
+    expect(recovery).toHaveAttribute(
       "href",
       "https://github.com/Mashiro0619/PerPay/blob/main/docs/maintenance.md#忘记管理员密码",
     );
-    trigger.focus();
-    await user.keyboard("{Enter}");
-    expect(trigger).toHaveAttribute("aria-expanded", "false");
-    await user.keyboard(" ");
-    expect(trigger).toHaveAttribute("aria-expanded", "true");
-    await user.keyboard("{Escape}");
-    expect(trigger).toHaveAttribute("aria-expanded", "false");
-    expect(trigger).toHaveFocus();
+    expect(recovery).toHaveAttribute("target", "_blank");
+    expect(recovery).toHaveAttribute("rel", "noopener noreferrer");
+    expect(recovery).toHaveClass("focus-visible:ring-3");
+    expect(screen.queryByRole("button", { name: "忘记密码？" })).not.toBeInTheDocument();
   });
 
   it.each(["/", "/login", "/setup"])(
