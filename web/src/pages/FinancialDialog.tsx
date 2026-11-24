@@ -373,6 +373,7 @@ export function FinancialDialog({
                     ref={reasonField}
                     id="financial-reason"
                     name="reason"
+                    required={disputed}
                     maxLength={500}
                     rows={3}
                     value={reason}

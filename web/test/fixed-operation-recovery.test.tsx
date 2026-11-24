@@ -514,9 +514,11 @@ describe("operation reason feedback", () => {
     render(wrap(reasonDialog(execute)));
     const input = screen.getByLabelText("操作理由");
     expect(input).toBeRequired();
-    expect(screen.getByRole("button", { name: "确认撤销关联" })).toBeDisabled();
-    fireEvent.submit(input.closest("form")!);
+    const submit = screen.getByRole("button", { name: "确认撤销关联" });
+    expect(submit).toBeEnabled();
+    fireEvent.click(submit);
     expect(await screen.findByText("请填写操作理由。")).toBeVisible();
+    expect(input).toHaveFocus();
     expect(execute).not.toHaveBeenCalled();
   });
 

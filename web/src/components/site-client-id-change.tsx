@@ -9,7 +9,7 @@ import { OperationNavigationDialog } from "@/components/operation-navigation-dia
 import { CopyValue } from "@/components/copy-value";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldTitle } from "@/components/ui/field";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogBody, DialogFooter,
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription,
@@ -81,10 +81,10 @@ export function SiteClientIdChange({ site, onChanged, onClose, finalFocus }: {
           <DialogBody>
             <DialogDescription>更换后立即生效，请同步更新业务网站接入配置。原网站 ID 将保留占用，无法再次分配。</DialogDescription>
             <FieldGroup>
-              <Field><FieldLabel>当前网站 ID</FieldLabel><CopyValue value={currentId} label="复制当前网站 ID" /></Field>
+              <Field><FieldTitle>当前网站 ID</FieldTitle><CopyValue value={currentId} label="复制当前网站 ID" /></Field>
               <Field data-invalid={!!fieldError} data-disabled={locked}>
                 <FieldLabel htmlFor={fieldId}>新网站 ID</FieldLabel>
-                <Input ref={input} id={fieldId} value={nextId} disabled={locked} autoCapitalize="none" autoCorrect="off" spellCheck={false}
+                <Input ref={input} id={fieldId} name="client_id" value={nextId} disabled={locked} autoCapitalize="none" autoCorrect="off" spellCheck={false}
                   aria-invalid={!!fieldError} aria-describedby={fieldId + "-help" + (fieldError ? " " + fieldId + "-error" : "")}
                   onChange={event => {
                     if (!change.reset()) return;
@@ -113,8 +113,8 @@ export function SiteClientIdChange({ site, onChanged, onClose, finalFocus }: {
         <DialogBody>
           <AlertDialogDescription>{snapshot.configuration.name} 的网站 ID 将立即更换，请同步更新业务网站。原网站 ID 将停止用于接入并继续保留占用。</AlertDialogDescription>
           <FieldGroup>
-            <Field><FieldLabel>原网站 ID</FieldLabel><CopyValue value={currentId} label="复制原网站 ID" /></Field>
-            <Field><FieldLabel>新网站 ID</FieldLabel><CopyValue value={confirmation?.client_id ?? ""} label="复制新网站 ID" /></Field>
+            <Field><FieldTitle>原网站 ID</FieldTitle><CopyValue value={currentId} label="复制原网站 ID" /></Field>
+            <Field><FieldTitle>新网站 ID</FieldTitle><CopyValue value={confirmation?.client_id ?? ""} label="复制新网站 ID" /></Field>
           </FieldGroup>
         </DialogBody>
         <AlertDialogFooter>

@@ -21,7 +21,7 @@ import { ErrorNotice, QueryView } from "@/components/request-state";
 import { OperationRecoveryNotice } from "@/components/operation-recovery-notice";
 import { OperationNavigationDialog } from "@/components/operation-navigation-dialog";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldSet } from "@/components/ui/field";
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import {
@@ -159,6 +159,7 @@ function CreateSiteForm({ policy, accounts, onCreated, onRefreshLockChange }: Cr
             <FieldGroup>
               <ErrorNotice error={isClientIdRejection ? null : create.error} />
               <FieldSet disabled={create.isPending || !!create.recovery}>
+                <FieldLegend className="sr-only">新网站基本配置</FieldLegend>
                 <SiteTextField
                   label="业务网站名称"
                   value={name}

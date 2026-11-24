@@ -23,6 +23,7 @@ import {
   FieldLabel,
   FieldLegend,
   FieldSet,
+  FieldTitle,
 } from "@/components/ui/field";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
@@ -65,7 +66,9 @@ export function SiteCollectionFields({
   const configured = value.accounts;
   return (
     <FieldSet disabled={disabled}>
-      {!hideHeading && (
+      {hideHeading ? (
+        <FieldLegend className="sr-only">收款账号</FieldLegend>
+      ) : (
         <>
           <FieldLegend>收款账号</FieldLegend>
           <FieldDescription>
@@ -189,7 +192,7 @@ export function CollectionChoices({
   return (
     <FieldGroup>
       <Field data-invalid={!!error}>
-        <FieldLabel id={id + "-mode"}>分配方式</FieldLabel>
+        <FieldTitle id={id + "-mode"}>分配方式</FieldTitle>
         <ToggleGroup
           value={[value.mode]}
           onValueChange={(values) => {
@@ -200,6 +203,9 @@ export function CollectionChoices({
           variant="outline"
           disabled={disabled}
           aria-labelledby={id + "-mode"}
+          aria-describedby={
+            error ? id + "-mode-hint " + id + "-mode-error" : id + "-mode-hint"
+          }
         >
           {modes.map(([mode, label]) => (
             <ToggleGroupItem key={mode} value={mode}>
@@ -207,14 +213,14 @@ export function CollectionChoices({
             </ToggleGroupItem>
           ))}
         </ToggleGroup>
-        <FieldDescription>
+        <FieldDescription id={id + "-mode-hint"}>
           {value.mode === "FIXED"
             ? "仅使用指定账号，暂不可用时不会切换。"
             : value.mode === "RANDOM"
               ? "从选中且可用的账号中等概率分配。"
               : "权重越大，分配新订单的机会越多。暂不可用的账号会跳过。"}
         </FieldDescription>
-        {error && <FieldError>{error}</FieldError>}
+        {error && <FieldError id={id + "-mode-error"}>{error}</FieldError>}
       </Field>
       {value.mode === "FIXED" ? (
         <Field>
@@ -239,6 +245,7 @@ export function CollectionChoices({
               id={id + "-account"}
               className="w-full min-w-0 whitespace-normal data-[size=default]:h-auto data-[size=default]:min-h-8 *:data-[slot=select-value]:line-clamp-none *:data-[slot=select-value]:block"
               aria-invalid={!!error}
+              aria-describedby={error ? id + "-mode-error" : undefined}
             >
               <SelectValue className="min-w-0 whitespace-normal wrap-anywhere" placeholder="请选择收款账号" />
             </SelectTrigger>

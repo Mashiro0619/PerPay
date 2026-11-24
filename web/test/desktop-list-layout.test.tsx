@@ -198,7 +198,9 @@ describe("desktop business list composition", () => {
       expect(screen.queryByRole("combobox", { name: "排序字段" })).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: /当前.*序，切换/ })).not.toBeInTheDocument();
       const row = view.container.querySelector("[data-list-toolbar-row]")!;
-      expect(row.querySelector("form")).toBe(screen.getByRole("search"));
+      expect(row.querySelector("form")).toBe(
+        screen.getByRole("search").querySelector("form"),
+      );
       const filters = row.querySelector("[data-list-desktop-filters]")!;
       expect(row.querySelector("[data-list-desktop-sort]")).toBeNull();
       const actions = row.querySelector("[data-list-desktop-actions]");

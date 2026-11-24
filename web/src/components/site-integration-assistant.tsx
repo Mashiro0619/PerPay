@@ -16,7 +16,7 @@ import { ErrorNotice, Loading } from "@/components/request-state";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldDescription, FieldGroup, FieldLabel, FieldTitle } from "@/components/ui/field";
 import { Switch } from "@/components/ui/switch";
 import { Spinner } from "@/components/ui/spinner";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -301,7 +301,7 @@ function IntegrationContent({ site, siteDirty = false, disabled = false, showCli
     const labelId = id + "-" + purpose + (publicOnly ? "-public" : "");
     return <Field key={labelId} aria-labelledby={labelId} className="settings-key-row">
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-        <FieldLabel id={labelId}>{label}</FieldLabel>
+        <FieldTitle id={labelId}>{label}</FieldTitle>
         <div className="flex shrink-0 gap-2">
           <Button type="button" variant="outline" size="sm" aria-label={"查看" + label}
             disabled={blocked} onClick={event => { viewTrigger.current = event.currentTarget; void read(purpose, publicOnly); }}>
@@ -358,14 +358,14 @@ function IntegrationContent({ site, siteDirty = false, disabled = false, showCli
       {feedback && <p role="status">{feedback}</p>}
       <FieldGroup className={showClientId || protocol !== "native" ? "grid min-w-0 grid-cols-1 gap-3 @lg/integration:grid-cols-2" : "grid min-w-0 grid-cols-1 gap-3"}>
         <Field className="settings-metric-tile gap-1.5">
-          <FieldLabel className="text-xs text-muted-foreground">{protocol === "native" ? "PerPay 服务地址" : "易支付网关"}</FieldLabel>
+          <FieldTitle className="text-xs text-muted-foreground">{protocol === "native" ? "PerPay 服务地址" : "易支付网关"}</FieldTitle>
           {configuration.public_origin
             ? <CopyValue value={configuration.public_origin.replace(/\/$/, "") + (protocol === "native" ? "" : "/")} label="复制接入地址" />
             : <FieldDescription>请先配置服务端公开地址。</FieldDescription>}
         </Field>
         {(showClientId || protocol !== "native") && <Field className="settings-metric-tile gap-1.5">
           <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-            <FieldLabel className="text-xs text-muted-foreground">{protocol === "native" ? "网站 ID（client_id）" : "商户 PID"}</FieldLabel>
+            <FieldTitle className="text-xs text-muted-foreground">{protocol === "native" ? "网站 ID（client_id）" : "商户 PID"}</FieldTitle>
             {protocol === "native" && clientIdAction}
           </div>
           <CopyValue value={protocol === "native" ? site.api_client_id ?? site.client_id : configuration.pid} label={protocol === "native" ? "复制网站 ID" : "复制商户 PID"} />

@@ -13,8 +13,9 @@ test("refund notes accept 500 emoji and reject 501 ordinary Chinese characters",
     const note = page.getByLabel("备注（可选）", { exact: true });
     await expect(note).toHaveAttribute("maxlength", "1000");
     await note.fill("汉".repeat(501));
+    await page.getByRole("button", { name: "确认标记已退款" }).click();
     await expect(page.getByText("备注最多 500 字。", { exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: "确认标记已退款" })).toBeDisabled();
+    await expect(note).toBeFocused();
     const emoji = "🙂".repeat(500);
     await note.fill(emoji);
     await expect(note).toHaveValue(emoji);

@@ -73,6 +73,7 @@ import {
   FieldDescription,
   FieldGroup,
   FieldLabel,
+  FieldLegend,
   FieldSet,
 } from "@/components/ui/field";
 import {
@@ -303,6 +304,7 @@ function SiteEditor({
   const changeClientIdTrigger = useRef<HTMLButtonElement>(null);
   const [draft, setDraft] = useState(() => structuredClone(configuration));
   const [timeoutRaw, setTimeoutRaw] = useState(() => siteTimeoutSeconds(configuration.policy.notification_delivery.timeout_milliseconds));
+  const [timeoutSubmitted, setTimeoutSubmitted] = useState(false);
   const timeoutError = siteTimeoutError(timeoutRaw);
   const dirty = JSON.stringify(draft) !== JSON.stringify(saved?.configuration ?? configuration) ||
     timeoutRaw !== siteTimeoutSeconds((saved?.configuration ?? configuration).policy.notification_delivery.timeout_milliseconds);
@@ -706,7 +708,7 @@ function SiteEditor({
           重置
         </Button>
       )}
-      <Button form={formId} type="submit" className="h-auto min-h-8 max-w-full whitespace-normal" disabled={busy || requiresReview || !!timeoutError} aria-busy={save.isPending}>
+      <Button form={formId} type="submit" className="h-auto min-h-8 max-w-full whitespace-normal" disabled={busy || requiresReview} aria-busy={save.isPending}>
         {save.isPending ? (
           <Spinner aria-hidden="true" data-icon="inline-start" />
         ) : (
@@ -795,12 +797,22 @@ function SiteEditor({
         className="settings-form-surface w-full min-w-0"
         onSubmit={(event) => {
           event.preventDefault();
-          if (busy || requiresReview || timeoutError) return;
+          if (busy || requiresReview) return;
+          if (timeoutError) {
+            setTimeoutSubmitted(true);
+            requestAnimationFrame(() => {
+              formRef.current
+                ?.querySelector<HTMLElement>("[data-site-timeout-input]")
+                ?.focus();
+            });
+            return;
+          }
           if (impact) setConfirmation("save");
           else save.mutate();
         }}
       >
         <FieldSet disabled={busy || !!review}>
+          <FieldLegend className="sr-only">网站配置</FieldLegend>
           <Card size="sm" data-site-editor-card={section}>
             <CardHeader>
               <CardTitle role="heading" aria-level={2}>{sectionTitle}</CardTitle>
@@ -952,7 +964,11 @@ function SiteEditor({
                   disabled={busy || requiresReview}
                   value={draft.policy}
                   secondsDraft={timeoutRaw}
-                  onSecondsDraftChange={setTimeoutRaw}
+                  onSecondsDraftChange={(raw) => {
+                    setTimeoutRaw(raw);
+                    if (!siteTimeoutError(raw)) setTimeoutSubmitted(false);
+                  }}
+                  timeoutSubmitted={timeoutSubmitted}
                   errors={errors}
                   onChange={(policy) =>
                     change((p) => {

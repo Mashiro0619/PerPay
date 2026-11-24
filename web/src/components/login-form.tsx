@@ -312,15 +312,19 @@ export function LoginForm({ onLogin }: { onLogin: () => void }) {
                       className="auth-input"
                       type="password"
                       autoComplete="off"
+                      autoCorrect="off"
                       autoCapitalize="none"
                       spellCheck={false}
+                      enterKeyHint="next"
                       maxLength={256}
                       required
                       value={setupToken}
                       disabled={pending}
                       aria-invalid={tokenInvalid}
                       aria-describedby={
-                        tokenInvalid ? "setup-token-error" : "setup-token-hint"
+                        tokenInvalid
+                          ? "setup-token-hint setup-token-error"
+                          : "setup-token-hint"
                       }
                       onChange={(event) => {
                         setSetupToken(event.target.value);
@@ -366,16 +370,21 @@ export function LoginForm({ onLogin }: { onLogin: () => void }) {
                       className="h-full"
                       type={visible ? "text" : "password"}
                       autoComplete={setup ? "new-password" : "current-password"}
+                      autoCorrect="off"
+                      autoCapitalize="none"
+                      spellCheck={false}
+                      enterKeyHint={setup ? "next" : "done"}
                       required
                       value={password}
                       disabled={pending}
                       aria-invalid={passwordInvalid}
                       aria-describedby={
-                        passwordInvalid
-                          ? "password-error"
-                          : setup
-                            ? "password-hint"
-                            : undefined
+                        [
+                          setup ? "password-hint" : null,
+                          passwordInvalid ? "password-error" : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" ") || undefined
                       }
                       onKeyDown={handleModifierKeys}
                       onKeyUp={handleModifierKeys}
@@ -389,12 +398,13 @@ export function LoginForm({ onLogin }: { onLogin: () => void }) {
                     <InputGroupAddon align="inline-end" className="pr-1.5">
                       <InputGroupButton
                         size="icon-xs"
-                        aria-label={visible ? "隐藏密码" : "显示密码"}
+                        aria-label="显示密码"
+                        aria-pressed={visible}
                         type="button"
                         disabled={pending}
                         onClick={() => setVisible(!visible)}
                       >
-                        {visible ? <EyeOff /> : <Eye />}
+                        {visible ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}
                       </InputGroupButton>
                     </InputGroupAddon>
                   </InputGroup>
@@ -438,6 +448,10 @@ export function LoginForm({ onLogin }: { onLogin: () => void }) {
                       className="auth-input"
                       type={visible ? "text" : "password"}
                       autoComplete="new-password"
+                      autoCorrect="off"
+                      autoCapitalize="none"
+                      spellCheck={false}
+                      enterKeyHint="done"
                       required
                       value={confirmation}
                       disabled={pending}

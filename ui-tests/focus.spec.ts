@@ -94,10 +94,12 @@ for (const theme of ["light", "dark"] as const) test(`${theme}: form controls re
     const visibility = page.getByRole("button", { name: "显示密码", exact: true });
     const visibilityFocus = await expectButtonRing(visibility);
     await page.keyboard.press("Enter");
+    await expect(visibility).toHaveAttribute("aria-pressed", "true");
     await expect(password).toHaveAttribute("type", "text");
     await page.keyboard.press("Tab");
     await expectInputRing(confirmation);
-    await page.getByRole("button", { name: "隐藏密码", exact: true }).click();
+    await visibility.click();
+    await expect(visibility).toHaveAttribute("aria-pressed", "false");
     await confirmation.click();
     await expectInputRing(confirmation);
     await record(page, info, { state: "synthetic initialization focus", viewportWidth: width, focusAlpha: 0.5, visibilityFocus });

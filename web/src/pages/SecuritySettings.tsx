@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { onlineManager, useMutation } from "@tanstack/react-query";
-import { BookOpen, ChevronRight, ExternalLink, Globe, KeyRound, ShieldCheck } from "lucide-react";
+import { BookOpen, ChevronRight, ExternalLink, Eye, EyeOff, Globe, KeyRound, ShieldCheck } from "lucide-react";
 import { api, ApiError, result, type RuntimeSettings } from "@/api/client";
 import { useSession } from "@/auth";
 import { useDirtyDraft } from "@/drafts";
@@ -17,7 +17,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Input } from "@/components/ui/input";
-import { Field, FieldLabel, FieldDescription, FieldError, FieldSet, FieldGroup } from "@/components/ui/field";
+import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@/components/ui/input-group";
+import { Field, FieldLabel, FieldLegend, FieldDescription, FieldError, FieldSet, FieldGroup } from "@/components/ui/field";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 
 export function SecuritySettings({ settings }: { settings: RuntimeSettings }) {
@@ -95,9 +96,10 @@ function PasswordForm() {
   const [current, setCurrent] = useState("");
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
+  const [visible, setVisible] = useState(false);
   const [validation, setValidation] = useState<Error | null>(null);
   const [invalidField, setInvalidField] = useState<
-    "password" | "confirmation" | null
+    "current" | "password" | "confirmation" | null
   >(null);
   const currentField = useRef<HTMLInputElement>(null);
   const clearDraft = useDirtyDraft(current !== "" || password !== "" || confirmation !== "");
@@ -122,6 +124,7 @@ function PasswordForm() {
       setCurrent("");
       setPassword("");
       setConfirmation("");
+      setVisible(false);
       session.forget();
     },
     onSettled: () => {
@@ -131,6 +134,12 @@ function PasswordForm() {
   const resultUnknown = isOperationResultUnknown(change.error);
   // The server refused the current password; the session is still signed in.
   const wrongCurrent = change.error instanceof ApiError && change.error.code === "current_password_incorrect";
+  const currentInvalid = wrongCurrent || invalidField === "current";
+  const currentErrorMessage = wrongCurrent
+    ? change.error?.message
+    : invalidField === "current"
+      ? validation?.message
+      : null;
   useEffect(() => {
     if (wrongCurrent) currentField.current?.focus();
   }, [wrongCurrent]);
@@ -138,11 +147,18 @@ function PasswordForm() {
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (submitting.current || change.isPending || resultUnknown) return;
+    if (!current) {
+      setInvalidField("current");
+      setValidation(new Error("请输入当前密码。"));
+      currentField.current?.focus();
+      return;
+    }
+    const passwordCheck = validatePassword(password);
     const error =
-      validatePassword(password) ??
+      passwordCheck ??
       (password !== confirmation ? "两次输入的密码不一致。" : null);
     if (error) {
-      const field = validatePassword(password) ? "password" : "confirmation";
+      const field = passwordCheck ? "password" : "confirmation";
       setInvalidField(field);
       setValidation(new Error(error));
       (
@@ -155,6 +171,7 @@ function PasswordForm() {
     submitting.current = true;
     setInvalidField(null);
     setValidation(null);
+    setVisible(false);
     change.mutate({ current, next: password });
   }
   function edited() {
@@ -164,7 +181,7 @@ function PasswordForm() {
   }
 
   return (
-    <form id={formId} onSubmit={submit} className="min-w-0">
+    <form id={formId} noValidate onSubmit={submit} className="min-w-0">
       <Card>
         <CardHeader>
           {!overlay && <CardTitle role="heading" aria-level={2}>
@@ -174,28 +191,47 @@ function PasswordForm() {
         </CardHeader>
         <CardContent>
           <FieldSet disabled={change.isPending || resultUnknown}>
+            <FieldLegend className="sr-only">修改管理员密码</FieldLegend>
             <FieldGroup>
               <FieldGroup className="settings-fields">
-                <Field data-invalid={wrongCurrent}>
+                <Field data-invalid={currentInvalid}>
                   <FieldLabel htmlFor="current-password">当前密码</FieldLabel>
-                  <Input
-                    ref={currentField}
-                    id="current-password"
-                    name="current-password"
-                    type="password"
-                    autoComplete="current-password"
-                    required
-                    value={current}
-                    onChange={(event) => {
-                      setCurrent(event.target.value);
-                      edited();
-                    }}
-                    aria-invalid={wrongCurrent}
-                    aria-describedby={wrongCurrent ? "current-password-error" : undefined}
-                  />
-                  {wrongCurrent && (
+                  <InputGroup>
+                    <InputGroupInput
+                      ref={currentField}
+                      id="current-password"
+                      name="current-password"
+                      type={visible ? "text" : "password"}
+                      autoComplete="current-password"
+                      autoCorrect="off"
+                      autoCapitalize="none"
+                      spellCheck={false}
+                      enterKeyHint="next"
+                      required
+                      value={current}
+                      onChange={(event) => {
+                        setCurrent(event.target.value);
+                        edited();
+                      }}
+                      aria-invalid={currentInvalid}
+                      aria-describedby={currentInvalid ? "current-password-error" : undefined}
+                    />
+                    <InputGroupAddon align="inline-end" className="pr-1.5">
+                      <InputGroupButton
+                        size="icon-xs"
+                        type="button"
+                        aria-label="显示密码"
+                        aria-pressed={visible}
+                        disabled={change.isPending || resultUnknown}
+                        onClick={() => setVisible((value) => !value)}
+                      >
+                        {visible ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}
+                      </InputGroupButton>
+                    </InputGroupAddon>
+                  </InputGroup>
+                  {currentErrorMessage && (
                     <FieldError id="current-password-error">
-                      {change.error?.message}
+                      {currentErrorMessage}
                     </FieldError>
                   )}
                 </Field>
@@ -204,10 +240,22 @@ function PasswordForm() {
                   <Input
                     id="new-password"
                     name="new-password"
-                    type="password"
+                    type={visible ? "text" : "password"}
                     autoComplete="new-password"
+                    autoCorrect="off"
+                    autoCapitalize="none"
+                    spellCheck={false}
+                    enterKeyHint="next"
                     required
                     value={password}
+                    onBlur={() => {
+                      if (!password) return;
+                      const err = validatePassword(password);
+                      if (err) {
+                        setInvalidField("password");
+                        setValidation(new Error(err));
+                      }
+                    }}
                     onChange={(event) => {
                       setPassword(event.target.value);
                       edited();
@@ -235,10 +283,21 @@ function PasswordForm() {
                   <Input
                     id="confirm-password"
                     name="confirm-password"
-                    type="password"
+                    type={visible ? "text" : "password"}
                     autoComplete="new-password"
+                    autoCorrect="off"
+                    autoCapitalize="none"
+                    spellCheck={false}
+                    enterKeyHint="done"
                     required
                     value={confirmation}
+                    onBlur={() => {
+                      if (!confirmation) return;
+                      if (password && confirmation !== password) {
+                        setInvalidField("confirmation");
+                        setValidation(new Error("两次输入的密码不一致。"));
+                      }
+                    }}
                     onChange={(event) => {
                       setConfirmation(event.target.value);
                       edited();
@@ -273,7 +332,7 @@ function PasswordForm() {
           <Button
             form={formId}
             type="submit"
-            disabled={!current || !password || !confirmation || change.isPending || resultUnknown}
+            disabled={change.isPending || resultUnknown}
           >
             {change.isPending ? (
               <Spinner aria-hidden="true" data-icon="inline-start" />

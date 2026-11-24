@@ -152,6 +152,7 @@ export function SitePolicyFields({
   disabled = false,
   secondsDraft,
   onSecondsDraftChange,
+  timeoutSubmitted = false,
 }: {
   section?: string | undefined;
   expandedNotificationPolicy?: boolean;
@@ -161,6 +162,7 @@ export function SitePolicyFields({
   errors?: Readonly<Record<string, string>>;
   secondsDraft?: string;
   onSecondsDraftChange?: (raw: string) => void;
+  timeoutSubmitted?: boolean;
 }) {
   const limitId = useId();
   const zeroOffsetId = useId();
@@ -171,9 +173,14 @@ export function SitePolicyFields({
       SITE_DISPLAY_COPY_FIELDS.some((item) => Boolean(value.display[item.key])),
   );
   const timeoutRaw = secondsDraft ?? siteTimeoutSeconds(value.notification_delivery.timeout_milliseconds);
-  const timeoutError = siteTimeoutError(timeoutRaw) ??
+  const [timeoutTouched, setTimeoutTouched] = useState(false);
+  const clientTimeoutError = siteTimeoutError(timeoutRaw);
+  const serverTimeoutError =
     errors["configuration.policy.notification_delivery.timeout_milliseconds"] ??
     errors["policy.notification_delivery.timeout_milliseconds"];
+  const timeoutError =
+    (timeoutTouched || timeoutSubmitted ? clientTimeoutError : undefined) ??
+    serverTimeoutError;
   const [advanced, setAdvanced] = useState(false);
   const [displaySubTab, setDisplaySubTab] = useState<
     "basic" | "modules" | "copy" | "preview"
@@ -205,14 +212,14 @@ export function SitePolicyFields({
     }
   }, [errors]);
   useEffect(() => {
-    if (failedAdvanced) setAdvanced(true);
-  }, [errors, failedAdvanced]);
+    if (failedAdvanced || (timeoutSubmitted && clientTimeoutError)) setAdvanced(true);
+  }, [errors, failedAdvanced, timeoutSubmitted, clientTimeoutError]);
   useEffect(() => {
-    if (notificationPolicyOpen && failedAdvanced)
+    if (notificationPolicyOpen && (failedAdvanced || (timeoutSubmitted && clientTimeoutError)))
       content.current
         ?.querySelector<HTMLElement>('[aria-invalid="true"]')
         ?.focus();
-  }, [notificationPolicyOpen, failedAdvanced, errors]);
+  }, [notificationPolicyOpen, failedAdvanced, errors, timeoutSubmitted, clientTimeoutError]);
   const error = (path: string) =>
     errors["configuration.policy." + path] ?? errors["policy." + path];
   const change = (edit: (next: SitePolicy) => void) => {
@@ -289,17 +296,17 @@ export function SitePolicyFields({
             }
           />
 
-          <Field data-invalid={!!error("orders.pending_order_limit")}>
+            <Field data-invalid={!!error("orders.pending_order_limit")}>
             <FieldLabel htmlFor={limitId}>待付款订单上限（笔）</FieldLabel>
             <Input
               id={limitId}
+              name="pending_order_limit"
               aria-invalid={!!error("orders.pending_order_limit")}
               aria-describedby={
                 [limitId + "-hint", error("orders.pending_order_limit") ? limitId + "-error" : ""]
                   .filter(Boolean)
                   .join(" ")
               }
-              aria-label="待付款订单上限（笔）"
               type="number"
               min={1}
               step={1}
@@ -394,9 +401,9 @@ export function SitePolicyFields({
 
             <TabsContent value="modules" className="pt-3">
               <Field orientation="vertical" className="gap-2" data-disabled={disabled}>
-                <FieldLabel id={displayId + "-modules-label"} className="sr-only">
+                <span id={displayId + "-modules-label"} className="sr-only">
                   收银台显示模块
-                </FieldLabel>
+                </span>
                 <FieldContent className="min-w-0">
                   <div
                     role="group"
@@ -547,7 +554,8 @@ export function SitePolicyFields({
                 <FieldLabel htmlFor={timeoutId}>通知超时（秒）</FieldLabel>
                 <Input
                   id={timeoutId}
-                  aria-label="通知超时（秒）"
+                  name="timeout_seconds"
+                  data-site-timeout-input
                   aria-invalid={!!timeoutError}
                   aria-describedby={timeoutError ? timeoutId + "-error" : undefined}
                   type="number"
@@ -557,11 +565,13 @@ export function SitePolicyFields({
                   step={0.001}
                   required
                   value={timeoutRaw}
+                  onBlur={() => setTimeoutTouched(true)}
                   onChange={(event) => {
                     if (disabled) return;
                     const raw = event.target.value;
                     onSecondsDraftChange?.(raw);
                     if (siteTimeoutError(raw)) return;
+                    setTimeoutTouched(false);
                     const milliseconds = integerUnits(raw, 1000)!;
                     change((p) => {
                       p.notification_delivery.timeout_milliseconds = milliseconds;
@@ -646,7 +656,6 @@ function NumberField({
             .join(" ") || undefined
         }
         aria-invalid={!!fieldError}
-        aria-label={label}
         required
         type="number"
         min={min}
@@ -705,12 +714,14 @@ export function SiteTextField({
       <FieldLabel htmlFor={id}>{label}</FieldLabel>
       <Input
         id={id}
-        aria-label={label}
         aria-invalid={!!fieldError}
         aria-describedby={fieldError ? errorId : undefined}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         type={type}
+        autoCorrect={type === "url" ? "off" : undefined}
+        autoCapitalize={type === "url" ? "none" : undefined}
+        spellCheck={type === "url" ? false : undefined}
         required={required}
         pattern={required ? ".*\\S.*" : undefined}
         onInvalid={(event) => {
@@ -775,7 +786,6 @@ function OptionalCopyField({
       {multiline ? (
         <Textarea
           id={id}
-          aria-label={label}
           aria-invalid={!!error}
           aria-describedby={describedBy}
           rows={2}
@@ -788,7 +798,6 @@ function OptionalCopyField({
       ) : (
         <Input
           id={id}
-          aria-label={label}
           aria-invalid={!!error}
           aria-describedby={describedBy}
           maxLength={maxLength}

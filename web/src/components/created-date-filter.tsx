@@ -91,14 +91,18 @@ function InlineCreatedDateFilter({
   const [selected, setSelected] = useState(() => selectedPreset(control.query));
   const [from, setFrom] = useState(() => control.query.createdFrom ?? beijingDate());
   const [to, setTo] = useState(() => control.query.createdTo ?? beijingDate());
+  const [touched, setTouched] = useState({ from: false, to: false });
   const fromInput = useRef<HTMLInputElement>(null);
   const toInput = useRef<HTMLInputElement>(null);
-  const { error, fromError, toError } = selected === "custom"
+  const rawValidation = selected === "custom"
     ? validateDates(from, to) : { error: "", fromError: "", toError: "" };
+  const fromError = touched.from ? rawValidation.fromError : "";
+  const toError = touched.to ? rawValidation.toError : "";
+  const error = fromError || toError ? rawValidation.error : "";
   useEffect(() => {
-    fromInput.current?.setCustomValidity(fromError);
-    toInput.current?.setCustomValidity(toError);
-  }, [fromError, toError, selected]);
+    fromInput.current?.setCustomValidity(rawValidation.fromError);
+    toInput.current?.setCustomValidity(rawValidation.toError);
+  }, [rawValidation.fromError, rawValidation.toError, selected]);
 
   function stageCustom(nextFrom: string, nextTo: string) {
     if (!validateDates(nextFrom, nextTo).error)
@@ -120,6 +124,7 @@ function InlineCreatedDateFilter({
             onValueChange={value => {
               if (!value) return;
               setSelected(value);
+              setTouched({ from: false, to: false });
               if (value === "custom") {
                 stageCustom(from, to);
                 return;
@@ -150,13 +155,20 @@ function InlineCreatedDateFilter({
             <Input
               ref={fromInput}
               id={id + "-from"}
+              name={fields.from}
               type="date"
               min="1970-01-01"
               required
               value={from}
+              onBlur={() => setTouched(current => ({ ...current, from: true }))}
+              onInvalid={() => setTouched(current => ({ ...current, from: true }))}
               onChange={event => {
-                setFrom(event.target.value);
-                stageCustom(event.target.value, to);
+                const next = event.target.value;
+                setFrom(next);
+                if (!validateDates(next, to).fromError) {
+                  setTouched(current => ({ ...current, from: false }));
+                }
+                stageCustom(next, to);
               }}
               aria-invalid={!!fromError}
               aria-describedby={id + "-description" + (error ? " " + id + "-error" : "")}
@@ -167,13 +179,20 @@ function InlineCreatedDateFilter({
             <Input
               ref={toInput}
               id={id + "-to"}
+              name={fields.to}
               type="date"
               min="1970-01-01"
               required
               value={to}
+              onBlur={() => setTouched(current => ({ ...current, to: true }))}
+              onInvalid={() => setTouched(current => ({ ...current, to: true }))}
               onChange={event => {
-                setTo(event.target.value);
-                stageCustom(from, event.target.value);
+                const next = event.target.value;
+                setTo(next);
+                if (!validateDates(from, next).toError) {
+                  setTouched(current => ({ ...current, to: false }));
+                }
+                stageCustom(from, next);
               }}
               aria-invalid={!!toError}
               aria-describedby={id + "-description" + (error ? " " + id + "-error" : "")}

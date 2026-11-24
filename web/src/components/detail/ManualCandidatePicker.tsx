@@ -1,6 +1,6 @@
 import { useQuery } from '@/lib/workspace-query';
 import { useWorkspaceApi } from "@/workspace";
-import { useState } from "react";
+import { useId, useState } from "react";
 
 import { Search } from "lucide-react";
 import { result, type ManualSettlementRecommendation } from "@/api/client";
@@ -64,6 +64,7 @@ export function ManualCandidatePicker({
   );
   const [trail, setTrail] = useState<Array<string | null>>([null]);
   const [error, setError] = useState("");
+  const searchId = useId();
   const cursor = trail.at(-1);
   const query = useQuery({
     queryKey: ["manual-candidates", kind, contextId, view, q, cursor],
@@ -145,17 +146,24 @@ export function ManualCandidatePicker({
   return (
     <section className="flex min-w-0 flex-col gap-4" aria-label={"选择" + noun}>
       <h3 className="text-sm font-medium">选择{noun}</h3>
-      <search aria-label={"搜索可关联" + noun}>
+      <search role="search" aria-label={"搜索可关联" + noun}>
         <FieldGroup className="flex-row flex-wrap items-start gap-2">
           <Field className="min-w-0 flex-1 basis-40" data-invalid={!!error}>
+            <label htmlFor={searchId} className="sr-only">搜索{noun}</label>
             <InputGroup>
               <InputGroupAddon>
-                <Search />
+                <Search aria-hidden="true" />
               </InputGroupAddon>
               <InputGroupInput
+                id={searchId}
+                name="q"
                 type="search"
-                aria-label={"搜索" + noun}
+                enterKeyHint="search"
+                autoCorrect="off"
+                autoCapitalize="none"
+                spellCheck={false}
                 aria-invalid={!!error}
+                aria-describedby={error ? searchId + "-error" : undefined}
                 placeholder={
                   kind === "orders"
                     ? "商品名、商户订单号或金额"
@@ -175,7 +183,7 @@ export function ManualCandidatePicker({
                 }}
               />
             </InputGroup>
-            {error && <FieldError>{error}</FieldError>}
+            {error && <FieldError id={searchId + "-error"}>{error}</FieldError>}
           </Field>
           <Button
             type="button"

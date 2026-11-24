@@ -232,8 +232,9 @@ describe("business website management", () => {
     await user.click(await screen.findByRole("button", { name: "通知超时与重试设置" }));
     fireEvent.change(screen.getByLabelText("通知超时（秒）"), { target: { value: "5.0004" } });
     const save = screen.getByRole("button", { name: "保存业务网站" });
-    expect(save).toBeDisabled();
+    expect(save).toBeEnabled();
     fireEvent.submit(save.closest("form")!);
+    expect(screen.getByText("通知超时最多 3 位小数。")).toBeVisible();
     expect(view.writes).toHaveLength(0);
     await user.click(screen.getByRole("tab", { name: "订单设置" }));
     expect(await screen.findByRole("alertdialog")).toBeVisible();
@@ -329,10 +330,10 @@ describe("website configuration recovery", () => {
     expect(screen.queryByRole("button", { name: "应用核对结果" })).not.toBeInTheDocument();
     expect(timeout).toHaveValue(5.1234);
     expect(timeout).toBeEnabled();
-    expect(screen.getByText("通知超时最多 3 位小数。")).toBeVisible();
     const save = screen.getByRole("button", { name: "保存业务网站" });
-    expect(save).toBeDisabled();
+    expect(save).toBeEnabled();
     fireEvent.submit(save.closest("form")!);
+    expect(screen.getByText("通知超时最多 3 位小数。")).toBeVisible();
     expect(view.writes).toHaveLength(1);
     await user.click(screen.getByRole("tab", { name: "订单设置" }));
     expect(await screen.findByRole("alertdialog")).toBeVisible();
@@ -364,10 +365,10 @@ describe("website configuration recovery", () => {
     expect(timeout).toHaveValue(5.1234);
     expect(timeout).toBeEnabled();
     expect(screen.getByLabelText("最多发送次数（次）")).toHaveValue(choice === "保留我的修改" ? 15 : 18);
-    expect(screen.getByText("通知超时最多 3 位小数。")).toBeVisible();
     const save = screen.getByRole("button", { name: "保存业务网站" });
-    expect(save).toBeDisabled();
+    expect(save).toBeEnabled();
     fireEvent.submit(save.closest("form")!);
+    expect(screen.getByText("通知超时最多 3 位小数。")).toBeVisible();
     expect(view.writes).toHaveLength(1);
   });
 

@@ -857,6 +857,7 @@ export function AlipayAccountEditor({
         }}
       >
         <FieldSet disabled={editingBlocked || historical}>
+          <FieldLegend className="sr-only">支付宝账号信息</FieldLegend>
           <Card className={tabbed && panel === "usage" ? "hidden" : undefined}>
             <CardHeader hidden={tabbed && panel !== "basic"}>
               <CardTitle>账号信息</CardTitle>
@@ -882,8 +883,9 @@ export function AlipayAccountEditor({
                     maxLength={80}
                     placeholder="例如：主收款账号"
                     aria-invalid={!!errors.name}
+                    aria-describedby={errors.name ? "alipay-name-error" : undefined}
                   />
-                  {errors.name && <FieldError>{errors.name}</FieldError>}
+                  {errors.name && <FieldError id="alipay-name-error">{errors.name}</FieldError>}
                 </Field>
                 <Field orientation="horizontal">
                   <FieldContent className="min-w-0">
@@ -920,9 +922,13 @@ export function AlipayAccountEditor({
                         change("app_id", event.currentTarget.value)
                       }
                       autoComplete="off"
+                      autoCorrect="off"
+                      autoCapitalize="none"
+                      spellCheck={false}
                       aria-invalid={!!errors.app_id}
+                      aria-describedby={errors.app_id ? "alipay-app-id-error" : undefined}
                     />
-                    {errors.app_id && <FieldError>{errors.app_id}</FieldError>}
+                    {errors.app_id && <FieldError id="alipay-app-id-error">{errors.app_id}</FieldError>}
                   </Field>
                   {pending && <Alert role="alert">
                     <AlertTitle>新应用密钥待启用</AlertTitle>
@@ -933,7 +939,7 @@ export function AlipayAccountEditor({
                       title={pending ? "待启用应用公钥" : "应用公钥"} copyLabel={pending ? "复制待启用应用公钥" : "复制应用公钥"} />
                   ) : (
                     <Field>
-                      <FieldLabel>应用公钥</FieldLabel>
+                      <FieldTitle>应用公钥</FieldTitle>
                       <FieldDescription>
                         {privateKey.trim() ? "保存导入的应用私钥后，这里会显示对应的应用公钥。" : saved ? "生成应用密钥后，将应用公钥上传到支付宝。" : tabbed ? "先填写账号名称，点击“创建账号并继续”，再生成应用密钥。" : "先填写账号名称并保存草稿，再点击“生成应用密钥”。"}
                       </FieldDescription>
@@ -954,7 +960,7 @@ export function AlipayAccountEditor({
                     </FieldLabel>
                     <Textarea
                       id={pending ? "alipay-activation-key" : "alipay-platform-key"}
-                      name={pending ? undefined : "platform_public_key"}
+                      name={pending ? "activation_platform_public_key" : "platform_public_key"}
                       rows={4}
                       className="settings-long-text"
                       value={pending ? activationKey : draft.platform_public_key}
@@ -966,14 +972,21 @@ export function AlipayAccountEditor({
                       }}
                       maxLength={16384}
                       autoComplete="off"
+                      autoCorrect="off"
+                      autoCapitalize="none"
                       spellCheck={false}
                       aria-invalid={!!platformKeyError}
+                      aria-describedby={
+                        platformKeyError
+                          ? "alipay-platform-key-hint alipay-platform-key-error"
+                          : "alipay-platform-key-hint"
+                      }
                     />
-                    <FieldDescription>
+                    <FieldDescription id="alipay-platform-key-hint">
                       上传应用公钥后，将支付宝提供的“支付宝公钥”填到这里。
                     </FieldDescription>
                     {platformKeyError && (
-                      <FieldError>{platformKeyError}</FieldError>
+                      <FieldError id="alipay-platform-key-error">{platformKeyError}</FieldError>
                     )}
                   </Field>
                   {pending && <div className="flex flex-wrap gap-2">
@@ -1009,14 +1022,21 @@ export function AlipayAccountEditor({
                         }}
                         maxLength={16384}
                         autoComplete="off"
+                        autoCorrect="off"
+                        autoCapitalize="none"
                         spellCheck={false}
                         aria-invalid={!!errors.private_key}
+                        aria-describedby={
+                          errors.private_key
+                            ? "alipay-private-key-hint alipay-private-key-error"
+                            : "alipay-private-key-hint"
+                        }
                       />
-                      <FieldDescription>
+                      <FieldDescription id="alipay-private-key-hint">
                         留空会保留当前密钥；没有密钥时，可点击上方“生成应用密钥”。出于安全考虑，保存后不再显示私钥明文。
                       </FieldDescription>
                       {errors.private_key && (
-                        <FieldError>{errors.private_key}</FieldError>
+                        <FieldError id="alipay-private-key-error">{errors.private_key}</FieldError>
                       )}
                     </Field>
                   </CollapsibleContent>

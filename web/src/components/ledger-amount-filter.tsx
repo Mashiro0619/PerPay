@@ -38,14 +38,18 @@ function InlineLedgerAmountFilter({ control, searchParams }: LedgerAmountFilterP
   const search = searchParams ?? urlSearch;
   const [minimum, setMinimum] = useState(() => ledgerAmountInput(search.get("min_amount_cents")));
   const [maximum, setMaximum] = useState(() => ledgerAmountInput(search.get("max_amount_cents")));
+  const [touched, setTouched] = useState({ min: false, max: false });
   const minInput = useRef<HTMLInputElement>(null);
   const maxInput = useRef<HTMLInputElement>(null);
   const id = useId();
-  const { error, minError, maxError } = validateAmounts(minimum, maximum);
+  const { error: rawError, minError: rawMinError, maxError: rawMaxError } = validateAmounts(minimum, maximum);
+  const minError = touched.min ? rawMinError : "";
+  const maxError = touched.max ? rawMaxError : "";
+  const error = minError || maxError ? rawError : "";
   useEffect(() => {
-    minInput.current?.setCustomValidity(minError);
-    maxInput.current?.setCustomValidity(maxError);
-  }, [minError, maxError]);
+    minInput.current?.setCustomValidity(rawMinError);
+    maxInput.current?.setCustomValidity(rawMaxError);
+  }, [rawMinError, rawMaxError]);
 
   function stage(nextMinimum: string, nextMaximum: string) {
     const { min, max, error } = validateAmounts(nextMinimum, nextMaximum);
@@ -63,14 +67,24 @@ function InlineLedgerAmountFilter({ control, searchParams }: LedgerAmountFilterP
           <Input
             ref={minInput}
             id={id + "-min"}
+            name="min_amount"
             inputMode="decimal"
             autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="none"
+            spellCheck={false}
             placeholder="不限"
             value={minimum}
             maxLength={24}
+            onBlur={() => setTouched(current => ({ ...current, min: true }))}
+            onInvalid={() => setTouched(current => ({ ...current, min: true }))}
             onChange={event => {
-              setMinimum(event.target.value);
-              stage(event.target.value, maximum);
+              const next = event.target.value;
+              setMinimum(next);
+              if (!validateAmounts(next, maximum).minError) {
+                setTouched(current => ({ ...current, min: false }));
+              }
+              stage(next, maximum);
             }}
             aria-invalid={!!minError}
             aria-describedby={id + "-description" + (error ? " " + id + "-error" : "")}
@@ -81,14 +95,24 @@ function InlineLedgerAmountFilter({ control, searchParams }: LedgerAmountFilterP
           <Input
             ref={maxInput}
             id={id + "-max"}
+            name="max_amount"
             inputMode="decimal"
             autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="none"
+            spellCheck={false}
             placeholder="不限"
             value={maximum}
             maxLength={24}
+            onBlur={() => setTouched(current => ({ ...current, max: true }))}
+            onInvalid={() => setTouched(current => ({ ...current, max: true }))}
             onChange={event => {
-              setMaximum(event.target.value);
-              stage(minimum, event.target.value);
+              const next = event.target.value;
+              setMaximum(next);
+              if (!validateAmounts(minimum, next).maxError) {
+                setTouched(current => ({ ...current, max: false }));
+              }
+              stage(minimum, next);
             }}
             aria-invalid={!!maxError}
             aria-describedby={id + "-description" + (error ? " " + id + "-error" : "")}

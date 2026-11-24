@@ -169,7 +169,10 @@ describe("administrator authentication", () => {
       const submit = screen.getByRole("button", { name: "修改并重新登录" });
       fireEvent.change(screen.getByLabelText("新密码"), { target: { value: "next-test-password" } });
       fireEvent.change(screen.getByLabelText("再次输入新密码"), { target: { value: "next-test-password" } });
-      expect(submit).toBeDisabled();
+      await userEvent.setup().click(submit);
+      expect(current).toHaveAttribute("aria-invalid", "true");
+      expect(current).toHaveFocus();
+      expect(fetchMock).not.toHaveBeenCalled();
       fireEvent.change(current, { target: { value: "wrong-test-password" } });
       await userEvent.setup().click(submit);
       await waitFor(() => expect(current).toHaveAccessibleDescription("当前密码不正确"));

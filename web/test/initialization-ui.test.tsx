@@ -116,7 +116,7 @@ describe("first-deployment authentication presentation", () => {
     fireEvent.change(screen.getByLabelText("再次输入密码"), { target: { value: "new-admin-password" } });
     await user.click(screen.getByRole("button", { name: "创建管理员" }));
     expect(token).toHaveAttribute("aria-invalid", "true");
-    expect(token).toHaveAccessibleDescription("请输入服务器启动日志中的初始化令牌。");
+    expect(token).toHaveAccessibleDescription(/请输入服务器启动日志中的初始化令牌。/);
     expect(token).toHaveFocus();
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -176,7 +176,7 @@ describe("first-deployment authentication presentation", () => {
     fireEvent.change(screen.getByLabelText("设置管理员密码"), { target: { value: "new-admin-password" } });
     fireEvent.change(screen.getByLabelText("再次输入密码"), { target: { value: "new-admin-password" } });
     await user.click(screen.getByRole("button", { name: "创建管理员" }));
-    await waitFor(() => expect(token).toHaveAccessibleDescription("初始化令牌无效或已失效，请从服务器最新启动日志重新获取。"));
+    await waitFor(() => expect(token).toHaveAccessibleDescription(/初始化令牌无效或已失效，请从服务器最新启动日志重新获取。/));
     expect(token).toHaveFocus();
     expect(token).toBeEnabled();
     expect(token).toHaveAttribute("aria-invalid", "true");

@@ -133,7 +133,7 @@ describe("official block composition", () => {
     const submit = screen.getByRole("button", { name: "修改并重新登录" });
     expect(submit.closest("form")).toBe(password.closest("form"));
     expect(confirmation.closest("form")).toBe(password.closest("form"));
-    expect(submit).toBeDisabled();
+    expect(submit).toBeEnabled();
     fireEvent.change(password, { target: { value: "unsubmitted-password" } });
     password.focus();
     rerender(content(settings.revision + 1));

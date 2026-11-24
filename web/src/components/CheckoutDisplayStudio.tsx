@@ -43,6 +43,7 @@ import {
   FieldError,
   FieldGroup,
   FieldLabel,
+  FieldLegend,
   FieldSet,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -342,6 +343,11 @@ export function CheckoutDisplayStudio({
         setNameChecked(true);
         setInspectorTab("brand");
         setActiveTarget("checkout_name");
+        requestAnimationFrame(() => {
+          inspectorRef.current
+            ?.querySelector<HTMLElement>('[data-studio-control="checkout_name"]')
+            ?.focus();
+        });
         throw new Error("请输入收银台名称。");
       }
       void queryClient.invalidateQueries({
@@ -618,6 +624,15 @@ export function CheckoutDisplayStudio({
         className="checkout-studio-inspector min-w-0 gap-0 overflow-hidden py-0"
         data-checkout-studio-inspector
       >
+        <form
+          id={`${studioId}-form`}
+          noValidate
+          className="contents"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (!busy && !requiresReview && dirty) save.mutate();
+          }}
+        >
         <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/25 px-4 py-3">
           <div className="flex min-w-0 items-center gap-2">
             <CardTitle className="text-sm font-semibold">收银台配置</CardTitle>
@@ -653,10 +668,9 @@ export function CheckoutDisplayStudio({
               </Button>
             )}
             <Button
-              type="button"
+              type="submit"
               size="sm"
               disabled={busy || requiresReview || !dirty}
-              onClick={() => save.mutate()}
             >
               {save.isPending ? (
                 <Spinner aria-hidden="true" data-icon="inline-start" />
@@ -741,6 +755,7 @@ export function CheckoutDisplayStudio({
 
             <TabsContent value="modules" className="pt-3">
               <FieldSet disabled={busy || requiresReview} className="gap-2">
+                <FieldLegend className="sr-only">收银台显示模块</FieldLegend>
                 <div
                   className="settings-display-sections"
                   role="group"
@@ -816,6 +831,7 @@ export function CheckoutDisplayStudio({
 
             <TabsContent value="copy" className="pt-3">
               <FieldSet disabled={busy || requiresReview} className="gap-4">
+                <FieldLegend className="sr-only">收银台文案</FieldLegend>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="text-xs text-muted-foreground">
                     留空即使用系统默认文案；聚焦输入框自动切换到对应预览状态。
@@ -942,8 +958,8 @@ export function CheckoutDisplayStudio({
                           {isOptionalOpen && (
                             <Textarea
                               id={controlId}
+                              name={item.key}
                               data-studio-control={item.key}
-                              aria-label={item.label}
                               aria-invalid={!!err}
                               aria-describedby={describedBy}
                               rows={2}
@@ -1014,6 +1030,7 @@ export function CheckoutDisplayStudio({
 
             <TabsContent value="brand" className="pt-3">
               <FieldSet disabled={busy || requiresReview}>
+                <FieldLegend className="sr-only">收银台品牌与帮助</FieldLegend>
                 <FieldGroup className="gap-4">
                   <Field
                     data-invalid={!!fieldError("checkout_name")}
@@ -1028,8 +1045,8 @@ export function CheckoutDisplayStudio({
                     </FieldLabel>
                     <Input
                       id={`${studioId}-checkout_name`}
+                      name="checkout_name"
                       data-studio-control="checkout_name"
-                      aria-label="收银台名称"
                       aria-invalid={!!fieldError("checkout_name")}
                       aria-describedby={
                         fieldError("checkout_name")
@@ -1040,8 +1057,9 @@ export function CheckoutDisplayStudio({
                       maxLength={40}
                       value={draftNormalized.checkout_name}
                       onFocus={() => setActiveTarget("checkout_name")}
+                      onBlur={() => setNameChecked(true)}
                       onChange={(event) => {
-                        setNameChecked(true);
+                        if (event.target.value.trim()) setNameChecked(false);
                         updateDisplay((next) => {
                           next.checkout_name = event.target.value;
                         });
@@ -1067,8 +1085,11 @@ export function CheckoutDisplayStudio({
                     </FieldLabel>
                     <Input
                       id={`${studioId}-checkout_help_url`}
+                      name="checkout_help_url"
                       data-studio-control="checkout_help_url"
-                      aria-label="帮助链接"
+                      autoCorrect="off"
+                      autoCapitalize="none"
+                      spellCheck={false}
                       aria-invalid={!!fieldError("checkout_help_url")}
                       aria-describedby={
                         [
@@ -1134,8 +1155,8 @@ export function CheckoutDisplayStudio({
                     </div>
                     <Input
                       id={`${studioId}-checkout_help_label`}
+                      name="checkout_help_label"
                       data-studio-control="checkout_help_label"
-                      aria-label="帮助链接文案"
                       aria-invalid={!!fieldError("checkout_help_label")}
                       aria-describedby={
                         [
@@ -1175,6 +1196,7 @@ export function CheckoutDisplayStudio({
             </TabsContent>
           </Tabs>
         </CardContent>
+        </form>
       </Card>
       </div>
     </div>

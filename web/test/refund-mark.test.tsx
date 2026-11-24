@@ -186,10 +186,10 @@ describe("administrator-only refund marks", () => {
     );
     const note = screen.getByLabelText("备注（可选）");
     fireEvent.change(note, { target: { value: "🙂".repeat(501) } });
+    await user.click(screen.getByRole("button", { name: "确认标记已退款" }));
     expect(screen.getByText("备注最多 500 字。")).toBeVisible();
-    expect(
-      screen.getByRole("button", { name: "确认标记已退款" }),
-    ).toBeDisabled();
+    expect(note).toHaveFocus();
+    expect(requests).toHaveLength(0);
     fireEvent.change(note, { target: { value: "🙂".repeat(500) } });
     await user.click(screen.getByRole("button", { name: "确认标记已退款" }));
     await waitFor(() => expect(requests).toHaveLength(1));

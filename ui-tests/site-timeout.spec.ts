@@ -14,14 +14,14 @@ test("template seconds drafts survive tabs, reject excess precision and save exa
     const timeout = page.getByLabel("通知超时（秒）", { exact: true });
     const save = page.getByRole("button", { name: "保存默认设置" });
     await timeout.fill("5.0004");
+    await timeout.blur();
     await expect(page.getByText("通知超时最多 3 位小数。", { exact: true })).toBeVisible();
-    await expect(save).toBeDisabled();
     await page.getByLabel("最多发送次数（次）", { exact: true }).fill("15");
     await expect(timeout).toHaveValue("5.0004");
     await page.getByRole("tab", { name: "订单设置" }).click();
     await expect(page.getByRole("alertdialog")).toHaveCount(0);
-    await expect(save).toBeDisabled();
-    await page.getByRole("tab", { name: "通知设置" }).click();
+    await save.click();
+    await expect(timeout).toBeFocused();
     await expect(timeout).toHaveValue("5.0004");
     await timeout.fill("5.123");
     expect(await timeout.evaluate((input: HTMLInputElement) => input.checkValidity())).toBe(true);
@@ -63,7 +63,8 @@ browserTest("site timeout keeps invalid input through a concurrent key conflict 
     const save = page.getByRole("button", { name: "保存业务网站", exact: true });
     await timeout.fill("5.123");
     await timeout.fill("5.1234");
-    await expect(save).toBeDisabled();
+    await timeout.blur();
+    await expect(page.getByText("通知超时最多 3 位小数。", { exact: true })).toBeVisible();
 
     // An independent administrator updates another group while this form is dirty.
     const current = await page.request.get(siteUrl);
@@ -92,9 +93,10 @@ browserTest("site timeout keeps invalid input through a concurrent key conflict 
     await expect(page.getByText("最新配置已合并，尚未保存", { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "应用核对结果", exact: true })).toHaveCount(0);
     await expect(timeout).toHaveValue("5.1234");
+    await save.click();
     await expect(timeout).toHaveAttribute("aria-invalid", "true");
     await expect(page.getByText("通知超时最多 3 位小数。", { exact: true })).toBeVisible();
-    await expect(save).toBeDisabled();
+    await expect(timeout).toBeFocused();
     expect(formWrites).toHaveLength(0);
     for (const width of [1440, 320]) {
       await page.setViewportSize({ width, height: 900 });

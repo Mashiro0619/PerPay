@@ -328,3 +328,9 @@ a:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* Visually mark required fields without altering label textContent or duplicating screen reader announcements. */
+[data-slot="field"]:has(:is(input, textarea, select)[required]) [data-slot="field-label"]:not(.sr-only)::after {
+  content: " *" / "";
+  color: var(--destructive);
+}

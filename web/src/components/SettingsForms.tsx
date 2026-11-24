@@ -66,6 +66,7 @@ import {
   FieldSet,
   FieldLegend,
   FieldGroup,
+  FieldTitle,
 } from "@/components/ui/field";
 import {
   Card,
@@ -561,7 +562,7 @@ export function SettingsEditor({
         <FieldGroup className="gap-5">
           <FieldGroup className="settings-fields">
             <Field orientation="vertical" className={displayRowClassName} data-invalid={!!fieldErrors.dashboard_chart_type}>
-              <FieldLabel id={formId + "-chart-label"}>收款趋势默认图形</FieldLabel>
+              <FieldTitle id={formId + "-chart-label"}>收款趋势默认图形</FieldTitle>
               <FieldContent className="min-w-0">
                 <input type="hidden" name="dashboard_chart_type" value={chartType} />
                 <ToggleGroup data-settings-chart-default variant="outline" value={[chartType]}
@@ -596,7 +597,7 @@ export function SettingsEditor({
               className={displayRowClassName}
               data-invalid={!!fieldErrors.dashboard_work_items_layout}
             >
-              <FieldLabel id={formId + "-work-layout-label"}>待处理排列方式</FieldLabel>
+              <FieldTitle id={formId + "-work-layout-label"}>待处理排列方式</FieldTitle>
               <FieldContent className="min-w-0">
                 <input
                   type="hidden"
@@ -660,7 +661,7 @@ export function SettingsEditor({
             data-invalid={!!fieldErrors.dashboard_sections}
           >
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <FieldLabel id={formId + "-sections-label"}>总览显示模块</FieldLabel>
+              <FieldTitle id={formId + "-sections-label"}>总览显示模块</FieldTitle>
               <Badge variant="secondary" className="tabular-nums">
                 已开启 {enabledDashboardSectionCount} / {DASHBOARD_SECTION_KEYS.length}
               </Badge>
@@ -942,40 +943,38 @@ export function SettingsEditor({
       }}
       autoComplete="off"
     >
-      <FieldSet disabled={save.isPending}>
-        <FieldGroup>
-          <Card size="sm" data-settings-editor-card={section}>
-            {!overlay && (
-              <CardHeader>
-                <CardTitle role="heading" aria-level={2}>{title}</CardTitle>
-                <CardDescription>{sectionDescriptions[section]}</CardDescription>
-                {section === "collection-policy" && (
-                  <CardAction>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={save.isPending}
-                      onClick={recommendedProvider}
-                    >
-                      <RotateCcw data-icon="inline-start" />
-                      采用推荐值
-                    </Button>
-                  </CardAction>
-                )}
-              </CardHeader>
-            )}
-            <CardContent>
-              <FieldSet className="min-w-0">
-                <FieldLegend className="sr-only">{title}</FieldLegend>
-                {section === "backup" && <FieldDescription>恢复需要数据库备份和主密钥。</FieldDescription>}
-                {fields}
-              </FieldSet>
-            </CardContent>
-            {overlay ? <OverlayActions className="w-full">{actions}</OverlayActions> : <CardFooter className="settings-save-footer">{actions}</CardFooter>}
-          </Card>
-        </FieldGroup>
-      </FieldSet>
+      <FieldGroup>
+        <Card size="sm" data-settings-editor-card={section}>
+          {!overlay && (
+            <CardHeader>
+              <CardTitle role="heading" aria-level={2}>{title}</CardTitle>
+              <CardDescription>{sectionDescriptions[section]}</CardDescription>
+              {section === "collection-policy" && (
+                <CardAction>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={save.isPending}
+                    onClick={recommendedProvider}
+                  >
+                    <RotateCcw data-icon="inline-start" />
+                    采用推荐值
+                  </Button>
+                </CardAction>
+              )}
+            </CardHeader>
+          )}
+          <CardContent>
+            <FieldSet disabled={save.isPending} className="min-w-0">
+              <FieldLegend className="sr-only">{title}</FieldLegend>
+              {section === "backup" && <FieldDescription>恢复需要数据库备份和主密钥。</FieldDescription>}
+              {fields}
+            </FieldSet>
+          </CardContent>
+          {overlay ? <OverlayActions className="w-full">{actions}</OverlayActions> : <CardFooter className="settings-save-footer">{actions}</CardFooter>}
+        </Card>
+      </FieldGroup>
     </form>
   );
 }

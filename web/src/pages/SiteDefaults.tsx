@@ -15,7 +15,7 @@ import { waitForOperation } from "@/lib/operation-timeout";
 import { SiteConfigurationConflicts } from "@/components/site-configuration-conflicts";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { FieldSet } from "@/components/ui/field";
+import { FieldLegend, FieldSet } from "@/components/ui/field";
 import { ScrollingTabs } from "@/components/scrolling-tabs";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -69,6 +69,7 @@ function DefaultsEditor({ initial }: { initial: DefaultsSnapshot }) {
   const [saved, setSaved] = useState(initial);
   const [draft, setDraft] = useState(() => structuredClone(initial.policy));
   const [timeoutRaw, setTimeoutRaw] = useState(() => siteTimeoutSeconds(initial.policy.notification_delivery.timeout_milliseconds));
+  const [timeoutSubmitted, setTimeoutSubmitted] = useState(false);
   const timeoutError = siteTimeoutError(timeoutRaw);
   const dirty = JSON.stringify(draft) !== JSON.stringify(saved.policy) ||
     timeoutRaw !== siteTimeoutSeconds(saved.policy.notification_delivery.timeout_milliseconds);
@@ -248,16 +249,32 @@ function DefaultsEditor({ initial }: { initial: DefaultsSnapshot }) {
       )}
       <form id={formId} ref={formRef} className="settings-form-surface" onSubmit={event => {
         event.preventDefault();
-        if (!busy && !requiresReview && !timeoutError) save.mutate();
+        if (busy || requiresReview) return;
+        if (timeoutError) {
+          setTimeoutSubmitted(true);
+          if (section !== "integration") setSection("integration");
+          requestAnimationFrame(() => {
+            formRef.current
+              ?.querySelector<HTMLElement>("[data-site-timeout-input]")
+              ?.focus();
+          });
+          return;
+        }
+        save.mutate();
       }}>
         <FieldSet disabled={busy || requiresReview}>
+          <FieldLegend className="sr-only">网站默认设置</FieldLegend>
           <SitePolicyFields
             section={section}
             expandedNotificationPolicy
             disabled={busy || requiresReview}
             value={draft}
             secondsDraft={timeoutRaw}
-            onSecondsDraftChange={setTimeoutRaw}
+            onSecondsDraftChange={(raw) => {
+              setTimeoutRaw(raw);
+              if (!siteTimeoutError(raw)) setTimeoutSubmitted(false);
+            }}
+            timeoutSubmitted={timeoutSubmitted}
             errors={save.error instanceof ApiError ? save.error.fields : {}}
             onChange={policy => {
               setDraft(policy);
@@ -267,7 +284,7 @@ function DefaultsEditor({ initial }: { initial: DefaultsSnapshot }) {
           />
           <OverlayActions>
             {overlay && <Button type="button" variant="outline" disabled={busy} onClick={() => overlay.requestClose()}>关闭</Button>}
-            <Button form={formId} type="submit" disabled={busy || requiresReview || !!timeoutError}>保存默认设置</Button>
+            <Button form={formId} type="submit" disabled={busy || requiresReview}>保存默认设置</Button>
           </OverlayActions>
         </FieldSet>
       </form>

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { onlineManager, useMutation, useQuery } from "@tanstack/react-query";
 import { api, result, ApiError, queryClient, type AdminAccessView, type RuntimeSettings } from "@/api/client";
 import { PageHeading } from "@/components/page-heading";
@@ -54,6 +54,7 @@ export function AdminAccessSettings({
   onSaved: (settings: RuntimeSettings, message?: string) => void;
 }) {
   const overlay = useOverlayContext();
+  const formId = useId();
   const wait = useOperationWait();
   const source = useQuery({
     queryKey: ["admin-access-source"],
@@ -171,6 +172,13 @@ export function AdminAccessSettings({
         </CardDescription>
       </CardHeader>
       <CardContent>
+        <form
+          id={formId}
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (dirty && !busy && !requiresReview) setConfirm(true);
+          }}
+        >
         <FieldGroup>
           {needsReload && !review && <Alert role="alert">
             <AlertTitle>{isOperationResultUnknown(save.error) ? "保存结果待确认" : "配置已在其他页面或设备中更新"}</AlertTitle>
@@ -178,7 +186,7 @@ export function AdminAccessSettings({
               <p>{isOperationResultUnknown(save.error)
                 ? "你的填写已保留。请重新读取并核对服务器规则，再继续保存。"
                 : "你的修改已保留，重新读取后可继续保存。"}</p>
-              <Button variant="outline" disabled={busy} onClick={() => reload.mutate()}>
+              <Button type="button" variant="outline" disabled={busy} onClick={() => reload.mutate()}>
                 {reload.isPending ? "正在读取…" : "重新读取配置"}
               </Button>
             </AlertDescription>
@@ -194,13 +202,14 @@ export function AdminAccessSettings({
                   <ToggleGroupItem value="local">保留我的修改</ToggleGroupItem>
                   <ToggleGroupItem value="remote">采用服务器值</ToggleGroupItem>
                 </ToggleGroup>
-                <Button className="w-fit" disabled={!choice} onClick={() => applyReload(review.snapshot, review.enabled, choice === "local" ? review.text : review.snapshot.cidrs.join("\n"))}>应用核对结果</Button>
+                <Button type="button" className="w-fit" disabled={!choice} onClick={() => applyReload(review.snapshot, review.enabled, choice === "local" ? review.text : review.snapshot.cidrs.join("\n"))}>应用核对结果</Button>
               </FieldGroup>
             </AlertDescription>
           </Alert>}
           <Field orientation="horizontal">
             <Switch
               id="admin-access-enabled"
+              name="enabled"
               checked={enabled}
               disabled={busy || requiresReview}
               onCheckedChange={(value) => edit(value, text)}
@@ -215,7 +224,11 @@ export function AdminAccessSettings({
             </FieldLabel>
             <Textarea
               id="admin-access-cidrs"
+              name="cidrs"
               className="settings-long-text"
+              autoCorrect="off"
+              autoCapitalize="none"
+              spellCheck={false}
               value={text}
               disabled={busy || requiresReview}
               onChange={(event) => edit(enabled, event.target.value)}
@@ -267,12 +280,14 @@ export function AdminAccessSettings({
           />
           <ErrorNotice error={requiresReview ? null : save.error} />
         </FieldGroup>
+        </form>
       </CardContent>
       <OverlayFormActions>
         {overlay && <Button type="button" variant="outline" disabled={busy} onClick={() => overlay.requestClose()}>关闭</Button>}
         <Button
+          form={formId}
+          type="submit"
           disabled={!dirty || busy || requiresReview}
-          onClick={() => setConfirm(true)}
         >
           保存白名单
         </Button>

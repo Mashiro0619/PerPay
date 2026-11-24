@@ -145,13 +145,15 @@ export function RefundMarkDialog({
   const systemName = useSystemName();
   const [context] = useState(() => ({ order, orderId, version, marked }));
   const [note, setNote] = useState("");
+  const [noteTouched, setNoteTouched] = useState(false);
   const noteField = useRef<HTMLTextAreaElement>(null);
   const content = useRef<HTMLDivElement>(null);
   const hintId = useId();
   const errorId = useId();
   const key = useOperationKey();
   const count = Array.from(note).length;
-  const validation = refundMarkNoteError(note);
+  const noteError = refundMarkNoteError(note);
+  const validation = noteTouched ? noteError : null;
   const save = useFixedOperation({
     execute: async (
       command: { orderId: string; body: AdminRefundMarkRequest },
@@ -190,7 +192,8 @@ export function RefundMarkDialog({
       save.submit(save.recovery);
       return;
     }
-    if (validation) {
+    if (noteError) {
+      setNoteTouched(true);
       noteField.current?.focus();
       return;
     }
@@ -285,9 +288,14 @@ export function RefundMarkDialog({
                 disabled={save.isPending}
                 readOnly={!!save.recovery}
                 value={note}
+                onBlur={() => {
+                  if (note.length > 0) setNoteTouched(true);
+                }}
                 onChange={(event) => {
                   if (save.isBusy() || save.recovery) return;
-                  setNote(event.target.value);
+                  const nextValue = event.target.value;
+                  setNote(nextValue);
+                  if (!refundMarkNoteError(nextValue)) setNoteTouched(false);
                   if (!save.conflict) save.reset();
                 }}
                 aria-invalid={!!validation}
@@ -317,7 +325,7 @@ export function RefundMarkDialog({
             {!save.conflict && (
               <Button
                 type="submit"
-                disabled={(!save.recovery && !!validation) || save.isPending}
+                disabled={save.isPending}
               >
                 {save.isPending && (
                   <Spinner aria-hidden="true" data-icon="inline-start" />

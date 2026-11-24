@@ -171,6 +171,7 @@ export function ListQueryToolbar({
       >
         {selectedMode && lookup?.context?.(selectedMode.value)}
         <search
+          role="search"
           className={cn(
             "min-w-0",
             compact
@@ -181,12 +182,19 @@ export function ListQueryToolbar({
         >
         <form
           className="min-w-0 w-full"
+          noValidate
           onSubmit={(event) => {
             event.preventDefault();
             if (busy) return;
             if (selectedMode && lookup) {
-              if (lookupDraft.trim())
-                lookup.onSubmit(selectedMode.value, lookupDraft.trim());
+              const trimmed = lookupDraft.trim();
+              if (!trimmed) {
+                setError("请输入" + lookup.inputLabel + "。");
+                searchInput.current?.focus();
+                return;
+              }
+              setError("");
+              lookup.onSubmit(selectedMode.value, trimmed);
               return;
             }
             try {
@@ -196,6 +204,7 @@ export function ListQueryToolbar({
               control.setKeyword(q);
             } catch {
               setError("关键词最多 100 个字符。");
+              searchInput.current?.focus();
             }
           }}
         >
@@ -205,6 +214,9 @@ export function ListQueryToolbar({
               data-invalid={!!error}
               data-disabled={busy}
             >
+              <label htmlFor={advancedId + "-search"} className="sr-only">
+                {selectedMode ? lookup!.inputLabel : label}
+              </label>
               <InputGroup>
                 <InputGroupAddon align="inline-start">
                   {lookup ? (
@@ -222,11 +234,11 @@ export function ListQueryToolbar({
                         title={"查询方式：" + (selectedMode?.label ?? "关键词")}
                       >
                         {compact ? (
-                          <Search data-icon="inline-start" />
+                          <Search data-icon="inline-start" aria-hidden="true" />
                         ) : (
                           (selectedMode?.label ?? "关键词")
                         )}
-                        <ChevronDown data-icon="inline-end" />
+                        <ChevronDown data-icon="inline-end" aria-hidden="true" />
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="start" className="w-max max-w-[calc(100dvw-2rem)]">
                         <DropdownMenuGroup>
@@ -254,15 +266,19 @@ export function ListQueryToolbar({
                       </DropdownMenuContent>
                     </DropdownMenu>
                   ) : (
-                    <Search />
+                    <Search aria-hidden="true" />
                   )}
                 </InputGroupAddon>
                 <InputGroupInput
                   ref={searchInput}
+                  id={advancedId + "-search"}
                   type="search"
                   className="[&::-webkit-search-cancel-button]:appearance-none"
-                  aria-label={selectedMode ? lookup!.inputLabel : label}
                   name={selectedMode ? lookup!.inputName : "q"}
+                  enterKeyHint="search"
+                  autoCorrect="off"
+                  autoCapitalize="none"
+                  spellCheck={false}
                   placeholder={
                     selectedMode?.placeholder ??
                     (compact ? "关键词" : "输入关键词，回车搜索")
@@ -274,6 +290,7 @@ export function ListQueryToolbar({
                   autoComplete={selectedMode ? "off" : undefined}
                   disabled={busy}
                   aria-invalid={!!error}
+                  aria-describedby={error ? advancedId + "-search-error" : undefined}
                   onChange={(event) => {
                     if (selectedMode) {
                       setLookupDraft(event.target.value);
@@ -291,19 +308,19 @@ export function ListQueryToolbar({
                       disabled={busy}
                       onClick={clearSearch}
                     >
-                      <X />
+                      <X aria-hidden="true" />
                     </InputGroupButton>
                   </InputGroupAddon>
                 )}
               </InputGroup>
-              {error && <FieldError>{error}</FieldError>}
+              {error && <FieldError id={advancedId + "-search-error"}>{error}</FieldError>}
             </Field>
             <Button
               type="submit"
               variant="outline"
-              disabled={busy || (!!selectedMode && !lookupDraft.trim())}
+              disabled={busy}
             >
-              {lookup?.pending && <Spinner data-icon="inline-start" />}
+              {lookup?.pending && <Spinner aria-hidden="true" data-icon="inline-start" />}
               {selectedMode ? "查找" : "搜索"}
             </Button>
           </FieldGroup>

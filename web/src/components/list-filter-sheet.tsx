@@ -4,7 +4,7 @@ import { ArrowDown, ArrowUp, SlidersHorizontal } from "lucide-react";
 import { CREATED_DATE_FIELDS, type ListDateFields, type ListQueryControl, type SortOrder } from "@/lib/list-query";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldGroup, FieldLabel, FieldTitle } from "@/components/ui/field";
 import {
   Select,
   SelectContent,
@@ -244,10 +244,10 @@ export function ListFilterSheet({
               </Select>
             </Field>
             <Field>
-              <FieldLabel>排序方向</FieldLabel>
+              <FieldTitle id={id + "order-label"}>排序方向</FieldTitle>
               <ToggleGroup
                 variant="outline"
-                aria-label="排序方向"
+                aria-labelledby={id + "order-label"}
                 value={[sortOrder]}
                 disabled={disabled}
                 onValueChange={(values) => {

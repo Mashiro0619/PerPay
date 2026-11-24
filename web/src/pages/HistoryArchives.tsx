@@ -142,7 +142,7 @@ function ArchiveCreator({ blocked }: { blocked: boolean }) {
       return;
     }
     setBefore(value);
-    setDateError(value ? archiveDateError(value) : "");
+    if (!value || !archiveDateError(value)) setDateError("");
   }
   function confirmArchive() {
     if (operation.unknown) { setOpen(true); return; }
@@ -163,9 +163,10 @@ function ArchiveCreator({ blocked }: { blocked: boolean }) {
         <FieldGroup>
           <Field className="max-w-sm" data-invalid={!!dateError} data-disabled={blocked || operation.pending || operation.unknown}>
             <FieldLabel htmlFor="archive-before">归档截止日期（北京时间，不含当天）</FieldLabel>
-            <Input ref={dateInput} id="archive-before" type="date" required min="1970-01-01" max={beijingDate()} value={before}
+            <Input ref={dateInput} id="archive-before" name="before" type="date" required min="1970-01-01" max={beijingDate()} value={before}
               disabled={blocked || operation.pending || operation.unknown} aria-invalid={!!dateError}
-              aria-describedby={dateError ? "archive-before-error" : "archive-before-description"}
+              aria-describedby={dateError ? "archive-before-description archive-before-error" : "archive-before-description"}
+              onBlur={() => { if (before) setDateError(archiveDateError(before)); }}
               onChange={event => changeDate(event.currentTarget)} />
             <FieldDescription id="archive-before-description">只归档此日期之前、已结束且无待处理事项的记录。</FieldDescription>
             {dateError && <FieldError id="archive-before-error">{dateError}</FieldError>}
@@ -272,8 +273,8 @@ function ArchiveActions({ archive }: { archive: HistoryArchiveSummary }) {
         </AlertDialogHeader>
         <FieldGroup><Field data-disabled={remove.isPending || unknown}>
           <FieldLabel htmlFor="archive-delete-confirmation">输入“永久删除”确认</FieldLabel>
-          <Input id="archive-delete-confirmation" autoComplete="off" value={confirmationText} onChange={event => setConfirmationText(event.target.value)} disabled={remove.isPending || unknown} />
-          <FieldDescription>归档编号：{confirmedArchive.archive_id}</FieldDescription>
+          <Input id="archive-delete-confirmation" name="confirmation" autoComplete="off" value={confirmationText} onChange={event => setConfirmationText(event.target.value)} disabled={remove.isPending || unknown} aria-describedby="archive-delete-confirmation-hint" />
+          <FieldDescription id="archive-delete-confirmation-hint">归档编号：{confirmedArchive.archive_id}</FieldDescription>
         </Field></FieldGroup>
         {unknown ? <Alert role="alert"><AlertTitle>删除结果待确认</AlertTitle><AlertDescription>请求未完整返回，请刷新归档列表查看结果。</AlertDescription></Alert> : <ErrorNotice error={remove.error} />}
         <AlertDialogFooter>

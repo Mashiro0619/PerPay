@@ -62,6 +62,7 @@ export function ReasonDialog<Output>({
     execute,
   }));
   const [reason, setReason] = useState("");
+  const [reasonEdited, setReasonEdited] = useState(false);
   const [validation, setValidation] = useState<string | null>(null);
   const reasonField = useRef<HTMLTextAreaElement>(null);
   const content = useRef<HTMLDivElement>(null);
@@ -128,6 +129,7 @@ export function ReasonDialog<Output>({
         </DialogHeader>
         <form
           className="contents"
+          noValidate
           onSubmit={(event) => {
             event.preventDefault();
             submit();
@@ -159,8 +161,13 @@ export function ReasonDialog<Output>({
                 aria-describedby={
                   mutation.recovery || validation ? hintId : undefined
                 }
+                onBlur={() => {
+                  if (!reasonEdited || mutation.recovery || mutation.conflict) return;
+                  setValidation(operationReasonError(reason));
+                }}
                 onChange={(event) => {
                   if (mutation.isBusy() || mutation.recovery) return;
+                  setReasonEdited(true);
                   setReason(event.target.value);
                   setValidation(null);
                   if (!mutation.conflict) mutation.reset();
@@ -177,6 +184,7 @@ export function ReasonDialog<Output>({
                       disabled={mutation.isPending}
                       onClick={() => {
                         if (mutation.isBusy() || mutation.recovery || mutation.conflict) return;
+                        setReasonEdited(true);
                         setReason(preset);
                         setValidation(null);
                         mutation.reset();
@@ -210,9 +218,7 @@ export function ReasonDialog<Output>({
               <Button
                 type="submit"
                 variant={snapshot.intent}
-                disabled={
-                  mutation.isPending || (!mutation.recovery && !reason.trim())
-                }
+                disabled={mutation.isPending}
               >
                 {mutation.isPending && (
                   <Spinner aria-hidden="true" data-icon="inline-start" />

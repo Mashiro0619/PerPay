@@ -1,8 +1,8 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import { Rows3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Field, FieldLabel } from "@/components/ui/field";
+import { Field, FieldTitle } from "@/components/ui/field";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -33,10 +33,11 @@ export function ListDensityProvider({ children }: { children: ReactNode }) {
 export const useListDensity = () => useContext(DensityContext)?.density ?? "compact";
 export function ListDensityOptions() {
   const context = useContext(DensityContext);
+  const labelId = useId();
   if (!context) return null;
   return <Field>
-    <FieldLabel>列表密度</FieldLabel>
-    <ToggleGroup variant="outline" aria-label="列表密度" value={[context.density]} onValueChange={values => {
+    <FieldTitle id={labelId}>列表密度</FieldTitle>
+    <ToggleGroup variant="outline" aria-labelledby={labelId} value={[context.density]} onValueChange={values => {
       if (values[0] === "compact" || values[0] === "comfortable") context.setDensity(values[0]);
     }}>
       <ToggleGroupItem value="compact" className="flex-1">紧凑</ToggleGroupItem>
