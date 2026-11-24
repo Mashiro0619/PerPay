@@ -51,11 +51,11 @@ const test = base.extend<{ fixture: SettingsFixture }>({
 });
 test.use({ viewport: { width: 1440, height: 900 }, reducedMotion: "reduce" });
 
-async function openSiteEditor(page: Page, fixture: SettingsFixture) {
-  await page.goto(fixture.origin + "/admin/sites/default/settings/basic");
-  await page.getByRole("link", { name: "编辑基本信息", exact: true }).click();
+async function openSiteDefaultsEditor(page: Page, fixture: SettingsFixture) {
+  await page.goto(fixture.origin + "/admin/sites");
+  await page.getByRole("link", { name: "新网站默认设置", exact: true }).click();
   const overlay = page.locator("[data-overlay-content]");
-  await expect(overlay.getByRole("textbox", { name: "业务网站名称", exact: true })).toBeVisible();
+  await expect(overlay.getByLabel("收银台有效期（秒）", { exact: true })).toBeVisible();
   return overlay;
 }
 
@@ -69,32 +69,32 @@ async function browserBack(page: Page) {
 test("a dirty editor keeps its tabs, values and focus when Escape or browser Back is cancelled", async ({ page, fixture }) => {
   const writes: string[] = [];
   page.on("request", request => {
-    if (new URL(request.url()).pathname === "/api/admin/v1/sites/default" && request.method() !== "GET") writes.push(request.method());
+    if (new URL(request.url()).pathname === "/api/admin/v1/settings/site-defaults" && request.method() !== "GET") writes.push(request.method());
   });
-  const overlay = await openSiteEditor(page, fixture);
-  const field = overlay.getByRole("textbox", { name: "业务网站名称", exact: true });
-  await field.fill("保留网站草稿");
+  const overlay = await openSiteDefaultsEditor(page, fixture);
+  const field = overlay.getByLabel("收银台有效期（秒）", { exact: true });
+  await field.fill("450");
+  await overlay.getByRole("tab", { name: "通知设置", exact: true }).click();
   await overlay.getByRole("tab", { name: "订单设置", exact: true }).click();
-  await overlay.getByRole("tab", { name: "基本信息", exact: true }).click();
-  await expect(field).toHaveValue("保留网站草稿");
+  await expect(field).toHaveValue("450");
   await field.focus();
   const address = page.url();
   await page.keyboard.press("Escape");
   const discard = page.getByRole("alertdialog", { name: "放弃未保存的修改？", exact: true });
   await expect(discard).toBeVisible();
   await discard.getByRole("button", { name: "继续编辑", exact: true }).click();
-  await expect(field).toHaveValue("保留网站草稿");
+  await expect(field).toHaveValue("450");
   await expect(page).toHaveURL(address);
   await expect(field).toBeFocused();
   await browserBack(page);
   await expect(discard).toBeVisible();
   await discard.getByRole("button", { name: "继续编辑", exact: true }).click();
   await expect(page).toHaveURL(address);
-  await expect(field).toHaveValue("保留网站草稿");
+  await expect(field).toHaveValue("450");
   await overlay.getByRole("button", { name: "关闭对话框", exact: true }).click();
   await discard.getByRole("button", { name: "放弃修改并继续", exact: true }).click();
   await expect(overlay).toHaveCount(0);
-  await expect(page).toHaveURL(fixture.origin + "/admin/sites/default/settings/basic");
+  await expect(page).toHaveURL(fixture.origin + "/admin/sites");
   expect(writes).toEqual([]);
 });
 
@@ -149,8 +149,10 @@ test("a submitted test payment blocks browser Back and dismissal, then retains i
 });
 
 test("session revocation clears an open dirty editor and signing in again keeps the parent page", async ({ page, fixture }) => {
-  const overlay = await openSiteEditor(page, fixture);
-  await overlay.getByRole("textbox", { name: "业务网站名称", exact: true }).fill("旧会话的草稿");
+  await page.goto(fixture.origin + "/admin/sites/default/settings/basic");
+  const name = page.getByRole("textbox", { name: "业务网站名称", exact: true });
+  await expect(name).toBeVisible();
+  await name.fill("旧会话的草稿");
   const peer = await page.context().newPage();
   try {
     await peer.goto(fixture.origin + "/admin/");
@@ -161,13 +163,11 @@ test("session revocation clears an open dirty editor and signing in again keeps 
     // The regular foreground-resume query observes the revoked server session.
     await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
     await expect(page.getByRole("heading", { name: "登录管理后台", exact: true })).toBeVisible();
-    await expect(overlay).toHaveCount(0);
     await expect(page.getByRole("alertdialog")).toHaveCount(0);
     await expect(page).toHaveURL(fixture.origin + "/admin/sites/default/settings/basic");
     await page.getByLabel("管理员密码", { exact: true }).fill(HTTP_TEST_ADMIN_PASSWORD);
     await page.getByRole("button", { name: "登录", exact: true }).click();
-    await expect(page.getByRole("link", { name: "编辑基本信息", exact: true })).toBeVisible();
-    await expect(overlay).toHaveCount(0);
+    await expect(page.getByRole("textbox", { name: "业务网站名称", exact: true })).toBeVisible();
     expect(await page.locator("input").evaluateAll(inputs => inputs.some(input => input instanceof HTMLInputElement && input.value === "旧会话的草稿"))).toBe(false);
   } finally { await peer.close(); }
 });

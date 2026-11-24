@@ -27,7 +27,8 @@ describe("overlay addresses", () => {
 
   it("uses explicit summary and editing routes without turning the daily settings page into a dialog", () => {
     expect(overlayRoute("/sites/shop/summary")?.size).toBe("md");
-    expect(overlayRoute("/sites/shop/edit")?.parent).toBe("/sites/shop/settings/basic");
+    expect(overlayRoute("/sites/new")?.kind).toBe("site");
+    expect(overlayRoute("/sites/shop/edit")).toBeNull();
     expect(overlayRoute("/settings/display/edit")?.parent).toBe("/settings/display");
     expect(overlayRoute("/settings/security/sessions/session-1")?.kind).toBe("session");
     expect(overlayRoute("/sites/shop/settings/basic")).toBeNull();

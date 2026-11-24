@@ -10,7 +10,6 @@ test("a website deletion keeps its editor pending then closes and refreshes shar
     await page.route("**/*", route => new URL(route.request().url()).origin === fixture.origin ? route.continue() : route.abort("blockedbyclient"));
     await page.context().addCookies(fixture.cookies);
     await page.goto(fixture.origin + "/admin/sites/default/settings/basic");
-    await page.getByRole("link", { name: "编辑基本信息", exact: true }).click();
     const siteUrl = fixture.origin + "/api/admin/v1/sites/default";
     let deleted = false;
     let deleteRequests = 0;

@@ -158,10 +158,8 @@ for (const layout of layouts) {
     await dialog.getByRole("button", { name: "关闭对话框", exact: true }).click();
     await expect(dialog).toHaveCount(0);
 
-    await page.goto(fixture.origin + "/admin/sites/default/settings/integration");
-    await page.getByRole("link", { name: "编辑接入与通知", exact: true }).click();
-    await expect(dialog.getByRole("button", { name: "通知超时与重试设置", exact: true })).toBeVisible();
-    await dialog.getByRole("button", { name: "通知超时与重试设置", exact: true }).click();
+    await page.goto(fixture.origin + "/admin/sites/defaults");
+    await expect(dialog.getByLabel("收银台有效期（秒）", { exact: true })).toBeVisible();
     const editor = await measure(dialog);
     bounded(editor, layout.width < 768 ? "screen" : "dialog");
     const footer = dialog.locator("[data-overlay-footer]");
@@ -169,7 +167,7 @@ for (const layout of layouts) {
     await reachable(dialog.locator("[data-overlay-heading]"));
     const close = footer.getByRole("button", { name: "关闭", exact: true });
     await reachable(close);
-    await reachable(footer.getByRole("button", { name: "保存业务网站", exact: true }));
+    await reachable(footer.getByRole("button", { name: "保存默认设置", exact: true }));
     const editorScroll = await scrollBody(page, dialog);
     await screenshot(page, info, "editor-footer-after-scroll");
     await close.click();

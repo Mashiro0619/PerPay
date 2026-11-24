@@ -61,7 +61,7 @@ describe("settings summaries and owned editing overlays", () => {
     const actions = footer(dialog).getAllByRole("link");
     expect(actions.map(link => link.textContent)).toEqual(["编辑网站", "查看网站总览"]);
     expect(actions[1]).toHaveAttribute("href", "/sites/overlay_site?range=7");
-    expect(new URLSearchParams(new URL(actions[0]!.getAttribute("href")!, "http://localhost").search).get("overlay")).toBe("/sites/overlay_site/edit?section=basic");
+    expect(actions[0]).toHaveAttribute("href", "/sites/overlay_site/settings/basic");
     expect(footer(dialog).queryByRole("button")).not.toBeInTheDocument();
     const source = view.router.state.location;
     const nextSearch = new URLSearchParams(source.search);
@@ -120,7 +120,7 @@ describe("settings summaries and owned editing overlays", () => {
     expect(screen.getByRole("textbox", { name: "系统名称" })).toBeVisible();
   });
 
-  it("keeps changes from every website tab when reviewing a newer remote configuration", async () => {
+  it("keeps inline website edits and merges remote fields when reviewing a newer remote configuration", async () => {
     let saved = sampleSite();
     const writes: Site["configuration"][] = [];
     mountOnboarding({ stage: 4, path: "/sites/overlay_site/settings/basic", handle: request => {
@@ -140,22 +140,15 @@ describe("settings summaries and owned editing overlays", () => {
       })();
     } });
     const user = userEvent.setup();
-    const edit = await screen.findByRole("link", { name: "编辑基本信息" });
-    expect(screen.queryByLabelText("业务网站名称")).not.toBeInTheDocument();
-    await user.click(edit);
-    const dialog = await screen.findByRole("dialog", { name: "编辑弹窗测试网站" });
-    const name = within(dialog).getByLabelText("业务网站名称");
-    await user.clear(name); await user.type(name, "两个分组的修改");
-    await user.click(within(dialog).getByRole("tab", { name: "订单设置" }));
-    fireEvent.change(within(dialog).getByLabelText("收银台有效期（秒）"), { target: { value: "600" } });
-    await user.click(footer(dialog).getByRole("button", { name: "保存业务网站" }));
-    await user.click(await within(dialog).findByRole("button", { name: "读取最新配置并核对" }));
-    await waitFor(() => expect(footer(dialog).getByRole("button", { name: "保存业务网站" })).toBeEnabled());
-    await user.click(within(dialog).getByRole("tab", { name: "基本信息" }));
-    expect(within(dialog).getByLabelText("业务网站名称")).toHaveValue("两个分组的修改");
-    await user.click(footer(dialog).getByRole("button", { name: "保存业务网站" }));
+    const name = await screen.findByLabelText("业务网站名称");
+    await user.clear(name); await user.type(name, "内联编辑的新名称");
+    await user.click(screen.getByRole("button", { name: "保存业务网站" }));
+    await user.click(await screen.findByRole("button", { name: "读取最新配置并核对" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "保存业务网站" })).toBeEnabled());
+    expect(screen.getByLabelText("业务网站名称")).toHaveValue("内联编辑的新名称");
+    await user.click(screen.getByRole("button", { name: "保存业务网站" }));
     await waitFor(() => expect(writes).toHaveLength(2));
-    expect(writes[1]).toMatchObject({ name: "两个分组的修改", policy: { orders: { order_ttl_seconds: 600 }, display: { checkout_help_url: "https://example.com/latest-help" } } });
+    expect(writes[1]).toMatchObject({ name: "内联编辑的新名称", policy: { display: { checkout_help_url: "https://example.com/latest-help" } } });
   });
 
   it("retains account fields across modal tabs and saves one complete account draft", async () => {
@@ -681,7 +674,8 @@ describe("settings summaries and owned editing overlays", () => {
     await user.keyboard("{Escape}");
     expect(new URLSearchParams(view.router.state.location.search).get("overlay")).toBe("/sites/new");
     await act(async () => { release(json({ data: site }, 201)); });
-    await waitFor(() => expect(new URLSearchParams(view.router.state.location.search).get("overlay")).toBe("/sites/overlay_site/edit?section=integration"));
+    await waitFor(() => expect(view.router.state.location.pathname).toBe("/sites/overlay_site/settings/integration"));
+    expect(new URLSearchParams(view.router.state.location.search).has("overlay")).toBe(false);
     expect(view.writes()).toHaveLength(1);
     expect(await screen.findByRole("button", { name: "保存业务网站" })).toBeEnabled();
   });

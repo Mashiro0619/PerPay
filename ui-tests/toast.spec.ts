@@ -83,7 +83,6 @@ for (const width of [390, 1440]) test(`${width}: success notifications remain ac
 
   await page.clock.resume();
   await page.goto(manifest.origin + "/admin" + sitePath + "/settings/integration");
-  await page.getByRole("link", { name: "编辑接入与通知", exact: true }).click();
   await page.evaluate(() => delete document.documentElement.dataset.perpayDemo);
   const trigger = page.getByRole("button", { name: "更换 API 密钥", exact: true });
   await trigger.click();

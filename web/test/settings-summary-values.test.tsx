@@ -4,6 +4,7 @@ import { onlineManager, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { describe, expect, it, vi } from "vitest";
 import { queryClient, type AlipayAccount, type SiteCollection, type Site } from "../src/api/client";
+import { DraftProvider } from "../src/drafts";
 import { SiteSettingsPage } from "../src/pages/Sites";
 import { SecuritySettings } from "../src/pages/SecuritySettings";
 import { alipayAccount, json, settings } from "./fixtures";
@@ -32,7 +33,7 @@ function mountCollection(collection: SiteCollection | undefined, read: () => Res
     throw new Error("Unexpected request " + path);
   });
   vi.stubGlobal("fetch", fetcher);
-  const router = createMemoryRouter([{ path: "/sites/:clientId/settings/:section", element: <SiteSettingsPage /> }], {
+  const router = createMemoryRouter([{ path: "/sites/:clientId/settings/:section", element: <DraftProvider><SiteSettingsPage /></DraftProvider> }], {
     initialEntries: ["/sites/shop/settings/collection"],
   });
   render(<QueryClientProvider client={queryClient}><RouterProvider router={router} /></QueryClientProvider>);
@@ -46,7 +47,7 @@ describe("settings summaries expose the saved values", () => {
     await within(list).findByText(first.name);
     expect(screen.getByRole("heading", { level: 1, name: "网站设置" })).toBeVisible();
     expect(screen.getByRole("tab", { name: "收款账号", selected: true })).toBeVisible();
-    expect(screen.getByRole("link", { name: "编辑收款账号" })).toHaveAttribute("href", "/sites/shop/edit?section=collection");
+    expect(screen.getByRole("button", { name: "保存业务网站" })).toBeVisible();
     const items = within(list).getAllByRole("listitem");
     expect(items[0]).toHaveTextContent(first.id);
     expect(items[0]).toHaveTextContent("当前可收款");
@@ -54,22 +55,22 @@ describe("settings summaries expose the saved values", () => {
     expect(items[1]).toHaveTextContent(second.name);
     expect(items[1]).toHaveTextContent("已暂停新订单");
     expect(items[1]).toHaveTextContent("权重 1");
-    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "编辑收款账号" })).toHaveAttribute("href", "/sites/shop/edit?section=collection");
   });
 
   it.each(["FIXED", "RANDOM"] as const)("omits weights for %s allocation", async mode => {
     mountCollection({ mode, accounts: mode === "FIXED" ? configured.slice(0, 1) : configured }, () => json({ data: [first, second] }));
-    await screen.findByText("当前可收款");
-    expect(screen.queryByText(/权重/)).not.toBeInTheDocument();
-    expect(screen.getByText(first.name)).toBeVisible();
+    const list = await screen.findByRole("list", { name: "已分配收款账号" });
+    await within(list).findByText("当前可收款");
+    expect(within(list).queryByText(/权重/)).not.toBeInTheDocument();
+    expect(within(list).getByText(first.name)).toBeVisible();
   });
 
   it("retains historical account IDs and weights when the account is absent from a successful catalog read", async () => {
     mountCollection({ mode: "WEIGHTED", accounts: configured.slice(0, 1) }, () => json({ data: [] }));
-    expect(await screen.findByText("账号不存在或已删除，请核对历史配置")).toBeVisible();
-    expect(screen.getByText(first.id, { exact: true })).toBeVisible();
-    expect(screen.getByText("权重 3")).toBeVisible();
+    const list = await screen.findByRole("list", { name: "已分配收款账号" });
+    expect(await within(list).findByText("账号不存在或已删除，请核对历史配置")).toBeVisible();
+    expect(within(list).getByText(first.id, { exact: true })).toBeVisible();
+    expect(within(list).getByText("权重 3")).toBeVisible();
     expect(screen.queryByText("未分配")).not.toBeInTheDocument();
   });
 
@@ -79,15 +80,16 @@ describe("settings summaries expose the saved values", () => {
       ? json({ error: { code: "alipay_accounts_unavailable", message: "账号目录暂不可用" } }, 503)
       : json({ data: [first, second] }));
     await screen.findByText("账号目录暂不可用");
-    expect(screen.getByText(first.id, { exact: true })).toBeVisible();
-    expect(screen.getByText(second.id, { exact: true })).toBeVisible();
-    expect(screen.getByText("权重 3")).toBeVisible();
-    expect(screen.queryByText(/账号不存在或已删除/)).not.toBeInTheDocument();
+    const list = screen.getByRole("list", { name: "已分配收款账号" });
+    expect(within(list).getByText(first.id, { exact: true })).toBeVisible();
+    expect(within(list).getByText(second.id, { exact: true })).toBeVisible();
+    expect(within(list).getByText("权重 3")).toBeVisible();
+    expect(within(list).queryByText(/账号不存在或已删除/)).not.toBeInTheDocument();
     expect(screen.queryByText("未分配")).not.toBeInTheDocument();
     failed = false;
     await userEvent.setup().click(screen.getByRole("button", { name: "重试" }));
-    await screen.findByText("当前可收款");
-    expect(screen.getByText(first.name)).toBeVisible();
+    await within(list).findByText("当前可收款");
+    expect(within(list).getByText(first.name)).toBeVisible();
   });
 
   it("does not present cached readiness as current after a catalog refresh fails", async () => {
@@ -95,32 +97,35 @@ describe("settings summaries expose the saved values", () => {
     mountCollection({ mode: "FIXED", accounts: configured.slice(0, 1) }, () => failed
       ? json({ error: { code: "alipay_accounts_unavailable", message: "账号目录更新失败" } }, 503)
       : json({ data: [first] }));
-    await screen.findByText("当前可收款");
+    const list = await screen.findByRole("list", { name: "已分配收款账号" });
+    await within(list).findByText("当前可收款");
     failed = true;
     await act(async () => { await queryClient.invalidateQueries({ queryKey: ["alipay-accounts"] }); });
     await screen.findByText("账号目录更新失败");
-    expect(screen.getByText(first.name)).toBeVisible();
-    expect(screen.getByText("可用状态待确认")).toBeVisible();
-    expect(screen.queryByText("当前可收款")).not.toBeInTheDocument();
+    expect(within(list).getByText(first.name)).toBeVisible();
+    expect(within(list).getByText("可用状态待确认")).toBeVisible();
+    expect(within(list).queryByText("当前可收款")).not.toBeInTheDocument();
   });
 
-  it("labels an actually unassigned website without reading the account catalog", async () => {
-    const fetcher = mountCollection(undefined, () => { throw new Error("No catalog needed"); });
-    await screen.findByText("未分配");
-    expect(fetcher).toHaveBeenCalledTimes(1);
+  it("labels an actually unassigned website in the inline collection editor", async () => {
+    mountCollection(undefined, () => json({ data: [first] }));
+    await screen.findByText("未配置");
+    expect(screen.queryByRole("list", { name: "已分配收款账号" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "保存业务网站" })).toBeVisible();
   });
 
   it("marks cached readiness unconfirmed while its refresh is paused offline", async () => {
     mountCollection({ mode: "FIXED", accounts: configured.slice(0, 1) }, () => json({ data: [first] }));
-    await screen.findByText("当前可收款");
+    const list = await screen.findByRole("list", { name: "已分配收款账号" });
+    await within(list).findByText("当前可收款");
     try {
       await act(async () => {
         onlineManager.setOnline(false);
         await queryClient.invalidateQueries({ queryKey: ["alipay-accounts"] });
       });
       await screen.findByText("等待网络恢复，账号可用状态未确认。");
-      expect(screen.getByText(first.name)).toBeVisible();
-      expect(screen.queryByText("当前可收款")).not.toBeInTheDocument();
+      expect(within(list).getByText(first.name)).toBeVisible();
+      expect(within(list).queryByText("当前可收款")).not.toBeInTheDocument();
     } finally {
       await act(async () => { onlineManager.setOnline(true); });
     }

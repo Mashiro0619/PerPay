@@ -82,7 +82,7 @@ function CreateSiteForm({ policy, accounts, onCreated, onRefreshLockChange }: Cr
       void queryClient.invalidateQueries({ queryKey: ["site-overview"] });
       void queryClient.invalidateQueries({ queryKey: ["settings"] });
       if (onCreated) onCreated(response.data.client_id);
-      else void navigate("/sites/" + response.data.client_id + (overlay ? "/edit?section=integration" : "/settings/integration"), overlay ? { replace: true } : undefined);
+      else void navigate("/sites/" + response.data.client_id + "/settings/integration", overlay ? { replace: true } : undefined);
     },
     isSafeRejection: (error) =>
       error instanceof ApiError && error.status === 422,

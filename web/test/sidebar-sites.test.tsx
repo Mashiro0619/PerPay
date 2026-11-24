@@ -654,33 +654,23 @@ describe("business websites in the sidebar", () => {
   it.each([false, true])("protects dirty editor dismissal before switching websites from the parent page (mobile: %s)", async (mobile) => {
     const view = mountSidebar({ path: "/sites/a/settings/basic", mobile });
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("link", { name: "编辑基本信息" }));
     const field = await screen.findByLabelText("业务网站名称");
     fireEvent.change(field, { target: { value: "尚未保存的业务网站名称" } });
-    const overlay = screen.getByRole("dialog");
-    expect(screen.queryByRole("navigation", { name: "主导航" })).not.toBeInTheDocument();
-    await user.click(within(overlay).getByRole("button", { name: "关闭对话框" }));
+    if (mobile) await user.click(screen.getByRole("button", { name: "切换导航" }));
+    await user.click(await within(sidebar()).findByRole("link", { name: "网站 B" }));
     const confirmation = await screen.findByRole("alertdialog", { name: "放弃未保存的修改？" });
     expect(view.router.state.location.pathname).toBe("/sites/a/settings/basic");
     await user.click(within(confirmation).getByRole("button", { name: "继续编辑" }));
     await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
     expect(field).toHaveValue("尚未保存的业务网站名称");
-    expect(new URLSearchParams(view.router.state.location.search).get("overlay")).toBe("/sites/a/edit?section=basic");
-    await user.click(within(overlay).getByRole("button", { name: "关闭对话框" }));
+    if (mobile && !screen.queryByRole("dialog", { name: "导航菜单" })) {
+      await user.click(screen.getByRole("button", { name: "切换导航" }));
+    }
+    await user.click(await within(sidebar()).findByRole("link", { name: "网站 B" }));
     await user.click(await screen.findByRole("button", { name: "放弃修改并继续" }));
-    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-    expect(field).not.toBeInTheDocument();
-    if (mobile) await user.click(screen.getByRole("button", { name: "切换导航" }));
-    const nav = sidebar();
-    await user.click(await within(nav).findByRole("link", { name: "网站 B" }));
     await waitFor(() => expect(view.router.state.location.pathname).toBe("/sites/b/settings/basic"));
     if (mobile) await waitFor(() => expect(screen.queryByRole("dialog", { name: "导航菜单" })).not.toBeInTheDocument());
     await waitFor(() => expect(view.container.querySelector("#main-content")).not.toHaveAttribute("inert"));
-    await waitFor(() => {
-      const href = screen.getByRole("link", { name: "编辑基本信息" }).getAttribute("href")!;
-      expect(new URLSearchParams(new URL(href, "https://perpay.test").search).get("overlay")).toBe("/sites/b/edit?section=basic");
-    });
-    await user.click(await screen.findByRole("link", { name: "编辑基本信息" }));
     await waitFor(() => expect(screen.getByLabelText("业务网站名称")).toHaveValue("网站 B"));
     expect(view.writes()).toHaveLength(0);
   });

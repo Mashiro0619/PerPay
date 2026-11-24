@@ -35,7 +35,7 @@ describe("business dialogs during workspace navigation", () => {
     const delayed = new Promise<Response>(resolve => { release = resolve; });
     const view = mountOnboarding({
       stage: 4,
-      path: "/sites/b/settings/basic?overlay=%2Fsites%2Fb%2Fedit",
+      path: "/sites/b/settings/basic",
       handle(request) {
         const path = new URL(request.url).pathname;
         if (path === "/api/admin/v1/sites") return json({ data: sites, page: { next_cursor: null } });
@@ -47,7 +47,7 @@ describe("business dialogs during workspace navigation", () => {
     });
     const user = userEvent.setup();
     await screen.findByLabelText("业务网站名称");
-    await act(async () => { await view.router.navigate("/sites/a/settings/basic?overlay=%2Fsites%2Fa%2Fedit"); });
+    await act(async () => { await view.router.navigate("/sites/a/settings/basic"); });
     await waitFor(() => expect(screen.getByLabelText("业务网站名称")).toHaveValue("网站 A"));
     await user.type(screen.getByLabelText("业务网站名称"), "（保留草稿）");
     await user.click(screen.getByRole("button", { name: "删除网站" }));

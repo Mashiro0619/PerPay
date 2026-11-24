@@ -75,7 +75,7 @@ describe("website integration assistant", () => {
     const fixture = mount();
     expect(await screen.findByText("https://pay.example.com")).toBeVisible();
     expect(screen.getByText("public_alpha")).toBeVisible();
-    expect(screen.getByRole("link", { name: "管理 API 与通知密钥" })).toHaveAttribute("href", expect.stringContaining("/sites/site_alpha/edit?section=integration"));
+    expect(screen.getByRole("link", { name: "管理 API 与通知密钥" })).toHaveAttribute("href", expect.stringContaining("/sites/site_alpha/settings/integration"));
     for (const label of ["原生 API", "易支付 V1", "易支付 V2"]) {
       await userEvent.click(screen.getByRole("button", { name: label }));
       expect(screen.getByRole("link", { name: "接入文档" })).toHaveAttribute("href",

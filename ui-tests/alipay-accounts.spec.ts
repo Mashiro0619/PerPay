@@ -156,11 +156,11 @@ for (const width of [390, 1440]) {
       await page
         .getByRole("button", { name: "添加网站", exact: true })
         .click();
-      await expect.poll(() => new URL(page.url()).searchParams.get("overlay")).toMatch(/^\/sites\/site_[^/]+\/edit\?section=integration$/);
-      const siteId = new URL(new URL(page.url()).searchParams.get("overlay")!, fixture.origin).pathname.split("/")[2]!;
+      await expect.poll(() => new URL(page.url()).pathname).toMatch(/^\/admin\/sites\/site_[^/]+\/settings\/integration$/);
+      const siteId = new URL(page.url()).pathname.split("/")[3]!;
 
       await page.goto(
-        fixture.origin + "/admin/sites/" + siteId + "/edit?section=collection",
+        fixture.origin + "/admin/sites/" + siteId + "/settings/collection",
       );
       await page.getByRole("button", { name: "指定账号", exact: true }).click();
       await page

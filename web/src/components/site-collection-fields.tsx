@@ -2,15 +2,19 @@ import { useId } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   accountChoiceLabel,
+  accountState,
   alipayAccountsQuery,
   type AlipayAccount,
   type SiteCollection,
 } from "@/lib/alipay-accounts";
+import { count } from "@/lib/format";
 import { Link } from "@/navigation";
-import { QueryView } from "@/components/request-state";
+import { ErrorNotice, Loading } from "@/components/request-state";
+import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { Item, ItemContent, ItemDescription, ItemGroup, ItemTitle } from "@/components/ui/item";
 import {
   Field,
   FieldDescription,
@@ -36,35 +40,111 @@ const modes = [
   ["WEIGHTED", "按权重分配"],
 ] as const;
 
+function collectionAvailability(account: AlipayAccount): string {
+  if (account.environment !== "PRODUCTION" || !account.enabled || !account.configured) return accountState(account);
+  if (!account.health) return "已配置，收款状态待确认";
+  return account.health.collection_ready ? "当前可收款" : "暂不可收款";
+}
+
 export function SiteCollectionFields({
   value,
   onChange,
   disabled,
   error,
+  hideHeading = false,
 }: {
   value: SiteCollection;
   onChange: (value: SiteCollection) => void;
   disabled?: boolean;
   error?: string | undefined;
+  hideHeading?: boolean;
 }) {
   const accounts = useQuery(alipayAccountsQuery);
+  const catalog = new Map(accounts.data?.data.map((account) => [account.id, account]) ?? []);
+  const current = accounts.isSuccess && !accounts.isFetching && !accounts.isPaused;
+  const configured = value.accounts;
   return (
     <FieldSet disabled={disabled}>
-      <FieldLegend>收款账号</FieldLegend>
-      <FieldDescription>
-        每笔新订单按此规则分配账号。已创建订单继续使用原账号和收款码。
-      </FieldDescription>
-      <QueryView query={accounts}>
-        {({ data }) => (
-          <CollectionChoices
-            accounts={data}
-            value={value}
-            onChange={onChange}
-            disabled={disabled}
-            error={error}
-          />
-        )}
-      </QueryView>
+      {!hideHeading && (
+        <>
+          <FieldLegend>收款账号</FieldLegend>
+          <FieldDescription>
+            每笔新订单按此规则分配账号。已创建订单继续使用原账号和收款码。
+          </FieldDescription>
+        </>
+      )}
+      {accounts.isError && (
+        <ErrorNotice
+          error={accounts.error}
+          retry={() => {
+            void accounts.refetch();
+          }}
+          retainedData={configured.length > 0 || !!accounts.data}
+        />
+      )}
+      {accounts.isError && configured.length > 0 && (
+        <p className="text-xs text-muted-foreground">
+          以下保留已保存的账号分配；当前账号资料与可用状态未确认。
+        </p>
+      )}
+      {accounts.isPending && configured.length === 0 ? (
+        <Loading label="正在读取收款账号…" />
+      ) : accounts.data ? (
+        <CollectionChoices
+          accounts={accounts.data.data}
+          value={value}
+          onChange={onChange}
+          disabled={disabled}
+          error={error}
+        />
+      ) : null}
+      {configured.length > 0 && (
+        <div className="flex min-w-0 flex-col gap-2 pt-1" data-site-collection-summary>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-medium text-muted-foreground">当前已分配账号状态</span>
+            {accounts.isPaused ? (
+              <span role="status" className="text-xs text-muted-foreground">等待网络恢复，账号可用状态未确认。</span>
+            ) : accounts.isFetching ? (
+              <span role="status" className="text-xs text-muted-foreground">正在同步账号状态…</span>
+            ) : null}
+          </div>
+          <ItemGroup aria-label="已分配收款账号" className="gap-2">
+            {configured.map((selected) => {
+              const account = catalog.get(selected.account_id);
+              const status = !current
+                ? "可用状态待确认"
+                : account
+                  ? collectionAvailability(account)
+                  : "账号不存在或已删除，请核对历史配置";
+              const ready = status === "当前可收款";
+              return (
+                <Item key={selected.account_id} size="xs" role="listitem" className="settings-collection-card">
+                  <ItemContent className="min-w-0 gap-1">
+                    <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+                      <ItemTitle className="line-clamp-none wrap-anywhere">
+                        {account?.name ?? selected.account_id}
+                      </ItemTitle>
+                      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                        <Badge variant={ready ? "success" : "outline"}>{status}</Badge>
+                        {value.mode === "WEIGHTED" && (
+                          <Badge variant="secondary" className="tabular-nums">
+                            权重 {count(selected.weight ?? 1)}
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                    {account && (
+                      <ItemDescription className="line-clamp-none font-mono text-xs wrap-anywhere">
+                        账号 ID：{selected.account_id}
+                      </ItemDescription>
+                    )}
+                  </ItemContent>
+                </Item>
+              );
+            })}
+          </ItemGroup>
+        </div>
+      )}
     </FieldSet>
   );
 }

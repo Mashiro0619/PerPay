@@ -56,7 +56,6 @@ for (const layout of [
         });
 
         await page.goto(fixture.origin + "/admin/sites/default/settings/integration");
-        await page.getByRole("link", { name: "编辑接入与通知", exact: true }).click();
         await expect(page.locator("html")).toHaveCSS("font-size", (16 * layout.font / 100) + "px");
         // Only this page permits intercepted writes. No provider key is changed.
         await page.evaluate(() => delete document.documentElement.dataset.perpayDemo);

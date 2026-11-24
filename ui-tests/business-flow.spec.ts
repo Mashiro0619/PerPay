@@ -136,20 +136,21 @@ async function createSite(page: Page, fixture: BusinessFixture, info: TestInfo, 
   const site = (await created.json()).data as Site;
   expect(site.configuration.collection?.accounts.map(selected => selected.account_id)).toEqual([account.id]);
   expect(site.secrets).toEqual({ api_secret: false, webhook_secret: false });
-  await expect.poll(() => new URL(page.url()).searchParams.get("overlay")).toBe(`/sites/${site.client_id}/edit?section=integration`);
-  await expectSettingsSection(overlay, "网站设置分组", "接入与通知");
-  const protocols = overlay.getByRole("group", { name: "接入协议", exact: true });
+  await expect.poll(() => new URL(page.url()).pathname).toBe(`/admin/sites/${site.client_id}/settings/integration`);
+  await expect(overlay).toHaveCount(0);
+  await expectSettingsSection(page, "网站设置分组", "接入与通知");
+  const protocols = page.getByRole("group", { name: "接入协议", exact: true });
   await expect(protocols.getByRole("button", { name: "原生 API", exact: true })).toHaveAttribute("aria-pressed", "true");
   await expect(protocols.getByRole("button", { name: "易支付 V1", exact: true })).toBeVisible();
   await expect(protocols.getByRole("button", { name: "易支付 V2", exact: true })).toBeVisible();
   for (const label of [" API 密钥", "通知签名密钥"]) {
-    await expect(overlay.getByRole("button", { name: "更换" + label, exact: true })).toHaveCount(0);
-    await expect(overlay.getByRole("button", { name: "查看" + label, exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "更换" + label, exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "查看" + label, exact: true })).toHaveCount(0);
   }
   for (const name of ["API 密钥", "通知签名密钥"]) {
     const label = (name === "API 密钥" ? " " : "") + name;
     const actionName = "生成" + label;
-    await overlay.getByRole("button", { name: actionName, exact: true }).click();
+    await page.getByRole("button", { name: actionName, exact: true }).click();
     const confirm = page.getByRole("alertdialog", { name: actionName + "？", exact: true });
     const generated = page.waitForResponse(response => new URL(response.url()).pathname.includes(`/sites/${site.client_id}/secrets/`) && new URL(response.url()).pathname.endsWith("/actions/rotate") && response.request().method() === "POST");
     await confirm.getByRole("button", { name: "生成密钥", exact: true }).click();
@@ -158,15 +159,15 @@ async function createSite(page: Page, fixture: BusinessFixture, info: TestInfo, 
     await expect(key.getByRole("textbox", { name, exact: true })).not.toHaveValue("");
     await key.getByRole("button", { name: "关闭", exact: true }).click();
     await expect(key).toHaveCount(0);
-    await expect(overlay.getByRole("button", { name: "查看" + label, exact: true })).toBeEnabled();
-    await expect(overlay.getByRole("button", { name: "更换" + label, exact: true })).toBeEnabled();
+    await expect(page.getByRole("button", { name: "查看" + label, exact: true })).toBeEnabled();
+    await expect(page.getByRole("button", { name: "更换" + label, exact: true })).toBeEnabled();
   }
-  await overlay.getByRole("textbox", { name: "通知域名", exact: true }).fill(fixture.notificationOrigin);
-  await overlay.getByRole("switch", { name: "开启通知", exact: true }).check();
-  await overlay.getByRole("button", { name: "通知超时与重试设置", exact: true }).click();
-  await overlay.getByRole("spinbutton", { name: "最多发送次数（次）", exact: true }).fill("2");
+  await page.getByRole("textbox", { name: "通知域名", exact: true }).fill(fixture.notificationOrigin);
+  await page.getByRole("switch", { name: "开启通知", exact: true }).check();
+  await page.getByRole("button", { name: "通知超时与重试设置", exact: true }).click();
+  await page.getByRole("spinbutton", { name: "最多发送次数（次）", exact: true }).fill("2");
   const saved = page.waitForResponse(response => new URL(response.url()).pathname === `/api/admin/v1/sites/${site.client_id}` && response.request().method() === "PUT");
-  await overlay.getByRole("button", { name: "保存业务网站", exact: true }).click();
+  await page.getByRole("button", { name: "保存业务网站", exact: true }).click();
   const saveConfirm = page.getByRole("alertdialog", { name: "确认保存配置？", exact: true });
   await expect(saveConfirm).toBeVisible();
   await saveConfirm.getByRole("button", { name: "确认", exact: true }).click();
@@ -174,7 +175,7 @@ async function createSite(page: Page, fixture: BusinessFixture, info: TestInfo, 
   const stored = await readData<Site>(page, fixture.origin, "/api/admin/v1/sites/" + site.client_id);
   expect(stored.configuration).toMatchObject({ notifications_enabled: true, notification_origin: fixture.notificationOrigin });
   await screenshot(page, info, "03-site-configured");
-  await closeOverlay(page);
+  await navigateSidebar(page, "网站管理");
   const row = page.locator("[data-business-row]").filter({ has: page.getByRole("link", { name, exact: true }) });
   await row.getByRole("link", { name: "查看网站总览", exact: true }).click();
   await expect.poll(() => new URL(page.url()).pathname).toBe("/admin/sites/" + site.client_id);

@@ -91,7 +91,8 @@ describe("public client ID changes with stable website ownership", () => {
     expect(view.commands).toHaveLength(1);
     expect(view.commands[0]).toEqual({ path: `/api/admin/v1/sites/${stableId}/actions/change-client-id`,
       body: { client_id: "New.Shop", revision: 2, operation_id: expect.any(String) } });
-    expect(new URLSearchParams(view.router.state.location.search).get("overlay")).toBe(`/sites/${stableId}/edit?section=integration`);
+    expect(view.router.state.location.pathname).toBe(`/sites/${stableId}/settings/integration`);
+    expect(new URLSearchParams(view.router.state.location.search).has("overlay")).toBe(false);
     expect(queryClient.getQueryData<{ data: Site }>(["workspace-site", stableId])?.data.api_client_id).toBe("New.Shop");
     expect(queryClient.getQueryData<{ site: Site }>(["site-editor", stableId])?.site.api_client_id).toBe("New.Shop");
     await user.click(screen.getByRole("button", { name: "复制网站 ID" }));
@@ -102,15 +103,15 @@ describe("public client ID changes with stable website ownership", () => {
   it("keeps configuration drafts and requires saving them before changing the ID", async () => {
     const view = mountSite();
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("tab", { name: "基本信息" }));
-    const name = screen.getByRole("textbox", { name: "业务网站名称" });
-    await user.clear(name);
-    await user.type(name, "尚未保存的网站名称");
-    await user.click(screen.getByRole("tab", { name: "接入与通知" }));
+    const origin = await screen.findByRole("textbox", { name: "通知域名" });
+    await user.clear(origin);
+    await user.type(origin, "https://notify.example.com");
     expect(screen.getByRole("button", { name: "更换网站 ID" })).toBeDisabled();
     expect(screen.getByText("请先保存或撤销当前配置修改，再更换网站 ID。")).toBeVisible();
     await user.click(screen.getByRole("tab", { name: "基本信息" }));
-    expect(screen.getByRole("textbox", { name: "业务网站名称" })).toHaveValue("尚未保存的网站名称");
+    const guard = await screen.findByRole("alertdialog", { name: "放弃未保存的修改？" });
+    await user.click(within(guard).getByRole("button", { name: "继续编辑" }));
+    expect(screen.getByRole("textbox", { name: "通知域名" })).toHaveValue("https://notify.example.com");
     expect(view.writes()).toHaveLength(0);
   });
 

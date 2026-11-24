@@ -226,7 +226,7 @@ export function AccountOnboarding({
                                 to={
                                   "/sites/" +
                                   site.client_id +
-                                  (site.configuration.collection?.accounts.length ? "/edit?section=integration" : "/settings/collection")
+                                  (site.configuration.collection?.accounts.length ? "/settings/integration" : "/settings/collection")
                                 }
                                 className={buttonVariants({
                                   variant: "outline",
@@ -340,7 +340,7 @@ function BusinessIntegrationSteps({ initialSiteId }: { initialSiteId: string }) 
       <CardContent className="flex flex-col gap-4">
         <SitePicker value={clientId} onChange={setClientId} />
         {clientId && <div className="flex flex-wrap gap-2">
-          <Link to={sitePath + "/edit?section=integration"} className={buttonVariants({ variant: "outline" })}>配置网站接入</Link>
+          <Link to={sitePath + "/settings/integration"} className={buttonVariants({ variant: "outline" })}>配置网站接入</Link>
           <Link to={sitePath + "/orders"} className={buttonVariants({ variant: "outline" })}>查看网站订单</Link>
           <Link to={sitePath + "/notifications"} className={buttonVariants({ variant: "outline" })}>查看通知记录</Link>
         </div>}

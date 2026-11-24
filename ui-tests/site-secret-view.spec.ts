@@ -33,8 +33,7 @@ for (const width of [1440, 390, 320]) {
         ? route.fulfill({ status: 503, json: { error: { code: "synthetic_secret_unavailable", message: "合成的密钥读取失败，请重试。" } } })
         : route.continue());
       await page.goto(fixture.origin + "/admin/sites/default/settings/integration");
-      await page.getByRole("link", { name: "编辑接入与通知", exact: true }).click();
-      const retryGroup = page.locator("[data-overlay-content]").getByRole("group", { name: "API 密钥", exact: true });
+      const retryGroup = page.getByRole("group", { name: "API 密钥", exact: true });
       const retryTrigger = retryGroup.getByRole("button", { name: "查看 API 密钥", exact: true });
       await retryTrigger.click();
       const retryDialog = page.getByRole("dialog", { name: "API 密钥", exact: true });
@@ -52,8 +51,7 @@ for (const width of [1440, 390, 320]) {
       await expect(retryDialog).toHaveCount(0);
       await expect(retryTrigger).toBeFocused();
       await page.goto(fixture.origin + "/admin/sites/default/settings/integration");
-      await page.getByRole("link", { name: "编辑接入与通知", exact: true }).click();
-      const editor = page.locator("[data-overlay-content]");
+      const editor = page.locator('[data-site-settings-section="integration"]');
       await expect(editor).toBeVisible();
       for (const [groupName, buttonName, inputName, purpose] of [
         ["API 密钥", "查看 API 密钥", "API 密钥", "api_secret"],

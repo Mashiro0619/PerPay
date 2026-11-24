@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { RotateCcw } from "lucide-react";
+import { ChevronDown, RotateCcw } from "lucide-react";
 import {
   Collapsible,
   CollapsibleTrigger,
@@ -530,9 +530,14 @@ export function SitePolicyFields({
         >
           {!expandedNotificationPolicy && (
             <CollapsibleTrigger
-              render={<Button type="button" variant="outline" />}
+              render={<Button type="button" variant="outline" size="sm" />}
             >
               通知超时与重试设置
+              <ChevronDown
+                data-icon="inline-end"
+                className={cn("transition-transform", notificationPolicyOpen && "rotate-180")}
+                aria-hidden="true"
+              />
             </CollapsibleTrigger>
           )}
           <CollapsibleContent ref={content} keepMounted>

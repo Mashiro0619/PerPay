@@ -156,16 +156,14 @@ for (const layout of [{ width: 320, height: 560, text: 200 }, { width: 640, heig
       page.on('request', request => { if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method())) writes.push(request.method() + ' ' + new URL(request.url()).pathname); });
       page.on('pageerror', error => errors.push(error.message));
       const siteRoute = manifest.routes.find(route => /^\/sites\/[^/]+\/settings$/.test(route))!;
-      const sitePath = siteRoute.replace(/\/settings$/, '/edit?section=integration');
-      await page.goto(manifest.origin + '/admin' + sitePath);
-      let overlay = await settleOverlay(page);
-      const siteTabs = await exerciseSections(page, overlay, '网站设置分组', ['基本信息', '收款账号', '订单设置', '接入与通知', '收银台展示']);
-      expect(await overlay.locator('[data-slot="card-footer"]').evaluateAll(footers => footers.filter(footer => !footer.textContent?.trim()).length), "the moved site actions leave no empty footer surface").toBe(0);
+      await page.goto(manifest.origin + '/admin' + siteRoute + '/integration');
+      const siteTabs = await exerciseSections(page, page.locator('.admin-settings-layout'), '网站设置分组', ['基本信息', '收款账号', '订单设置', '接入与通知', '收银台展示']);
+      expect(await page.locator('[data-slot="card-footer"]').evaluateAll(footers => footers.filter(footer => !footer.textContent?.trim()).length), "the site actions leave no empty footer surface").toBe(0);
       await record(page, info, { feature: 'site-editor-category-reflow', layout, siteTabs });
       await screenshot(page, info, `site-category-${layout.width}-${layout.text}`);
 
       await page.goto(manifest.origin + '/admin/sites/defaults');
-      overlay = await settleOverlay(page);
+      let overlay = await settleOverlay(page);
       const defaultsTabs = await exerciseSections(page, overlay, '默认设置分组', ['订单设置', '收银台展示', '通知设置']);
       const defaultWidth = await overlay.locator('[data-overlay-detail]').evaluate(element => ({ width: element.clientWidth, scrollWidth: element.scrollWidth }));
       expect(defaultWidth.scrollWidth).toBeLessThanOrEqual(defaultWidth.width + 1);

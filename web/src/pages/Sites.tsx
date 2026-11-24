@@ -1,6 +1,6 @@
 import CreateSite from "./CreateSite";
 import { SiteManagementCards } from "@/components/site-management-cards";
-import { Globe, Monitor, Receipt, Wallet, Webhook } from "lucide-react";
+import { Globe, Monitor, Receipt, Save, Wallet, Webhook } from "lucide-react";
 import { CopyValue } from "@/components/copy-value";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -24,11 +24,9 @@ import { ActionBar } from "@/components/record/ActionBar";
 import { FieldList } from "@/components/record/FieldList";
 import { RecordSummary } from "@/components/record/RecordSummary";
 import { ScrollingTabs } from "@/components/scrolling-tabs";
-import { SettingsSummary, type SettingsSummaryRow } from "@/components/settings-summary";
-import { OverlayActions, OverlaySummary } from "@/components/overlay-actions";
-import { useOverlayCloseGuard, useOverlayContext } from "@/lib/overlay-context";
+import { OverlaySummary } from "@/components/overlay-actions";
 import { overviewQueries, overviewRange } from "@/api/workspace-queries";
-import { count, dateTime, durationLabel, money } from "@/lib/format";
+import { count, dateTime, money } from "@/lib/format";
 import type { IntegrationProtocol } from "@/api/integration";
 import {
   api,
@@ -45,7 +43,6 @@ import { useSuccessToast } from "@/components/Feedback";
 import { SitePolicyFields, SiteTextField } from "@/components/SitePolicyFields";
 import { CheckoutDisplayStudio } from "@/components/CheckoutDisplayStudio";
 import { SiteCollectionFields } from "@/components/site-collection-fields";
-import { accountState, alipayAccountsQuery, type AlipayAccount, type SiteCollection } from "@/lib/alipay-accounts";
 import { siteTimeoutError, siteTimeoutSeconds } from "@/lib/site-timeout";
 import { isOperationResultUnknown, useOperationWait } from "@/hooks/use-operation-wait";
 import { waitForOperation } from "@/lib/operation-timeout";
@@ -58,11 +55,12 @@ import { latestEditorSnapshot, siteEditorKey, siteEditorQueryOptions } from "@/l
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Spinner } from "@/components/ui/spinner";
-import { Item, ItemContent, ItemDescription, ItemGroup, ItemTitle } from "@/components/ui/item";
 import {
   Card,
+  CardAction,
   CardContent,
   CardDescription,
   CardFooter,
@@ -71,10 +69,10 @@ import {
 } from "@/components/ui/card";
 import {
   Field,
+  FieldContent,
   FieldDescription,
   FieldGroup,
   FieldLabel,
-  FieldLegend,
   FieldSet,
 } from "@/components/ui/field";
 import {
@@ -99,103 +97,6 @@ const siteSections = [
   { value: "display", label: "收银台展示", description: "自定义本站收银台的展示模块与状态文案。", icon: Monitor },
 ] as const;
 
-function siteSummaryRows(site: Site, section: string): SettingsSummaryRow[] {
-  const value = site.configuration, policy = value.policy;
-  if (section === "collection") return [
-    ["分配方式", value.collection
-      ? <Badge variant="secondary">{{ FIXED: "指定账号", RANDOM: "随机分配", WEIGHTED: "按权重分配" }[value.collection.mode]}</Badge>
-      : <Badge variant="outline">未配置</Badge>],
-    ["收款账号", <SiteCollectionSummary collection={value.collection} />],
-  ];
-  if (section === "orders") return [
-    ["收银台有效期", durationLabel(policy.orders.order_ttl_seconds)],
-    ["加价起点", <Badge variant={policy.orders.allow_zero_amount_offset ? "secondary" : "outline"}>{policy.orders.allow_zero_amount_offset ? "¥0.00（允许原价起）" : "¥0.01（默认）"}</Badge>],
-    ["最大加价金额", money(policy.orders.amount_offset_maximum_cents)],
-    ["同金额冷却时长", durationLabel(policy.orders.amount_reuse_cooldown_seconds)],
-    ["待付款订单上限", policy.orders.pending_order_limit === null ? "不限" : count(policy.orders.pending_order_limit) + " 笔"],
-  ];
-  if (section === "integration") return [
-    ["通知", <Badge variant={value.notifications_enabled ? "success" : "outline"}>{value.notifications_enabled ? "开启" : "关闭"}</Badge>],
-    ["通知域名", value.notification_origin ? <span className="font-mono text-xs">{value.notification_origin}</span> : <span className="text-muted-foreground">未设置</span>],
-    ["返回域名", value.return_origin ? <span className="font-mono text-xs">{value.return_origin}</span> : <span className="text-muted-foreground">未设置</span>],
-    ["通知超时", siteTimeoutSeconds(policy.notification_delivery.timeout_milliseconds) + " 秒"],
-    ["最多发送次数", count(policy.notification_delivery.maximum_attempts) + " 次"],
-    ["首次 / 最大重试间隔", policy.notification_delivery.retry_base_seconds + " / " + policy.notification_delivery.retry_maximum_seconds + " 秒"],
-  ];
-  if (section === "display") {
-    const d = policy.display;
-    const hiddenModules = [
-      d.checkout_show_merchant_order_no === false && "商家订单号",
-      d.checkout_show_countdown === false && "倒计时",
-      d.checkout_show_amount_adjustment === false && "微调明细",
-      d.checkout_show_qr_tools === false && "二维码工具",
-      d.checkout_show_alipay_launch === false && "打开支付宝",
-      d.checkout_show_theme_toggle === false && "外观切换",
-    ].filter(Boolean) as string[];
-    const customCopyNames = [
-      d.checkout_payment_instructions && "付款指引",
-      d.checkout_adjustment_hint && "微调提示",
-      d.checkout_notice && "自定义公告",
-      d.checkout_confirmed_detail && "付款成功",
-      d.checkout_expired_detail && "已过期",
-      d.checkout_disputed_detail && "待核实",
-      d.checkout_closed_detail && "已关闭",
-    ].filter(Boolean) as string[];
-    return [
-      ["收银台名称", d.checkout_name],
-      ["显示商品名称", d.checkout_show_product_name ? "开启" : "关闭"],
-      ["其他显示模块", hiddenModules.length ? `已隐藏：${hiddenModules.join("、")}` : "全部开启"],
-      ["自定义文案", customCopyNames.length ? `已自定义 ${customCopyNames.length} 项（${customCopyNames.join("、")}）` : "全部使用默认文案"],
-      ["帮助链接", d.checkout_help_url ? (d.checkout_help_label ? `${d.checkout_help_label}（${d.checkout_help_url}）` : d.checkout_help_url) : "未设置"],
-    ];
-  }
-  return [
-    ["业务网站名称", value.name],
-    ["新订单", <Badge variant={value.accepting_orders ? "success" : "warning"}>{value.accepting_orders ? "允许接单" : "暂停接单"}</Badge>],
-    ["网站 ID", <CopyValue value={site.api_client_id ?? site.client_id} label="复制网站 ID" />],
-    ["创建时间", dateTime(site.created_at)],
-  ];
-}
-
-function collectionAvailability(account: AlipayAccount): string {
-  if (account.environment !== "PRODUCTION" || !account.enabled || !account.configured) return accountState(account);
-  if (!account.health) return "已配置，收款状态待确认";
-  return account.health.collection_ready ? "当前可收款" : "暂不可收款";
-}
-
-function SiteCollectionSummary({ collection }: { collection: SiteCollection | undefined }) {
-  const configured = collection?.accounts ?? [];
-  const accounts = useQuery({ ...alipayAccountsQuery, enabled: configured.length > 0 });
-  if (!configured.length) return <>未分配</>;
-  const catalog = new Map(accounts.data?.data.map(account => [account.id, account]) ?? []);
-  const current = accounts.isSuccess && !accounts.isFetching && !accounts.isPaused;
-  return <div className="flex min-w-0 flex-col gap-2" data-site-collection-summary>
-    <ErrorNotice error={accounts.error} retry={() => { void accounts.refetch(); }} retainedData={!!accounts.data} />
-    {accounts.isError && <p className="text-muted-foreground">以下保留已保存的账号分配；当前账号资料与可用状态未确认。</p>}
-    {accounts.isPaused ? <p role="status" className="text-muted-foreground">等待网络恢复，账号可用状态未确认。</p>
-      : accounts.isFetching && <p role="status" className="text-muted-foreground">正在读取账号资料…</p>}
-    <ItemGroup aria-label="已分配收款账号" className="gap-2">
-      {configured.map(selected => {
-        const account = catalog.get(selected.account_id);
-        const status = !current ? "可用状态待确认" : account ? collectionAvailability(account) : "账号不存在或已删除，请核对历史配置";
-        const ready = status === "当前可收款";
-        return <Item key={selected.account_id} size="xs" role="listitem" className="settings-collection-card">
-          <ItemContent className="min-w-0 gap-1">
-            <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-              <ItemTitle className="line-clamp-none wrap-anywhere">{account?.name ?? selected.account_id}</ItemTitle>
-              <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                <Badge variant={ready ? "success" : "outline"}>{status}</Badge>
-                {collection?.mode === "WEIGHTED" && <Badge variant="secondary" className="tabular-nums">权重 {count(selected.weight ?? 1)}</Badge>}
-              </div>
-            </div>
-            {account && <ItemDescription className="line-clamp-none font-mono text-xs wrap-anywhere">账号 ID：{selected.account_id}</ItemDescription>}
-          </ItemContent>
-        </Item>;
-      })}
-    </ItemGroup>
-  </div>;
-}
-
 export function SiteSettingsPage() {
   const { clientId, section = "basic" } = useParams();
   const navigate = useNavigate();
@@ -203,6 +104,9 @@ export function SiteSettingsPage() {
   const query = useQuery(siteEditorQueryOptions(clientId));
   const selected = siteSections.find(item => item.value === section);
   if (!selected) return <ErrorNotice error={new Error("网站设置分组不存在")} />;
+  if (query.error instanceof ApiError && query.error.status === 404 && query.error.code === "site_not_found") {
+    return <ErrorNotice scope="page" error={query.error} retry={() => { void query.refetch(); }} />;
+  }
   const changeSection = (value: string | null) => {
     if (value) void navigate("/sites/" + encodeURIComponent(clientId!) + "/settings/" + value);
   };
@@ -258,19 +162,17 @@ export function SiteSettingsPage() {
       )}
       <TabsContent value={section} className="min-w-0" aria-label={isMobile ? selected.label : undefined}>
         <div className="settings-pane">
-          <QueryView query={query}>{({ site }) => (
+          <QueryView query={query}>{({ site, configuration }) => (
             section === "display" ? (
               <CheckoutDisplayStudio site={site} onCacheSite={cacheSite} />
             ) : (
-              <>
-                <SettingsSummary
-                  title={selected.label}
-                  description={selected.description}
-                  rows={siteSummaryRows(site, section)}
-                  editTo={"/sites/" + encodeURIComponent(clientId!) + "/edit?section=" + section}
-                />
-                {section === "integration" && <SiteIntegrationAssistant site={site} onReloadSite={() => { void query.refetch(); }} />}
-              </>
+              <SiteEditor
+                key={site.client_id + ":" + section}
+                initial={site}
+                configuration={configuration}
+                section={section}
+                embedded
+              />
             )
           )}</QueryView>
         </div>
@@ -320,7 +222,7 @@ export function SiteSummaryOverlay() {
       ]} />
       <ActionBar menuLabel="更多操作，网站操作"
         primary={{ label: "查看网站总览", to: "/sites/" + encodeURIComponent(current.client_id) + "?range=" + range }}
-        secondary={{ label: "编辑网站", to: "/sites/" + encodeURIComponent(current.client_id) + "/edit?section=basic" }} />
+        secondary={{ label: "编辑网站", to: "/sites/" + encodeURIComponent(current.client_id) + "/settings/basic" }} />
     </DetailPage>;
   }}</QueryView>;
 }
@@ -346,10 +248,7 @@ function isSiteRevisionConflict(error: unknown) {
   return error instanceof ApiError && error.status === 409 && error.code === "site_revision_conflict";
 }
 function ExistingSiteEditor() {
-  const { clientId, section: routeSection = "basic" } = useParams();
-  const location = useLocation();
-  const overlay = useOverlayContext();
-  const section = overlay ? new URLSearchParams(location.search).get("section") ?? "basic" : routeSection;
+  const { clientId, section = "basic" } = useParams();
   const query = useQuery(siteEditorQueryOptions(clientId));
   if (
     clientId &&
@@ -363,11 +262,10 @@ function ExistingSiteEditor() {
     <QueryView query={query}>
       {(data) => (
         <SiteEditor
-          key={(clientId ?? "new") + (overlay ? "" : section)}
+          key={(clientId ?? "new") + ":" + section}
           initial={data.site}
           configuration={data.configuration}
           section={clientId ? section : "all"}
-          tabbed={!!overlay}
         />
       )}
     </QueryView>
@@ -376,21 +274,18 @@ function ExistingSiteEditor() {
 function SiteEditor({
   initial,
   configuration,
-  section: initialSection,
-  tabbed = false,
+  section,
+  embedded = false,
 }: {
   initial: Site | null;
   configuration: SiteConfiguration;
   section: string;
-  tabbed?: boolean;
+  embedded?: boolean;
 }) {
-  const overlay = useOverlayContext();
   const run = useOperationWait();
   const formId = useId();
   const formRef = useRef<HTMLFormElement>(null);
-  const [activeSection, setActiveSection] = useState(initialSection);
   const [protocol, setProtocol] = useState<IntegrationProtocol>("native");
-  const section = tabbed ? activeSection : initialSection;
   const navigate = useNavigate();
   const location = useLocation();
   const navigation = useNavigation();
@@ -715,7 +610,7 @@ function SiteEditor({
     onSuccess: site => {
       if (!site || !mounted.current || !saved) return;
       observeSecretRevision(site.revision);
-      const merged = mergeSiteConfiguration(saved.configuration, draft, site.configuration, tabbed ? "all" : section);
+      const merged = mergeSiteConfiguration(saved.configuration, draft, site.configuration, section);
       setChoices({});
       if (merged.conflicts.length) setReview({ site, ...merged });
       else applyReview(site, merged.configuration);
@@ -723,12 +618,6 @@ function SiteEditor({
   });
   const errors = save.error instanceof ApiError ? save.error.fields : {};
   const busy = save.isPending || action.isPending || reload.isPending || secretReadPending;
-  useOverlayCloseGuard(() => save.isPending || ((reload.isPending || action.isPending) && !deletionConfirmed.current));
-  useEffect(() => {
-    if (!tabbed || !(save.error instanceof ApiError)) return;
-    const field = Object.keys(save.error.fields)[0] ?? "";
-    if (field) setActiveSection(field.includes(".display.") ? "display" : field.includes(".orders.") ? "orders" : field.startsWith("configuration.collection") ? "collection" : /notification|return_origin/.test(field) ? "integration" : "basic");
-  }, [save.error, tabbed]);
   useEffect(() => {
     if (!busy && save.error) formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
   }, [section, save.error, busy]);
@@ -758,6 +647,13 @@ function SiteEditor({
     setFeedback("");
     save.reset();
   };
+  function resetDraft() {
+    const baseline = saved?.configuration ?? configuration;
+    setDraft(structuredClone(baseline));
+    setTimeoutRaw(siteTimeoutSeconds(baseline.policy.notification_delivery.timeout_milliseconds));
+    setFeedback("");
+    save.reset();
+  }
   const impact = [
     saved?.configuration.accepting_orders && !draft.accepting_orders
       ? "暂停新订单，旧订单继续处理。"
@@ -775,13 +671,47 @@ function SiteEditor({
   ]
     .filter(Boolean)
     .join(" ");
+  const selectedSectionMeta = sections.find((item) => item.value === section);
+  const sectionTitle = section === "integration" ? "通知与回调" : (selectedSectionMeta?.label ?? "网站设置");
+  const sectionDescription = section === "integration"
+    ? "配置付款结果异步通知开关、安全域名白名单与失败重试策略。"
+    : selectedSectionMeta?.description;
+  const sectionBadge = section === "basic" ? (
+    <Badge variant={draft.accepting_orders ? "success" : "warning"}>
+      {draft.accepting_orders ? "允许接单" : "暂停接单"}
+    </Badge>
+  ) : section === "collection" ? (
+    <Badge variant={draft.collection?.accounts.length ? "secondary" : "warning"}>
+      {draft.collection?.accounts.length
+        ? { FIXED: "指定账号", RANDOM: "随机分配", WEIGHTED: "按权重分配" }[draft.collection.mode]
+        : "未配置"}
+    </Badge>
+  ) : section === "integration" ? (
+    <Badge variant={draft.notifications_enabled ? "success" : "outline"}>
+      {draft.notifications_enabled ? "通知已开启" : "通知已关闭"}
+    </Badge>
+  ) : null;
   const formActions = (
-    <OverlayActions>
-      {overlay && <Button type="button" variant="outline" disabled={busy} onClick={() => overlay.requestClose()}>关闭</Button>}
-      <Button form={formId} type="submit" disabled={busy || requiresReview || !!timeoutError}>
+    <Field orientation="horizontal" data-settings-actions className="w-full flex-wrap items-center justify-end gap-2">
+      {dirty && (
+        <span className="settings-dirty-pill mr-auto" role="status">
+          未保存
+        </span>
+      )}
+      {dirty && (
+        <Button type="button" variant="outline" size="sm" disabled={busy} onClick={resetDraft}>
+          重置
+        </Button>
+      )}
+      <Button form={formId} type="submit" className="h-auto min-h-8 max-w-full whitespace-normal" disabled={busy || requiresReview || !!timeoutError} aria-busy={save.isPending}>
+        {save.isPending ? (
+          <Spinner aria-hidden="true" data-icon="inline-start" />
+        ) : (
+          <Save data-icon="inline-start" />
+        )}
         {save.isPending ? "正在保存…" : "保存业务网站"}
       </Button>
-    </OverlayActions>
+    </Field>
   );
   const isSecretConfirmation = confirmation === "api" || confirmation === "webhook";
   const secretConfigured = (purpose: "api" | "webhook") => missingSecrets[purpose] === saved?.revision
@@ -790,55 +720,44 @@ function SiteEditor({
   const secretActionName = (purpose: "api" | "webhook") =>
     (secretConfigured(purpose) === false ? "生成" : "更换") + (purpose === "api" ? " API 密钥" : "通知签名密钥");
   return (
-    <div className="admin-settings-layout flex flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <PageHeading title={tabbed ? "编辑" + (saved?.configuration.name ?? "业务网站") : sections.find((item) => item.value === section)?.label ?? "网站设置"} />
-        {!overlay && <Link to="/sites" className={buttonVariants({ variant: "outline" })}>
-          返回网站列表
-        </Link>}
-      </div>
-      {saved && (
-        <Tabs
-          value={section}
-          onValueChange={(value) => {
-            if (value) {
-              if (tabbed) setActiveSection(value);
-              else void navigate("/sites/" + saved.client_id + "/settings/" + value);
-            }
-          }}
-        >
-          <ScrollingTabs selection={{
-            items: sections,
-            value: section,
-            onValueChange: value => {
-              if (tabbed) setActiveSection(value);
-              else void navigate("/sites/" + saved.client_id + "/settings/" + value);
-            },
-            label: "网站设置分组",
-          }}>
-            <TabsList className="min-w-max" aria-label="网站设置分组" activateOnFocus={false}>
-              {sections.map((item) => (
-                <TabsTrigger value={item.value} key={item.value}>
-                  {item.label}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </ScrollingTabs>
-        </Tabs>
+    <div className={embedded ? "flex min-w-0 flex-col gap-5" : "admin-settings-layout flex min-w-0 flex-col gap-5"}>
+      {!embedded && (
+        <>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <PageHeading title={selectedSectionMeta?.label ?? "网站设置"} />
+            <Link to="/sites" className={buttonVariants({ variant: "outline", size: "sm" })}>
+              返回网站列表
+            </Link>
+          </div>
+          {saved && (
+            <Tabs
+              value={section}
+              onValueChange={(value) => {
+                if (value) void navigate("/sites/" + saved.client_id + "/settings/" + value);
+              }}
+            >
+              <ScrollingTabs selection={{
+                items: sections,
+                value: section,
+                onValueChange: value => {
+                  void navigate("/sites/" + saved.client_id + "/settings/" + value);
+                },
+                label: "网站设置分组",
+              }}>
+                <TabsList className="min-w-max" aria-label="网站设置分组" activateOnFocus={false}>
+                  {sections.map((item) => (
+                    <TabsTrigger value={item.value} key={item.value}>
+                      {item.label}
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
+              </ScrollingTabs>
+            </Tabs>
+          )}
+        </>
       )}
       <ErrorNotice error={save.error || (action.variables === "delete" || !visible("integration") ? action.error : null)} />
       <ErrorNotice error={reload.error} />
-      {timeoutError && !visible("integration") && (
-        <Alert variant="destructive">
-          <AlertTitle>通知超时填写有误，暂时无法保存</AlertTitle>
-          <AlertDescription className="flex flex-col items-start gap-2">
-            <span>{timeoutError}</span>
-            <Button type="button" variant="outline" disabled={busy} onClick={() => setActiveSection("integration")}>
-              返回接入与通知
-            </Button>
-          </AlertDescription>
-        </Alert>
-      )}
       {requiresReview && (
         <Alert>
           <AlertTitle>{writeResultUnknown ? "操作结果待确认" : requiresConfigurationReview ? "业务网站配置已变更" : "核对密钥操作结果"}</AlertTitle>
@@ -848,7 +767,7 @@ function SiteEditor({
               : requiresConfigurationReview
               ? "你的修改已保留。读取最新配置将合并无冲突项，冲突需核对；不会自动保存或重试密钥操作。"
               : "重新读取密钥状态后，可查看已保存的密钥。未保存的配置会保留。"}</p>
-            <Button ref={reloadTrigger} variant="outline" className="h-auto min-h-8 max-w-full whitespace-normal py-1.5" disabled={busy} onClick={() => reload.mutate()}>
+            <Button ref={reloadTrigger} variant="outline" size="sm" className="h-auto min-h-8 max-w-full whitespace-normal py-1.5" disabled={busy} onClick={() => reload.mutate()}>
               {reload.isPending ? "正在读取…" : requiresConfigurationReview ? "读取最新配置并核对" : "重新读取密钥状态"}
             </Button>
           </AlertDescription>
@@ -867,34 +786,10 @@ function SiteEditor({
           }}
         />
       )}
-      {saved && (tabbed || visible("integration")) && <div hidden={!visible("integration")}>
-        <SiteIntegrationAssistant site={saved} siteDirty={dirty || requiresReview}
-          disabled={busy} showClientId={false} onReloadSite={() => reload.mutate()} selectedProtocol={protocol} onProtocolChange={setProtocol}
-          controlsRef={integrationControls} onWritePendingChange={setIntegrationWritePending} />
-      </div>}
-      {saved && visible("integration") && protocol === "native" && (
-        <Card>
-          <CardHeader>
-            <CardTitle>接入信息</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <FieldGroup>
-              <Field>
-                <FieldLabel>网站 ID</FieldLabel>
-                <CopyValue value={saved.api_client_id ?? saved.client_id} label="复制网站 ID" />
-                <Button ref={changeClientIdTrigger} type="button" variant="outline" className="self-start"
-                  disabled={busy || dirty || requiresReview} onClick={() => setChangingClientId(true)}>更换网站 ID</Button>
-                {dirty && <FieldDescription>请先保存或撤销当前配置修改，再更换网站 ID。</FieldDescription>}
-              </Field>
-            </FieldGroup>
-          </CardContent>
-
-        </Card>
-      )}
       <form
         id={formId}
         ref={formRef}
-        className="settings-form-surface"
+        className="settings-form-surface w-full min-w-0"
         onSubmit={(event) => {
           event.preventDefault();
           if (busy || requiresReview || timeoutError) return;
@@ -903,13 +798,19 @@ function SiteEditor({
         }}
       >
         <FieldSet disabled={busy || !!review}>
-          <Card>
+          <Card size="sm" data-site-editor-card={section}>
+            <CardHeader>
+              <CardTitle role="heading" aria-level={2}>{sectionTitle}</CardTitle>
+              {sectionDescription && <CardDescription>{sectionDescription}</CardDescription>}
+              {sectionBadge && <CardAction>{sectionBadge}</CardAction>}
+            </CardHeader>
             <CardContent>
               <FieldGroup>
                 {visible("basic") && (
                   <>
                     <SiteTextField
                       label="业务网站名称"
+                      fullWidth
                       required
                       maxLength={40}
                       value={draft.name}
@@ -920,10 +821,15 @@ function SiteEditor({
                         })
                       }
                     />
-                    <Field orientation="horizontal">
-                      <FieldLabel htmlFor="site-accepting">
-                        允许新订单
-                      </FieldLabel>
+                    <Field orientation="horizontal" className="settings-toggle-card">
+                      <FieldContent>
+                        <FieldLabel htmlFor="site-accepting">
+                          允许新订单
+                        </FieldLabel>
+                        <FieldDescription>
+                          关闭后将暂停接收新订单，已创建订单继续处理。
+                        </FieldDescription>
+                      </FieldContent>
                       <Switch
                         id="site-accepting"
                         checked={draft.accepting_orders}
@@ -934,14 +840,53 @@ function SiteEditor({
                         }
                       />
                     </Field>
+                    {saved && (
+                      <>
+                        <Separator />
+                        <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
+                          <div className="settings-metric-tile gap-1.5">
+                            <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+                              <span className="settings-metric-label">网站 ID</span>
+                              <Button
+                                ref={changeClientIdTrigger}
+                                type="button"
+                                variant="outline"
+                                size="xs"
+                                disabled={busy || dirty || requiresReview}
+                                onClick={() => setChangingClientId(true)}
+                              >
+                                更换网站 ID
+                              </Button>
+                            </div>
+                            <CopyValue value={saved.api_client_id ?? saved.client_id} label="复制网站 ID" />
+                            {dirty && (
+                              <span className="text-xs text-muted-foreground">
+                                请先保存或撤销当前配置修改，再更换网站 ID。
+                              </span>
+                            )}
+                          </div>
+                          <div className="settings-metric-tile gap-1.5">
+                            <span className="settings-metric-label">创建时间</span>
+                            <span className="settings-metric-value">{dateTime(saved.created_at)}</span>
+                          </div>
+                        </div>
+                      </>
+                    )}
                   </>
                 )}
                 {visible("integration") && (
                   <>
-                    <Field orientation="horizontal">
-                      <FieldLabel htmlFor="site-notifications">
-                        开启通知
-                      </FieldLabel>
+                    <Field orientation="horizontal" className="settings-toggle-card">
+                      <FieldContent>
+                        <FieldLabel htmlFor="site-notifications">
+                          开启通知
+                        </FieldLabel>
+                        <FieldDescription>
+                          {protocol === "native" && secretConfigured("webhook") === false
+                            ? "开启后在收款确认时回调业务网站；原生 API 通知需先在下方生成通知签名密钥。"
+                            : "开启后在收款确认时向业务网站回调地址发送异步付款通知。"}
+                        </FieldDescription>
+                      </FieldContent>
                       <Switch
                         id="site-notifications"
                         disabled={!saved}
@@ -953,37 +898,51 @@ function SiteEditor({
                         }
                       />
                     </Field>
-                    {protocol === "native" && secretConfigured("webhook") === false && <FieldDescription>原生 API 通知需要在下方生成通知签名密钥。</FieldDescription>}
-                    <SiteTextField
-                      label="通知域名"
-                      type="url"
-                      placeholder="https://notify.example.com"
-                      value={draft.notification_origin ?? ""}
-                      error={errors["configuration.notification_origin"]}
-                      onChange={(text) =>
-                        change((p) => {
-                          p.notification_origin = text || null;
-                        })
-                      }
-                    />
-                    <SiteTextField
-                      label="返回域名"
-                      type="url"
-                      placeholder="https://shop.example.com"
-                      value={draft.return_origin ?? ""}
-                      error={errors["configuration.return_origin"]}
-                      onChange={(text) =>
-                        change((p) => {
-                          p.return_origin = text || null;
-                        })
-                      }
-                    />
-                    <FieldDescription>
-                      例如通知地址为 https://shop.example.com/payment/notify，通知域名填 https://shop.example.com。不含路径、端口或通配符。
-                    </FieldDescription>
+                    <div className="flex min-w-0 flex-col gap-2">
+                      <FieldGroup className="settings-fields">
+                        <SiteTextField
+                          label="通知域名"
+                          fullWidth
+                          type="url"
+                          placeholder="https://notify.example.com"
+                          value={draft.notification_origin ?? ""}
+                          error={errors["configuration.notification_origin"]}
+                          onChange={(text) =>
+                            change((p) => {
+                              p.notification_origin = text || null;
+                            })
+                          }
+                        />
+                        <SiteTextField
+                          label="返回域名"
+                          fullWidth
+                          type="url"
+                          placeholder="https://shop.example.com"
+                          value={draft.return_origin ?? ""}
+                          error={errors["configuration.return_origin"]}
+                          onChange={(text) =>
+                            change((p) => {
+                              p.return_origin = text || null;
+                            })
+                          }
+                        />
+                      </FieldGroup>
+                      <FieldDescription>
+                        例如通知地址为 https://shop.example.com/payment/notify，通知域名填 https://shop.example.com。不含路径、端口或通配符。
+                      </FieldDescription>
+                    </div>
+                    <Separator />
                   </>
                 )}
-                {visible("collection") && <SiteCollectionFields value={draft.collection ?? { mode: "FIXED", accounts: [] }} disabled={busy || requiresReview} error={Object.entries(errors).find(([field]) => field.startsWith("configuration.collection"))?.[1]} onChange={collection => change(next => { next.collection = collection; })} />}
+                {visible("collection") && (
+                  <SiteCollectionFields
+                    hideHeading
+                    value={draft.collection ?? { mode: "FIXED", accounts: [] }}
+                    disabled={busy || requiresReview}
+                    error={Object.entries(errors).find(([field]) => field.startsWith("configuration.collection"))?.[1]}
+                    onChange={collection => change(next => { next.collection = collection; })}
+                  />
+                )}
                 <SitePolicyFields
                   section={section === "all" ? undefined : section}
                   expandedNotificationPolicy={!!timeoutError}
@@ -1000,10 +959,121 @@ function SiteEditor({
                 />
               </FieldGroup>
             </CardContent>
-            {overlay ? formActions : <CardFooter>{formActions}</CardFooter>}
+            <CardFooter className="settings-save-footer">{formActions}</CardFooter>
           </Card>
         </FieldSet>
       </form>
+      {saved && visible("integration") && (
+        <SiteIntegrationAssistant
+          site={saved}
+          siteDirty={dirty || requiresReview}
+          disabled={busy}
+          showClientId={false}
+          showKeyManagementLink={false}
+          onReloadSite={() => reload.mutate()}
+          selectedProtocol={protocol}
+          onProtocolChange={setProtocol}
+          controlsRef={integrationControls}
+          onWritePendingChange={setIntegrationWritePending}
+        />
+      )}
+      {saved && visible("integration") && protocol === "native" && (
+        <Card size="sm">
+          <CardHeader>
+            <CardTitle role="heading" aria-level={2}>原生 API 接入与密钥</CardTitle>
+            <CardDescription>用于业务网站签名下单与验签异步通知，更换后请同步更新接入端配置。</CardDescription>
+          </CardHeader>
+          <CardContent className="flex min-w-0 flex-col gap-4">
+            <div className="settings-metric-tile gap-1.5">
+              <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+                <span className="settings-metric-label">网站 ID（client_id）</span>
+                <Button
+                  ref={changeClientIdTrigger}
+                  type="button"
+                  variant="outline"
+                  size="xs"
+                  disabled={busy || dirty || requiresReview}
+                  onClick={() => setChangingClientId(true)}
+                >
+                  更换网站 ID
+                </Button>
+              </div>
+              <CopyValue value={saved.api_client_id ?? saved.client_id} label="复制网站 ID" />
+              {dirty && (
+                <span className="text-xs text-muted-foreground">
+                  请先保存或撤销当前配置修改，再更换网站 ID。
+                </span>
+              )}
+            </div>
+            {!saved.secrets && (
+              <Alert>
+                <AlertDescription className="flex flex-wrap items-center justify-between gap-2">
+                  <span>密钥状态未返回。</span>
+                  <Button variant="outline" size="sm" disabled={busy} onClick={() => reload.mutate()}>
+                    重新读取密钥状态
+                  </Button>
+                </AlertDescription>
+              </Alert>
+            )}
+            <div className="settings-key-list">
+              <div role="group" aria-labelledby={formId + "-api-key-label"} className="settings-key-row">
+                <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+                  <span id={formId + "-api-key-label"} className="text-sm font-medium leading-snug">API 密钥</span>
+                  <div className="flex shrink-0 flex-wrap gap-2">
+                    {secretConfigured("api") === true && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        aria-label="查看 API 密钥"
+                        disabled={busy}
+                        onClick={event => { void readSecret("api", event.currentTarget); }}
+                      >
+                        查看
+                      </Button>
+                    )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={busy || requiresReview || secretConfigured("api") === undefined}
+                      onClick={event => { secretOrigin.current = event.currentTarget; action.reset(); setConfirmation("api"); }}
+                    >
+                      {secretActionName("api")}
+                    </Button>
+                  </div>
+                </div>
+                <FieldDescription>用于服务端原生 API 下单、查单与关单请求签名。</FieldDescription>
+              </div>
+              <div role="group" aria-labelledby={formId + "-webhook-key-label"} className="settings-key-row">
+                <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+                  <span id={formId + "-webhook-key-label"} className="text-sm font-medium leading-snug">通知签名密钥</span>
+                  <div className="flex shrink-0 flex-wrap gap-2">
+                    {secretConfigured("webhook") === true && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        aria-label="查看通知签名密钥"
+                        disabled={busy}
+                        onClick={event => { void readSecret("webhook", event.currentTarget); }}
+                      >
+                        查看
+                      </Button>
+                    )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={busy || requiresReview || secretConfigured("webhook") === undefined}
+                      onClick={event => { secretOrigin.current = event.currentTarget; action.reset(); setConfirmation("webhook"); }}
+                    >
+                      {secretActionName("webhook")}
+                    </Button>
+                  </div>
+                </div>
+                <FieldDescription>用于业务网站校验 PerPay 异步付款通知签名。</FieldDescription>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
       {saved && changingClientId && <SiteClientIdChange site={saved} finalFocus={() => changeClientIdTrigger.current}
         onClose={refresh => { setChangingClientId(false); if (refresh) reload.mutate(); }}
         onChanged={async site => {
@@ -1017,73 +1087,22 @@ function SiteEditor({
           setFeedback("网站 ID 已更换，请同步更新业务网站接入配置。");
           void queryClient.invalidateQueries({ queryKey: ["sites"] });
         }} />}
-      {saved && visible("integration") && protocol === "native" && (
-        <Card>
-          <CardHeader>
-            <CardTitle>原生 API 密钥</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <FieldGroup>
-              {!saved.secrets && <Alert><AlertDescription>密钥状态未返回。<Button variant="outline" disabled={busy} onClick={() => reload.mutate()}>重新读取密钥状态</Button></AlertDescription></Alert>}
-              <FieldSet className="gap-2">
-                <FieldLegend variant="label">API 密钥</FieldLegend>
-                <div className="flex flex-wrap gap-2">
-                  {secretConfigured("api") === true && <Button
-                    variant="outline"
-                    aria-label="查看 API 密钥"
-                    disabled={busy}
-                    onClick={event => { void readSecret("api", event.currentTarget); }}
-                  >
-                    查看
-                  </Button>}
-                  <Button
-                    variant="outline"
-                    disabled={busy || requiresReview || secretConfigured("api") === undefined}
-                    onClick={event => { secretOrigin.current = event.currentTarget; action.reset(); setConfirmation("api"); }}
-                  >
-                    {secretActionName("api")}
-                  </Button>
-                </div>
-              </FieldSet>
-              <FieldSet className="gap-2">
-                <FieldLegend variant="label">通知签名密钥</FieldLegend>
-                <div className="flex flex-wrap gap-2">
-                  {secretConfigured("webhook") === true && <Button
-                    variant="outline"
-                    aria-label="查看通知签名密钥"
-                    disabled={busy}
-                    onClick={event => { void readSecret("webhook", event.currentTarget); }}
-                  >
-                    查看
-                  </Button>}
-                  <Button
-                    variant="outline"
-                    disabled={busy || requiresReview || secretConfigured("webhook") === undefined}
-                    onClick={event => { secretOrigin.current = event.currentTarget; action.reset(); setConfirmation("webhook"); }}
-                  >
-                    {secretActionName("webhook")}
-                  </Button>
-                </div>
-              </FieldSet>
-            </FieldGroup>
-          </CardContent>
-        </Card>
-      )}
       {saved && visible("basic") && (
-        <Card>
+        <Card size="sm" className="settings-danger-card">
           <CardHeader>
-            <CardTitle>删除网站</CardTitle>
+            <CardTitle role="heading" aria-level={2}>删除网站</CardTitle>
             <CardDescription>仅限无历史订单的网站。删除后不可恢复，原网站 ID 不可复用。</CardDescription>
+            <CardAction>
+              <Button
+                variant="destructive"
+                size="sm"
+                disabled={busy || requiresReview || integrationWritePending}
+                onClick={() => setConfirmation("delete")}
+              >
+                删除网站
+              </Button>
+            </CardAction>
           </CardHeader>
-          <CardContent>
-            <Button
-              variant="destructive"
-              disabled={busy || requiresReview || integrationWritePending}
-              onClick={() => setConfirmation("delete")}
-            >
-              删除网站
-            </Button>
-          </CardContent>
         </Card>
       )}
       <SecretViewDialog open={secretDialog !== null} title={secretDialog === "api" ? "API 密钥" : "通知签名密钥"}

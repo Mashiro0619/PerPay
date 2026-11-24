@@ -94,7 +94,7 @@ export async function prepareWorkspaceNavigation(request: Request, clientId: str
       const { type, visibility } = workItemFilters(search, clientId);
       const list = readListQuery(search, workItemSortFields(visibility), visibility === "IGNORED" ? "ignored_at" : "priority", "desc");
       reads.push(prepare(workItemsQuery(clientId, list, cursor, type, visibility)));
-    } else if (clientId && /^\/settings(?:\/(?:basic|orders|integration|display))?$/.test(localPath)) {
+    } else if (clientId && /^\/settings(?:\/(?:basic|collection|orders|integration|display))?$/.test(localPath)) {
       reads.push(queryClient.prefetchQuery(siteEditorQueryOptions(clientId)));
     }
     await untilNavigationEnds(Promise.allSettled(reads), request.signal);

@@ -29,7 +29,6 @@ const definitions: ReadonlyArray<{ pattern: string; kind: OverlayRouteKind; titl
   { pattern: "/audit/status", kind: "audit-status", title: "日志记录状态", size: "md" },
   { pattern: "/sites/new", kind: "site", title: "添加网站", size: "lg" },
   { pattern: "/sites/defaults", kind: "site-defaults", title: "新网站默认设置", size: "lg" },
-  { pattern: "/sites/:clientId/edit", kind: "site", title: "编辑业务网站", size: "lg" },
   { pattern: "/sites/:clientId/summary", kind: "site-summary", title: "网站概况", size: "md" },
   { pattern: "/settings/:section/edit", kind: "settings", title: "编辑系统设置", size: "md" },
   { pattern: "/settings/security/password", kind: "password", title: "修改管理员密码", size: "md" },
@@ -57,7 +56,6 @@ export function overlayRoute(pathname: string): OverlayRoute | null {
     if (definition.kind === "evidence") parent = scope.clientId ? scope.base + "/work-items" : "/reconciliation" + (["matches", "exceptions", "conflicts"].includes(match.params.kind ?? "") ? "?tab=" + match.params.kind : "");
     if (definition.kind === "audit" || definition.kind === "audit-status") parent = "/audit";
     if (definition.kind === "site" || definition.kind === "site-defaults" || definition.kind === "site-summary") parent = "/sites" + (scope.clientId ? "?selected_site=" + encodeURIComponent(scope.clientId) : "");
-    if (definition.kind === "site" && scope.clientId) parent = scope.base + "/settings/basic";
     if (definition.kind === "account") parent = "/settings/accounts";
     if (definition.kind === "settings") parent = "/settings/" + match.params.section;
     if (["password", "admin-access", "session"].includes(definition.kind)) parent = "/settings/security";

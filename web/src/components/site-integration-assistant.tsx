@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useImperativeHandle, useLayoutEffect, useRef, useState, type Ref } from "react";
+import { useCallback, useEffect, useId, useImperativeHandle, useLayoutEffect, useRef, useState, type ReactNode, type Ref } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { ExternalLink } from "lucide-react";
 import { ApiError, queryClient, type Site } from "@/api/client";
@@ -35,6 +35,8 @@ interface AssistantProps {
   siteDirty?: boolean;
   disabled?: boolean;
   showClientId?: boolean;
+  showKeyManagementLink?: boolean;
+  clientIdAction?: ReactNode;
   onReloadSite: () => void;
   onProtocolChange?: (protocol: IntegrationProtocol) => void;
   selectedProtocol?: IntegrationProtocol;
@@ -92,7 +94,7 @@ export function SiteIntegrationAssistant(props: AssistantProps) {
   </>;
 }
 
-function IntegrationContent({ site, siteDirty = false, disabled = false, showClientId = true, onProtocolChange, selectedProtocol, controlsRef, onWritePendingChange,
+function IntegrationContent({ site, siteDirty = false, disabled = false, showClientId = true, showKeyManagementLink = true, clientIdAction, onProtocolChange, selectedProtocol, controlsRef, onWritePendingChange,
   configuration, reading, readUnavailable, onReload }: AssistantProps & {
     configuration: SiteEpayConfiguration; reading: boolean; readUnavailable: boolean; onReload: () => Promise<SiteEpayConfiguration>;
   }) {
@@ -297,15 +299,15 @@ function IntegrationContent({ site, siteDirty = false, disabled = false, showCli
           : "本系统服务端签名密钥；更换后需同步更新业务网站中配置的平台公钥。";
     const rotationLabel = (keyReady(purpose) ? "更换" : "生成") + label;
     const labelId = id + "-" + purpose + (publicOnly ? "-public" : "");
-    return <Field key={labelId} aria-labelledby={labelId} className="min-w-0">
+    return <Field key={labelId} aria-labelledby={labelId} className="settings-key-row">
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
         <FieldLabel id={labelId}>{label}</FieldLabel>
         <div className="flex shrink-0 gap-2">
-          <Button type="button" variant="outline" aria-label={"查看" + label}
+          <Button type="button" variant="outline" size="sm" aria-label={"查看" + label}
             disabled={blocked} onClick={event => { viewTrigger.current = event.currentTarget; void read(purpose, publicOnly); }}>
             查看
           </Button>
-          {!publicOnly && <Button type="button" variant="outline" aria-label={rotationLabel}
+          {!publicOnly && <Button type="button" variant="outline" size="sm" aria-label={rotationLabel}
             disabled={blocked || needsRefresh} onClick={event => {
               rotationTrigger.current = event.currentTarget;
               persist.reset(); setError(null); setRotation(purpose);
@@ -354,7 +356,7 @@ function IntegrationContent({ site, siteDirty = false, disabled = false, showCli
       {!protocolEnabled && <p role="status">此协议已暂停新订单。</p>}
       {!keysReady && <Alert><AlertDescription>接入密钥尚未就绪，请生成对应密钥。</AlertDescription></Alert>}
       {feedback && <p role="status">{feedback}</p>}
-      <FieldGroup className="grid min-w-0 grid-cols-1 gap-3 @lg/integration:grid-cols-2">
+      <FieldGroup className={showClientId || protocol !== "native" ? "grid min-w-0 grid-cols-1 gap-3 @lg/integration:grid-cols-2" : "grid min-w-0 grid-cols-1 gap-3"}>
         <Field className="settings-metric-tile gap-1.5">
           <FieldLabel className="text-xs text-muted-foreground">{protocol === "native" ? "PerPay 服务地址" : "易支付网关"}</FieldLabel>
           {configuration.public_origin
@@ -362,16 +364,20 @@ function IntegrationContent({ site, siteDirty = false, disabled = false, showCli
             : <FieldDescription>请先配置服务端公开地址。</FieldDescription>}
         </Field>
         {(showClientId || protocol !== "native") && <Field className="settings-metric-tile gap-1.5">
-          <FieldLabel className="text-xs text-muted-foreground">{protocol === "native" ? "网站 ID（client_id）" : "商户 PID"}</FieldLabel>
+          <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+            <FieldLabel className="text-xs text-muted-foreground">{protocol === "native" ? "网站 ID（client_id）" : "商户 PID"}</FieldLabel>
+            {protocol === "native" && clientIdAction}
+          </div>
           <CopyValue value={protocol === "native" ? site.api_client_id ?? site.client_id : configuration.pid} label={protocol === "native" ? "复制网站 ID" : "复制商户 PID"} />
+          {protocol === "native" && clientIdAction && siteDirty && <FieldDescription>请先保存或撤销当前配置修改，再更换网站 ID。</FieldDescription>}
         </Field>}
       </FieldGroup>
       {protocol === "native"
-        ? showClientId && <Link to={sitePath + "/edit?section=integration"} className={buttonVariants({ variant: "outline", size: "sm", className: "self-start" })}>管理 API 与通知密钥</Link>
-        : <FieldGroup className="min-w-0 gap-4">
+        ? showClientId && showKeyManagementLink && <Link to={sitePath + "/settings/integration"} className={buttonVariants({ variant: "outline", size: "sm", className: "self-start" })}>管理 API 与通知密钥</Link>
+        : <div className="settings-key-list">
           {credential(protocol === "epay_v1" ? "epay_v1" : "epay_merchant")}
           {protocol === "epay_v2" && <>{credential("epay_platform", true)}{credential("epay_platform")}</>}
-        </FieldGroup>}
+        </div>}
       <div className="flex min-w-0 flex-wrap gap-2 border-t border-border/70 pt-4">
         <a data-external-link href={documentation} target="_blank" rel="noopener noreferrer"
           className={buttonVariants({ variant: "outline", size: "sm" })}><ExternalLink data-icon="inline-start" />接入文档</a>

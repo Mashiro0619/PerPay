@@ -105,7 +105,7 @@ export async function adminRouteCatalog(page: Page, manifest: Manifest): Promise
     "/settings/security/password", "/settings/security/access", "/settings/security/sessions/" + encodeURIComponent(session!.session_id),
     "/settings/accounts/new", "/settings/accounts/" + encodeURIComponent(account!.id),
     `/sites/${site}/summary`,
-    ...["basic", "collection", "orders", "integration", "display"].map(section => `/sites/${site}/edit?section=${section}`),
+    ...["basic", "collection", "orders", "integration", "display"].map(section => `/sites/${site}/settings/${section}`),
   ])];
 }
 

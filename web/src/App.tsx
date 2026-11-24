@@ -22,6 +22,7 @@ import {
   useLocation,
   useMatch,
   useMatches,
+  useParams,
 } from "react-router";
 import { api, result } from "@/api/client";
 import { AuthBoundary, useSession } from "@/auth";
@@ -229,6 +230,22 @@ function Workspace() {
     </NavigationContext>
   );
 }
+function LegacySiteEditRedirect() {
+  const { clientId } = useParams();
+  const location = useLocation();
+  const requested = new URLSearchParams(location.search).get("section");
+  const section =
+    requested && ["basic", "collection", "orders", "integration", "display"].includes(requested)
+      ? requested
+      : "basic";
+  return (
+    <Navigate
+      to={"/sites/" + encodeURIComponent(clientId ?? "") + "/settings/" + section}
+      replace
+    />
+  );
+}
+
 export const appRoutes = createRoutesFromElements(
   <Route
     errorElement={<AppFailure />}
@@ -383,7 +400,7 @@ export const appRoutes = createRoutesFromElements(
         path="settings/:section?"
         lazy={async () => ({ Component: (await import("./pages/Sites")).SiteSettingsPage })}
       />
-      <Route path="edit" element={<LegacyOverlayRedirect />} />
+      <Route path="edit" element={<LegacySiteEditRedirect />} />
       <Route path="summary" element={<LegacyOverlayRedirect />} />
     </Route>
     <Route
