@@ -734,7 +734,6 @@ function WorkItemPage({
                   <Button
                     type="button"
                     variant="ghost"
-                    size="sm"
                     disabled={busy}
                     aria-label="恢复需要处理优先排序"
                     onClick={() => listQuery.setSort("priority", "desc")}

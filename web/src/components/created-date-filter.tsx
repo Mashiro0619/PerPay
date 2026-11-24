@@ -291,7 +291,7 @@ function CreatedDateDialogFilter({
         </SelectContent>
       </Select>
       {selected === "custom" && (
-        <Button variant="ghost" size="sm" onClick={custom}>
+        <Button variant="ghost" onClick={custom}>
           修改日期
         </Button>
       )}

@@ -21,18 +21,18 @@ function InputGroup({ className, ...props }: React.ComponentProps<"div">) {
 }
 
 const inputGroupAddonVariants = cva(
-  "flex h-auto cursor-text items-center justify-center gap-2 py-1.5 text-sm font-medium text-muted-foreground select-none group-data-[disabled=true]/input-group:opacity-50 [&>kbd]:rounded-[calc(var(--radius)-5px)] [&>svg:not([class*='size-'])]:size-4",
+  "flex h-auto cursor-text items-center justify-center gap-2 text-sm font-medium text-muted-foreground select-none group-data-[disabled=true]/input-group:opacity-50 [&>kbd]:rounded-[calc(var(--radius)-5px)] [&>svg:not([class*='size-'])]:size-4",
   {
     variants: {
       align: {
         "inline-start":
-          "pl-2 has-[>button]:ml-[-0.3rem] has-[>kbd]:ml-[-0.15rem]",
+          "py-0.5 pl-2 has-[>button]:ml-[-0.3rem] has-[>kbd]:ml-[-0.15rem]",
         "inline-end":
-          "pr-2 has-[>button]:mr-[-0.3rem] has-[>kbd]:mr-[-0.15rem]",
+          "py-0.5 pr-2 has-[>button]:mr-[-0.3rem] has-[>kbd]:mr-[-0.15rem]",
         "block-start":
-          "w-full justify-start px-2.5 pt-2 group-has-[>input]/input-group:pt-2 [.border-b]:pb-2",
+          "w-full justify-start px-2.5 py-1.5 pt-2 group-has-[>input]/input-group:pt-2 [.border-b]:pb-2",
         "block-end":
-          "w-full justify-start px-2.5 pb-2 group-has-[>input]/input-group:pb-2 [.border-t]:pt-2",
+          "w-full justify-start px-2.5 py-1.5 pb-2 group-has-[>input]/input-group:pb-2 [.border-t]:pt-2",
       },
     },
     defaultVariants: {
@@ -71,8 +71,8 @@ const inputGroupButtonVariants = cva(
         xs: "min-h-6 gap-1 rounded-[calc(var(--radius)-3px)] px-1.5 py-0.5 [&>svg:not([class*='size-'])]:size-3.5",
         sm: "",
         "icon-xs":
-          "size-6 rounded-[calc(var(--radius)-3px)] p-0 has-[>svg]:p-0",
-        "icon-sm": "size-8 p-0 has-[>svg]:p-0",
+          "size-6 min-h-6 rounded-[calc(var(--radius)-3px)] p-0 has-[>svg]:p-0",
+        "icon-sm": "size-8 min-h-8 p-0 has-[>svg]:p-0",
       },
     },
     defaultVariants: {
@@ -122,7 +122,7 @@ function InputGroupInput({
     <Input
       data-slot="input-group-control"
       className={cn(
-        "flex-1 rounded-none border-0 bg-transparent shadow-none ring-0 focus-visible:ring-0 disabled:bg-transparent aria-invalid:ring-0 dark:bg-transparent dark:disabled:bg-transparent",
+        "min-h-[calc(2rem-2px)] flex-1 rounded-none border-0 bg-transparent py-0.5 shadow-none ring-0 focus-visible:ring-0 disabled:bg-transparent aria-invalid:ring-0 dark:bg-transparent dark:disabled:bg-transparent",
         className
       )}
       {...props}

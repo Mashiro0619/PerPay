@@ -550,7 +550,7 @@ function ReconciliationList({
         desktopActions={
           <>
             <Link
-                className={buttonVariants({ variant: "ghost", size: "sm" })}
+                className={buttonVariants({ variant: "ghost" })}
                 to={
                   "/work-items?type=" +
                   (section === "exceptions"

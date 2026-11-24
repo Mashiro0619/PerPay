@@ -338,7 +338,7 @@ export function ListQueryToolbar({
           <>
             {primaryControls.length > 0 && (
               <div
-                className="flex shrink-0 items-center gap-2"
+                className="flex shrink-0 items-start gap-2"
                 data-list-desktop-filters
               >
                 {primaryControls}
