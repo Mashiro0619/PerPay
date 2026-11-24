@@ -123,7 +123,7 @@ describe("desktop breadcrumb website switching", () => {
     await screen.findByText("网站接入助手");
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "易支付 V1" }));
-    const enabled = screen.getByRole("switch");
+    const enabled = screen.getByRole("switch", { name: "启用易支付 V1" });
     await user.click(enabled);
     expect(enabled).not.toBeChecked();
     const { menu } = await openSwitcher(user);
@@ -132,7 +132,7 @@ describe("desktop breadcrumb website switching", () => {
     expect(view.router.state.location.pathname).toBe("/sites/a/settings/integration");
     await user.click(within(confirmation).getByRole("button", { name: "继续编辑" }));
     await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
-    expect(screen.getByRole("switch")).toBe(enabled);
+    expect(screen.getByRole("switch", { name: "启用易支付 V1" })).toBe(enabled);
     expect(enabled).not.toBeChecked();
     expect(screen.getByRole("button", { name: "保存易支付设置" })).toBeEnabled();
     await user.keyboard("{Escape}");

@@ -491,7 +491,7 @@ describe("self-update sidecar updater", () => {
       docker,
       composeProject: "perpay",
       sleep: async () => {},
-      healthCheck: async () => false,
+      healthCheck: async (inspect) => inspect.Id === "app-old-id-123456" && inspect.State.Running,
     });
 
     orchestrator.start({
@@ -530,7 +530,7 @@ describe("self-update sidecar updater", () => {
       composeProject: "perpay",
       clock: () => now,
       sleep: async (ms) => { now += ms; },
-      healthCheck: async () => false,
+      healthCheck: async (inspect) => inspect.Id === "app-old-id-123456" && inspect.State.Running,
       healthTimeoutMilliseconds: 3_000,
       healthPollIntervalMilliseconds: 1_000,
     });
@@ -724,7 +724,7 @@ describe("self-update sidecar updater", () => {
       docker: new DockerClient({ baseUrl: crashMock.baseUrl }),
       composeProject: "perpay",
       sleep: async () => { sleeps += 1; },
-      healthCheck: async () => false,
+      healthCheck: async (inspect) => inspect.Id === "app-old-id-123456" && inspect.State.Running,
       healthTimeoutMilliseconds: 90_000,
     });
     crashOrchestrator.start({
@@ -765,13 +765,14 @@ describe("self-update sidecar updater", () => {
     assert.equal(restoredBackup.running, true);
   });
 
-  it("configures docker-compose.updater.yml with gid 1000 so app (node) can read the 0640 token under cap_drop ALL", () => {
+  it("configures docker-compose.updater.yml with gid 1000 and stop_grace_period so updater is not killed mid-cutover", () => {
     const compose = parse(readFileSync(new URL("../docker-compose.updater.yml", import.meta.url), "utf8")) as {
-      services?: { updater?: { user?: string; cap_drop?: string[]; read_only?: boolean } };
+      services?: { updater?: { user?: string; cap_drop?: string[]; read_only?: boolean; stop_grace_period?: string } };
     };
     assert.equal(compose.services?.updater?.user, "0:1000");
     assert.deepEqual(compose.services?.updater?.cap_drop, ["ALL"]);
     assert.equal(compose.services?.updater?.read_only, true);
+    assert.equal(compose.services?.updater?.stop_grace_period, "20m");
   });
 
   it("aborts update cleanly if maintenance starts during image pull and respects container stop_grace_period", async (context) => {
@@ -958,8 +959,16 @@ describe("self-update sidecar updater", () => {
     assert.equal(oneOffSpec.Labels?.["com.docker.compose.oneoff"], "true");
   });
 
-  it("falls back to list-migration-backups + restore-migration-backup when rolling back to a legacy old image", async (context) => {
+  it("refuses blind auto-restore on legacy old images (even with >900-char usage logs) and outputs exact manual restore guidance", async (context) => {
     const oneOffCommands: string[][] = [];
+    const realisticLegacyUsage =
+      JSON.stringify({
+        error: "maintenance_failed",
+        message:
+          "usage: maintenance <inspect-storage|compact-database --confirm-stopped-services|archive-history --before YYYY-MM-DD --confirm-stopped-services|list-migration-backups|inspect-maintenance-lock|inspect-publication-lock|list-pre-restore-quarantines|delete-pre-restore-quarantine NAME SHA256 --confirm-delete-pre-restore-quarantine|prune-pre-restore-quarantines KEEP_COUNT --confirm-prune-pre-restore-quarantines|clear-stale-maintenance-lock LOCK_TOKEN --confirm-no-maintenance-process [--force-abandon-maintenance-lease|--finalize-interrupted-fresh-restore]|clear-stale-maintenance-lock --force-unreadable-lock --confirm-no-maintenance-process|clear-stale-publication-lock LOCK_TOKEN --confirm-no-maintenance-process|clear-stale-publication-lock --force-unreadable-lock --confirm-no-maintenance-process|restore-migration-backup BACKUP_NAME --confirm-replace-current-database>",
+      }) + "\n";
+    assert.ok(realisticLegacyUsage.length > 900);
+
     const mock = await startMockDockerEngine(context, {
       newAppBehavior: "exit_error",
       oldAppRollbackBehavior: "schema_mismatch_until_restored",
@@ -967,24 +976,27 @@ describe("self-update sidecar updater", () => {
         const cmd = [...(record.cmd ?? [])];
         oneOffCommands.push(cmd);
         if (cmd[2] === "rollback-failed-migration") {
-          return { exitCode: 1, logs: "usage: maintenance <list-migration-backups|restore-migration-backup>" };
+          return { exitCode: 1, logs: realisticLegacyUsage };
         }
-        if (cmd[2] === "list-migration-backups") {
-          return {
-            exitCode: 0,
-            logs: JSON.stringify({
-              backups: [
-                { name: "perpay.sqlite3.pre-migration-v48-to-v49.sqlite3", fromVersion: 48, toVersion: 49 },
-                { name: "perpay.sqlite3.pre-migration-v49-to-v50.sqlite3", fromVersion: 49, toVersion: 50 },
-              ],
-            }) + "\n",
-          };
-        }
-        assert.equal(cmd[2], "restore-migration-backup");
-        assert.equal(cmd[3], "perpay.sqlite3.pre-migration-v49-to-v50.sqlite3");
-        return { exitCode: 0, logs: JSON.stringify({ backupName: cmd[3], restoredSchemaVersion: 49 }) + "\n" };
+        assert.equal(cmd[2], "list-migration-backups");
+        return {
+          exitCode: 0,
+          logs: JSON.stringify({
+            backups: [
+              { name: "perpay.sqlite3.pre-migration-v48-to-v49.sqlite3", fromVersion: 48, toVersion: 49 },
+              { name: "perpay.sqlite3.pre-migration-v49-to-v50.sqlite3", fromVersion: 49, toVersion: 50 },
+            ],
+          }) + "\n",
+        };
       },
     });
+    // Also pad oldApp's schema-mismatch log with a >1200-char stack trace so header truncation is tested!
+    const oldApp = mock.containers.get("app-old-id-123456")!;
+    const origOnPull = () => {
+      oldApp.logs = "";
+    };
+    void origOnPull;
+
     const orchestrator = new UpdaterOrchestrator({
       docker: new DockerClient({ baseUrl: mock.baseUrl }),
       composeProject: "perpay",
@@ -999,12 +1011,117 @@ describe("self-update sidecar updater", () => {
     });
     await orchestrator.settled();
 
-    assert.equal(orchestrator.state().latest?.rolled_back, true);
+    const latest = orchestrator.state().latest;
+    assert.equal(latest?.status, "FAILED");
+    assert.equal(latest?.rolled_back, false);
+    assert.match(latest?.error ?? "", /旧版本镜像不支持带新鲜度校验的自动数据库回滚/u);
+    assert.match(latest?.error ?? "", /restore-migration-backup perpay\.sqlite3\.pre-migration-v49-to-v50\.sqlite3/u);
+    // Must only inspect read-only (rollback-failed-migration + list-migration-backups), NEVER blind restore!
     assert.deepEqual(
       oneOffCommands.map(cmd => cmd[2]),
-      ["rollback-failed-migration", "list-migration-backups", "restore-migration-backup"],
+      ["rollback-failed-migration", "list-migration-backups"],
     );
-    assert.equal(mock.containers.get("app-old-id-123456")?.running, true);
+  });
+
+  it("waits out an orphaned 30s app_lease during rollback, tolerates >1200-char crash stacks, and ignores premature Docker unhealthy before effectiveTimeoutMs", async (context) => {
+    // 1. Orphaned app_lease followed by long-stack schema mismatch -> waits for lease decay -> auto-restores DB -> succeeds!
+    const leaseMock = await startMockDockerEngine(context, {
+      newAppBehavior: "exit_error",
+      onOneOffRun: (record) => {
+        assert.equal(record.cmd?.[2], "rollback-failed-migration");
+        return {
+          exitCode: 0,
+          logs: JSON.stringify({
+            backupName: "perpay.sqlite3.pre-migration-v49-to-v50.sqlite3",
+            restoredSchemaVersion: 49,
+          }) + "\n",
+        };
+      },
+    });
+    const oldApp = leaseMock.containers.get("app-old-id-123456")!;
+    let oldStartAttempts = 0;
+    const origStartServer = leaseMock.baseUrl;
+    void origStartServer;
+
+    // Simulate: start #1 & #2 fail with orphaned app_lease, start #3 fails with >1200-char schema stack, start #4 succeeds after DB restore!
+    const leaseDocker = new DockerClient({ baseUrl: leaseMock.baseUrl });
+    const origStart = leaseDocker.startContainer.bind(leaseDocker);
+    leaseDocker.startContainer = async (id: string) => {
+      await origStart(id);
+      if (id === "app-old-id-123456") {
+        oldStartAttempts += 1;
+        if (oldStartAttempts <= 2) {
+          oldApp.running = false;
+          oldApp.status = "exited";
+          oldApp.exitCode = 1;
+          oldApp.healthy = false;
+          oldApp.logs = `Error: another process already owns the database lease\n${"    at stackFrame (file:///app/dist/database/database.js:505:13)\n".repeat(20)}`;
+        } else if (oldStartAttempts === 3) {
+          oldApp.running = false;
+          oldApp.status = "exited";
+          oldApp.exitCode = 1;
+          oldApp.healthy = false;
+          oldApp.logs = `Error: database schema 50 is outside application 1.0.0-rc.5 compatibility 1-49\n${"    at stackFrame (file:///app/dist/database/database.js:993:13)\n".repeat(25)}`;
+        } else {
+          oldApp.running = true;
+          oldApp.status = "running";
+          oldApp.exitCode = 0;
+          oldApp.healthy = true;
+        }
+      }
+    };
+
+    let now = 1_700_000_000_000;
+    const leaseOrchestrator = new UpdaterOrchestrator({
+      docker: leaseDocker,
+      composeProject: "perpay",
+      clock: () => now,
+      sleep: async (ms) => { now += ms; },
+      healthCheck: async (inspect) => inspect.Id === "app-old-id-123456" && inspect.State.Running && oldStartAttempts >= 4,
+    });
+    leaseOrchestrator.start({
+      operation_id: randomUUID(),
+      target_version: "1.0.0",
+      previous_version: "1.0.0-rc.5",
+    });
+    await leaseOrchestrator.settled();
+
+    assert.equal(oldStartAttempts, 4);
+    assert.equal(leaseOrchestrator.state().latest?.rolled_back, true);
+    assert.match(leaseOrchestrator.state().latest?.error ?? "", /已自动恢复迁移前数据库快照/u);
+
+    // 2. Premature Docker Health.Status="unhealthy" must NOT kill a still-migrating newApp before effectiveTimeoutMs!
+    const unhealthyMock = await startMockDockerEngine(context, { newAppBehavior: "never_healthy" });
+    const unhealthyDocker = new DockerClient({ baseUrl: unhealthyMock.baseUrl });
+    const origInspect = unhealthyDocker.inspectContainer.bind(unhealthyDocker);
+    let unhealthyNow = 1_700_000_000_000;
+    const unhealthyStart = unhealthyNow;
+    unhealthyDocker.inspectContainer = async (id: string) => {
+      const result = await origInspect(id);
+      if (id.startsWith("app-new-") && unhealthyNow - unhealthyStart >= 10_000 && unhealthyNow - unhealthyStart < 120_000) {
+        return {
+          ...result,
+          State: { ...result.State, Health: { Status: "unhealthy" } },
+        };
+      }
+      return result;
+    };
+    const unhealthyOrchestrator = new UpdaterOrchestrator({
+      docker: unhealthyDocker,
+      composeProject: "perpay",
+      clock: () => unhealthyNow,
+      sleep: async (ms) => { unhealthyNow += ms; },
+      healthTimeoutMilliseconds: 180_000,
+      healthCheck: async (inspect) => inspect.Id.startsWith("app-new-") && (unhealthyNow - unhealthyStart) >= 120_000,
+    });
+    unhealthyOrchestrator.start({
+      operation_id: randomUUID(),
+      target_version: "1.0.0",
+      previous_version: "1.0.0-rc.5",
+    });
+    await unhealthyOrchestrator.settled();
+    assert.equal(unhealthyOrchestrator.state().latest?.status, "SUCCEEDED");
+    assert.ok(unhealthyNow - unhealthyStart >= 120_000);
   });
 
   it("detects live app maintenance via real /healthz responses (status=maintenance and 503 database_maintenance_in_progress)", async (context) => {

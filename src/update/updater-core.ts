@@ -37,10 +37,14 @@ const APP_CONTAINER_GID = 1000;
 const MAX_HEALTHZ_BODY_BYTES = 16 * 1024;
 export const DEFAULT_UPDATER_HEALTH_TIMEOUT_MS = 360_000;
 const DEFAULT_UPDATER_STOP_TIMEOUT_SEC = 30;
-const DEFAULT_ROLLBACK_RESTORE_TIMEOUT_MS = 10 * 60_000;
+const DEFAULT_ROLLBACK_RESTORE_TIMEOUT_MS = 30 * 60_000;
+const ROLLBACK_LEASE_WAIT_MS = 40_000;
+const ROLLBACK_LOG_MAX_CHARS = 16 * 1024;
 const SCHEMA_MISMATCH_LOG_PATTERN =
   /database contains unknown(?: or renamed)? migration|database schema is newer|database schema \d+ is outside application/iu;
-const UNKNOWN_MIGRATION_VERSION_PATTERN = /unknown(?: or renamed)? migration (\d+)/iu;
+const UNKNOWN_MIGRATION_VERSION_PATTERN =
+  /(?:unknown(?: or renamed)? migration|database schema)\s+(\d+)/iu;
+const LEASE_OWNED_LOG_PATTERN = /another process already owns the database lease/iu;
 
 export function isValidUpdaterToken(value: string): boolean {
   return UPDATER_TOKEN_MANUAL_PATTERN.test(value);
@@ -244,6 +248,16 @@ class RollbackSchemaMismatchError extends Error {
   constructor(message: string, logs: string) {
     super(message);
     this.name = "RollbackSchemaMismatchError";
+    this.logs = logs;
+  }
+}
+
+class RollbackLeaseOwnedError extends Error {
+  readonly logs: string;
+
+  constructor(message: string, logs: string) {
+    super(message);
+    this.name = "RollbackLeaseOwnedError";
     this.logs = logs;
   }
 }
@@ -598,15 +612,13 @@ export class UpdaterOrchestrator {
           if (oldAppRenamed) {
             await this.#docker.renameContainer(oldAppInspect.Id, normalizeContainerName(oldAppInspect.Name));
           }
-          const preRollbackInspect = await this.#docker.inspectContainer(oldAppInspect.Id).catch(() => oldAppInspect!);
-          const baselineRestarts = preRollbackInspect.RestartCount ?? 0;
-          await this.#docker.startContainer(oldAppInspect.Id);
           try {
-            await this.#verifyRollbackAppHealthy(
-              oldAppInspect.Id,
+            await this.#startAndVerifyRollbackApp(
+              oldAppInspect,
               authoritativePreviousVersion,
-              preRollbackInspect,
-              baselineRestarts,
+              (message) => {
+                job = this.#updateJob(job, { stage: "rolling_back", message });
+              },
             );
             rolledBack = true;
             rollbackNote = `；已自动回滚至 v${authoritativePreviousVersion}。`;
@@ -618,19 +630,18 @@ export class UpdaterOrchestrator {
               stage: "rolling_back",
               message: `检测到数据库架构已推进，正在通过旧版本隔离维护容器自动恢复迁移前快照…`,
             });
-            await this.#docker.stopContainer(oldAppInspect.Id, 15).catch(() => undefined);
+            await this.#docker.stopContainer(oldAppInspect.Id, 15);
             const restoredBackupName = await this.#restorePreMigrationDatabase(
               oldAppInspect,
               upgradeCutoverAt,
               firstRollbackError.logs,
             );
-            const postRestoreInspect = await this.#docker.inspectContainer(oldAppInspect.Id).catch(() => oldAppInspect!);
-            await this.#docker.startContainer(oldAppInspect.Id);
-            await this.#verifyRollbackAppHealthy(
-              oldAppInspect.Id,
+            await this.#startAndVerifyRollbackApp(
+              oldAppInspect,
               authoritativePreviousVersion,
-              postRestoreInspect,
-              postRestoreInspect.RestartCount ?? 0,
+              (message) => {
+                job = this.#updateJob(job, { stage: "rolling_back", message });
+              },
             );
             rolledBack = true;
             rollbackNote = restoredBackupName
@@ -687,25 +698,52 @@ export class UpdaterOrchestrator {
         inspect.State.Restarting === true ||
         (inspect.RestartCount ?? 0) > 0;
       if (crashed) {
-        const tail = await this.#docker.containerLogsTail(containerId, 12).catch(() => "");
+        const tail = await this.#docker.containerLogsTail(containerId, 20, { maxChars: ROLLBACK_LOG_MAX_CHARS }).catch(() => "");
         const exitCode = inspect.State.ExitCode ?? "unknown";
         const detail = inspect.State.Restarting || (inspect.RestartCount ?? 0) > 0
           ? `新版本容器启动后崩溃重启（restarts=${inspect.RestartCount ?? 1}, exit ${exitCode}）`
           : `新版本容器启动后异常退出（exit ${exitCode}）`;
         throw new Error(`${detail}${tail ? `：${tail.slice(0, 240)}` : ""}`);
       }
-      if (inspect.State.Health?.Status === "unhealthy") {
-        const tail = await this.#docker.containerLogsTail(containerId, 12).catch(() => "");
-        throw new Error(`新版本容器健康检查持续失败（unhealthy）${tail ? `：${tail.slice(0, 240)}` : ""}`);
-      }
       if (inspect.State.Running && !inspect.State.Restarting) {
         const ok = await this.#healthCheck(inspect, expectedVersion).catch(() => false);
         if (ok) return;
       }
       if (this.#clock() - startedAt >= effectiveTimeoutMs) {
-        throw new Error("新版本容器在超时时间内未通过健康检查");
+        const healthSuffix = inspect.State.Health?.Status === "unhealthy" ? "（容器健康状态：unhealthy）" : "";
+        const tail = await this.#docker.containerLogsTail(containerId, 12).catch(() => "");
+        throw new Error(`新版本容器在超时时间内未通过健康检查${healthSuffix}${tail ? `：${tail.slice(0, 240)}` : ""}`);
       }
       await this.#sleep(this.#healthPollMs);
+    }
+  }
+
+  async #startAndVerifyRollbackApp(
+    oldAppInspect: DockerContainerInspect,
+    expectedVersion: string,
+    onMessage: (message: string) => void,
+  ): Promise<void> {
+    const leaseWaitDeadline = this.#clock() + ROLLBACK_LEASE_WAIT_MS;
+    while (true) {
+      const preStartInspect = await this.#docker.inspectContainer(oldAppInspect.Id).catch(() => oldAppInspect);
+      await this.#docker.startContainer(oldAppInspect.Id);
+      try {
+        await this.#verifyRollbackAppHealthy(
+          oldAppInspect.Id,
+          expectedVersion,
+          preStartInspect,
+          preStartInspect.RestartCount ?? 0,
+        );
+        return;
+      } catch (error) {
+        if (error instanceof RollbackLeaseOwnedError && this.#clock() < leaseWaitDeadline) {
+          onMessage("检测到前序容器残留数据库租约尚未过期，正在等待租约自然释放后重试回滚…");
+          await this.#docker.stopContainer(oldAppInspect.Id, 15).catch(() => undefined);
+          await this.#sleep(Math.max(this.#healthPollMs, 2_000));
+          continue;
+        }
+        throw error;
+      }
     }
   }
 
@@ -713,41 +751,47 @@ export class UpdaterOrchestrator {
     containerId: string,
     expectedVersion: string,
     fallbackInspect: DockerContainerInspect | null = null,
-    baselineRestartCount = 0,
+    preStartRestartCount = 0,
   ): Promise<void> {
     const startedAt = this.#clock();
     let effectiveTimeoutMs = resolveHealthTimeoutMilliseconds(this.#healthTimeoutMs, fallbackInspect);
+    // Docker's POST /containers/{id}/start resets RestartCount to 0; track the lowest
+    // post-start RestartCount observed so any subsequent crash-restart fast-fails immediately.
+    let minObservedRestarts = preStartRestartCount;
     while (true) {
       const inspect = await this.#docker.inspectContainer(containerId);
       effectiveTimeoutMs = Math.max(
         effectiveTimeoutMs,
         resolveHealthTimeoutMilliseconds(this.#healthTimeoutMs, inspect),
       );
+      const currentRestarts = inspect.RestartCount ?? 0;
+      if (currentRestarts < minObservedRestarts) {
+        minObservedRestarts = currentRestarts;
+      }
       const crashed =
         inspect.State.Status === "exited" ||
         inspect.State.Status === "dead" ||
         inspect.State.OOMKilled === true ||
         inspect.State.Restarting === true ||
-        (inspect.RestartCount ?? 0) > baselineRestartCount;
+        currentRestarts > minObservedRestarts;
       if (crashed) {
-        const tail = await this.#docker.containerLogsTail(containerId, 20).catch(() => "");
+        const tail = await this.#docker.containerLogsTail(containerId, 40, { maxChars: ROLLBACK_LOG_MAX_CHARS }).catch(() => "");
         const message = `原版本容器回滚后异常退出（exit ${inspect.State.ExitCode ?? "unknown"}）`;
+        if (LEASE_OWNED_LOG_PATTERN.test(tail)) {
+          throw new RollbackLeaseOwnedError(message, tail);
+        }
         if (SCHEMA_MISMATCH_LOG_PATTERN.test(tail)) {
           throw new RollbackSchemaMismatchError(message, tail);
         }
         throw new Error(`${message}${tail ? `：${tail.slice(0, 240)}` : ""}`);
       }
-      if (inspect.State.Health?.Status === "unhealthy") {
-        const tail = await this.#docker.containerLogsTail(containerId, 20).catch(() => "");
-        throw new Error(`原版本容器回滚后健康检查失败（unhealthy）${tail ? `：${tail.slice(0, 240)}` : ""}`);
-      }
       if (inspect.State.Running && !inspect.State.Restarting) {
-        if (inspect.State.Health?.Status === "healthy") return;
         const ok = await this.#healthCheck(inspect, expectedVersion).catch(() => false);
         if (ok) return;
       }
       if (this.#clock() - startedAt >= effectiveTimeoutMs) {
-        throw new Error("原版本容器回滚后未通过健康检查");
+        const healthSuffix = inspect.State.Health?.Status === "unhealthy" ? "（容器健康状态：unhealthy）" : "";
+        throw new Error(`原版本容器回滚后未通过健康检查${healthSuffix}`);
       }
       await this.#sleep(this.#healthPollMs);
     }
@@ -762,15 +806,25 @@ export class UpdaterOrchestrator {
     const oneOffName = `${baseName}-rollback-db-${suffix}-${this.#clock()}`;
     const spec = buildOneOffMaintenanceSpec(oldAppInspect, cmd);
     const created = await this.#docker.createContainer(oneOffName, spec);
+    let exited = false;
     try {
       await this.#docker.startContainer(created.Id);
       const waited = await this.#docker.waitContainer(created.Id, this.#rollbackRestoreTimeoutMs);
-      const stdout = await this.#docker.containerLogsTail(created.Id, 100, { stdoutOnly: true }).catch(() => "");
-      const logs = await this.#docker.containerLogsTail(created.Id, 40).catch(() => stdout);
+      exited = true;
+      const stdout = await this.#docker.containerLogsTail(created.Id, 100, {
+        stdoutOnly: true,
+        maxChars: 64 * 1024,
+      }).catch(() => "");
+      const logs = await this.#docker.containerLogsTail(created.Id, 40, {
+        maxChars: ROLLBACK_LOG_MAX_CHARS,
+      }).catch(() => stdout);
       return { exitCode: waited.StatusCode, stdout, logs };
     } finally {
-      await this.#docker.stopContainer(created.Id, 10).catch(() => undefined);
-      await this.#docker.removeContainer(created.Id, true).catch(() => undefined);
+      // Only remove automatically once the maintenance container has exited; do not SIGKILL
+      // a still-running restore that may hold .maintenance-lock on /data.
+      if (exited) {
+        await this.#docker.removeContainer(created.Id, true).catch(() => undefined);
+      }
     }
   }
 
@@ -792,8 +846,10 @@ export class UpdaterOrchestrator {
       return parseRestoredBackupName(direct.stdout);
     }
 
-    // Legacy old-image compatibility: older releases expose list-migration-backups + restore-migration-backup
-    // instead of rollback-failed-migration.
+    // Legacy old-image safety: releases prior to rollback-failed-migration do not expose
+    // backup modification timestamps or instance verification in list-migration-backups.
+    // Never blindly restore an unverified historical backup; list candidates read-only and
+    // surface the exact manual recovery command instead.
     if (/usage:\s*maintenance\b/iu.test(direct.logs)) {
       const rejectedVersionMatch = UNKNOWN_MIGRATION_VERSION_PATTERN.exec(schemaMismatchLogs);
       const rejectedVersion = rejectedVersionMatch ? Number(rejectedVersionMatch[1]) : null;
@@ -801,25 +857,14 @@ export class UpdaterOrchestrator {
         "node",
         "dist/database/maintenance.js",
         "list-migration-backups",
-      ]);
-      if (listed.exitCode === 0) {
-        const candidate = selectLegacyMigrationBackup(listed.stdout, rejectedVersion);
-        if (candidate) {
-          const legacyRestore = await this.#runOneOffMaintenance(oldAppInspect, "legacy-restore", [
-            "node",
-            "dist/database/maintenance.js",
-            "restore-migration-backup",
-            candidate.name,
-            "--confirm-replace-current-database",
-          ]);
-          if (legacyRestore.exitCode === 0) {
-            return candidate.name;
-          }
-          throw new Error(
-            `自动恢复迁移前快照 ${candidate.name} 失败（exit ${legacyRestore.exitCode}）${legacyRestore.logs ? `：${legacyRestore.logs.slice(0, 240)}` : ""}；请在宿主机手动执行 restore-migration-backup`,
-          );
-        }
-      }
+      ]).catch(() => null);
+      const candidate = listed && listed.exitCode === 0
+        ? selectLegacyMigrationBackup(listed.stdout, rejectedVersion)
+        : null;
+      const hint = candidate
+        ? `请先在宿主机核对备份 ${candidate.name} 的生成时间与本次升级一致，再执行：docker compose --profile maintenance run --rm --entrypoint node maintenance dist/database/maintenance.js restore-migration-backup ${candidate.name} --confirm-replace-current-database`
+        : "请在宿主机通过 maintenance 容器执行 list-migration-backups 核对最新迁移前备份时间后，再执行 restore-migration-backup 恢复";
+      throw new Error(`旧版本镜像不支持带新鲜度校验的自动数据库回滚；${hint}`);
     }
 
     throw new Error(
@@ -1137,6 +1182,16 @@ function readRequestBody(request: http.IncomingMessage, maxBytes: number): Promi
       if (settled) return;
       settled = true;
       resolve(Buffer.concat(chunks, bytes).toString("utf8"));
+    });
+    request.on("aborted", () => {
+      if (settled) return;
+      settled = true;
+      reject(new Error("request aborted"));
+    });
+    request.on("close", () => {
+      if (settled || request.complete) return;
+      settled = true;
+      reject(new Error("request closed prematurely"));
     });
     request.on("error", (error) => {
       if (settled) return;

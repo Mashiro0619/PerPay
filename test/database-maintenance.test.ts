@@ -1853,7 +1853,10 @@ describe("database migration backup maintenance", () => {
       /no matching pre-migration backup/u,
     );
 
-    // 4. Automatically restores the matching pre-migration backup, quarantines migrated DB, and lets old app reopen cleanly.
+    // 4. An unrelated corrupted/sidecar-tainted historical migration backup must NOT block rolling back the fresh valid backup.
+    fs.writeFileSync(join(directory, "perpay.sqlite3.pre-migration-v1-to-v2.sqlite3"), "corrupt-historical-bytes");
+    fs.writeFileSync(join(directory, "perpay.sqlite3.pre-migration-v1-to-v2.sqlite3-wal"), "stray-wal");
+
     const restored = rollbackFailedMigrationBackup({
       dataDirectory: directory,
       confirmReplaceCurrentDatabase: true,

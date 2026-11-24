@@ -513,4 +513,60 @@ describe("self-update configuration and HTTP orchestration", () => {
     await maintenance.settled();
     assert.equal(maintenanceRuns, 1);
   });
+
+  it("keeps maintenance fail-closed after an ambiguous POST /apply timeout and rejects mismatched remote operation_id replay", async () => {
+    let statusFails = false;
+    let remoteActive: UpdateExecutionJob | null = null;
+    const opId = randomUUID();
+    const client: UpdaterClient = {
+      status: async () => {
+        if (statusFails) throw new Error("updater unreachable after ambiguous apply");
+        return { active: remoteActive, latest: remoteActive };
+      },
+      apply: async () => {
+        statusFails = true;
+        throw new Error("socket hang up after updater accepted request");
+      },
+    };
+    const service = new SelfUpdateService({
+      updaterClient: client,
+      currentVersion: "1.0.0-rc.5",
+    });
+    const observer = { session: { session: { username: "admin" } } } as never;
+
+    // 1. Ambiguous create_backup=false apply timeout -> guardMaintenanceStart MUST fail closed!
+    await assert.rejects(
+      () => service.apply({ operation_id: opId, target_version: "1.0.0", create_backup: false }, observer),
+      /socket hang up/u,
+    );
+    await assert.rejects(
+      () => service.guardMaintenanceStart(() => "should-not-run"),
+      /在线更新任务可能仍在伴生更新服务中执行/u,
+    );
+
+    // 2. Once updater becomes reachable and reports active=null, maintenance is allowed again.
+    statusFails = false;
+    remoteActive = null;
+    assert.equal(await service.guardMaintenanceStart(() => "allowed"), "allowed");
+
+    // 3. Replaying an operation_id known only remotely (e.g. after app restart) with a different target_version must return 409 operation_conflict.
+    const restartOpId = randomUUID();
+    remoteActive = {
+      id: restartOpId,
+      target_version: "1.0.0",
+      previous_version: "1.0.0-rc.5",
+      status: "RUNNING",
+      stage: "pulling",
+      message: "pulling",
+      backup_name: null,
+      rolled_back: false,
+      started_at: Date.now(),
+      finished_at: null,
+      error: null,
+    };
+    await assert.rejects(
+      () => service.apply({ operation_id: restartOpId, target_version: "1.1.0", create_backup: false }, observer),
+      { code: "operation_conflict", status: 409 },
+    );
+  });
 });

@@ -244,10 +244,18 @@ export class SelfUpdateService {
         );
       }
       if (remoteState.active) {
-        if (remoteState.active.id === request.operation_id) return remoteState.active;
+        if (remoteState.active.id === request.operation_id) {
+          if (remoteState.active.target_version !== request.target_version) {
+            throw new SelfUpdateError(409, "operation_conflict", "此次更新操作编号与先前提交的参数不一致，请刷新后重试。");
+          }
+          return remoteState.active;
+        }
         throw new SelfUpdateError(409, "update_in_progress", "已有在线更新任务正在执行，请等待当前更新完成。");
       }
       if (remoteState.latest?.id === request.operation_id) {
+        if (remoteState.latest.target_version !== request.target_version) {
+          throw new SelfUpdateError(409, "operation_conflict", "此次更新操作编号与先前提交的参数不一致，请刷新后重试。");
+        }
         return remoteState.latest;
       }
 
@@ -257,12 +265,37 @@ export class SelfUpdateService {
 
       // Case 1: Skip pre-upgrade backup (user explicitly unchecked or maintenance service unavailable).
       if (!request.create_backup || !this.#maintenance) {
-        const job = await this.#client.apply({
-          operation_id: request.operation_id,
-          target_version: request.target_version,
-          previous_version: this.#currentVersion,
-          backup_name: null,
-        });
+        let job: UpdateExecutionJob;
+        try {
+          job = await this.#client.apply({
+            operation_id: request.operation_id,
+            target_version: request.target_version,
+            previous_version: this.#currentVersion,
+            backup_name: null,
+          });
+        } catch (error) {
+          const explicitRejection = error instanceof SelfUpdateError && (error.status === 409 || error.status === 422);
+          if (!explicitRejection) {
+            // Probe once in case updater accepted the job right before a transport timeout.
+            const probed = await this.#client.status().catch(() => null);
+            if (probed) {
+              this.#lastKnownRemoteActive = probed.active !== null;
+              const accepted =
+                (probed.active?.id === request.operation_id ? probed.active : null) ??
+                (probed.latest?.id === request.operation_id ? probed.latest : null);
+              if (accepted) {
+                this.#lastKnownRemoteActive = accepted.status === "QUEUED" || accepted.status === "RUNNING";
+                this.#rememberRequest(request, accepted, true);
+                this.#localLatest = accepted;
+                return accepted;
+              }
+            } else {
+              // Outcome is ambiguous and updater is unreachable: fail closed for maintenance until confirmed idle.
+              this.#lastKnownRemoteActive = true;
+            }
+          }
+          throw error;
+        }
         this.#lastKnownRemoteActive = job.status === "QUEUED" || job.status === "RUNNING";
         this.#rememberRequest(request, job, true);
         this.#localLatest = job;
@@ -354,6 +387,11 @@ export class SelfUpdateService {
             return;
           }
           const explicitRejection = error instanceof SelfUpdateError && (error.status === 409 || error.status === 422);
+          if (!explicitRejection && probed === null) {
+            // Handoff outcome is ambiguous and updater could not be reached: keep maintenance fail-closed
+            // until a subsequent status() confirms no active remote update.
+            this.#lastKnownRemoteActive = true;
+          }
           const message = error instanceof Error ? error.message : "无法将更新任务移交给伴生更新器";
           const failed: UpdateExecutionJob = {
             ...stored.job,

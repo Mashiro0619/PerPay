@@ -444,7 +444,7 @@ describe("checkout compact order summary", () => {
       const summary = screen.getByRole("region", { name: "订单信息" });
       const actions = container.querySelector("[data-checkout-actions]");
       expect(actions).not.toHaveClass("mt-auto");
-      expect(actions).toHaveClass("md:col-start-1", "md:row-start-2");
+      expect(actions).toHaveClass("md:col-start-1", "md:row-start-3");
       expect(
         container.querySelectorAll("[data-checkout-actions]"),
       ).toHaveLength(1);

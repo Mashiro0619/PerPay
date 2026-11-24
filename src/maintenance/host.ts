@@ -36,9 +36,12 @@ export async function createApplicationHost(config: AppConfig, start: (maintenan
   current = await start(maintenance);
   return {
     maintenance,
+    beginShutdown(): void {
+      closing = true;
+    },
     async fetch(request: Request, environment?: Partial<HttpBindings>): Promise<Response> {
-      if (closing) return Response.json({ error: { code: "service_stopping", message: "服务正在停止" } }, { status: 503 });
       if (maintenance.paused) return current.app.fetch(request, environment);
+      if (closing) return Response.json({ error: { code: "service_stopping", message: "服务正在停止" } }, { status: 503 });
       activeRequests++;
       try {
         // Handlers finish their database work before returning. Archive downloads

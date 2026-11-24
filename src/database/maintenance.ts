@@ -1105,22 +1105,37 @@ export function rollbackFailedMigrationBackup(
     );
   }
 
-  const candidates = listMigrationBackups(directory)
-    .filter((backup) => backup.fromVersion <= maxSupported && backup.toVersion >= live.schemaVersion!)
-    .map((backup) => {
-      const path = join(directory, backup.name);
+  // Scan migration backup candidates individually so an unrelated corrupted or sidecar-tainted
+  // historical pre-migration file in /data cannot block restoring the fresh valid backup.
+  const candidates: Array<{ readonly backup: MigrationBackup; readonly path: string; readonly mtimeMs: number }> = [];
+  for (const name of readdirSync(directory)) {
+    const backup = parseMigrationBackupName(name);
+    if (backup === null) continue;
+    if (backup.fromVersion > maxSupported || backup.toVersion < live.schemaVersion) continue;
+    const path = join(directory, name);
+    try {
+      inspectOrdinaryFile(path, "migration backup");
+      assertSelfContainedSqlite(path, "migration backup");
       const stat = lstatSync(path);
-      return { backup, path, mtimeMs: stat.mtimeMs };
-    })
-    .filter((entry) => minMtime === undefined || entry.mtimeMs >= minMtime)
-    .sort((left, right) =>
-      right.backup.fromVersion - left.backup.fromVersion ||
-      right.mtimeMs - left.mtimeMs ||
-      right.backup.toVersion - left.backup.toVersion
-    );
+      if (minMtime !== undefined && stat.mtimeMs < minMtime) continue;
+      candidates.push({ backup, path, mtimeMs: stat.mtimeMs });
+    } catch {
+      continue;
+    }
+  }
+  candidates.sort((left, right) =>
+    right.backup.fromVersion - left.backup.fromVersion ||
+    right.mtimeMs - left.mtimeMs ||
+    right.backup.toVersion - left.backup.toVersion
+  );
 
   for (const entry of candidates) {
-    const backupMeta = readDatabaseSchemaAndInstance(entry.path);
+    let backupMeta: { readonly schemaVersion: number | null; readonly instanceId: string | null };
+    try {
+      backupMeta = readDatabaseSchemaAndInstance(entry.path);
+    } catch {
+      continue;
+    }
     if (live.instanceId !== null && backupMeta.instanceId !== null && backupMeta.instanceId !== live.instanceId) {
       continue;
     }

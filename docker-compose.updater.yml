@@ -36,6 +36,8 @@ services:
     # 使 cap_drop: ALL 下自动生成的 0640 共享令牌文件天然可被 app 只读访问。
     user: "0:1000"
     restart: unless-stopped
+    # 预留镜像拉取、容器切换及失败回滚的收尾时间，避免宿主停机时 10 秒强杀中断切换。
+    stop_grace_period: 20m
     read_only: true
     tmpfs:
       - /tmp:size=16m,mode=1777

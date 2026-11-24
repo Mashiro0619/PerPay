@@ -20,7 +20,7 @@ import {
 import type { SitePolicy } from "@/api/client";
 import { AlipayLogo } from "@/checkout/AlipayLogo";
 import { Badge } from "@/components/ui/badge";
-import { buttonVariants } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import {
@@ -121,9 +121,13 @@ function PreviewHotspot({
   }
   const active = activeTarget === target;
   return (
-    <button
+    <Button
       type="button"
-      className={cn("checkout-preview-hotspot", className)}
+      variant="ghost"
+      className={cn(
+        "checkout-preview-hotspot h-auto justify-start whitespace-normal p-0 font-normal hover:bg-transparent dark:hover:bg-transparent",
+        className,
+      )}
       data-preview-target={target}
       data-active={active || undefined}
       data-tag-align={tagAlign}
@@ -135,7 +139,7 @@ function PreviewHotspot({
         {label}
       </span>
       {children}
-    </button>
+    </Button>
   );
 }
 
@@ -374,10 +378,11 @@ export function CheckoutDisplayPreview({
             </p>
           </PreviewHotspot>
         ) : (
-          <button
+          <Button
             type="button"
+            variant="ghost"
             className={cn(
-              "checkout-preview-optional-slot",
+              "checkout-preview-optional-slot h-auto",
               !useTwoColumns && "justify-center text-center",
             )}
             data-preview-target="checkout_confirmed_detail"
@@ -388,7 +393,7 @@ export function CheckoutDisplayPreview({
           >
             <Plus className="size-3.5 shrink-0" aria-hidden="true" />
             <span>付款成功说明（默认关闭）</span>
-          </button>
+          </Button>
         )}
       </div>
     </div>
@@ -646,16 +651,18 @@ export function CheckoutDisplayPreview({
           {CHECKOUT_PREVIEW_STATES.map((item) => {
             const selected = previewState === item.value;
             return (
-              <button
+              <Button
                 key={item.value}
                 type="button"
+                variant="ghost"
+                size="xs"
                 aria-pressed={selected}
                 data-active={selected || undefined}
-                className="checkout-preview-segment-btn"
+                className="checkout-preview-segment-btn h-auto"
                 onClick={() => onPreviewStateChange(item.value)}
               >
                 {item.label}
-              </button>
+              </Button>
             );
           })}
         </div>
@@ -664,26 +671,30 @@ export function CheckoutDisplayPreview({
           role="group"
           aria-label="预览设备尺寸"
         >
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="xs"
             aria-pressed={viewport === "desktop"}
             data-active={viewport === "desktop" || undefined}
-            className="checkout-preview-segment-btn"
+            className="checkout-preview-segment-btn h-auto"
             onClick={() => onViewportChange("desktop")}
           >
             <Monitor className="size-3.5" aria-hidden="true" />
             <span>桌面</span>
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            variant="ghost"
+            size="xs"
             aria-pressed={viewport === "mobile"}
             data-active={viewport === "mobile" || undefined}
-            className="checkout-preview-segment-btn"
+            className="checkout-preview-segment-btn h-auto"
             onClick={() => onViewportChange("mobile")}
           >
             <Smartphone className="size-3.5" aria-hidden="true" />
             <span>手机</span>
-          </button>
+          </Button>
         </div>
       </div>
 

@@ -31,7 +31,9 @@ async function shutdown(signal?: NodeJS.Signals): Promise<void> {
   shuttingDown = true;
   console.log(JSON.stringify({ level: "info", event: "shutdown_started", signal }));
   try {
-    // The listener stays open for maintenance progress until the active job finishes.
+    // Stop admitting new business traffic immediately while keeping paused maintenance
+    // progress readable until any in-flight maintenance job completes cleanly.
+    application.beginShutdown();
     await application.maintenance.settled();
     try {
       await new Promise<void>((resolve, reject) => {

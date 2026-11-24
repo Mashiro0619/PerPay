@@ -34,6 +34,7 @@ function parseOptionalPositiveIntEnv(name: string, min: number, max: number): nu
 
 const healthTimeoutSeconds = parseOptionalPositiveIntEnv("PERPAY_UPDATER_HEALTH_TIMEOUT_SECONDS", 30, 7200);
 const stopTimeoutSeconds = parseOptionalPositiveIntEnv("PERPAY_UPDATER_STOP_TIMEOUT_SECONDS", 10, 86400);
+const rollbackRestoreTimeoutSeconds = parseOptionalPositiveIntEnv("PERPAY_UPDATER_ROLLBACK_RESTORE_TIMEOUT_SECONDS", 60, 21600);
 
 const docker = new DockerClient({ socketPath });
 const composeProject = await resolveComposeProject(docker, process.env.PERPAY_COMPOSE_PROJECT);
@@ -42,6 +43,7 @@ const orchestrator = new UpdaterOrchestrator({
   composeProject,
   ...(healthTimeoutSeconds !== undefined ? { healthTimeoutMilliseconds: healthTimeoutSeconds * 1_000 } : {}),
   ...(stopTimeoutSeconds !== undefined ? { stopTimeoutSeconds } : {}),
+  ...(rollbackRestoreTimeoutSeconds !== undefined ? { rollbackRestoreTimeoutMilliseconds: rollbackRestoreTimeoutSeconds * 1_000 } : {}),
 });
 const server = createUpdaterServer({
   orchestrator,

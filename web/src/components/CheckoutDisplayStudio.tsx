@@ -588,11 +588,13 @@ export function CheckoutDisplayStudio({
             >
               <span className="text-muted-foreground">已隐藏：</span>
               {hiddenModules.map((item) => (
-                <button
+                <Button
                   key={item.key}
                   type="button"
+                  variant="outline"
+                  size="xs"
                   disabled={busy || requiresReview}
-                  className="checkout-studio-restore-chip"
+                  className="checkout-studio-restore-chip h-auto"
                   onClick={() => {
                     updateDisplay((next) => {
                       next[item.key] = true;
@@ -604,7 +606,7 @@ export function CheckoutDisplayStudio({
                 >
                   <Plus className="size-3" aria-hidden="true" />
                   <span>{item.shortLabel}</span>
-                </button>
+                </Button>
               ))}
             </div>
           )}
@@ -966,10 +968,12 @@ export function CheckoutDisplayStudio({
                           )}
                           {item.token && (
                             <div className="flex flex-wrap items-center gap-1.5">
-                              <button
+                              <Button
                                 type="button"
+                                variant="outline"
+                                size="xs"
                                 disabled={busy || requiresReview}
-                                className="checkout-studio-token-chip"
+                                className="checkout-studio-token-chip h-auto"
                                 onClick={() => {
                                   const appended = currentValue
                                     ? `${currentValue}${item.token!.text}`
@@ -990,7 +994,7 @@ export function CheckoutDisplayStudio({
                               >
                                 <Plus className="size-3" aria-hidden="true" />
                                 <span>{item.token.label}</span>
-                              </button>
+                              </Button>
                             </div>
                           )}
                           {item.hint && (
