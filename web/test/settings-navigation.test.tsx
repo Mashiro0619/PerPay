@@ -79,7 +79,7 @@ describe("responsive settings category navigation", () => {
     const indicator = display.querySelector("[data-selection-indicator]");
     expect(indicator).toBeInTheDocument();
     display.focus();
-    await user.keyboard("{ArrowUp}");
+    await user.keyboard("{ArrowLeft}");
     expect(view.router.state.location.pathname).toBe("/settings/display");
     expect(display.querySelector("[data-selection-indicator]")).toBe(indicator);
 

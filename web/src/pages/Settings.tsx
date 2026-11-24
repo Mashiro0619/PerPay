@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { Navigate, useLocation, useParams } from "react-router";
 import { PageHeading } from "@/components/page-heading";
+import { ScrollingTabs } from "@/components/scrolling-tabs";
 import { SelectionMotionGroup, SelectionMotionIndicator } from "@/components/selection-motion";
 import { Link, useNavigate } from "@/navigation";
 import { SettingsEditor, sections, type ConfigurationSection } from "@/components/SettingsForms";
@@ -116,7 +117,7 @@ export default function Settings() {
     });
   }
   return (
-    <div className="admin-settings-layout @container/settings flex w-full min-w-0 flex-col gap-6" data-settings-section={requestedSection}>
+    <div className="admin-settings-layout @container/settings flex w-full min-w-0 flex-col gap-4" data-settings-section={requestedSection}>
       <PageHeaderActions>
         <PageHeaderActionLink><Link
           className={buttonVariants({ variant: "ghost", size: "sm" })}
@@ -209,7 +210,7 @@ export default function Settings() {
           );
           return (
             <Tabs
-              orientation={isMobile ? "horizontal" : "vertical"}
+              orientation="horizontal"
               value={section}
               onValueChange={changeSection}
               className={isMobile ? "min-w-0 gap-4" : "settings-shell"}
@@ -239,31 +240,33 @@ export default function Settings() {
                 </Select>
               ) : (
                 <div className="settings-rail">
-                  <SelectionMotionGroup>
-                    <TabsList
-                      ref={tabList}
-                      aria-label="设置分类"
-                      activateOnFocus={false}
-                      variant="line"
-                      data-selection-motion="fill"
-                      className="settings-rail-list"
-                    >
-                      {availableSections.map(([value, title]) => {
-                        const Icon = sectionIcons[value];
-                        return (
-                          <TabsTrigger
-                            key={value}
-                            value={value}
-                            className="settings-rail-item"
-                          >
-                            <SelectionMotionIndicator active={section === value} variant="fill" />
-                            <Icon />
-                            <span>{title}</span>
-                          </TabsTrigger>
-                        );
-                      })}
-                    </TabsList>
-                  </SelectionMotionGroup>
+                  <ScrollingTabs>
+                    <SelectionMotionGroup>
+                      <TabsList
+                        ref={tabList}
+                        aria-label="设置分类"
+                        activateOnFocus={false}
+                        variant="line"
+                        data-selection-motion="underline"
+                        className="settings-rail-list"
+                      >
+                        {availableSections.map(([value, title]) => {
+                          const Icon = sectionIcons[value];
+                          return (
+                            <TabsTrigger
+                              key={value}
+                              value={value}
+                              className="settings-rail-item"
+                            >
+                              <SelectionMotionIndicator active={section === value} variant="underline" />
+                              <Icon />
+                              <span>{title}</span>
+                            </TabsTrigger>
+                          );
+                        })}
+                      </TabsList>
+                    </SelectionMotionGroup>
+                  </ScrollingTabs>
                 </div>
               )}
               <TabsContent

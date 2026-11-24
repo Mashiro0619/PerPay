@@ -128,10 +128,10 @@ export function SiteSettingsPage() {
       )}</QueryView>
     </div>
   );
-  return <div className="admin-settings-layout @container/settings flex w-full min-w-0 flex-col gap-6" data-site-settings-section={section}>
+  return <div className="admin-settings-layout @container/settings flex w-full min-w-0 flex-col gap-4" data-site-settings-section={section}>
     <PageHeading title="网站设置" />
     <Tabs
-      orientation={isMobile ? "horizontal" : "vertical"}
+      orientation="horizontal"
       value={section}
       onValueChange={changeSection}
       className={isMobile ? "min-w-0 gap-4" : "settings-shell"}
@@ -156,26 +156,28 @@ export function SiteSettingsPage() {
         </Select>
       ) : (
         <div className="settings-rail">
-          <SelectionMotionGroup>
-            <TabsList
-              aria-label="网站设置分组"
-              variant="line"
-              activateOnFocus={false}
-              data-selection-motion="fill"
-              className="settings-rail-list"
-            >
-              {siteSections.map(item => {
-                const Icon = item.icon;
-                return (
-                  <TabsTrigger key={item.value} value={item.value} className="settings-rail-item">
-                    <SelectionMotionIndicator active={section === item.value} variant="fill" />
-                    <Icon />
-                    <span>{item.label}</span>
-                  </TabsTrigger>
-                );
-              })}
-            </TabsList>
-          </SelectionMotionGroup>
+          <ScrollingTabs>
+            <SelectionMotionGroup>
+              <TabsList
+                aria-label="网站设置分组"
+                variant="line"
+                activateOnFocus={false}
+                data-selection-motion="underline"
+                className="settings-rail-list"
+              >
+                {siteSections.map(item => {
+                  const Icon = item.icon;
+                  return (
+                    <TabsTrigger key={item.value} value={item.value} className="settings-rail-item">
+                      <SelectionMotionIndicator active={section === item.value} variant="underline" />
+                      <Icon />
+                      <span>{item.label}</span>
+                    </TabsTrigger>
+                  );
+                })}
+              </TabsList>
+            </SelectionMotionGroup>
+          </ScrollingTabs>
         </div>
       )}
       <TabsContent

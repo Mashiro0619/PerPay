@@ -43,57 +43,49 @@
 .admin-settings-layout[data-site-settings-section],
 .admin-settings-layout[data-site-defaults] { max-width: none; }
 
-/* Unified desktop left-rail + full-width right-content settings shell. */
+/* Unified desktop horizontal top-tabs + full-width settings shell. */
 .settings-shell {
-  display: grid;
+  display: flex;
   min-width: 0;
-  grid-template-columns: minmax(0, 1fr);
-  align-items: start;
+  flex-direction: column;
   gap: 1.25rem;
 }
-@media (min-width: 1024px) {
-  .settings-shell {
-    grid-template-columns: 13.5rem minmax(0, 1fr);
-    gap: 1.75rem;
-  }
-}
 .settings-rail {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-@media (min-width: 1024px) {
-  .settings-rail {
-    position: sticky;
-    top: calc(var(--admin-header-height, 3.5rem) + 1rem);
-  }
-}
-.settings-rail-list {
-  display: flex;
   width: 100%;
   min-width: 0;
-  flex-direction: column;
-  align-items: stretch;
+}
+.settings-rail [data-settings-tabs-scroll] {
+  margin-inline: -0.25rem;
+}
+.settings-rail-list {
+  display: inline-flex;
+  width: max-content;
+  min-width: 100%;
+  min-height: 0;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
   gap: 0.25rem;
+  border-bottom: 1px solid var(--console-hairline, var(--border));
   padding: 0;
   height: auto;
 }
 .settings-rail-item {
   position: relative;
-  display: flex;
-  width: 100%;
+  display: inline-flex;
+  width: auto;
   height: auto;
-  min-height: 2.375rem;
+  min-height: 2.25rem;
   flex: 0 0 auto;
   align-items: center;
-  justify-content: flex-start;
-  gap: 0.625rem;
-  border-radius: var(--radius-md);
-  padding: 0.5rem 0.75rem;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+  padding: 0.375rem 0.75rem 0.5rem;
   font-size: 0.875rem;
   font-weight: 500;
   color: var(--muted-foreground);
+  white-space: nowrap;
   transition:
     color var(--console-motion-fast, 140ms) var(--console-ease, ease),
     background-color var(--console-motion-fast, 140ms) var(--console-ease, ease);
@@ -101,13 +93,15 @@
 .settings-rail-item::after { display: none; }
 .settings-rail-item[aria-selected="true"] {
   color: var(--foreground);
-  background: var(--muted);
-}
-[data-selection-motion="fill"] .settings-rail-item:has([data-selection-indicator="fill"])[aria-selected="true"] {
   background: transparent;
 }
-[data-selection-motion="fill"] .settings-rail-item [data-selection-indicator="fill"][data-selection-mode="static"] {
-  display: block;
+[data-selection-motion="underline"] .settings-rail-item [data-selection-indicator="underline"] {
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--foreground);
 }
 @media (hover: hover) {
   .settings-rail-item:hover:not([aria-selected="true"]) {

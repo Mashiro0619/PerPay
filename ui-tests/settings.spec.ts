@@ -131,7 +131,7 @@ test("website categories preserve keyboard activation across desktop tabs and th
   const sourceUrl = page.url(), sourceScroll = await page.evaluate(() => window.scrollY);
   const evidence = [];
   for (let index = 1; index < 5; index++) {
-    await page.keyboard.press("ArrowDown");
+    await page.keyboard.press("ArrowRight");
     const choice = choices.nth(index);
     await expect(choice).toBeFocused();
     expect(page.url()).toBe(sourceUrl);
@@ -210,7 +210,7 @@ test("settings use guarded category selection on phones and scrolling tabs on de
   const selected = list.locator('[aria-selected="true"]');
   await selected.focus();
   const before = page.url();
-  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("ArrowRight");
   expect(page.url()).toBe(before);
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(manifest.origin + "/admin/settings/display");

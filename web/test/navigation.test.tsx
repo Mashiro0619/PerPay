@@ -340,7 +340,7 @@ describe("navigation and draft protection", () => {
     const user = userEvent.setup();
     const selected = await screen.findByRole("tab", { name: "查账设置" });
     selected.focus();
-    await user.keyboard("{ArrowDown}");
+    await user.keyboard("{ArrowRight}");
     const security = screen.getByRole("tab", { name: "账户与安全" });
     expect(security).toHaveFocus();
     expect(selected).toHaveAttribute("aria-selected", "true");
