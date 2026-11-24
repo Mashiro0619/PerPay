@@ -337,6 +337,24 @@ export type IgnoreAllWorkItemsEnvelope = {
         q?: string;
     };
 };
+export type WorkItemTarget = {
+    type: 'FINANCIAL_EXCEPTION' | 'LEDGER_CONFLICT' | 'NOTIFICATION_FAILURE';
+    resource_id: ResourceId;
+};
+export type IgnoreSelectedWorkItemsRequest = {
+    api_client_id?: string;
+    operation_id: ResourceId;
+    items: Array<WorkItemTarget>;
+};
+export type IgnoreSelectedWorkItemsEnvelope = {
+    data: {
+        api_client_id?: string;
+        operation_id: ResourceId;
+        type: 'ALL';
+        ignored_count: number;
+        items: Array<WorkItemTarget>;
+    };
+};
 export type RestoreWorkItemEnvelope = {
     data: {
         operation_id: ResourceId;
@@ -1676,6 +1694,7 @@ export type WebhookDeliveryFields = {
 };
 export type WebhookDelivery = WebhookDeliveryFields;
 export type WebhookDeliverySummary = WebhookDeliveryFields & {
+    reminder_ignored?: boolean;
     is_latest: boolean;
     redelivery_blocked_reason?: WebhookRedeliveryBlockedReason;
     order_summary?: OrderIdentitySummary | null;
@@ -1706,6 +1725,7 @@ export type WebhookTarget = {
     created_at: string;
 };
 export type WebhookDeliveryDetail = {
+    reminder_ignored?: boolean;
     redelivery_blocked_reason?: WebhookRedeliveryBlockedReason;
     latest_delivery_id?: string;
     is_latest: boolean;
@@ -1717,6 +1737,7 @@ export type WebhookDeliveryDetailEnvelope = {
     data: WebhookDeliveryDetail;
 };
 export type OrderWebhookDeliveryDetail = {
+    reminder_ignored?: boolean;
     redelivery_blocked_reason?: WebhookRedeliveryBlockedReason;
     latest_delivery_id?: string;
     is_latest: boolean;
@@ -2852,6 +2873,7 @@ export type IgnoreAllAdministratorWorkItemsErrors = {
     400: ErrorEnvelope;
     401: ErrorEnvelope;
     403: ErrorEnvelope;
+    404: ErrorEnvelope;
     409: ErrorEnvelope;
     413: ErrorEnvelope;
     415: ErrorEnvelope;
@@ -2862,6 +2884,31 @@ export type IgnoreAllAdministratorWorkItemsResponses = {
     200: IgnoreAllWorkItemsEnvelope;
 };
 export type IgnoreAllAdministratorWorkItemsResponse = IgnoreAllAdministratorWorkItemsResponses[keyof IgnoreAllAdministratorWorkItemsResponses];
+export type IgnoreSelectedAdministratorWorkItemsData = {
+    body: IgnoreSelectedWorkItemsRequest;
+    headers?: {
+        'X-Request-Id'?: string;
+        Origin?: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/admin/v1/work-items/actions/ignore-selected';
+};
+export type IgnoreSelectedAdministratorWorkItemsErrors = {
+    400: ErrorEnvelope;
+    401: ErrorEnvelope;
+    403: ErrorEnvelope;
+    404: ErrorEnvelope;
+    409: ErrorEnvelope;
+    413: ErrorEnvelope;
+    415: ErrorEnvelope;
+    422: ErrorEnvelope;
+};
+export type IgnoreSelectedAdministratorWorkItemsError = IgnoreSelectedAdministratorWorkItemsErrors[keyof IgnoreSelectedAdministratorWorkItemsErrors];
+export type IgnoreSelectedAdministratorWorkItemsResponses = {
+    200: IgnoreSelectedWorkItemsEnvelope;
+};
+export type IgnoreSelectedAdministratorWorkItemsResponse = IgnoreSelectedAdministratorWorkItemsResponses[keyof IgnoreSelectedAdministratorWorkItemsResponses];
 export type RestoreAdministratorWorkItemData = {
     body: AdminOperationRequest;
     headers?: {
@@ -4897,6 +4944,36 @@ export type SiteIgnoreAllAdministratorWorkItemsResponses = {
     200: IgnoreAllWorkItemsEnvelope;
 };
 export type SiteIgnoreAllAdministratorWorkItemsResponse = SiteIgnoreAllAdministratorWorkItemsResponses[keyof SiteIgnoreAllAdministratorWorkItemsResponses];
+export type SiteIgnoreSelectedAdministratorWorkItemsData = {
+    body: {
+        operation_id: ResourceId;
+        items: Array<WorkItemTarget>;
+    };
+    headers?: {
+        'X-Request-Id'?: string;
+        Origin?: string;
+    };
+    path: {
+        clientId: string;
+    };
+    query?: never;
+    url: '/api/admin/v1/sites/{clientId}/work-items/actions/ignore-selected';
+};
+export type SiteIgnoreSelectedAdministratorWorkItemsErrors = {
+    400: ErrorEnvelope;
+    401: ErrorEnvelope;
+    403: ErrorEnvelope;
+    404: ErrorEnvelope;
+    409: ErrorEnvelope;
+    413: ErrorEnvelope;
+    415: ErrorEnvelope;
+    422: ErrorEnvelope;
+};
+export type SiteIgnoreSelectedAdministratorWorkItemsError = SiteIgnoreSelectedAdministratorWorkItemsErrors[keyof SiteIgnoreSelectedAdministratorWorkItemsErrors];
+export type SiteIgnoreSelectedAdministratorWorkItemsResponses = {
+    200: IgnoreSelectedWorkItemsEnvelope;
+};
+export type SiteIgnoreSelectedAdministratorWorkItemsResponse = SiteIgnoreSelectedAdministratorWorkItemsResponses[keyof SiteIgnoreSelectedAdministratorWorkItemsResponses];
 export type SiteRestoreAdministratorWorkItemData = {
     body: AdminOperationRequest;
     headers?: {

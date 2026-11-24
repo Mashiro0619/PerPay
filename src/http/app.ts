@@ -159,8 +159,10 @@ import { httpActivityMiddleware } from "./activity-middleware.ts";
 import {
   ADMIN_WORK_ITEM_TYPES,
   ADMIN_WORK_ITEM_VISIBILITIES,
-  adminWorkItemPage, adminWorkItemSummary, adminIgnoredWorkItemIds,
-  ignoreAllAdminWorkItems, ignoreAllWorkItemsSchema, restoreAdminWorkItem, restoreWorkItemSchema,
+  adminWorkItemPage, adminWorkItemSummary, adminActiveIgnoredWorkItemIds, adminIgnoredWorkItemIds,
+  ignoreAllAdminWorkItems, ignoreAllWorkItemsSchema,
+  ignoreSelectedAdminWorkItems, ignoreSelectedWorkItemsSchema,
+  restoreAdminWorkItem, restoreWorkItemSchema,
   type AdminWorkItemVisibility, type AdminWorkItemKind, type AdminWorkItemSummary,
   type AdminWorkItem,
   type AdminWorkItemCursor,
@@ -1126,8 +1128,14 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
         limit: query.limit,
       });
       const siteName = adminOrderIdentities(dependencies.database, [orderId]).get(orderId)?.site_name ?? null;
+      const ignored = adminActiveIgnoredWorkItemIds(
+        dependencies.database,
+        "NOTIFICATION_FAILURE",
+        page.deliveries.map(detail => detail.delivery.deliveryId),
+      );
       return context.json({
-        data: page.deliveries.map(detail => serializeWebhookDeliveryDetailWithAttempts(detail, siteName)),
+        data: page.deliveries.map(detail =>
+          serializeWebhookDeliveryDetailWithAttempts(detail, siteName, ignored.has(detail.delivery.deliveryId))),
         page: {
           next_cursor: encodeOrderWebhookDeliveryCursor(page.nextCursor, orderId),
         },
@@ -1248,6 +1256,11 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
   app.post("/api/admin/v1/work-items/actions/ignore-all", adminSession, financialWrite, async (context) => {
     const body = await readJson(context, ignoreAllWorkItemsSchema, MAX_JSON_BODY_BYTES);
     return context.json({ data: ignoreAllAdminWorkItems(dependencies.database, body, settingsAuditContext(context, dependencies)) });
+  });
+
+  app.post("/api/admin/v1/work-items/actions/ignore-selected", adminSession, financialWrite, async (context) => {
+    const body = await readJson(context, ignoreSelectedWorkItemsSchema, MAX_JSON_BODY_BYTES);
+    return context.json({ data: ignoreSelectedAdminWorkItems(dependencies.database, body, settingsAuditContext(context, dependencies)) });
   });
 
   app.post("/api/admin/v1/work-items/:type/:resourceId/actions/restore", adminSession, financialWrite, async (context) => {
@@ -1881,8 +1894,16 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
       limit: query.limit,
     });
     const identities = adminOrderIdentities(dependencies.database, page.deliveries.map(item => item.orderId));
+    const ignored = adminActiveIgnoredWorkItemIds(
+      dependencies.database,
+      "NOTIFICATION_FAILURE",
+      page.deliveries.map(item => item.delivery.deliveryId),
+    );
     return context.json({
-      data: page.deliveries.map(item => ({ ...serializeWebhookDeliverySummary(item), order_summary: identities.get(item.orderId) ?? null })),
+      data: page.deliveries.map(item => ({
+        ...serializeWebhookDeliverySummary(item, ignored.has(item.delivery.deliveryId)),
+        order_summary: identities.get(item.orderId) ?? null,
+      })),
       page: {
         next_cursor: encodeWebhookDeliveryCursor(page.nextCursor, query.status, query.query, query.clientId),
       },
@@ -1920,7 +1941,8 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
         throw new HttpApiError(404, "webhook_delivery_not_found", "通知投递不存在");
       }
       const siteName = adminOrderIdentities(dependencies.database, [detail.event.orderId]).get(detail.event.orderId)?.site_name ?? null;
-      return context.json({ data: serializeWebhookDeliveryDetail(detail, siteName) });
+      const ignored = adminActiveIgnoredWorkItemIds(dependencies.database, "NOTIFICATION_FAILURE", [detail.delivery.deliveryId]);
+      return context.json({ data: serializeWebhookDeliveryDetail(detail, siteName, ignored.has(detail.delivery.deliveryId)) });
     },
   );
 
@@ -2594,7 +2616,7 @@ async function readJson<T>(
   const clientId = context.get("adminSiteId");
   if (clientId && parsed && typeof parsed === "object") {
     if ("api_client_id" in parsed) throw new HttpApiError(422, "validation_failed", "网站身份只能由路径指定");
-    if ([orderExportSchema, testPaymentRequestSchema, ignoreAllWorkItemsSchema].some(candidate => candidate as z.ZodType === schema)) return { ...parsed, api_client_id: clientId };
+    if ([orderExportSchema, testPaymentRequestSchema, ignoreAllWorkItemsSchema, ignoreSelectedWorkItemsSchema].some(candidate => candidate as z.ZodType === schema)) return { ...parsed, api_client_id: clientId };
   }
   return parsed;
 }
@@ -4142,9 +4164,10 @@ function serializeWebhookEvent(event: WebhookEvent) {
   };
 }
 
-function serializeWebhookDeliverySummary(summary: WebhookDeliverySummary) {
+function serializeWebhookDeliverySummary(summary: WebhookDeliverySummary, reminderIgnored: boolean) {
   return {
     ...serializeWebhookDelivery(summary.delivery),
+    reminder_ignored: reminderIgnored,
     is_latest: summary.isLatest,
     redelivery_blocked_reason: summary.redeliveryBlockedReason,
     event: {
@@ -4158,8 +4181,13 @@ function serializeWebhookDeliverySummary(summary: WebhookDeliverySummary) {
   };
 }
 
-function serializeWebhookDeliveryDetail(detail: WebhookDeliveryDetail, siteName: string | null) {
+function serializeWebhookDeliveryDetail(
+  detail: WebhookDeliveryDetail,
+  siteName: string | null,
+  reminderIgnored: boolean,
+) {
   return {
+    reminder_ignored: reminderIgnored,
     is_latest: detail.isLatest,
     latest_delivery_id: detail.latestDeliveryId,
     redelivery_blocked_reason: detail.redeliveryBlockedReason,
@@ -4179,9 +4207,13 @@ function serializeWebhookDeliveryDetail(detail: WebhookDeliveryDetail, siteName:
   };
 }
 
-function serializeWebhookDeliveryDetailWithAttempts(detail: WebhookDeliveryDetail, siteName: string | null) {
+function serializeWebhookDeliveryDetailWithAttempts(
+  detail: WebhookDeliveryDetail,
+  siteName: string | null,
+  reminderIgnored: boolean,
+) {
   return {
-    ...serializeWebhookDeliveryDetail(detail, siteName),
+    ...serializeWebhookDeliveryDetail(detail, siteName, reminderIgnored),
     attempts: detail.attempts.map(serializeWebhookAttempt),
   };
 }
@@ -4381,7 +4413,7 @@ function serializeLedgerConflicts(conflicts: readonly LedgerConflict[], database
   });
   return conflicts.map((conflict) => serializeLedgerConflict(
     conflict,
-    ignored.has(conflict.conflictId),
+    conflict.status === "OPEN" && ignored.has(conflict.conflictId),
     reconciliationIssueContext(issueContexts, {
       ledgerEntryId: conflict.existingLedgerEntryId,
       rawEventId: conflict.rawEventId,
@@ -4518,7 +4550,7 @@ function serializeFinancialExceptions(exceptions: readonly FinancialException[],
   });
   return exceptions.map((exception) => serializeFinancialException(
     exception,
-    ignored.has(exception.exceptionId),
+    exception.status === "OPEN" && ignored.has(exception.exceptionId),
     reconciliationIssueContext(issueContexts, {
       orderId: exception.orderId,
       ledgerEntryId: exception.ledgerEntryId,

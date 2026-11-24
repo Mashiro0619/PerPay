@@ -62,7 +62,7 @@ export function decodeListCursor(
     parts[4].length !== keyCount ||
     parts[4].some(
       (key: unknown) =>
-        typeof key !== "string" || !/^[A-Za-z0-9_-]{1,128}$/.test(key),
+        typeof key !== "string" || !/^[A-Za-z0-9._-]{1,128}$/.test(key),
     )
   )
     throw invalid();

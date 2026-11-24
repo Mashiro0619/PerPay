@@ -477,6 +477,10 @@ it('covers every registered site route with real foreign resources and scoped po
         const day = new Date(f.now() + 8 * 3600000).toISOString().slice(0, 10);
         const exportBody = { created_from: day, created_to: day };
         const ignore = { operation_id: randomUUID(), type: 'ALL' };
+        const ignoreSelected = {
+            operation_id: randomUUID(),
+            items: [{ type: 'FINANCIAL_EXCEPTION', resource_id: foreign.exceptionId }],
+        };
         const mark = { operation_id: randomUUID(), version: 0, marked: true };
         const restore = { operation_id: randomUUID() };
         const redeliver = { redelivery_id: randomUUID(), reason: 'matrix receiver repaired' };
@@ -490,6 +494,7 @@ it('covers every registered site route with real foreign resources and scoped po
             'GET /work-items': { path: '/work-items' + foreignOrderQuery, queryBoundaryOnly: true },
             'GET /work-items/summary': { path: '/work-items/summary' + foreignOrderQuery, queryBoundaryOnly: true },
             'POST /work-items/actions/ignore-all': { path: '/work-items/actions/ignore-all' + foreignOrderQuery, body: ignore, queryBoundaryOnly: true },
+            'POST /work-items/actions/ignore-selected': { path: '/work-items/actions/ignore-selected', body: ignoreSelected },
             'POST /work-items/:type/:resourceId/actions/restore': { path: `/work-items/FINANCIAL_EXCEPTION/${foreign.exceptionId}/actions/restore`, body: restore },
             'GET /orders': { path: '/orders' + foreignOrderQuery, queryBoundaryOnly: true },
             'POST /orders/export': { path: '/orders/export' + foreignOrderQuery, body: exportBody, queryBoundaryOnly: true },

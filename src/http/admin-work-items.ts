@@ -1,3 +1,4 @@
+import type { DatabaseSync } from "node:sqlite";
 import { assertSiteResource } from "../sites/admin-scope.ts";
 import { siteClientIdSchema } from "../sites/model.ts";
 import {
@@ -52,6 +53,25 @@ const kindSchema = z.enum([
   "LEDGER_CONFLICT",
   "NOTIFICATION_FAILURE",
 ]);
+export const workItemTargetSchema = z
+  .object({
+    type: kindSchema,
+    resource_id: adminOperationIdSchema,
+  })
+  .strict();
+export const ignoreSelectedWorkItemsSchema = z
+  .object({
+    operation_id: adminOperationIdSchema,
+    api_client_id: siteClientIdSchema.optional(),
+    items: z.array(workItemTargetSchema).min(1).max(200),
+  })
+  .strict()
+  .refine(
+    (input) =>
+      new Set(input.items.map((item) => `${item.type}:${item.resource_id}`)).size ===
+      input.items.length,
+    { message: "所选提醒包含重复项", path: ["items"] },
+  );
 export interface AdminWorkItemCursor {
   readonly position?: ListPosition;
   readonly actionableAt: number;
@@ -129,6 +149,7 @@ interface WorkItemRow {
   readonly ignored: number | bigint;
   readonly ignored_at: number | bigint | null;
   readonly ignored_by: string | null;
+  readonly actionable: number | bigint;
   readonly ended: number | bigint;
   readonly priority: number | bigint;
   readonly sort_at: number | bigint;
@@ -378,6 +399,119 @@ export function adminIgnoredWorkItemIds(
   );
 }
 
+/** Read non-ended ignored reminder IDs using the shared work-item projection. */
+export function adminActiveIgnoredWorkItemIds(
+  database: AppDatabase,
+  kind: AdminWorkItemKind,
+  ids: readonly string[],
+): ReadonlySet<string> {
+  if (ids.length === 0) return new Set();
+  return database.read(
+    (connection) =>
+      new Set(
+        (
+          connection
+            .prepare(
+              WORK_ITEMS_CTE +
+                "SELECT item_id FROM work_items WHERE kind = ? AND ignored = 1 AND ended = 0 AND item_id IN (SELECT value FROM json_each(?))",
+            )
+            .all(kind, JSON.stringify(ids)) as Array<{ item_id: string }>
+        ).map((row) => row.item_id),
+      ),
+  );
+}
+
+function resolveWorkItemSiteId(connection: DatabaseSync, orderId: string | null): string | null {
+  if (!orderId) return null;
+  if (!connection.prepare("SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'sites'").get()) {
+    return null;
+  }
+  const row = connection
+    .prepare("SELECT api_client_id FROM payment_orders WHERE order_id = ?")
+    .get(orderId) as { api_client_id?: string | null } | undefined;
+  return typeof row?.api_client_id === "string" ? row.api_client_id : null;
+}
+
+function assertWorkItemInSiteScope(
+  connection: DatabaseSync,
+  clientId: string,
+  kind: AdminWorkItemKind,
+  resourceId: string,
+): void {
+  if (kind === "LEDGER_CONFLICT") {
+    throw new AdminOperationError(
+      404,
+      "work_item_not_found",
+      "账本冲突请到「待处理（全部网站）」处理",
+    );
+  }
+  const hasSitesTable = !!connection
+    .prepare("SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'sites'")
+    .get();
+  if (hasSitesTable) {
+    assertSiteResource(
+      connection,
+      clientId,
+      kind === "NOTIFICATION_FAILURE" ? "delivery" : "exception",
+      resourceId,
+    );
+    return;
+  }
+  const row = connection
+    .prepare(
+      WORK_ITEMS_CTE +
+        "SELECT order_id FROM work_items WHERE kind = ? AND item_id = ?",
+    )
+    .get(kind, resourceId) as { order_id: string | null } | undefined;
+  if (
+    !row?.order_id ||
+    !connection
+      .prepare("SELECT 1 FROM payment_orders WHERE order_id = ? AND api_client_id = ?")
+      .get(row.order_id, clientId)
+  ) {
+    throw new AdminOperationError(404, "order_not_found", "当前网站下不存在该记录");
+  }
+}
+
+function validateTargetWorkItem(
+  connection: DatabaseSync,
+  kind: AdminWorkItemKind,
+  resourceId: string,
+  siteClientId: string | undefined,
+): WorkItemRow {
+  if (siteClientId) {
+    assertWorkItemInSiteScope(connection, siteClientId, kind, resourceId);
+  }
+  const item = connection
+    .prepare(
+      WORK_ITEMS_CTE +
+        "SELECT * FROM work_items WHERE kind = ? AND item_id = ?",
+    )
+    .get(kind, resourceId) as WorkItemRow | undefined;
+  if (!item) {
+    throw new AdminOperationError(
+      404,
+      "work_item_not_found",
+      "提醒对应的记录不存在",
+    );
+  }
+  if (Number(item.ended) === 1) {
+    throw new AdminOperationError(
+      409,
+      "work_item_ended",
+      "提醒已结束，无需忽略",
+    );
+  }
+  if (Number(item.ignored) === 0 && Number(item.actionable) === 0) {
+    throw new AdminOperationError(
+      404,
+      "work_item_not_found",
+      "该记录当前没有可忽略的待处理提醒",
+    );
+  }
+  return item;
+}
+
 export interface IgnoreAllResult {
   readonly api_client_id?: string;
   readonly operation_id: string;
@@ -403,6 +537,14 @@ export function ignoreAllAdminWorkItems(
     if (context.expectedClientId !== undefined && parsed.api_client_id !== context.expectedClientId) {
       throw new AdminOperationError(409, "site_scope_conflict", "批量忽略范围与当前网站不一致");
     }
+    if (parsed.resource_id && context.expectedClientId) {
+      assertWorkItemInSiteScope(
+        connection,
+        context.expectedClientId,
+        parsed.type as AdminWorkItemKind,
+        parsed.resource_id,
+      );
+    }
     const replay = replayAdminOperation<IgnoreAllResult>(
       connection,
       parsed.operation_id,
@@ -411,20 +553,33 @@ export function ignoreAllAdminWorkItems(
       context.actorId,
     );
     if (replay) return replay;
+    let singleRow: WorkItemRow | undefined;
+    if (parsed.resource_id) {
+      singleRow = validateTargetWorkItem(
+        connection,
+        parsed.type as AdminWorkItemKind,
+        parsed.resource_id,
+        parsed.api_client_id,
+      );
+    }
     const search = workItemSearch(q);
-    const members = connection
-      .prepare(
-        WORK_ITEMS_CTE +
-          "SELECT kind, item_id FROM work_items WHERE ignored = 0 AND actionable = 1 AND (? = 'ALL' OR kind = ?) " +
-          (search.where ? "AND " + search.where : "") +
-          (parsed.api_client_id ? " AND order_id IN (SELECT order_id FROM payment_orders WHERE api_client_id = ?)" : "") +
-          (parsed.resource_id ? " AND item_id = ?" : "") +
-          " ORDER BY kind, item_id",
-      )
-      .all(parsed.type, parsed.type, ...search.parameters, ...(parsed.api_client_id ? [parsed.api_client_id] : []), ...(parsed.resource_id ? [parsed.resource_id] : [])) as Array<{
-      kind: AdminWorkItemKind;
-      item_id: string;
-    }>;
+    const members = parsed.resource_id && !q
+      ? (Number(singleRow!.ignored) === 0
+          ? [{ kind: singleRow!.kind, item_id: singleRow!.item_id }]
+          : [])
+      : (connection
+          .prepare(
+            WORK_ITEMS_CTE +
+              "SELECT kind, item_id FROM work_items WHERE ignored = 0 AND actionable = 1 AND (? = 'ALL' OR kind = ?) " +
+              (search.where ? "AND " + search.where : "") +
+              (parsed.api_client_id ? " AND order_id IN (SELECT order_id FROM payment_orders WHERE api_client_id = ?)" : "") +
+              (parsed.resource_id ? " AND item_id = ?" : "") +
+              " ORDER BY kind, item_id",
+          )
+          .all(parsed.type, parsed.type, ...search.parameters, ...(parsed.api_client_id ? [parsed.api_client_id] : []), ...(parsed.resource_id ? [parsed.resource_id] : [])) as Array<{
+          kind: AdminWorkItemKind;
+          item_id: string;
+        }>);
     const now = adminOperationTime(connection, context.now);
     const result = {
       operation_id: parsed.operation_id,
@@ -434,6 +589,9 @@ export function ignoreAllAdminWorkItems(
       ...(q ? { q } : {}),
       ...(parsed.resource_id ? { resource_id: parsed.resource_id } : {}),
     };
+    const inferredSiteId =
+      parsed.api_client_id ??
+      (singleRow ? resolveWorkItemSiteId(connection, singleRow.order_id) : null);
     recordAdminOperation(connection, {
       operationId: parsed.operation_id,
       action: "work_items.ignore_all",
@@ -442,6 +600,107 @@ export function ignoreAllAdminWorkItems(
       now,
       context,
       membershipFingerprint: adminFingerprint(members),
+      ...(inferredSiteId ? { auditSiteId: inferredSiteId } : {}),
+      auditDetails: {
+        ignore_scope: parsed.resource_id ? "single" : "all",
+        type: parsed.type,
+        ignored_count: members.length,
+        ...(parsed.api_client_id ? { api_client_id: parsed.api_client_id } : {}),
+        ...(parsed.resource_id ? { resource_id: parsed.resource_id } : {}),
+      },
+    });
+    const member = connection.prepare(
+      "INSERT INTO admin_work_item_operations(operation_id, kind, item_id) VALUES (?, ?, ?)",
+    );
+    const state =
+      connection.prepare(`INSERT INTO admin_work_item_states(kind, item_id, ignored, operation_id, updated_at) VALUES (?, ?, 1, ?, ?)
+      ON CONFLICT(kind, item_id) DO UPDATE SET ignored = 1, operation_id = excluded.operation_id, updated_at = excluded.updated_at`);
+    for (const item of members) {
+      member.run(parsed.operation_id, item.kind, item.item_id);
+      state.run(item.kind, item.item_id, parsed.operation_id, now);
+    }
+    return result;
+  });
+}
+
+export interface IgnoreSelectedResult {
+  readonly operation_id: string;
+  readonly type: "ALL";
+  readonly ignored_count: number;
+  readonly api_client_id?: string;
+  readonly items: readonly { readonly type: AdminWorkItemKind; readonly resource_id: string }[];
+}
+export function ignoreSelectedAdminWorkItems(
+  database: AppDatabase,
+  input: z.infer<typeof ignoreSelectedWorkItemsSchema>,
+  context: AdminOperationContext,
+): IgnoreSelectedResult {
+  const parsed = ignoreSelectedWorkItemsSchema.parse(input);
+  const canonicalItems = [...parsed.items]
+    .map((item) => ({ type: item.type, resource_id: item.resource_id }))
+    .sort((a, b) => a.type.localeCompare(b.type) || a.resource_id.localeCompare(b.resource_id));
+  const fingerprint = adminFingerprint({
+    type: "ALL",
+    ...(parsed.api_client_id ? { api_client_id: parsed.api_client_id } : {}),
+    items: canonicalItems,
+  });
+  return database.write((connection) => {
+    if (context.expectedClientId !== undefined && parsed.api_client_id !== context.expectedClientId) {
+      throw new AdminOperationError(409, "site_scope_conflict", "选择忽略范围与当前网站不一致");
+    }
+    if (context.expectedClientId) {
+      for (const item of canonicalItems) {
+        assertWorkItemInSiteScope(connection, context.expectedClientId, item.type, item.resource_id);
+      }
+    }
+    const replay = replayAdminOperation<IgnoreSelectedResult>(
+      connection,
+      parsed.operation_id,
+      "work_items.ignore_all",
+      fingerprint,
+      context.actorId,
+    );
+    if (replay) return replay;
+    const rows = canonicalItems.map((item) =>
+      validateTargetWorkItem(connection, item.type, item.resource_id, parsed.api_client_id),
+    );
+    const members = rows
+      .filter((row) => Number(row.ignored) === 0)
+      .map((row) => ({ kind: row.kind, item_id: row.item_id }));
+    const now = adminOperationTime(connection, context.now);
+    const result: IgnoreSelectedResult = {
+      operation_id: parsed.operation_id,
+      type: "ALL",
+      ignored_count: members.length,
+      ...(parsed.api_client_id ? { api_client_id: parsed.api_client_id } : {}),
+      items: canonicalItems,
+    };
+    const distinctSiteIds = new Set(
+      rows
+        .map((row) => resolveWorkItemSiteId(connection, row.order_id))
+        .filter((siteId): siteId is string => siteId !== null),
+    );
+    const inferredSiteId =
+      parsed.api_client_id ??
+      (distinctSiteIds.size === 1 && rows.every((row) => row.order_id !== null)
+        ? [...distinctSiteIds][0]
+        : null);
+    recordAdminOperation(connection, {
+      operationId: parsed.operation_id,
+      action: "work_items.ignore_all",
+      requestFingerprint: fingerprint,
+      result,
+      now,
+      context,
+      membershipFingerprint: adminFingerprint(members),
+      ...(inferredSiteId ? { auditSiteId: inferredSiteId } : {}),
+      auditDetails: {
+        ignore_scope: "selected",
+        type: "ALL",
+        selected_count: canonicalItems.length,
+        ignored_count: members.length,
+        ...(parsed.api_client_id ? { api_client_id: parsed.api_client_id } : {}),
+      },
     });
     const member = connection.prepare(
       "INSERT INTO admin_work_item_operations(operation_id, kind, item_id) VALUES (?, ?, ?)",
@@ -477,8 +736,7 @@ export function restoreAdminWorkItem(
   });
   return database.write((connection) => {
     if (context.expectedClientId) {
-      if (input.type === "LEDGER_CONFLICT") throw new AdminOperationError(404, "work_item_not_found", "账本冲突请到「待处理（全部网站）」处理");
-      assertSiteResource(connection, context.expectedClientId, input.type === "NOTIFICATION_FAILURE" ? "delivery" : "exception", input.resource_id);
+      assertWorkItemInSiteScope(connection, context.expectedClientId, input.type, input.resource_id);
     }
     const replay = replayAdminOperation<RestoreWorkItemResult>(
       connection,
@@ -506,6 +764,12 @@ export function restoreAdminWorkItem(
         "work_item_ended",
         "提醒已结束，无需恢复提醒",
       );
+    if (Number(item.ignored) === 0 && Number(item.actionable) === 0)
+      throw new AdminOperationError(
+        404,
+        "work_item_not_found",
+        "该记录当前没有可恢复的提醒",
+      );
     const now = adminOperationTime(connection, context.now);
     const result = {
       operation_id: input.operation_id,
@@ -513,6 +777,8 @@ export function restoreAdminWorkItem(
       resource_id: input.resource_id,
       restored: Number(item.ignored) === 1,
     };
+    const inferredSiteId =
+      context.expectedClientId ?? resolveWorkItemSiteId(connection, item.order_id);
     recordAdminOperation(connection, {
       operationId: input.operation_id,
       action: "work_items.restore",
@@ -520,6 +786,12 @@ export function restoreAdminWorkItem(
       result,
       now,
       context,
+      ...(inferredSiteId ? { auditSiteId: inferredSiteId } : {}),
+      auditDetails: {
+        type: input.type,
+        resource_id: input.resource_id,
+        restored: result.restored,
+      },
     });
     if (result.restored) {
       connection

@@ -405,6 +405,10 @@ export class ReconciliationStore {
 
       if (candidates.length === 0) {
         setLedgerState(connection, entry, "UNALLOCATED", now);
+        const existingOpen = findOpenExceptionForLedgerEntry(connection, ledgerEntryId);
+        if (existingOpen) {
+          return { kind: "unmatched", ledgerEntryId, exceptionId: existingOpen.exceptionId };
+        }
         const classification = classifyUnmatchedCredit(connection, entry, settledOrderOverlap);
         const exception = ensureException(connection, {
           providerAccountKey: entry.provider_account_key,
@@ -421,6 +425,15 @@ export class ReconciliationStore {
 
       if (candidates.length > 1) {
         setLedgerState(connection, entry, "CANDIDATE", now);
+        const existingOpen = findOpenExceptionForLedgerEntry(connection, ledgerEntryId);
+        if (existingOpen) {
+          return {
+            kind: "ambiguous",
+            ledgerEntryId,
+            candidateIds: Object.freeze(candidates.map((candidate) => candidate.candidateId)),
+            exceptionId: existingOpen.exceptionId,
+          };
+        }
         const exception = ensureException(connection, {
           providerAccountKey: entry.provider_account_key,
           exceptionType: "AMBIGUOUS_MATCH",
@@ -443,6 +456,10 @@ export class ReconciliationStore {
       if (!candidate) throw new Error("candidate disappeared");
       if (settledOrderOverlap.count > 0) {
         setLedgerState(connection, entry, "UNALLOCATED", now);
+        const existingOpen = findOpenExceptionForLedgerEntry(connection, ledgerEntryId);
+        if (existingOpen) {
+          return { kind: "unmatched", ledgerEntryId, exceptionId: existingOpen.exceptionId };
+        }
         const classification = duplicatePaymentClassification(settledOrderOverlap);
         const exception = ensureException(connection, {
           providerAccountKey: entry.provider_account_key,
@@ -1841,6 +1858,21 @@ function supersedeStaleEligibleCandidates(
       "candidate supersede",
     );
   }
+}
+
+function findOpenExceptionForLedgerEntry(
+  connection: DatabaseSync,
+  ledgerEntryId: string,
+): FinancialException | null {
+  const row = connection
+    .prepare(
+      `${EXCEPTION_COLUMNS}
+        WHERE ledger_entry_id = ? AND status = 'OPEN'
+        ORDER BY created_at DESC, exception_id DESC
+        LIMIT 1`,
+    )
+    .get(ledgerEntryId) as unknown as ExceptionRow | undefined;
+  return row ? mapException(row) : null;
 }
 
 function ensureException(

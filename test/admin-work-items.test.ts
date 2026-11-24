@@ -12,11 +12,13 @@ import { AppDatabase } from "../src/database/database.ts";
 import { createApp } from "../src/http/app.ts";
 import { ListQueryError } from "../src/shared/list-query.ts";
 import {
-  adminWorkItemPage, adminWorkItemSummary, ignoreAllAdminWorkItems, restoreAdminWorkItem,
+  adminWorkItemPage, adminWorkItemSummary, ignoreAllAdminWorkItems, ignoreSelectedAdminWorkItems, restoreAdminWorkItem,
   type AdminWorkItem,
   type AdminWorkItemCursor,
   type AdminWorkItemType,
 } from "../src/http/admin-work-items.ts";
+import { decodeListCursor, encodeListCursor } from "../src/http/list-cursor.ts";
+import { SANDBOX_PROVIDER_ENDPOINT } from "../src/settings/model.ts";
 import {
   createConfiguredHttpServices,
   HTTP_TEST_ADMIN_PASSWORD,
@@ -694,6 +696,173 @@ describe("administrator work item projection", () => {
       rmSync(directory, { recursive: true, force: true });
     }
   });
+
+  it("ignores explicitly selected work items idempotently and rejects invalid, ended, duplicate, or out-of-scope targets", () => {
+    withSiteWorkItemsFixture(({ database, connection }) => {
+      const selectedOp = {
+        operation_id: randomUUID(),
+        items: [
+          { type: "NOTIFICATION_FAILURE" as const, resource_id: IDS.retryNewest },
+          { type: "FINANCIAL_EXCEPTION" as const, resource_id: IDS.exceptionLower },
+        ],
+      };
+      const first = ignoreSelectedAdminWorkItems(database, selectedOp, { actorId: "admin", now: 4000 });
+      assert.equal(first.ignored_count, 2);
+      assert.equal(first.type, "ALL");
+      assert.deepEqual(first.items, [
+        { type: "FINANCIAL_EXCEPTION", resource_id: IDS.exceptionLower },
+        { type: "NOTIFICATION_FAILURE", resource_id: IDS.retryNewest },
+      ]);
+      assert.equal(adminWorkItemSummary(database).total, 4);
+
+      // Replaying the same operation_id (even with reversed input order) returns cached result without side effects.
+      const beforeReplay = adminOperationSnapshot(connection);
+      assert.deepEqual(
+        ignoreSelectedAdminWorkItems(
+          database,
+          { ...selectedOp, items: [...selectedOp.items].reverse() },
+          { actorId: "admin", now: 5000 },
+        ),
+        first,
+      );
+      assert.deepEqual(adminOperationSnapshot(connection), beforeReplay);
+
+      // Selecting one already-ignored item + one active item ignores only the remaining active item.
+      const partial = ignoreSelectedAdminWorkItems(
+        database,
+        {
+          operation_id: randomUUID(),
+          items: [
+            { type: "FINANCIAL_EXCEPTION", resource_id: IDS.exceptionLower },
+            { type: "LEDGER_CONFLICT", resource_id: IDS.conflict },
+          ],
+        },
+        { actorId: "admin", now: 6000 },
+      );
+      assert.equal(partial.ignored_count, 1);
+      assert.equal(adminWorkItemSummary(database).total, 3);
+
+      // Reject nonexistent, ended, never-failed PENDING, wrong-site, and duplicate targets without recording an operation.
+      const beforeRejects = adminOperationSnapshot(connection);
+      assert.throws(
+        () =>
+          ignoreSelectedAdminWorkItems(
+            database,
+            { operation_id: randomUUID(), items: [{ type: "FINANCIAL_EXCEPTION", resource_id: randomUUID() }] },
+            { actorId: "admin", now: 7000 },
+          ),
+        (err: unknown) => err instanceof AdminOperationError && err.status === 404 && err.code === "work_item_not_found",
+      );
+      assert.throws(
+        () =>
+          ignoreSelectedAdminWorkItems(
+            database,
+            { operation_id: randomUUID(), items: [{ type: "NOTIFICATION_FAILURE", resource_id: IDS.excludedAcknowledged }] },
+            { actorId: "admin", now: 7000 },
+          ),
+        (err: unknown) => err instanceof AdminOperationError && err.status === 409 && err.code === "work_item_ended",
+      );
+      assert.throws(
+        () =>
+          ignoreSelectedAdminWorkItems(
+            database,
+            { operation_id: randomUUID(), items: [{ type: "NOTIFICATION_FAILURE", resource_id: IDS.excludedPending }] },
+            { actorId: "admin", now: 7000 },
+          ),
+        (err: unknown) => err instanceof AdminOperationError && err.status === 404 && err.code === "work_item_not_found",
+      );
+      assert.throws(
+        () =>
+          ignoreSelectedAdminWorkItems(
+            database,
+            { operation_id: randomUUID(), api_client_id: "site_a", items: [{ type: "NOTIFICATION_FAILURE", resource_id: IDS.deadLetter }] },
+            { actorId: "admin", expectedClientId: "site_a", now: 7000 },
+          ),
+        (err: unknown) => err instanceof AdminOperationError && err.status === 404 && err.code === "order_not_found",
+      );
+      assert.throws(
+        () =>
+          ignoreSelectedAdminWorkItems(
+            database,
+            {
+              operation_id: randomUUID(),
+              items: [
+                { type: "LEDGER_CONFLICT", resource_id: IDS.conflict },
+                { type: "LEDGER_CONFLICT", resource_id: IDS.conflict },
+              ],
+            },
+            { actorId: "admin", now: 7000 },
+          ),
+      );
+      // Single-item ignore via ignoreAllAdminWorkItems(resource_id) enforces the same target checks.
+      assert.throws(
+        () =>
+          ignoreAllAdminWorkItems(
+            database,
+            { operation_id: randomUUID(), type: "FINANCIAL_EXCEPTION", resource_id: randomUUID() },
+            { actorId: "admin", now: 7000 },
+          ),
+        (err: unknown) => err instanceof AdminOperationError && err.status === 404 && err.code === "work_item_not_found",
+      );
+      assert.throws(
+        () =>
+          ignoreAllAdminWorkItems(
+            database,
+            { operation_id: randomUUID(), type: "NOTIFICATION_FAILURE", resource_id: IDS.excludedAcknowledged },
+            { actorId: "admin", now: 7000 },
+          ),
+        (err: unknown) => err instanceof AdminOperationError && err.status === 409 && err.code === "work_item_ended",
+      );
+      assert.deepEqual(adminOperationSnapshot(connection), beforeRejects);
+    });
+  });
+
+  it("keeps retrying LEASED failures actionable, rejects never-failed PENDING/LEASED restore, excludes SANDBOX failures, and accepts dotted site cursors", () => {
+    withFixture(({ database, connection }) => {
+      // Simulate IDS.retryNewest being leased for its next retry attempt (attempt_count >= 1, last_error_code IS NOT NULL).
+      connection.prepare("UPDATE webhook_deliveries SET status = 'LEASED', attempt_count = 2 WHERE delivery_id = ?").run(IDS.retryNewest);
+      const activeWhileLeased = adminWorkItemPage(database, { type: "NOTIFICATION_FAILURE", cursor: null, limit: 20 });
+      assert.ok(activeWhileLeased.items.some((item) => item.itemId === IDS.retryNewest && item.kind === "NOTIFICATION_FAILURE" && item.status === "LEASED"));
+      assert.equal(activeWhileLeased.items.some((item) => item.itemId === IDS.excludedLeased), false);
+
+      // Ignoring and restoring while LEASED for retry works seamlessly.
+      const ignored = ignoreSelectedAdminWorkItems(
+        database,
+        { operation_id: randomUUID(), items: [{ type: "NOTIFICATION_FAILURE", resource_id: IDS.retryNewest }] },
+        { actorId: "admin", now: 4000 },
+      );
+      assert.equal(ignored.ignored_count, 1);
+      const restored = restoreAdminWorkItem(
+        database,
+        { operation_id: randomUUID(), type: "NOTIFICATION_FAILURE", resource_id: IDS.retryNewest },
+        { actorId: "admin", now: 5000 },
+      );
+      assert.equal(restored.restored, true);
+
+      // Never-failed PENDING and first-attempt LEASED (last_error_code IS NULL) cannot be restored.
+      for (const nonFailedId of [IDS.excludedPending, IDS.excludedLeased]) {
+        assert.throws(
+          () => restoreAdminWorkItem(database, { operation_id: randomUUID(), type: "NOTIFICATION_FAILURE", resource_id: nonFailedId }, { actorId: "admin", now: 6000 }),
+          (err: unknown) => err instanceof AdminOperationError && err.status === 404 && err.code === "work_item_not_found",
+        );
+      }
+
+      // Historical SANDBOX deliveries are treated as ended and excluded from active work items.
+      connection.prepare("UPDATE webhook_targets SET order_id = ? WHERE target_id = 'fixture-native'").run(IDS.orderLinked);
+      connection.prepare("INSERT INTO provider_account_bindings(provider_account_key, provider_endpoint) VALUES ('generation-2', ?)").run(SANDBOX_PROVIDER_ENDPOINT);
+      const afterSandbox = adminWorkItemPage(database, { type: "NOTIFICATION_FAILURE", cursor: null, limit: 20 });
+      assert.equal(afterSandbox.items.some((item) => item.itemId === IDS.retryNewest), false);
+      assert.equal(afterSandbox.items.some((item) => item.itemId === IDS.retrySameTime), false);
+
+      // Dotted site client_id keys round-trip cleanly through list cursors.
+      const encoded = encodeListCursor("sites-overview", ["work_items", "desc"], { value: 3, keys: ["shop.example.com"] });
+      assert.ok(encoded);
+      assert.deepEqual(
+        decodeListCursor(encoded, "sites-overview", ["work_items", "desc"], "number", 1),
+        { value: 3, keys: ["shop.example.com"] },
+      );
+    });
+  });
 });
 
 async function login(app: ReturnType<typeof createApp>): Promise<string> {
@@ -791,6 +960,10 @@ function createSchema(connection: DatabaseSync): void {
       profile_id TEXT PRIMARY KEY,
       provider_account_key TEXT NOT NULL
     );
+    CREATE TABLE provider_account_bindings (
+      provider_account_key TEXT PRIMARY KEY,
+      provider_endpoint TEXT NOT NULL
+    );
     CREATE TABLE payment_orders (
       order_id TEXT PRIMARY KEY,
       collection_profile_id TEXT NOT NULL,
@@ -819,6 +992,7 @@ function createSchema(connection: DatabaseSync): void {
     );
     CREATE TABLE webhook_targets (
       target_id TEXT PRIMARY KEY,
+      order_id TEXT,
       target_format TEXT NOT NULL,
       target_url TEXT NOT NULL
     );

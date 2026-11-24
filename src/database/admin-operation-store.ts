@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 
+import { auditSiteContext } from "../audit/context.ts";
 import { appendAuditEvent } from "./identity-store.ts";
 
 export const adminOperationIdSchema = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
@@ -56,6 +57,8 @@ export function recordAdminOperation(connection: DatabaseSync, input: {
   readonly operationId: string; readonly action: AdminOperationAction; readonly requestFingerprint: string;
   readonly result: unknown; readonly now: number; readonly context: AdminOperationContext;
   readonly subjectId?: string | undefined; readonly membershipFingerprint?: string | undefined;
+  readonly auditDetails?: Readonly<Record<string, unknown>> | undefined;
+  readonly auditSiteId?: string | null | undefined;
 }): void {
   connection.prepare("INSERT INTO admin_operation_log(operation_id, action, actor_id, request_fingerprint, result_json, created_at) VALUES (?, ?, ?, ?, ?, ?)")
     .run(input.operationId, input.action, input.context.actorId, input.requestFingerprint, JSON.stringify(input.result), input.now);
@@ -63,7 +66,13 @@ export function recordAdminOperation(connection: DatabaseSync, input: {
     occurredAt: input.now, actorType: "ADMIN", actorId: input.context.actorId, action: input.action,
     outcome: "SUCCESS", subjectType: "admin_operation", subjectId: input.subjectId ?? input.operationId,
     requestId: input.context.requestId, remoteAddressHash: input.context.remoteAddressHash,
-    details: { operation_id: input.operationId, request_fingerprint: input.requestFingerprint,
-      result_fingerprint: adminFingerprint(input.result), ...(input.membershipFingerprint ? { membership_fingerprint: input.membershipFingerprint } : {}) },
+    ...(input.auditSiteId !== undefined ? { context: auditSiteContext(connection, input.auditSiteId) } : {}),
+    details: {
+      operation_id: input.operationId,
+      request_fingerprint: input.requestFingerprint,
+      result_fingerprint: adminFingerprint(input.result),
+      ...(input.membershipFingerprint ? { membership_fingerprint: input.membershipFingerprint } : {}),
+      ...(input.auditDetails ?? {}),
+    },
   });
 }

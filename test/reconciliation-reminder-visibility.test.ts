@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { describe, it } from "node:test";
 
 import { login, postFinancial, withHttpFixture, type ReconciliationHttpFixture } from "./reconciliation-http-fixture.ts";
+import { configureTestSiteNotifications } from "./site-notification-fixture.ts";
 
 interface ReviewItem { status: string; reminder_ignored: boolean; exception_id?: string; conflict_id?: string; }
 interface ReviewPage { data: ReviewItem[]; page: { next_cursor: string | null }; }
@@ -89,6 +90,156 @@ describe("reconciliation reminder visibility", () => {
       });
     });
   }
+
+  it("does not resurrect an ignored financial exception on reclassification and keeps terminal reminder_ignored false", async () => {
+    await withHttpFixture(async (fixture) => {
+      const auth = await login(fixture.app);
+      const headers = { cookie: auth.cookie };
+      const firstOrder = fixture.createOrder("ignore-reclassify-1", 1_000);
+      const credit = fixture.recordCredit("ignore-reclassify-credit", 1_501, 1);
+      const firstPass = fixture.reconciliation.reconcileEntry(credit.ledgerEntryId, fixture.baseTime + 200);
+      assert.equal(firstPass.kind, "unmatched");
+      if (firstPass.kind !== "unmatched") assert.fail("expected unmatched");
+      const exceptionId = firstPass.exceptionId;
+      assert.equal(fixture.reconciliation.exception(exceptionId)?.exceptionType, "AMOUNT_MISMATCH");
+
+      const ignoreResponse = await postFinancial(fixture.app, "/api/admin/v1/work-items/actions/ignore-selected", auth, {
+        operation_id: randomUUID(),
+        items: [{ type: "FINANCIAL_EXCEPTION", resource_id: exceptionId }],
+      });
+      assert.equal(ignoreResponse.status, 200, await ignoreResponse.clone().text());
+      assert.equal(((await ignoreResponse.json()) as { data: { ignored_count: number } }).data.ignored_count, 1);
+
+      // Close the first order so a naive reclassification would produce UNMATCHED_CREDIT.
+      fixture.closeOrder(firstOrder.orderId);
+      const secondPass = fixture.reconciliation.reconcileEntry(credit.ledgerEntryId, fixture.baseTime + 2_000);
+      assert.equal(secondPass.kind, "unmatched");
+      if (secondPass.kind !== "unmatched") assert.fail("expected unmatched");
+      assert.equal(secondPass.exceptionId, exceptionId);
+      const account = fixture.services.settings.instanceSnapshot().activeProviderAccountKey!;
+      assert.equal(fixture.reconciliation.listOpenExceptions(account).length, 1);
+
+      const summaryAfterResweep = await fixture.app.request("/api/admin/v1/work-items/summary", { headers });
+      assert.equal(summaryAfterResweep.status, 200);
+      assert.equal(((await summaryAfterResweep.json()) as { data: { total: number } }).data.total, 0);
+
+      // A later exact-amount order still auto-settles and resolves the ignored exception cleanly.
+      const exactOrder = fixture.createOrder("ignore-reclassify-exact", 1_500);
+      assert.equal(exactOrder.payableAmountCents, credit.amountCents);
+      const settled = fixture.reconciliation.reconcileEntry(credit.ledgerEntryId, fixture.baseTime + 3_000);
+      assert.equal(settled.kind, "auto_settled");
+
+      const resolvedDetail = await fixture.app.request(`/api/admin/v1/reconciliation/exceptions/${exceptionId}`, { headers });
+      assert.equal(resolvedDetail.status, 200);
+      const resolvedJson = (await resolvedDetail.json()) as { data: { status: string; reminder_ignored: boolean } };
+      assert.equal(resolvedJson.data.status, "RESOLVED");
+      assert.equal(resolvedJson.data.reminder_ignored, false);
+
+      // Verify work_items audit category & safe details.
+      const auditResponse = await fixture.app.request("/api/admin/v1/audit-events?category=reconciliation&action=work_items.ignore_all", { headers });
+      assert.equal(auditResponse.status, 200, await auditResponse.clone().text());
+      const auditEvents = (await auditResponse.json()) as { data: Array<{ event_id: string; action: string; category: string }> };
+      assert.ok(auditEvents.data.length >= 1);
+      assert.equal(auditEvents.data[0]?.category, "reconciliation");
+      const auditDetailRes = await fixture.app.request(`/api/admin/v1/audit-events/core/${auditEvents.data[0]!.event_id}`, { headers });
+      assert.equal(auditDetailRes.status, 200);
+      const auditDetail = (await auditDetailRes.json()) as { data: { details: Record<string, unknown> } };
+      assert.equal(auditDetail.data.details.ignore_scope, "selected");
+      assert.equal(auditDetail.data.details.selected_count, 1);
+      assert.equal(auditDetail.data.details.ignored_count, 1);
+
+      assert.equal(fixture.database.integrityCheck().ok, true);
+    });
+  });
+
+  it("exposes live reminder_ignored on webhook delivery endpoints and clears it after acknowledgement", async () => {
+    await withHttpFixture(async (fixture) => {
+      const siteId = fixture.services.sites.list()[0]!.clientId;
+      configureTestSiteNotifications(fixture.services.sites, siteId, {
+        enabled: true,
+        allowed_origin: "https://merchant.example.com",
+      });
+      const auth = await login(fixture.app);
+      const headers = { cookie: auth.cookie };
+      const order = fixture.createOrder("webhook-reminder-1", 1_200, "https://merchant.example.com/notify");
+      const credit = fixture.recordCredit("webhook-reminder-credit", order.payableAmountCents, 1);
+      const settledAt = Date.now() + 500;
+      assert.equal(fixture.reconciliation.reconcileEntry(credit.ledgerEntryId, settledAt).kind, "auto_settled");
+      fixture.webhooks.materialize(10, settledAt + 100, siteId);
+      const siteRevision = fixture.services.sites.get(siteId)!.revision;
+      const claimed = fixture.webhooks.claimNext({
+        clientId: siteId,
+        siteRevision,
+        now: settledAt + 200,
+        leaseMilliseconds: 30_000,
+        maximumAttempts: 5,
+      });
+      assert.ok(claimed);
+      fixture.webhooks.completeAttempt({
+        deliveryId: claimed.delivery.deliveryId,
+        attemptId: claimed.attempt.attemptId,
+        leaseToken: claimed.attempt.leaseToken,
+        outcome: "RETRYABLE_FAILURE",
+        now: settledAt + 300,
+        maximumAttempts: 5,
+        retryBaseMilliseconds: 10_000,
+        retryMaximumMilliseconds: 60_000,
+        errorCode: "http_status_rejected",
+      });
+      const deliveryId = claimed.delivery.deliveryId;
+
+      const ignoreRes = await postFinancial(fixture.app, "/api/admin/v1/work-items/actions/ignore-selected", auth, {
+        operation_id: randomUUID(),
+        items: [{ type: "NOTIFICATION_FAILURE", resource_id: deliveryId }],
+      });
+      assert.equal(ignoreRes.status, 200, await ignoreRes.clone().text());
+
+      const detailRes = await fixture.app.request(`/api/admin/v1/webhooks/deliveries/${deliveryId}`, { headers });
+      assert.equal(detailRes.status, 200);
+      assert.equal(((await detailRes.json()) as { data: { reminder_ignored: boolean } }).data.reminder_ignored, true);
+
+      const listRes = await fixture.app.request("/api/admin/v1/webhooks/deliveries", { headers });
+      assert.equal(listRes.status, 200);
+      const listData = (await listRes.json()) as { data: Array<{ delivery_id: string; reminder_ignored: boolean }> };
+      assert.equal(listData.data.find((d) => d.delivery_id === deliveryId)?.reminder_ignored, true);
+
+      const orderDelivRes = await fixture.app.request(`/api/admin/v1/orders/${order.orderId}/notifications/deliveries`, { headers });
+      assert.equal(orderDelivRes.status, 200);
+      const orderDelivData = (await orderDelivRes.json()) as { data: Array<{ delivery: { delivery_id: string }; reminder_ignored: boolean }> };
+      assert.equal(orderDelivData.data.find((d) => d.delivery.delivery_id === deliveryId)?.reminder_ignored, true);
+
+      // Acknowledge the retry: reminder_ignored must now be false on all webhook endpoints.
+      const retryClaim = fixture.webhooks.claimNext({
+        clientId: siteId,
+        siteRevision,
+        now: settledAt + 20_000,
+        leaseMilliseconds: 30_000,
+        maximumAttempts: 5,
+      });
+      assert.ok(retryClaim);
+      fixture.webhooks.completeAttempt({
+        deliveryId: retryClaim.delivery.deliveryId,
+        attemptId: retryClaim.attempt.attemptId,
+        leaseToken: retryClaim.attempt.leaseToken,
+        outcome: "ACKNOWLEDGED",
+        httpStatus: 200,
+        responseBytes: 15,
+        responseFingerprint: "b".repeat(64),
+        ackCode: "acknowledged",
+        resolvedAddressesFingerprint: "a".repeat(64),
+        connectedAddress: "203.0.113.10",
+        now: settledAt + 20_100,
+        maximumAttempts: 5,
+        retryBaseMilliseconds: 10_000,
+        retryMaximumMilliseconds: 60_000,
+      });
+
+      const ackDetailRes = await fixture.app.request(`/api/admin/v1/webhooks/deliveries/${deliveryId}`, { headers });
+      assert.equal(ackDetailRes.status, 200);
+      assert.equal(((await ackDetailRes.json()) as { data: { reminder_ignored: boolean } }).data.reminder_ignored, false);
+      assert.equal(fixture.database.integrityCheck().ok, true);
+    });
+  });
 });
 
 function seedExceptions(fixture: ReconciliationHttpFixture, count: number, batch: number): string[] {

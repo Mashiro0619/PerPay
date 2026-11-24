@@ -1764,6 +1764,40 @@ paths:
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/AdminUnauthorized' }
         '403': { $ref: '#/components/responses/FinancialWriteForbidden' }
+        '404': { $ref: '#/components/responses/AdminResourceNotFound' }
+        '409': { $ref: '#/components/responses/AdminOperationConflict' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+  /api/admin/v1/work-items/actions/ignore-selected:
+    post:
+      tags: [System]
+      operationId: ignoreSelectedAdministratorWorkItems
+      summary: "Ignore explicitly selected active reminders without changing underlying records"
+      description: "Ignores only the selected actionable reminders in one idempotent transaction. Underlying evidence, conflicts and notification retries are unchanged. Replaying the same operation UUID returns the original result."
+      x-perpay-requires-same-origin: true
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/AdminOrigin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/IgnoreSelectedWorkItemsRequest' }
+      responses:
+        '200':
+          description: Original selection result, including on replay
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IgnoreSelectedWorkItemsEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '403': { $ref: '#/components/responses/FinancialWriteForbidden' }
+        '404': { $ref: '#/components/responses/AdminResourceNotFound' }
         '409': { $ref: '#/components/responses/AdminOperationConflict' }
         '413': { $ref: '#/components/responses/TooLarge' }
         '415': { $ref: '#/components/responses/UnsupportedMediaType' }
@@ -5684,6 +5718,76 @@ paths:
           $ref: "#/components/responses/UnsupportedMediaType"
         "422":
           $ref: "#/components/responses/ValidationFailed"
+  /api/admin/v1/sites/{clientId}/work-items/actions/ignore-selected:
+    post:
+      tags:
+        - System
+      operationId: siteIgnoreSelectedAdministratorWorkItems
+      summary: "本站：Ignore explicitly selected active reminders without changing underlying records"
+      description: "Ignores only the selected actionable reminders belonging to this site in one idempotent transaction. Underlying evidence and notification retries are unchanged."
+      x-perpay-requires-same-origin: true
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - name: clientId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/AdminOrigin"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - operation_id
+                - items
+              properties:
+                operation_id:
+                  $ref: "#/components/schemas/ResourceId"
+                items:
+                  type: array
+                  minItems: 1
+                  maxItems: 200
+                  items:
+                    $ref: "#/components/schemas/WorkItemTarget"
+      responses:
+        "200":
+          description: Original selection result, including on replay
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IgnoreSelectedWorkItemsEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "403":
+          $ref: "#/components/responses/FinancialWriteForbidden"
+        "404":
+          description: "提醒不存在，或不属于当前业务网站。"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: 请求范围不匹配或提醒已结束
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "413":
+          $ref: "#/components/responses/TooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
   /api/admin/v1/sites/{clientId}/work-items/{type}/{resourceId}/actions/restore:
     post:
       tags:
@@ -8687,6 +8791,44 @@ components:
             ignored_count: { type: integer, minimum: 0 }
             resource_id: { $ref: '#/components/schemas/ResourceId' }
             q: { type: string, maxLength: 100, description: Normalized nonempty keyword recorded for this operation. }
+    WorkItemTarget:
+      type: object
+      additionalProperties: false
+      required: [type, resource_id]
+      properties:
+        type: { type: string, enum: [FINANCIAL_EXCEPTION, LEDGER_CONFLICT, NOTIFICATION_FAILURE] }
+        resource_id: { $ref: '#/components/schemas/ResourceId' }
+    IgnoreSelectedWorkItemsRequest:
+      type: object
+      additionalProperties: false
+      required: [operation_id, items]
+      properties:
+        api_client_id: { type: string, description: "Captured site filter; part of operation idempotency." }
+        operation_id: { $ref: '#/components/schemas/ResourceId' }
+        items:
+          type: array
+          minItems: 1
+          maxItems: 200
+          items: { $ref: '#/components/schemas/WorkItemTarget' }
+    IgnoreSelectedWorkItemsEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [operation_id, type, ignored_count, items]
+          properties:
+            api_client_id: { type: string, description: "Site captured by this selection operation." }
+            operation_id: { $ref: '#/components/schemas/ResourceId' }
+            type: { type: string, enum: [ALL] }
+            ignored_count: { type: integer, minimum: 0 }
+            items:
+              type: array
+              minItems: 1
+              maxItems: 200
+              items: { $ref: '#/components/schemas/WorkItemTarget' }
     RestoreWorkItemEnvelope:
       type: object
       additionalProperties: false
@@ -12295,6 +12437,9 @@ components:
         - type: object
           required: [event, target, is_latest]
           properties:
+            reminder_ignored:
+              type: boolean
+              description: Administrator reminder visibility only; does not change the underlying resource status.
             is_latest:
               type: boolean
               description: Latest delivery for the event and target, independent of pagination. Writes still revalidate eligibility.
@@ -12372,6 +12517,9 @@ components:
       additionalProperties: false
       required: [delivery, event, target, is_latest]
       properties:
+        reminder_ignored:
+          type: boolean
+          description: Administrator reminder visibility only; does not change the underlying resource status.
         redelivery_blocked_reason:
           $ref: '#/components/schemas/WebhookRedeliveryBlockedReason'
         latest_delivery_id:
@@ -12395,6 +12543,9 @@ components:
       additionalProperties: false
       required: [delivery, event, target, attempts, is_latest]
       properties:
+        reminder_ignored:
+          type: boolean
+          description: Administrator reminder visibility only; does not change the underlying resource status.
         redelivery_blocked_reason:
           $ref: '#/components/schemas/WebhookRedeliveryBlockedReason'
         latest_delivery_id:

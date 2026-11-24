@@ -41,7 +41,8 @@ export function assertSiteLedger(db: DatabaseSync, clientId: string | undefined,
 // Register the same controllers at explicit website paths; never dispatch internal HTTP.
 export const SITE_ADMIN_ROUTES = [
     ["GET", "/system/analytics"], ["GET", "/work-items"], ["GET", "/work-items/summary"],
-    ["POST", "/work-items/actions/ignore-all"], ["POST", "/work-items/:type/:resourceId/actions/restore"],
+    ["POST", "/work-items/actions/ignore-all"], ["POST", "/work-items/actions/ignore-selected"],
+    ["POST", "/work-items/:type/:resourceId/actions/restore"],
     ["GET", "/orders"], ["POST", "/orders/export"], ["POST", "/test-payments"],
     ["GET", "/orders/by-merchant-no/:merchantOrderNo"], ["GET", "/orders/:orderId"],
     ["GET", "/orders/:orderId/checkout"], ["GET", "/orders/:orderId/notifications/deliveries"], ["PUT", "/orders/:orderId/refund-mark"],

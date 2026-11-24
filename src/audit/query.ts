@@ -139,7 +139,7 @@ const CORE_CATEGORY = `CASE
   WHEN action LIKE 'admin.%' OR action = 'api.authentication' THEN 'identity'
   WHEN action LIKE 'settings.%' OR action LIKE 'site.%' OR action LIKE 'site_defaults.%' OR action LIKE 'alipay_account.%' OR action LIKE 'api_client.%' THEN 'configuration'
   WHEN action LIKE 'orders.%' OR action LIKE 'order.%' THEN 'orders'
-  WHEN action LIKE 'ledger.%' OR action LIKE 'reconciliation.%' OR action LIKE 'financial.%' THEN 'reconciliation'
+  WHEN action LIKE 'ledger.%' OR action LIKE 'reconciliation.%' OR action LIKE 'financial.%' OR action LIKE 'work_items.%' THEN 'reconciliation'
   WHEN action LIKE 'webhook.%' OR action LIKE 'notification.%' THEN 'notifications'
   WHEN action LIKE 'backup.%' OR action LIKE 'maintenance.%' THEN 'maintenance'
   ELSE 'other' END`;
@@ -234,7 +234,8 @@ const SAFE_DETAIL_KEYS = new Set([
   "reason", "error_code", "stage", "status", "generation", "session_generation", "revision", "settings_revision", "payment_revision", "payment_revision_changed",
   "key_version", "version", "purpose", "field", "enabled", "cidrs", "name", "system_name", "checkout_show_product_name", "checkout_not_found_detail", "dashboard_chart_type", "dashboard_sections", "dashboard_work_items_layout", "summary_cards", "trend", "site_overview", "work_items", "recent_orders", "checkout_help_url", "checkout_help_label", "checkout_show_merchant_order_no", "checkout_show_countdown", "checkout_show_amount_adjustment", "checkout_show_qr_tools", "checkout_show_alipay_launch", "checkout_show_theme_toggle", "checkout_payment_instructions", "checkout_adjustment_hint", "checkout_notice", "checkout_confirmed_detail", "checkout_expired_detail", "checkout_disputed_detail", "checkout_closed_detail",
   "target_version", "previous_version", "create_backup",
-  "operation_id", "financial_operation_id", "reverses_operation_id", "order_id", "order_version", "ledger_entry_id", "payment_match_id", "candidate_id", "conflict_id", "conflict_operation_id", "delivery_id", "redelivery_id", "event_id", "external_event_id", "account_id", "alipay_account_id", "client_id", "site_id", "site_name", "change_id",
+  "operation_id", "financial_operation_id", "reverses_operation_id", "order_id", "order_version", "ledger_entry_id", "payment_match_id", "candidate_id", "conflict_id", "conflict_operation_id", "delivery_id", "redelivery_id", "event_id", "external_event_id", "account_id", "alipay_account_id", "client_id", "api_client_id", "site_id", "site_name", "change_id",
+  "ignore_scope", "type", "resource_id", "ignored_count", "selected_count", "restored",
   "request_fingerprint", "result_fingerprint", "membership_fingerprint", "q_fingerprint", "row_count", "snapshot", "filters", "source", "category", "action", "outcome", "actor_type", "source_address", "created_from", "created_to", "core_sequence", "activity_sequence", "captured_at",
   "revoked_sessions", "revoked_count", "session_id", "current_session_revoked", "conflict_type", "resolution_action", "terminal_status", "suppressed_since_previous",
   "requested_amount_cents", "payable_amount_cents", "received_amount_cents", "amount_cents", "currency", "payment_status", "checkout_status", "operation_type", "replayed",

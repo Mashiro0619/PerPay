@@ -48,13 +48,26 @@ export function countAdminOperationViolations(connection: DatabaseSync): number 
     if (op.action === "work_items.ignore_all") {
       if (result.type !== "ALL" && !Object.hasOwn(resourceTables, String(result.type))) violations += 1;
       if (event || members.some((member) => result.type !== "ALL" && member.kind !== result.type) || details.membership_fingerprint !== adminFingerprint(members)) violations += 1;
-      const hasSite = Object.hasOwn(result, "api_client_id"), hasKeyword = Object.hasOwn(result, "q"), hasResource = Object.hasOwn(result, "resource_id");
+      const hasSite = Object.hasOwn(result, "api_client_id"), hasKeyword = Object.hasOwn(result, "q"), hasResource = Object.hasOwn(result, "resource_id"), hasItems = Object.hasOwn(result, "items");
       if (hasSite && !siteClientIdSchema.safeParse(result.api_client_id).success) violations += 1;
       if (hasKeyword && !isCanonicalKeyword(result.q)) violations += 1;
       if (hasResource && (!adminOperationIdSchema.safeParse(result.resource_id).success || result.type === "ALL" || members.some(member => member.item_id !== result.resource_id))) violations += 1;
+      if (hasItems) {
+        if (hasKeyword || hasResource || result.type !== "ALL" || !isCanonicalWorkItemTargets(result.items)) {
+          violations += 1;
+        } else {
+          const allowed = new Set(result.items.map(item => `${item.type}:${item.resource_id}`));
+          if (members.some(member => !allowed.has(`${member.kind}:${member.item_id}`))) violations += 1;
+        }
+      }
       // Preserve the writer's optional fields and insertion order; legacy records
-      // omitted both filters, and empty normalized keywords are never persisted.
-      const filters = { ...(hasSite ? { api_client_id: result.api_client_id } : {}), ...(hasKeyword ? { q: result.q } : {}), ...(hasResource ? { resource_id: result.resource_id } : {}) };
+      // omitted optional filters, and empty normalized keywords are never persisted.
+      const filters = {
+        ...(hasSite ? { api_client_id: result.api_client_id } : {}),
+        ...(hasKeyword ? { q: result.q } : {}),
+        ...(hasResource ? { resource_id: result.resource_id } : {}),
+        ...(hasItems ? { items: result.items } : {}),
+      };
       expected = { operation_id: op.operation_id, type: result.type, ignored_count: members.length, ...filters };
       request = { type: result.type, ...filters };
     } else if (op.action === "work_items.restore") {
@@ -89,6 +102,22 @@ export function countAdminOperationViolations(connection: DatabaseSync): number 
 function isCanonicalKeyword(value: unknown): value is string {
   if (typeof value !== "string" || value.length === 0) return false;
   try { return normalizeKeyword(value) === value; } catch { return false; }
+}
+function isCanonicalWorkItemTargets(value: unknown): value is readonly { type: string; resource_id: string }[] {
+  if (!Array.isArray(value) || value.length < 1 || value.length > 200) return false;
+  let previousKey = "";
+  for (const item of value) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return false;
+    const keys = Object.keys(item);
+    if (keys.length !== 2 || keys[0] !== "type" || keys[1] !== "resource_id") return false;
+    const { type, resource_id } = item as { type: unknown; resource_id: unknown };
+    if (typeof type !== "string" || !Object.hasOwn(resourceTables, type)) return false;
+    if (typeof resource_id !== "string" || !adminOperationIdSchema.safeParse(resource_id).success) return false;
+    const key = `${type}\0${resource_id}`;
+    if (previousKey && key <= previousKey) return false;
+    previousKey = key;
+  }
+  return true;
 }
 function resourceExists(connection: DatabaseSync, kind: string, id: string): boolean {
   const table = Object.hasOwn(resourceTables, kind) ? resourceTables[kind] : undefined;
