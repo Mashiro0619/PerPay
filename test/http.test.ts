@@ -1586,8 +1586,9 @@ describe("order HTTP contract", () => {
       assert.match(checkoutHtml, /data-payable-amount[^>]*>¥10\.01<\/strong>/);
       assert.ok(checkoutHtml.includes(WEB_ASSET_URLS.checkoutStylesheet));
       assert.match(checkoutHtml, /\/api\/public\/v1\/checkouts\/[^" ]+\/qr\.svg/);
+      assert.match(checkoutHtml, /<meta name="text-scale" content="scale">/);
       assert.equal(checkoutHtml.includes(collectionCodePayload), false);
-      assert.doesNotMatch(checkoutHtml, /<script(?![^>]*\bsrc=)[^>]*>/i);
+      assert.doesNotMatch(checkoutHtml, /<script(?![^>]*\b(?:src|nonce)=)[^>]*>/i);
       assert.doesNotMatch(checkoutHtml, /\sstyle=/i);
 
       const qrTarget = `/api/public/v1/checkouts/${createdBody.data.checkout.token}/qr.svg`;

@@ -2,13 +2,29 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 const css = readFileSync(resolve(process.cwd(), "web/src/styles/theme.css"), "utf8");
-function variables(selector: string) {
-  const content = css.slice(css.indexOf(selector + " {")).split("}")[0]!;
+function rawVariables(selector: string) {
+  const index = css.indexOf(selector + " {");
+  if (index === -1) throw new Error("Selector not found: " + selector);
+  const content = css.slice(index + selector.length + 2).split("}")[0]!;
   return Object.fromEntries(
     [...content.matchAll(/--([\w-]+):\s*([^;]+);/g)].map((match) => [
       match[1]!,
       match[2]!,
     ]),
+  );
+}
+const rootRaw = rawVariables(":root");
+function variables(selector: string) {
+  const raw = rawVariables(selector);
+  const merged = { ...rootRaw, ...raw };
+  const resolveToken = (value: string, depth = 0): string => {
+    if (depth > 4) return value;
+    const ref = /^var\(--([\w-]+)\)$/.exec(value.trim());
+    if (ref && ref[1] && ref[1] in merged) return resolveToken(merged[ref[1]]!, depth + 1);
+    return value;
+  };
+  return Object.fromEntries(
+    Object.entries(raw).map(([key, value]) => [key, key === "sidebar-ring" ? value : resolveToken(value)]),
   );
 }
 function luminance(color: string) {
@@ -67,7 +83,9 @@ describe("official Neutral theme", () => {
         ).toBeGreaterThanOrEqual(4.5);
       },
     );
-  it("provides system dark mode before JavaScript without palette overrides", () => {
+  it("provides system dark mode via color-scheme, light-dark(), and no-JS fallback without palette overrides", () => {
+    expect(css).toContain("color-scheme: light dark;");
+    expect(css).toContain("@supports (color: light-dark(white, black))");
     expect(css).toContain(":root:not([data-theme])");
     expect(css).toContain("@media (prefers-color-scheme: dark)");
     expect(css).not.toMatch(/data-palette|perpay:palette|status-refund/);

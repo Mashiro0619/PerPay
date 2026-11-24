@@ -31,7 +31,7 @@ import themeSource from "../public/theme.js?raw";
 
 function theme() {
   const browser = {
-    localStorage: { getItem: () => null, setItem: vi.fn() },
+    localStorage: { getItem: () => null, setItem: vi.fn(), removeItem: vi.fn() },
     matchMedia: () => ({ matches: false, addEventListener: vi.fn() }),
     addEventListener: vi.fn(),
     perpayTheme: undefined as Window["perpayTheme"],

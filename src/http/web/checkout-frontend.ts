@@ -77,6 +77,7 @@ export function loadCheckoutFrontend() {
     script,
     styles,
     theme: themeUrl,
+    themeInline: theme.toString("utf8").trim(),
     render(initial: CheckoutInitial) {
       renderer ??= (
         require(

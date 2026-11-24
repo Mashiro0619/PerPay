@@ -7,7 +7,7 @@ import source from "../public/theme.js?raw";
 function boot(stored: string | null = null, dark = false, blocked = false) {
   document.head.insertAdjacentHTML(
     "beforeend",
-    '<meta name="theme-color" content="#ffffff">',
+    '<meta name="color-scheme" content="light dark"><meta name="theme-color" content="#ffffff">',
   );
   let changed = () => {};
   let storageChanged = (_e: {
@@ -26,6 +26,9 @@ function boot(stored: string | null = null, dark = false, blocked = false) {
       return stored;
     }),
     setItem: vi.fn(() => {
+      if (blocked) throw new Error("blocked");
+    }),
+    removeItem: vi.fn(() => {
       if (blocked) throw new Error("blocked");
     }),
   };
@@ -52,7 +55,7 @@ function boot(stored: string | null = null, dark = false, blocked = false) {
 }
 afterEach(() => {
   document
-    .querySelectorAll('meta[name="theme-color"]')
+    .querySelectorAll('meta[name="theme-color"], meta[name="color-scheme"]')
     .forEach((e) => e.remove());
   document.documentElement.classList.remove("dark");
   delete document.documentElement.dataset.theme;
@@ -64,7 +67,11 @@ describe("official neutral appearance", () => {
     const { theme, system, storage } = boot(null, true);
     expect(theme.getPreference()).toBe("system");
     expect(document.documentElement).toHaveClass("dark");
-    expect(document.documentElement.style.colorScheme).toBe("dark");
+    expect(document.documentElement.style.colorScheme).toBe("light dark");
+    expect(document.querySelector('meta[name="color-scheme"]')).toHaveAttribute(
+      "content",
+      "light dark",
+    );
     expect(document.querySelector('meta[name="theme-color"]')).toHaveAttribute(
       "content",
       "#0a0a0a",
@@ -112,20 +119,24 @@ describe("official neutral appearance", () => {
     theme.setPreference("bad" as "dark");
     expect(theme.getPreference()).toBe("light");
   });
-  it("uses the official accessible theme menu and restores trigger focus", async () => {
-    const { theme } = boot();
+  it("uses the official accessible theme menu, removes stored key on system, and shows resolved OS theme", async () => {
+    const { theme, storage } = boot();
     window.perpayTheme = theme;
     render(<ThemeControl />);
     const trigger = screen.getByRole("button", { name: /外观/ });
     const user = userEvent.setup();
     trigger.focus();
     await user.keyboard("{ArrowDown}");
+    expect(await screen.findByRole("menuitemradio", { name: "跟随系统（当前浅色）" })).toBeInTheDocument();
     await user.click(
       await screen.findByRole("menuitemradio", { name: "深色" }),
     );
     expect(theme.getPreference()).toBe("dark");
+    expect(document.querySelector('meta[name="color-scheme"]')).toHaveAttribute("content", "dark");
     expect(screen.queryByText("青竹")).not.toBeInTheDocument();
     act(() => theme.setPreference("system"));
+    expect(storage.removeItem).toHaveBeenCalledWith("perpay:theme");
+    expect(document.querySelector('meta[name="color-scheme"]')).toHaveAttribute("content", "light dark");
     expect(trigger).toHaveAccessibleName(/跟随系统/);
   });
 });

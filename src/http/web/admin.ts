@@ -10,6 +10,7 @@ export interface AdminFrontend {
 }
 
 const CSP_NONCE_MARKER = "__PERPAY_CSP_NONCE__";
+const THEME_SCRIPT_MARKER = "__PERPAY_THEME_SCRIPT__";
 
 function escapeHtmlAttribute(value: string): string {
   return value
@@ -28,9 +29,11 @@ export function loadAdminFrontend(root = new URL("../../../web-dist/admin/", imp
     if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
     throw error;
   }
-  // Stamp nonce placeholders only on static build-time Vite script/modulepreload tags
-  // before any runtime values (such as systemName) are ever interpolated.
+  const themeInline = readFileSync(new URL("theme.js", root), "utf8").trim();
+  // Reserve the static theme.js slot and stamp nonce placeholders only on build-time Vite
+  // script/modulepreload tags before any runtime values (such as systemName) are interpolated.
   const preparedTemplate = template
+    .replace('<script src="/admin/theme.js"></script>', THEME_SCRIPT_MARKER)
     .replaceAll("<script ", `<script nonce="${CSP_NONCE_MARKER}" `)
     .replaceAll('<link rel="modulepreload" ', `<link rel="modulepreload" nonce="${CSP_NONCE_MARKER}" `);
   const assets = new Map<string, WebAsset>();
@@ -52,6 +55,11 @@ export function loadAdminFrontend(root = new URL("../../../web-dist/admin/", imp
   }
   return {
     render: (initialized, systemName = DEFAULT_SYSTEM_NAME, setupTokenEnabled = false, cspNonce) => preparedTemplate
+      .replace(THEME_SCRIPT_MARKER, () =>
+        cspNonce
+          ? `<script nonce="${escapeHtmlAttribute(cspNonce)}">${themeInline}</script>`
+          : '<script src="/admin/theme.js"></script>',
+      )
       .replaceAll(` nonce="${CSP_NONCE_MARKER}"`, () => (cspNonce ? ` nonce="${escapeHtmlAttribute(cspNonce)}"` : ""))
       .replace("__PERPAY_INITIALIZED__", String(initialized))
       .replace("__PERPAY_SETUP_TOKEN_REQUIRED__", String(!initialized && setupTokenEnabled))

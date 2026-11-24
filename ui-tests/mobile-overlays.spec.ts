@@ -174,7 +174,7 @@ test.describe("mobile overlay regression with synthetic visible viewport", () =>
     const appearanceTrigger = actions.getByRole("menuitem", { name: /^外观/ });
     const appearance = await scrollTo(appearanceTrigger, page);
     await appearanceTrigger.click();
-    const system = page.getByRole("menuitemradio", { name: "跟随系统", exact: true });
+    const system = page.getByRole("menuitemradio", { name: /^跟随系统/ });
     const systemTarget = await scrollTo(system, page);
     await record(page, info, { evidence: "browser synthetic visualViewport", area: panned, navigationClose, refreshTarget, appearance, systemTarget });
     await page.keyboard.press("Escape");

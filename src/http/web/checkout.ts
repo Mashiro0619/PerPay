@@ -136,14 +136,14 @@ export function renderCheckoutPage(input: CheckoutPageInput): string {
       : checkoutCopy[initialCheckoutState(initial)].heading;
   const title = titleSubject + " | " + initial.systemName + " 收银台";
   const nonceAttr = input.cspNonce ? ' nonce="' + escapeHtml(input.cspNonce) + '"' : "";
+  const themeTag = input.cspNonce
+    ? '<script' + nonceAttr + '>' + checkoutFrontend.themeInline + '</script>'
+    : '<script src="' + checkoutFrontend.theme + '"></script>';
   return (
-    '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="color-scheme" content="light dark"><meta name="theme-color" content="#ffffff"><meta name="robots" content="noindex, nofollow, noarchive"><title>' +
+    '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="text-scale" content="scale"><meta name="color-scheme" content="light dark"><meta name="theme-color" content="#ffffff"><meta name="robots" content="noindex, nofollow, noarchive"><title>' +
     escapeHtml(title) +
-    '</title><script' +
-    nonceAttr +
-    ' src="' +
-    checkoutFrontend.theme +
-    '"></script>' +
+    '</title>' +
+    themeTag +
     checkoutFrontend.styles
       .map((href) => '<link rel="stylesheet" href="' + href + '">')
       .join("") +
@@ -207,6 +207,7 @@ export function renderCheckoutRejection(status: 404 | 429, cspNonce: string): st
   const detail = status === 404 ? "付款链接可能已失效或不完整，请向商家获取新的付款链接。" : "请等待片刻后手动重新加载。若仍受限，请稍后再试。";
   return '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">' +
     '<meta name="viewport" content="width=device-width, initial-scale=1">' +
+    '<meta name="text-scale" content="scale"><meta name="color-scheme" content="light dark">' +
     '<title>' + message + '</title><style nonce="' + escapeHtml(cspNonce) + '">' +
     ':root{color-scheme:light dark;font-family:system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;background:#fff;color:#171717;--muted:#525252;--border:#d4d4d4;--focus:#525252}' +
     '*{box-sizing:border-box}body{margin:0;min-width:320px;min-height:100svh;display:grid;place-items:center;padding:24px}' +

@@ -16,6 +16,7 @@ declare global {
   interface Window {
     perpayTheme?: {
       getPreference: () => ThemePreference;
+      getSystemTheme?: () => "light" | "dark";
       setPreference: (value: ThemePreference) => void;
       subscribe: (listener: () => void) => () => void;
     };
@@ -24,6 +25,7 @@ declare global {
 const subscribe = (listener: () => void) =>
   window.perpayTheme?.subscribe(listener) ?? (() => undefined);
 const getPreference = () => window.perpayTheme?.getPreference() ?? "system";
+const getSystemTheme = () => window.perpayTheme?.getSystemTheme?.() ?? "light";
 const modes = [
   { value: "light", label: "浅色", icon: Sun },
   { value: "dark", label: "深色", icon: Moon },
@@ -35,9 +37,15 @@ export function ThemeControl({ className, submenu = false }: { className?: strin
     getPreference,
     () => "system",
   );
+  const systemTheme = useSyncExternalStore(
+    subscribe,
+    getSystemTheme,
+    () => "light",
+  );
+  const systemHint = systemTheme === "dark" ? "当前深色" : "当前浅色";
   const Icon = modes.find((mode) => mode.value === preference)?.icon ?? Monitor;
   const choices = <DropdownMenuRadioGroup value={preference} onValueChange={(value) => window.perpayTheme?.setPreference(value as ThemePreference)}>
-    {modes.map((mode) => <DropdownMenuRadioItem key={mode.value} value={mode.value} closeOnClick={submenu}><mode.icon />{mode.label}</DropdownMenuRadioItem>)}
+    {modes.map((mode) => <DropdownMenuRadioItem key={mode.value} value={mode.value} closeOnClick={submenu}><mode.icon />{mode.value === "system" ? `${mode.label}（${systemHint}）` : mode.label}</DropdownMenuRadioItem>)}
   </DropdownMenuRadioGroup>;
   if (submenu) return <DropdownMenuSub>
     <DropdownMenuSubTrigger aria-label={"外观，当前" + modes.find((mode) => mode.value === preference)?.label}><Icon />外观</DropdownMenuSubTrigger>
