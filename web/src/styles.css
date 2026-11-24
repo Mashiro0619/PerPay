@@ -2745,7 +2745,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
     top: var(--overlay-viewport-top, 0px);
     right: 0;
     left: auto;
-    width: min(36rem, var(--overlay-viewport-width, 100dvw));
+    width: min(36rem, var(--overlay-viewport-width, 100%), 100%);
     max-width: none;
     height: var(--overlay-viewport-height, 100dvh);
     max-height: none;
@@ -2754,7 +2754,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
     box-shadow: -1px 0 0 var(--border), -16px 0 40px rgb(0 0 0 / 0.12);
   }
   [data-overlay-content][data-overlay-viewport="dialog"][data-overlay-presentation="drawer"][data-overlay-size="lg"] {
-    width: min(44rem, var(--overlay-viewport-width, 100dvw));
+    width: min(44rem, var(--overlay-viewport-width, 100%), 100%);
     max-width: none;
   }
   @media (prefers-reduced-motion: no-preference) {
@@ -2950,6 +2950,29 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   /* Keep the close touch slot separate from adjacent scrolling controls. */
   [data-overlay-viewport="sheet"]:has(> :is([data-list-filter-scroll], [data-list-display-scroll], [data-header-mobile-actions])) > [data-slot="sheet-header"] { min-height: 68px; }
 }
+@media (max-height: 360px) {
+  /* Preserve scrolling body and toast docking space on short landscape viewports and high text zoom. */
+  [data-overlay-viewport="sheet"]:has(> :is([data-list-filter-scroll], [data-list-display-scroll])) {
+    max-height: var(--overlay-viewport-height, 100dvh);
+  }
+  [data-overlay-viewport="sheet"]:has(> :is([data-list-filter-scroll], [data-list-display-scroll])) > [data-slot="sheet-close"] {
+    top: 8px;
+  }
+  [data-overlay-viewport="sheet"]:has(> :is([data-list-filter-scroll], [data-list-display-scroll])) > [data-slot="sheet-header"] {
+    min-height: calc(max(2rem, 44px) + 20px);
+    padding-block: 8px;
+  }
+  [data-overlay-viewport="sheet"]:has(> :is([data-list-filter-scroll], [data-list-display-scroll])) [data-slot="sheet-footer"] {
+    padding-top: 8px;
+    padding-bottom: max(10px, env(safe-area-inset-bottom));
+  }
+  [data-slot="alert-dialog-content"] {
+    max-height: calc(var(--overlay-viewport-height, 100dvh) - 0.5rem);
+  }
+  [data-slot="alert-dialog-content"] [data-slot="alert-dialog-footer"] {
+    padding-block: 0.5rem;
+  }
+}
 [data-overlay-viewport="sheet"] {
   min-width: 0;
   max-height: calc(var(--overlay-viewport-height, 100dvh) - 1rem);
@@ -3100,6 +3123,13 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   [data-overlay-content] [data-overlay-step-bar] { min-height: 44px; }
   [data-overlay-content] [data-overlay-primary] > [data-slot="dialog-header"] :is([data-page-header-actions] button, [data-overlay-record-pager] button, [data-slot="dialog-close"]),
   [data-overlay-content] [data-overlay-step-bar] [data-slot="dialog-close"] { min-width: 44px; min-height: 44px; margin: 0; }
+  [data-overlay-content] [data-overlay-primary] > [data-slot="dialog-header"] [data-slot="dialog-close"]::before,
+  [data-overlay-content] [data-overlay-step-bar] [data-slot="dialog-close"]::before {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    border-radius: 0;
+  }
   [data-overlay-footer] :is(button, a) { min-height: 44px; }
 }
 
