@@ -207,19 +207,26 @@ export function createCheckoutController(initial: CheckoutInitial) {
     active = controller;
     const request = ++generation;
     const start = mono();
-    const signal = AbortSignal.any([
-      controller.signal,
-      AbortSignal.timeout(10000),
-    ]);
+    let timedOut = false;
+    const isTimeoutError = (reason: unknown): boolean =>
+      typeof reason === "object" &&
+      reason !== null &&
+      "name" in reason &&
+      (reason as { name?: unknown }).name === "TimeoutError";
     const current = () =>
-      alive && generation === request && !signal.aborted;
+      alive && generation === request && !controller.signal.aborted;
     if (manual) {
       manualTracking = checking;
       manualDeadline = mono() + 30000;
       emit({ busy: true, feedback: checking ? "正在查询付款结果…" : "" });
     }
     const task = (async () => {
+    let timeout: ReturnType<typeof setTimeout> | undefined;
     try {
+      timeout = setTimeout(() => {
+        timedOut = true;
+        controller.abort(new DOMException("刷新超时", "TimeoutError"));
+      }, 10000);
       const requestInit: RequestInit & { priority?: "high" | "low" | "auto" } = {
         method: checking ? "POST" : "GET",
         headers: {
@@ -231,9 +238,10 @@ export function createCheckoutController(initial: CheckoutInitial) {
         cache: "no-store",
         credentials: "same-origin",
         redirect: "error",
-        signal,
+        signal: controller.signal,
       };
       const response = await fetch(target, requestInit);
+      if (timedOut) throw controller.signal.reason ?? new DOMException("刷新超时", "TimeoutError");
       if (!current()) return;
       if (!response.ok) {
         if (state.busy || manualTracking) {
@@ -295,6 +303,7 @@ export function createCheckoutController(initial: CheckoutInitial) {
         return;
       }
       const payload = await response.json();
+      if (timedOut) throw controller.signal.reason ?? new DOMException("刷新超时", "TimeoutError");
       if (!current()) return;
       const order = parseCheckoutPayload(payload, initial.internalReturnUrl);
       const date = Date.parse(response.headers.get("date") ?? "");
@@ -348,15 +357,14 @@ export function createCheckoutController(initial: CheckoutInitial) {
       updateClock();
       schedule(interval());
     } catch (error) {
-      const timedOut =
-        (signal.aborted &&
-          signal.reason instanceof DOMException &&
-          signal.reason.name === "TimeoutError") ||
-        (error instanceof DOMException && error.name === "TimeoutError");
+      const wasTimedOut =
+        timedOut ||
+        (controller.signal.aborted && isTimeoutError(controller.signal.reason)) ||
+        isTimeoutError(error);
       if (
         !alive ||
         request !== generation ||
-        (controller.signal.aborted && !timedOut)
+        (controller.signal.aborted && !wasTimedOut)
       )
         return;
       failures++;
@@ -372,12 +380,13 @@ export function createCheckoutController(initial: CheckoutInitial) {
         });
       }
       emit({
-        message: timedOut
+        message: wasTimedOut
           ? "刷新超时，页面会自动重试。"
           : "订单状态暂时无法刷新，当前显示的是上次获取的结果。",
       });
       schedule(Math.min(30000, 1000 * 2 ** Math.min(failures, 5)));
     } finally {
+      if (timeout !== undefined) clearTimeout(timeout);
       if (active === controller) {
         active = undefined;
         inflight = undefined;

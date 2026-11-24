@@ -415,30 +415,6 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     await next();
   });
 
-  // Pre-auth Fetch Metadata resource isolation for browser-targeted admin & public checkout APIs.
-  // Cross-site merchant/Epay endpoints (/submit.php, /mapi.php, /api.php, /api/pay/*, /api/v1/*)
-  // are intentionally excluded.
-  const enforceFetchMetadata: MiddlewareHandler<AppEnvironment> = async (context, next) => {
-    context.header("vary", "Sec-Fetch-Dest, Sec-Fetch-Mode, Sec-Fetch-Site");
-    const fetchSite = context.req.header("sec-fetch-site");
-    if (fetchSite !== undefined && fetchSite !== "same-origin" && fetchSite !== "none") {
-      const mode = context.req.header("sec-fetch-mode");
-      const dest = context.req.header("sec-fetch-dest");
-      const isCheckoutReturnNav =
-        context.req.method === "GET" &&
-        mode === "navigate" &&
-        dest !== "object" &&
-        dest !== "embed" &&
-        /^\/api\/public\/v1\/checkouts\/[^/]+\/return$/.test(context.req.path);
-      if (!isCheckoutReturnNav) {
-        throw new HttpApiError(403, "origin_not_allowed", "请求来源不受信任");
-      }
-    }
-    await next();
-  };
-  app.use("/api/admin/v1/*", enforceFetchMetadata);
-  app.use("/api/public/v1/checkouts/*", enforceFetchMetadata);
-
   app.post("/api/public/v1/csp-report", async (context) => {
     const sourceAddress = remoteAddress(context, dependencies.config.trustedProxy);
     if (!cspReportBudget.take(sourceAddress)) {
@@ -449,8 +425,13 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
   });
 
   app.use("*", async (context, next) => {
-    const response = dependencies.maintenance?.response(context.req.raw,
-      remoteAddress(context, dependencies.config.trustedProxy), dependencies.config.secureCookies, adminFrontend);
+    const response = dependencies.maintenance?.response(
+      context.req.raw,
+      remoteAddress(context, dependencies.config.trustedProxy),
+      dependencies.config.secureCookies,
+      adminFrontend,
+      context.get("cspNonce"),
+    );
     if (response) return context.newResponse(response.body, response);
     await next();
   });
@@ -483,6 +464,30 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     }
     await next();
   });
+
+  // Pre-auth Fetch Metadata resource isolation for browser-targeted admin & public checkout APIs.
+  // Cross-site merchant/Epay endpoints (/submit.php, /mapi.php, /api.php, /api/pay/*, /api/v1/*)
+  // are intentionally excluded. Placed after httpActivityMiddleware and admin IP allowlist so
+  // rejections are audited and blocked IPs still receive admin_ip_not_allowed first.
+  const enforceFetchMetadata: MiddlewareHandler<AppEnvironment> = async (context, next) => {
+    context.header("vary", "Sec-Fetch-Dest, Sec-Fetch-Mode, Sec-Fetch-Site");
+    const fetchSite = context.req.header("sec-fetch-site");
+    if (fetchSite !== undefined && fetchSite !== "same-origin" && fetchSite !== "none") {
+      const mode = context.req.header("sec-fetch-mode");
+      const dest = context.req.header("sec-fetch-dest");
+      const isCheckoutReturnNav =
+        context.req.method === "GET" &&
+        mode === "navigate" &&
+        dest === "document" &&
+        /^\/api\/public\/v1\/checkouts\/[^/]+\/return$/.test(context.req.path);
+      if (!isCheckoutReturnNav) {
+        throw new HttpApiError(403, "origin_not_allowed", "请求来源不受信任");
+      }
+    }
+    await next();
+  };
+  app.use("/api/admin/v1/*", enforceFetchMetadata);
+  app.use("/api/public/v1/checkouts/*", enforceFetchMetadata);
 
   app.get("/healthz", (context) => {
     const database = dependencies.database.probeHealth();
@@ -571,7 +576,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     if (path.startsWith("/admin/assets/") || /\.[^/]+$/.test(path)) {
       throw new HttpApiError(404, "asset_not_found", "静态资源不存在");
     }
-    context.header("cache-control", "no-cache");
+    context.header("cache-control", "no-store");
     return context.html(adminFrontend.render(dependencies.identity.isInitialized(), publicSystemName(dependencies), dependencies.config.setupTokenEnabled, context.get("cspNonce")).replace("<html", dependencies.demoMode ? '<html data-perpay-demo="readonly"' : "<html"));
   };
   app.get("/admin", (context) => context.redirect("/admin/" + new URL(context.req.url).search, 308));
@@ -633,7 +638,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
       }
     }
     if (initialError) { const auditScope = currentAuditContext(); if (auditScope) auditScope.errorCode = initialError.code; }
-    if (status === 200) context.header("cache-control", "no-cache");
+    if (status === 200) context.header("cache-control", "private, no-cache");
     return context.html(renderCheckoutPage({
         serverTime: dependencies.clock?.() ?? Date.now(),
         demoMode: dependencies.demoMode ?? false,
@@ -2701,7 +2706,7 @@ function setAuthenticationCookies(
 }
 
 function clearAuthenticationCookies(context: Context<AppEnvironment>, secure: boolean): void {
-  context.header("clear-site-data", '"cookies", "storage", "cache"');
+  context.header("clear-site-data", '"cookies", "cache"');
   deleteCookie(context, sessionCookieName(secure), {
     path: "/",
     secure,

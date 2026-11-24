@@ -75,10 +75,28 @@ export class MaintenanceController {
   }
 
   /** Only the initiating session can use this read-only view while writers are stopped. */
-  response(request: Request, address: string, secureCookies: boolean, frontend: AdminFrontend | null): Response | null {
+  response(
+    request: Request,
+    address: string,
+    secureCookies: boolean,
+    frontend: AdminFrontend | null,
+    cspNonce?: string,
+  ): Response | null {
     const path = new URL(request.url).pathname;
     const receipt = this.#latest?.result?.requires_login === true;
     if (!this.#paused && !receipt) return null;
+    const fetchSite = request.headers.get("sec-fetch-site");
+    if (
+      path.startsWith("/api/admin/v1/") &&
+      fetchSite !== null &&
+      fetchSite !== "same-origin" &&
+      fetchSite !== "none"
+    ) {
+      return Response.json(
+        { error: { code: "origin_not_allowed", message: "请求来源不受信任" } },
+        { status: 403, headers: { "cache-control": "no-store", vary: "Sec-Fetch-Dest, Sec-Fetch-Mode, Sec-Fetch-Site" } },
+      );
+    }
     const observer = this.#observer;
     const cookie = secureCookies ? "__Host-perpay_session" : "perpay_session";
     const token = request.headers.get("cookie")?.split(";").map(value => value.trim()).find(value => value.startsWith(cookie + "="))?.slice(cookie.length + 1);
@@ -98,7 +116,11 @@ export class MaintenanceController {
       if (this.#paused && frontend) {
         const asset = frontend.assets.get(path);
         if (asset) return new Response(asset.body, { headers: { "content-type": asset.contentType, "etag": asset.etag } });
-        if (path === "/admin" || path.startsWith("/admin/")) return new Response(frontend.render(true), { headers: { "content-type": "text/html; charset=utf-8" } });
+        if (path === "/admin" || path.startsWith("/admin/")) {
+          return new Response(frontend.render(true, undefined, false, cspNonce), {
+            headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" },
+          });
+        }
       }
     }
     if (!this.#paused) return null;

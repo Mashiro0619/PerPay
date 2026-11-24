@@ -28,7 +28,10 @@ export function isSameOriginUrl(candidate: string | URL, base?: string): boolean
     const OriginApi = nativeOriginApi();
     if (OriginApi) {
       const targetOrigin = OriginApi.from(targetUrl);
-      const currentOrigin = base ? OriginApi.from(resolvedBase) : OriginApi.from(self);
+      const currentOrigin =
+        base || typeof self === "undefined"
+          ? OriginApi.from(resolvedBase)
+          : OriginApi.from(self);
       return !targetOrigin.opaque && !currentOrigin.opaque && targetOrigin.isSameOrigin(currentOrigin);
     }
     const currentUrl = new URL(resolvedBase);

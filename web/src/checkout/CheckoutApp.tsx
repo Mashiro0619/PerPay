@@ -5,7 +5,7 @@ import {
 } from "../../../src/shared/checkout-display";
 import { alipayQrLaunchUrl } from "../../../src/shared/collection-code";
 import { cn } from "cn";
-import { lazy, Suspense, useEffect, useRef, useState, useSyncExternalStore, type MouseEvent } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type MouseEvent } from "react";
 import {
   AlertCircle,
   ArrowLeft,
@@ -51,7 +51,7 @@ import { useQrDownload } from "./use-qr-download";
 import { AlipayLogo } from "./AlipayLogo";
 import "./checkout-layout.css";
 
-const CheckoutQrDialog = lazy(() => import("./CheckoutQrDialog"));
+import CheckoutQrDialog from "./CheckoutQrDialog";
 
 export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
   const [controller] = useState(() => createCheckoutController(initial));
@@ -847,20 +847,18 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                               放大二维码
                             </Button>
                             {expanded && (
-                              <Suspense fallback={null}>
-                                <CheckoutQrDialog
-                                  open={expanded}
-                                  onOpenChange={setExpanded}
-                                  qrSource={qrSource}
-                                  formattedAmount={formattedAmount}
-                                  amountIntegerDigits={amountIntegerDigits}
-                                  finalFocus={qrExpandButton}
-                                  onImageError={() => {
-                                    setQrFailed(true);
-                                    setExpanded(false);
-                                  }}
-                                />
-                              </Suspense>
+                              <CheckoutQrDialog
+                                open={expanded}
+                                onOpenChange={setExpanded}
+                                qrSource={qrSource}
+                                formattedAmount={formattedAmount}
+                                amountIntegerDigits={amountIntegerDigits}
+                                finalFocus={qrExpandButton}
+                                onImageError={() => {
+                                  setQrFailed(true);
+                                  setExpanded(false);
+                                }}
+                              />
                             )}
                             <Button
                               variant="ghost"

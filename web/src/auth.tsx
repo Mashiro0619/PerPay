@@ -50,6 +50,7 @@ export function AuthBoundary({ children }: { children: ReactNode }) {
       setResetOverlay(true);
     }
     clearOnboardingDeferrals();
+    try { window.sessionStorage.clear(); } catch {}
     invalidateSessionRequests();
     void queryClient.cancelQueries();
     queryClient.removeQueries({
@@ -59,9 +60,18 @@ export function AuthBoundary({ children }: { children: ReactNode }) {
     queryClient.setQueryData(sessionKey, null);
   };
   useEffect(() => {
+    const onPageShow = (event: PageTransitionEvent) => {
+      if (event.persisted && authenticated.current) {
+        void session.refetch();
+      }
+    };
     window.addEventListener("perpay:session-expired", forget);
-    return () => window.removeEventListener("perpay:session-expired", forget);
-  }, []);
+    window.addEventListener("pageshow", onPageShow);
+    return () => {
+      window.removeEventListener("perpay:session-expired", forget);
+      window.removeEventListener("pageshow", onPageShow);
+    };
+  }, [session.refetch]);
   const rejected =
     restoreSessionHold === null &&
     session.error instanceof ApiError &&

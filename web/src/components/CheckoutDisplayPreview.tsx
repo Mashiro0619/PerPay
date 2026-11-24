@@ -561,13 +561,12 @@ export function CheckoutDisplayPreview({
                     </span>
                     <span
                       className={cn(
-                        "inline-flex min-w-0 items-center gap-1.5 font-mono text-[0.6875rem] text-foreground",
-                        !useTwoColumns && "justify-end",
+                        "min-w-0 font-medium tabular-nums break-all text-[0.6875rem] text-foreground",
+                        !useTwoColumns && "text-right",
                       )}
                       data-preview-order-no
                     >
-                      <span className="truncate">{SAMPLE_ORDER_NO}</span>
-                      <Copy className="size-3 shrink-0 text-muted-foreground" aria-hidden="true" />
+                      {SAMPLE_ORDER_NO}
                     </span>
                   </span>
                 </PreviewHotspot>

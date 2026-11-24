@@ -391,7 +391,7 @@ it("escapes public names and reads anonymous branding without decrypting secrets
       for (const path of ["/admin/", "/admin/login", "/admin/setup"]) {
         const response = await app.request(path);
         assert.equal(response.status, 200);
-        assert.equal(response.headers.get("cache-control"), "no-cache");
+        assert.equal(response.headers.get("cache-control"), "no-store");
         const html = await response.text();
         assert.ok(html.includes('name="perpay-system-name" content="&quot;/&gt;&lt;script&gt;x&lt;/script&gt;&amp; $&amp;"'));
         assert.ok(!html.includes("<script>x</script>") && !html.includes("__PERPAY_SYSTEM_NAME__"));

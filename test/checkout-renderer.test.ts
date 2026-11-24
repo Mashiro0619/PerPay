@@ -87,6 +87,21 @@ describe("public checkout SSR", () => {
     );
     assert.equal((html.match(/data-payable-amount/g) ?? []).length, 1);
     assert.match(html, /name="color-scheme" content="light dark"/);
+    assert.match(html, /<link rel="preload" as="image" href="\/api\/public\/v1\/checkouts\/pct1_test-token\/qr\.svg" fetchpriority="high">/);
+
+    const noncedHtml = renderCheckoutPage({
+      checkoutToken: "pct1_test-token",
+      checkout,
+      qrImageUrl: "/api/public/v1/checkouts/pct1_test-token/qr.svg",
+      initialError: null,
+      cspNonce: "testNonce1234567890",
+    });
+    const noncedScripts = [...noncedHtml.matchAll(/<script\b([^>]*)>/gi)];
+    assert.ok(noncedScripts.length >= 2);
+    for (const tag of noncedScripts) {
+      assert.ok((tag[1] ?? "").includes('nonce="testNonce1234567890"'));
+    }
+    assert.match(noncedHtml, /<script nonce="testNonce1234567890">[^<]*perpay:theme/);
   });
   it("renders a compact summary without exposing or reserving the hidden product name", () => {
     const html = renderCheckoutPage({

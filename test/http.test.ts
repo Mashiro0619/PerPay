@@ -1576,20 +1576,45 @@ describe("order HTTP contract", () => {
       );
       assert.equal(checkoutPage.status, 200);
       assert.match(checkoutPage.headers.get("content-type") ?? "", /^text\/html/);
-      assert.equal(checkoutPage.headers.get("cache-control"), "no-cache");
+      assert.equal(checkoutPage.headers.get("cache-control"), "private, no-cache");
       assert.equal(checkoutPage.headers.get("x-frame-options"), "DENY");
-      assert.match(
-        checkoutPage.headers.get("content-security-policy") ?? "",
-        /script-src 'nonce-[A-Za-z0-9+/=]+' 'strict-dynamic' 'report-sample'; style-src-elem 'self' 'nonce-[A-Za-z0-9+/=]+'; style-src-attr 'none'; connect-src 'self'; img-src 'self'/,
+      const checkoutPolicy = checkoutPage.headers.get("content-security-policy") ?? "";
+      const checkoutNonceMatch = /script-src 'nonce-([A-Za-z0-9+/=]+)' 'strict-dynamic' 'report-sample'; style-src-elem 'self' 'nonce-([A-Za-z0-9+/=]+)'; style-src-attr 'none'; connect-src 'self'; img-src 'self'/.exec(
+        checkoutPolicy,
       );
+      assert.ok(checkoutNonceMatch, `unexpected checkout CSP: ${checkoutPolicy}`);
+      assert.equal(checkoutNonceMatch[1], checkoutNonceMatch[2]);
+      const checkoutNonce = checkoutNonceMatch[1]!;
       const checkoutHtml = await checkoutPage.text();
       assert.match(checkoutHtml, /data-payable-amount[^>]*>¥10\.01<\/strong>/);
       assert.ok(checkoutHtml.includes(WEB_ASSET_URLS.checkoutStylesheet));
       assert.match(checkoutHtml, /\/api\/public\/v1\/checkouts\/[^" ]+\/qr\.svg/);
+      assert.match(checkoutHtml, /<link rel="preload" as="image" href="\/api\/public\/v1\/checkouts\/[^" ]+\/qr\.svg" fetchpriority="high">/);
       assert.match(checkoutHtml, /<meta name="text-scale" content="scale">/);
       assert.equal(checkoutHtml.includes(collectionCodePayload), false);
-      assert.doesNotMatch(checkoutHtml, /<script(?![^>]*\b(?:src|nonce)=)[^>]*>/i);
+      const checkoutScripts = [...checkoutHtml.matchAll(/<script\b([^>]*)>/gi)];
+      assert.ok(checkoutScripts.length >= 2);
+      for (const tag of checkoutScripts) {
+        assert.ok((tag[1] ?? "").includes(`nonce="${checkoutNonce}"`), "every checkout script must carry the current CSP nonce");
+      }
       assert.doesNotMatch(checkoutHtml, /\sstyle=/i);
+      const secondCheckoutPage = await app.request(
+        new URL(createdBody.data.checkout.checkout_url).pathname,
+      );
+      const secondNonce = /script-src 'nonce-([A-Za-z0-9+/=]+)'/.exec(
+        secondCheckoutPage.headers.get("content-security-policy") ?? "",
+      )?.[1];
+      assert.ok(secondNonce && secondNonce !== checkoutNonce, "checkout CSP nonce must rotate per request");
+      const crossSiteCheckoutApi = await app.request(
+        `/api/public/v1/checkouts/${createdBody.data.checkout.token}`,
+        { headers: { "sec-fetch-site": "same-site", "sec-fetch-mode": "cors", "sec-fetch-dest": "empty" } },
+      );
+      assert.equal(crossSiteCheckoutApi.status, 403);
+      const iframeCheckoutReturn = await app.request(
+        `/api/public/v1/checkouts/${createdBody.data.checkout.token}/return`,
+        { headers: { "sec-fetch-site": "cross-site", "sec-fetch-mode": "navigate", "sec-fetch-dest": "iframe" } },
+      );
+      assert.equal(iframeCheckoutReturn.status, 403);
 
       const qrTarget = `/api/public/v1/checkouts/${createdBody.data.checkout.token}/qr.svg`;
       const qrResponse = await app.request(qrTarget);

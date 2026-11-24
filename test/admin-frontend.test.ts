@@ -66,16 +66,19 @@ describe("administrator frontend delivery", () => {
           assert.equal(redirect.headers.get("cache-control"), "no-store");
         }
       }
+      const seenNonces = new Set<string>();
       for (const path of ["/admin/", "/admin/orders", "/admin/settings/security"]) {
         const response = await app.request(path);
         assert.equal(response.status, 200);
         assert.match(response.headers.get("content-type") ?? "", /text\/html/);
-        assert.equal(response.headers.get("cache-control"), "no-cache");
+        assert.equal(response.headers.get("cache-control"), "no-store");
         assert.equal(response.headers.get("x-frame-options"), "DENY");
         assert.equal(response.headers.get("reporting-endpoints"), 'csp-endpoint="/api/public/v1/csp-report"');
         const policy = response.headers.get("content-security-policy") ?? "";
         const nonceMatch = /script-src 'nonce-([A-Za-z0-9+/=]+)' 'strict-dynamic' 'report-sample'/.exec(policy);
         assert.ok(nonceMatch, `expected nonce-based strict-dynamic script-src, got: ${policy}`);
+        const nonce = nonceMatch[1]!;
+        seenNonces.add(nonce);
         assert.match(policy, /style-src-attr 'none'/);
         assert.match(policy, /frame-ancestors 'none'/);
         assert.match(policy, /report-to csp-endpoint/);
@@ -85,10 +88,18 @@ describe("administrator frontend delivery", () => {
           /require-trusted-types-for 'script'/,
         );
         const html = await response.text();
-        assert.ok(html.includes(`nonce="${nonceMatch[1]}"`));
+        const scripts = [...html.matchAll(/<script\b([^>]*)>/g)];
+        assert.ok(scripts.length >= 2);
+        for (const tag of scripts) {
+          assert.ok((tag[1] ?? "").includes(`nonce="${nonce}"`), `script missing nonce on ${path}`);
+        }
+        for (const tag of html.matchAll(/<link\b([^>]*\brel="modulepreload"[^>]*)>/g)) {
+          assert.ok((tag[1] ?? "").includes(`nonce="${nonce}"`), `modulepreload missing nonce on ${path}`);
+        }
         assert.doesNotMatch(html, new RegExp(apiSecret));
         faviconPath(html);
       }
+      assert.equal(seenNonces.size, 3);
       const frontend = loadAdminFrontend();
       assert.ok(frontend);
       const path = [...frontend.assets.keys()].find((asset) => asset.startsWith("/admin/assets/") && asset.endsWith(".js"));
@@ -124,7 +135,16 @@ describe("administrator frontend delivery", () => {
       });
       assert.equal(crossSiteRead.status, 403);
       assert.equal(crossSiteRead.headers.get("vary"), "Sec-Fetch-Dest, Sec-Fetch-Mode, Sec-Fetch-Site");
+      const sameSiteRead = await app.request("/api/admin/v1/orders", {
+        headers: { "sec-fetch-site": "same-site", "sec-fetch-mode": "cors", "sec-fetch-dest": "empty" },
+      });
+      assert.equal(sameSiteRead.status, 403);
       assert.equal((await app.request("/api/public/v1/csp-report", { method: "POST", body: "[]" })).status, 204);
+      const nonced = frontend.render(true, '"/><script>bad()</script>', false, "testNonceValue123456");
+      assert.ok(!nonced.includes("<script>bad()</script>"));
+      for (const tag of nonced.matchAll(/<script\b([^>]*)>/g)) {
+        assert.ok((tag[1] ?? "").includes('nonce="testNonceValue123456"'));
+      }
       assert.equal((await app.request("/healthz")).status, 200);
     } finally {
       services.database.close();

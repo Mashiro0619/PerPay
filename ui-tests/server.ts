@@ -105,8 +105,9 @@ const server = serve({ fetch: async (request, env) => {
   const response = await demo.app.fetch(request, env);
   if (!checkoutFailure || path !== openCheckout) return response;
   const headers = new Headers(response.headers); headers.delete("content-length"); headers.set("retry-after", "2");
+  const cspNonce = /'nonce-([^']+)'/.exec(headers.get("content-security-policy") ?? "")?.[1];
   return new Response(renderCheckoutPage({ checkoutToken: openCheckout.split("/").at(-1)!, checkout: null, qrImageUrl: null,
-    serverTime: now, demoMode: true, initialError: { status: checkoutFailure, code: "ui_synthetic_unavailable", message: "合成收款服务暂不可用", retryAfterSeconds: 2 } }), { status: checkoutFailure, headers });
+    serverTime: now, demoMode: true, ...(cspNonce ? { cspNonce } : {}), initialError: { status: checkoutFailure, code: "ui_synthetic_unavailable", message: "合成收款服务暂不可用", retryAfterSeconds: 2 } }), { status: checkoutFailure, headers });
 }, hostname: "127.0.0.1", port: Number(new URL(demo.origin).port) });
 try {
   await new Promise<void>((resolve, reject) => { server.once("listening", resolve); server.once("error", reject); });
