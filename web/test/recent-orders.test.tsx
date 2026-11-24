@@ -110,7 +110,7 @@ describe("overview order progress", () => {
     expect(JSON.parse(localStorage.getItem("perpay.table-columns.v2.overview-recent-orders")!)).toEqual({ created_at: false });
   });
 
-  it("groups statuses in narrower tables without moving hidden columns into the title and uses compact mobile rows", () => {
+  it("groups statuses in narrower tables without moving hidden columns into the title and uses compact mobile rows", async () => {
     let width = 767;
     const original = HTMLElement.prototype.getBoundingClientRect;
     vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
@@ -119,9 +119,12 @@ describe("overview order progress", () => {
         : original.call(this);
     });
     const view = mount();
-    const resize = (next: number) => {
+    const resize = async (next: number) => {
       width = next;
-      act(() => window.dispatchEvent(new Event("resize")));
+      await act(async () => {
+        window.dispatchEvent(new Event("resize"));
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      });
     };
     expect(screen.getAllByRole("columnheader")).toHaveLength(3);
     expect(screen.getByRole("columnheader", { name: "收款 / 通知" })).toBeVisible();
@@ -130,20 +133,20 @@ describe("overview order progress", () => {
     expect(screen.queryByText("创建", { exact: true })).not.toBeInTheDocument();
     expect(view.container.querySelectorAll("time")).toHaveLength(0);
 
-    resize(768);
+    await resize(768);
     expect(screen.getAllByRole("columnheader")).toHaveLength(4);
     expect(screen.getByRole("table").querySelector('tbody [data-column-id="created_at"]')).toContainElement(screen.getByText("确认", { exact: true }));
     expect(view.container.querySelectorAll("time")).toHaveLength(2);
 
-    resize(1024);
+    await resize(1024);
     expect(screen.getAllByRole("columnheader")).toHaveLength(5);
     expect(screen.getByRole("columnheader", { name: "收款状态" })).toBeVisible();
     expect(screen.getByRole("columnheader", { name: "通知状态" })).toBeVisible();
-    resize(1023);
+    await resize(1023);
     expect(screen.getAllByRole("columnheader")).toHaveLength(4);
-    resize(640);
+    await resize(640);
     expect(screen.getAllByRole("columnheader")).toHaveLength(3);
-    resize(639);
+    await resize(639);
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
     expect(screen.getByRole("list", { name: "最近订单" })).toBeVisible();
     expect(screen.getAllByRole("listitem")).toHaveLength(1);

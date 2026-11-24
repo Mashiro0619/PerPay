@@ -24,13 +24,11 @@ describe("context-preserving secondary dialogs", () => {
     expect(owner.querySelector("pre")).toBeNull();
     expect(dialog.querySelector('[data-admin-dialog-scroll]')).toBeNull();
     expect(dialog.querySelector(':scope > [data-admin-dialog-body]')).not.toBeNull();
-    expect(trigger).toHaveAttribute("aria-expanded", "true");
     await user.click(within(dialog).getByRole("button", { name: "复制记录编号" }));
     expect(await navigator.clipboard.readText()).toBe("test-order");
     await user.keyboard("{Escape}");
     await waitFor(() => expect(trigger).toHaveFocus());
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(trigger).toHaveAttribute("aria-expanded", "false");
     expect(fetchMock).not.toHaveBeenCalled();
   });
 

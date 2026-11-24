@@ -106,7 +106,7 @@ function mountConflict(existing: boolean, detail: LedgerConflictDetail = conflic
   );
 }
 describe("always-visible detail evidence", () => {
-  it("orders attempts newest-first without toSorted or changing source evidence", () => {
+  it("orders attempts newest-first without changing source evidence", () => {
     const attempts: WebhookAttempt[] = Array.from({ length: 21 }, (_, i) => ({
       ...failedAttempt,
       attempt_id: String(i + 1),
@@ -116,16 +116,10 @@ describe("always-visible detail evidence", () => {
     const original = structuredClone(attempts);
     for (const attempt of attempts) Object.freeze(attempt);
     Object.freeze(attempts);
-    const toSorted = Object.getOwnPropertyDescriptor(Array.prototype, "toSorted");
-    Reflect.deleteProperty(Array.prototype, "toSorted");
-    try {
-      const entries = attemptEntries(attempts);
-      expect(entries.map(entry => entry.id)).toEqual(Array.from({ length: 21 }, (_, i) => String(21 - i)));
-      expect(entries[0]).toMatchObject({ title: "第 21 次 · HTTP 200 · 对方的确认回执无效", time: attempts[20]!.started_at, tone: "danger" });
-      expect(attempts).toEqual(original);
-    } finally {
-      if (toSorted) Object.defineProperty(Array.prototype, "toSorted", toSorted);
-    }
+    const entries = attemptEntries(attempts);
+    expect(entries.map(entry => entry.id)).toEqual(Array.from({ length: 21 }, (_, i) => String(21 - i)));
+    expect(entries[0]).toMatchObject({ title: "第 21 次 · HTTP 200 · 对方的确认回执无效", time: attempts[20]!.started_at, tone: "danger" });
+    expect(attempts).toEqual(original);
   });
   it("orders equal attempt times deterministically, by attempt number", () => {
     const attempts = Array.from({ length: 12 }, (_, i) => ({

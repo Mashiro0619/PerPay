@@ -117,7 +117,7 @@ describe("work item business context", () => {
     expect(JSON.parse(localStorage.getItem("perpay.table-columns.v2.work-items")!)).toEqual({ related_record: false, created_at: true });
   });
 
-  it("keeps complete categories in a 200% text summary and restores desktop column choices", () => {
+  it("keeps complete categories in a 200% text summary and restores desktop column choices", async () => {
     mobileMedia(1440);
     const originalFontSize = document.documentElement.style.fontSize;
     const originalRect = HTMLElement.prototype.getBoundingClientRect;
@@ -146,7 +146,7 @@ describe("work item business context", () => {
         document.documentElement.style.fontSize = "16px";
         window.dispatchEvent(new Event("resize"));
       });
-      expect(screen.getByRole("columnheader", { name: "分类" })).toHaveAttribute("data-column-layout", "status");
+      expect(await screen.findByRole("columnheader", { name: "分类" })).toHaveAttribute("data-column-layout", "status");
       expect(screen.queryByRole("columnheader", { name: "关联记录" })).not.toBeInTheDocument();
       expect(screen.getByRole("columnheader", { name: "创建时间" })).toBeVisible();
       expect(JSON.parse(localStorage.getItem("perpay.table-columns.v2.work-items")!)).toEqual({ related_record: false, created_at: true });

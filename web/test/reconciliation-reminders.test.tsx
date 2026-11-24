@@ -180,7 +180,7 @@ describe("reconciliation reminder navigation", () => {
         await screen.findByRole("link", { name: scenario.title }),
       ).toBeVisible();
       expect(screen.getByRole("button", { name: "已忽略" })).toBeVisible();
-      await user.click(screen.getByRole("button", { name: "恢复提醒" }));
+      await user.click(screen.getByRole("button", { name: /^恢复提醒/ }));
       await screen.findByText("暂无已忽略提醒");
       await user.click(screen.getByRole("link", { name: "账本记录" }));
       expect(

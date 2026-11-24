@@ -175,7 +175,7 @@ describe("business summaries", () => {
     expect(screen.getByLabelText("当前地址").textContent).toBe("/related");
   });
 
-  it("retains desktop preferences while keeping mobile summaries fixed and compact", () => {
+  it("retains desktop preferences while keeping mobile summaries fixed and compact", async () => {
     const preferences = { status: false, reference: true };
     localStorage.setItem(storageKey, JSON.stringify(preferences));
     const media = mobileMedia(390);
@@ -191,7 +191,7 @@ describe("business summaries", () => {
     expect(screen.getByLabelText("当前地址")).toHaveTextContent(/^\/records$/);
     expect(JSON.parse(localStorage.getItem(storageKey)!)).toEqual(preferences);
     media.resize(390);
-    expect(screen.getByText(record.status)).toBeVisible();
+    expect(await screen.findByText(record.status)).toBeVisible();
     expect(screen.queryByText(record.reference)).not.toBeInTheDocument();
     view.unmount();
     mountSummary();

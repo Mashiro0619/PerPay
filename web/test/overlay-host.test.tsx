@@ -168,7 +168,7 @@ describe("one routed detail surface", () => {
     // Base UI probes preventScroll support before restoring outside-click focus;
     // jsdom does not support that probe. The browser regression checks focus.
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "技术信息" })).not.toBeInTheDocument());
-    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    expect(trigger).toHaveAttribute("aria-haspopup", "dialog");
     expect(screen.getByRole("dialog", { name: "记录 order-1" })).toBe(parent);
     expect(parent.querySelector('[data-overlay-detail]')).toBe(body);
     expect(view.router.state.location).toBe(address);

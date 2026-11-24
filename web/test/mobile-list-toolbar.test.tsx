@@ -420,6 +420,7 @@ describe("compact list display and staged filters", () => {
     const apply = within(panel).getByRole("button", { name: "应用" });
     await user.clear(minimum);
     await user.type(minimum, "12.345");
+    await user.tab();
     expect(minimum).toBeInvalid();
     expect(minimum).toHaveAttribute("aria-invalid", "true");
     expect(panel).toHaveTextContent("请输入非负人民币金额，最多保留两位小数。");
@@ -430,6 +431,7 @@ describe("compact list display and staged filters", () => {
     await user.clear(minimum);
     await user.type(minimum, "12.34");
     await user.type(maximum, "10");
+    await user.tab();
     expect(maximum).toBeInvalid();
     expect(panel).toHaveTextContent("最低金额不能大于最高金额。");
     await user.click(apply);

@@ -156,13 +156,14 @@ describe("website default template conflict recovery", () => {
     expect(screen.queryByRole("button", { name: "应用核对结果" })).not.toBeInTheDocument();
     expect(screen.getByLabelText("通知超时（秒）")).toHaveValue(5.1234);
     expect(screen.getByLabelText("通知超时（秒）")).toBeEnabled();
-    expect(screen.getByText("通知超时最多 3 位小数。")).toBeVisible();
-    expect(save()).toBeDisabled();
+    expect(save()).toBeEnabled();
     fireEvent.submit(save().closest("form")!);
+    expect(screen.getByText("通知超时最多 3 位小数。")).toBeVisible();
     expect(view.puts).toHaveLength(0);
     await group(user, "收银台展示");
     expect(screen.getByLabelText("收银台名称")).toHaveValue("服务器收银台");
-    expect(save()).toBeDisabled();
+    fireEvent.submit(save().closest("form")!);
+    expect(view.puts).toHaveLength(0);
     await group(user, "通知设置");
     expect(screen.getByLabelText("通知超时（秒）")).toHaveValue(5.1234);
     edit("通知超时（秒）", "5.124");
@@ -189,13 +190,14 @@ describe("website default template conflict recovery", () => {
     await user.click(screen.getByRole("button", { name: "应用核对结果" }));
     expect(screen.getByLabelText("通知超时（秒）")).toHaveValue(5.1234);
     expect(screen.getByLabelText("通知超时（秒）")).toBeEnabled();
-    expect(screen.getByText("通知超时最多 3 位小数。")).toBeVisible();
-    expect(save()).toBeDisabled();
+    expect(save()).toBeEnabled();
     fireEvent.submit(save().closest("form")!);
+    expect(screen.getByText("通知超时最多 3 位小数。")).toBeVisible();
     expect(view.puts).toHaveLength(0);
     await group(user, "订单设置");
     expect(screen.getByLabelText("收银台有效期（秒）")).toHaveValue(900);
-    expect(save()).toBeDisabled();
+    fireEvent.submit(save().closest("form")!);
+    expect(view.puts).toHaveLength(0);
   });
 
   it.each([
@@ -230,13 +232,14 @@ describe("website default template conflict recovery", () => {
     const view = mountDefaults(), user = userEvent.setup();
     await group(user, "通知设置");
     edit("通知超时（秒）", "5.0004");
+    fireEvent.blur(screen.getByLabelText("通知超时（秒）"));
     expect(screen.getByText("通知超时最多 3 位小数。")).toBeVisible();
-    expect(save()).toBeDisabled();
+    expect(save()).toBeEnabled();
     edit("最多发送次数（次）", "15");
     expect(screen.getByLabelText("通知超时（秒）")).toHaveValue(5.0004);
     await group(user, "订单设置");
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
-    expect(save()).toBeDisabled();
+    expect(save()).toBeEnabled();
     fireEvent.submit(save().closest("form")!);
     expect(view.puts).toHaveLength(0);
     await group(user, "通知设置");

@@ -150,7 +150,7 @@ describe("website integration assistant", () => {
     const release = fixture.deferSecret();
     await userEvent.click(view);
     const dialog = screen.getByRole("dialog", { name: "商户密钥" });
-    expect(within(dialog).getByRole("status")).toHaveTextContent("正在读取");
+    expect(dialog.querySelector('[aria-busy="true"]')).toHaveTextContent("正在读取");
     expect(view).toBeDisabled();
     await act(async () => release());
     expect(await within(dialog).findByDisplayValue("late-secret")).toBeVisible();

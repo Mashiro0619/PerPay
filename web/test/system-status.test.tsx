@@ -416,7 +416,7 @@ describe("shared runtime presentation", () => {
     await user.click(screen.getByRole("link", { name: "待处理" }));
     await user.click(screen.getByRole("button", { name: "已忽略" }));
     await screen.findByRole("link", { name: "收入尚未匹配订单" });
-    await user.click(screen.getByRole("button", { name: "恢复提醒" }));
+    await user.click(screen.getByRole("button", { name: /^恢复提醒/ }));
     await waitFor(() => expect(within(screen.getByRole("navigation", { name: "全局管理" })).getByRole("link", { name: "运行状态" })).toHaveAccessibleDescription("有待处理提醒"));
     await user.click(within(screen.getByRole("navigation", { name: "全局管理" })).getByRole("link", { name: "运行状态" }));
     const restoredRuntime = within(await screen.findByRole("table", { name: "运行环节" }));

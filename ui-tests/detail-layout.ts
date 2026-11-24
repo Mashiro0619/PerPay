@@ -277,10 +277,11 @@ export async function openTechnicalDialog(page: Page, technical: Locator, menuIt
   const title = dialog.getByRole("heading", { name: titleText, exact: true });
   const close = dialog.getByRole("button", { name: "关闭" + titleText, exact: true });
   const body = dialog.locator(":scope > [data-admin-dialog-body]");
-  const pre = body.getByRole("group", { name: titleText, exact: true }).and(body.locator("pre"));
+  const pre = body.getByRole("region", { name: titleText, exact: true }).and(body.locator("pre"));
   await expect(title).toBeFocused();
-  // A direct entry stays marked as expanded while its dialog is open; a menu has closed by then.
-  await expect(trigger).toHaveAttribute("aria-expanded", menuItem ? "false" : "true");
+  // A direct modal dialog trigger exposes aria-haspopup="dialog" without aria-expanded; a menu trigger collapses to false.
+  if (menuItem) await expect(trigger).toHaveAttribute("aria-expanded", "false");
+  else await expect(trigger).toHaveAttribute("aria-haspopup", "dialog");
   await expect(pre).toBeVisible();
   await expect(technical.locator("pre, [data-detail-fields]")).toHaveCount(0);
   expect(await dialog.evaluate(element => !element.closest('[data-overlay-content]')), "technical information is portaled outside the main detail").toBe(true);

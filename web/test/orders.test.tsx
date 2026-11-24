@@ -337,7 +337,8 @@ describe("order browsing", () => {
     const requestCount = fetchMock.mock.calls.length;
     await user.clear(search);
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "查找" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "查找" })).toBeEnabled();
+    await user.click(screen.getByRole("button", { name: "查找" }));
     expect(fetchMock).toHaveBeenCalledTimes(requestCount);
     await user.type(search, `  ${order.merchant_order_no}  `);
     await user.click(screen.getByRole("button", { name: "查找" }));

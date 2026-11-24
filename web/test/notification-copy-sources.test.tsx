@@ -184,7 +184,7 @@ describe("order and notification copy follows its actual source", () => {
     expect(screen.queryByText(new RegExp(code))).not.toBeInTheDocument();
     await userEvent.setup().click(await recordAction("通知技术信息", "通知记录操作"));
     const technical = await screen.findByRole("dialog", { name: "通知技术信息" });
-    expect(within(technical).getByRole("group", { name: "通知技术信息" })).toHaveTextContent(code);
+    expect(within(technical).getByRole("region", { name: "通知技术信息" })).toHaveTextContent(code);
   });
 
   it("distinguishes an in-progress attempts read from a delivery without attempts", async () => {
@@ -197,11 +197,11 @@ describe("order and notification copy follows its actual source", () => {
     }));
     mount(<Routes><Route path="/notifications/:deliveryId" element={<NotificationDetail />} /></Routes>, "/notifications/" + delivery.delivery.delivery_id);
     const attempts = await screen.findByRole("region", { name: "发送记录" });
-    expect(within(attempts).getByRole("status")).toHaveTextContent("正在读取发送记录…");
+    expect(attempts.querySelector('[aria-busy="true"]')).toHaveTextContent("正在读取发送记录…");
     expect(within(attempts).queryByText("尚未开始发送")).not.toBeInTheDocument();
     expect(within(attempts).queryByRole("alert")).not.toBeInTheDocument();
     await act(async () => { complete(json({ data: [] })); });
     expect(await within(attempts).findByText("尚未开始发送")).toBeVisible();
-    expect(within(attempts).queryByRole("status")).not.toBeInTheDocument();
+    expect(attempts.querySelector('[aria-busy="true"]')).toBeNull();
   });
 });

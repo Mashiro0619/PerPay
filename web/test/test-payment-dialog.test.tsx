@@ -158,7 +158,7 @@ describe("test-payment dialog lifecycle", () => {
     const technical = await screen.findByRole("dialog", { name: "记录技术信息" });
     expect(technical).not.toBe(dialog);
     expect(dialog.isConnected).toBe(true);
-    const data = JSON.parse(within(technical).getByRole("group", { name: "记录技术信息" }).textContent!);
+    const data = JSON.parse(within(technical).getByRole("region", { name: "记录技术信息" }).textContent!);
     expect(data).toMatchObject({ order_id: orderId, payable_amount_cents: createdOrder.payable_amount_cents });
     await user.click(within(technical).getByRole("button", { name: "关闭记录技术信息" }));
     await waitFor(() => expect(technical).not.toBeInTheDocument());

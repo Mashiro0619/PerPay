@@ -1,4 +1,4 @@
-import { act, renderHook } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { useOverlayViewport } from "../src/hooks/use-overlay-viewport";
 import { useIsMobile } from "../src/hooks/use-mobile";
@@ -7,7 +7,7 @@ import { mobileMedia } from "./mobile-media";
 import { matchesTestMedia } from "./media-query";
 
 describe("visible overlay viewport", () => {
-  it("follows the keyboard and panned visual viewport without a layout resize", () => {
+  it("follows the keyboard and panned visual viewport without a layout resize", async () => {
     const viewport = Object.assign(new EventTarget(), { width: 360, height: 560, offsetTop: 0, offsetLeft: 0 });
     vi.stubGlobal("visualViewport", viewport);
     const remove = vi.spyOn(viewport, "removeEventListener");
@@ -24,7 +24,7 @@ describe("visible overlay viewport", () => {
       viewport.offsetLeft = 40;
       viewport.dispatchEvent(new Event("scroll"));
     });
-    expect(result.current).toMatchObject({ "--overlay-viewport-width": "180px", "--overlay-viewport-left": "40px" });
+    await waitFor(() => expect(result.current).toMatchObject({ "--overlay-viewport-width": "180px", "--overlay-viewport-left": "40px" }));
     unmount();
     expect(remove).toHaveBeenCalledWith("resize", expect.any(Function));
     expect(remove).toHaveBeenCalledWith("scroll", expect.any(Function));

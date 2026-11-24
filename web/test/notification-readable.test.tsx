@@ -209,7 +209,7 @@ describe("readable standalone notification detail", () => {
     await user.click(status === "DEAD_LETTER" ? trigger : await recordAction("重新发送", "通知记录操作"));
     const dialog = await screen.findByRole("dialog", { name: "重新发送通知" });
     expect(within(dialog).getByText(delivery.target.target_url)).toBeVisible();
-    expect(within(dialog).getByRole("button", { name: "确认重新发送" })).toBeDisabled();
+    expect(within(dialog).getByRole("button", { name: "确认重新发送" })).toBeEnabled();
     await user.click(within(dialog).getByRole("button", { name: "取消" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     await waitFor(() => expect(trigger).toHaveFocus());
@@ -446,7 +446,10 @@ describe("readable delivery attempts", () => {
     await user.click(await screen.findByRole("button", { name: "重新发送" }));
     const dialog = await screen.findByRole("dialog", { name: "重新发送通知" });
     const submit = within(dialog).getByRole("button", { name: "确认重新发送" });
-    expect(submit).toBeDisabled();
+    expect(submit).toBeEnabled();
+    await user.click(submit);
+    expect(within(dialog).getByRole("alert")).toBeVisible();
+    expect(writes).toHaveLength(0);
     await user.click(within(dialog).getByRole("button", { name: "回调修复后手动重发" }));
     expect(within(dialog).getByRole("textbox", { name: "操作理由" })).toHaveValue("回调修复后手动重发");
     expect(submit).toBeEnabled();
@@ -549,14 +552,14 @@ describe("readable delivery attempts", () => {
     expect(within(oldRow).queryByRole("button", { name: /立即重试|重新发送/ })).not.toBeInTheDocument();
 
     const user = userEvent.setup();
-    await user.click(within(waitRow).getByRole("button", { name: "立即重试" }));
+    await user.click(within(waitRow).getByRole("button", { name: /^立即重试/ }));
     expect(await screen.findByText("已发起立即重试")).toBeVisible();
     expect(writes[0]).toEqual({
       path: "/api/admin/v1/webhooks/deliveries/" + waitingId + "/actions/retry",
       body: {},
     });
 
-    await user.click(within(deadRow).getByRole("button", { name: "重新发送" }));
+    await user.click(within(deadRow).getByRole("button", { name: /^重新发送/ }));
     const dialog = await screen.findByRole("dialog", { name: "重新发送通知" });
     await user.click(within(dialog).getByRole("button", { name: "网络恢复后手动补发" }));
     await user.click(within(dialog).getByRole("button", { name: "确认重新发送" }));
@@ -663,14 +666,14 @@ describe("readable delivery attempts", () => {
     expect(within(elemRevoked).queryByTitle("2026/09/06 08:02（北京时间）")).not.toBeInTheDocument();
 
     const user = userEvent.setup();
-    await user.click(within(elemA).getByRole("button", { name: "立即重试" }));
+    await user.click(within(elemA).getByRole("button", { name: /^立即重试/ }));
     // Clicking the action wrapper while row A's button is disabled must NOT open the row link.
     const wrapperA = elemA.querySelector<HTMLElement>("[data-row-action]")!;
     await user.click(wrapperA);
     expect(navigatedTo).toHaveLength(0);
 
     // Meanwhile row B remains independently clickable and dispatches its own retry immediately!
-    await user.click(within(elemB).getByRole("button", { name: "立即重试" }));
+    await user.click(within(elemB).getByRole("button", { name: /^立即重试/ }));
     expect(retryPaths).toEqual([
       "/api/admin/v1/webhooks/deliveries/" + rowA + "/actions/retry",
       "/api/admin/v1/webhooks/deliveries/" + rowB + "/actions/retry",

@@ -322,7 +322,7 @@ describe("reminder dismissal", () => {
             "/reconciliation/exceptions/" + item.resource_id,
         ),
     ).toBe(true);
-    await user.click(screen.getByRole("button", { name: "恢复提醒" }));
+    await user.click(screen.getByRole("button", { name: /^恢复提醒/ }));
     await waitFor(() =>
       expect(
         requests.filter((request) => request.method === "POST"),

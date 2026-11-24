@@ -256,7 +256,7 @@ describe("mobile column controls", () => {
       expect(document.querySelectorAll("[data-business-row]")).toHaveLength(1);
       width = 639;
       act(() => window.dispatchEvent(new Event("resize")));
-      expect(screen.queryByRole("table")).not.toBeInTheDocument();
+      await waitFor(() => expect(screen.queryByRole("table")).not.toBeInTheDocument());
       expect(within(orderSummary()).getByRole("group", { name: "应付金额 " + money(order.payable_amount_cents) })).toBeVisible();
       expect(document.querySelectorAll("[data-business-row]")).toHaveLength(1);
     } finally {

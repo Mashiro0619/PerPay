@@ -78,7 +78,7 @@ function expectTrend(dates: string) {
   const trend = within(card);
   expect(trend.getByText(
     (_, element) => element?.textContent === dates,
-    { selector: '[aria-live="polite"]' },
+    { selector: ".trend-dates" },
   )).toBeVisible();
   expect(within(trend.getByLabelText("确认金额汇总")).getByText("¥154.01", { exact: true })).toBeVisible();
 }

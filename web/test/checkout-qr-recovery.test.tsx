@@ -59,7 +59,10 @@ describe("checkout QR recovery", () => {
   it("returns an expanded-image failure to the same recoverable payment state", async () => {
     render(<CheckoutApp initial={initial()} />);
     fireEvent.click(screen.getByRole("button", { name: "放大二维码" }));
-    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    await act(async () => {
+      await import("../src/checkout/CheckoutQrDialog");
+      await vi.advanceTimersByTimeAsync(0);
+    });
     expect(screen.getByRole("dialog", { name: "付款二维码" })).toBeVisible();
     fireEvent.error(screen.getByRole("img", { name: "放大的支付宝付款二维码" }));
     await act(async () => { await vi.advanceTimersByTimeAsync(200); });

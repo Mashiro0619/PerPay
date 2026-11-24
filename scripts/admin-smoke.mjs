@@ -23,14 +23,22 @@ export async function runAdminSmoke({ baseUrl, password, setupToken, initialize 
     const response = await send(path);
     assert.equal(response.status, 200, `${path} must load`);
     assert.match(response.headers.get("content-type") ?? "", /text\/html/);
-    assert.equal(response.headers.get("cache-control"), "no-store");
+    assert.equal(response.headers.get("cache-control"), "no-cache");
     const policy = response.headers.get("content-security-policy") ?? "";
-    assert.match(policy, /script-src 'self'/);
+    assert.match(policy, /script-src 'nonce-[A-Za-z0-9+/=_-]+' 'strict-dynamic'/);
+    const nonce = policy.match(/script-src[^;]*'nonce-([^']+)'/)?.[1] ?? "";
+    assert.ok(nonce.length >= 16, "CSP script-src must issue a per-request nonce");
     assert.match(policy, /style-src-attr 'none'/);
     assert.doesNotMatch(policy, /unsafe-inline|unsafe-eval/);
     const html = await response.text();
-    assert.doesNotMatch(html, /__PERPAY_INITIALIZED__|__PERPAY_SETUP_TOKEN_REQUIRED__|<script(?![^>]*\bsrc=)/);
-    assert.match(html, /src="\/admin\/theme\.js"/);
+    assert.doesNotMatch(html, /__PERPAY_INITIALIZED__|__PERPAY_SETUP_TOKEN_REQUIRED__/);
+    for (const tag of html.matchAll(/<script\b([^>]*)>/g)) {
+      const attrs = tag[1] ?? "";
+      if (!/\bsrc=/.test(attrs)) {
+        assert.ok(attrs.includes(`nonce="${nonce}"`), "every inline script must carry the current CSP nonce");
+      }
+    }
+    assert.match(html, new RegExp(`<script nonce="${nonce.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}">[^<]*perpay:theme`));
     assert.match(html, /<link\b[^>]*rel="icon"[^>]*href="\/admin\/assets\/favicon-[A-Za-z0-9_-]+\.svg"/, "entry must reference its fingerprinted favicon");
     for (const match of html.matchAll(/(?:src|href)="(\/admin\/[^"?#]+\.(?:js|css|svg))"/g)) checkedAssets.add(match[1]);
     if (path === "/admin/") entryHtml = html;
