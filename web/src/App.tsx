@@ -45,7 +45,6 @@ import { Toaster } from "@/components/ui/toast";
 import {
   Empty,
   EmptyHeader,
-  EmptyTitle,
   EmptyDescription,
   EmptyContent,
 } from "@/components/ui/empty";
@@ -198,7 +197,7 @@ function Workspace() {
       <OfficialUpdateDialog />
       <a
         href="#main-content"
-        className="sr-only focus:not-sr-only focus:absolute focus:p-4"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:rounded-md focus:border focus:bg-background focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-foreground focus:shadow-md"
       >
         跳转到主要内容
       </a>
@@ -476,9 +475,9 @@ function AppFailure() {
     <main className="flex min-h-svh items-center justify-center p-6">
       <Empty>
         <EmptyHeader>
-          <EmptyTitle role="heading" aria-level={1}>
+          <h1 className="text-lg font-medium tracking-tight">
             页面加载失败
-          </EmptyTitle>
+          </h1>
           <EmptyDescription>重新加载会丢失未保存内容。</EmptyDescription>
         </EmptyHeader>
         <EmptyContent>

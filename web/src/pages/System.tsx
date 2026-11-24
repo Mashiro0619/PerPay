@@ -329,7 +329,6 @@ function RuntimeServicesCard({
       <CardContent className="runtime-services-content">
         <Table
           className="runtime-status-table"
-          role="table"
           aria-label="运行环节"
         >
           <TableCaption className="sr-only">运行环节</TableCaption>
@@ -340,30 +339,29 @@ function RuntimeServicesCard({
             <col className="runtime-col-info" />
             <col className="runtime-col-actions" />
           </colgroup>
-          <TableHeader role="rowgroup">
-            <TableRow role="row">
-              <TableHead scope="col" role="columnheader">
+          <TableHeader>
+            <TableRow>
+              <TableHead scope="col">
                 服务
               </TableHead>
-              <TableHead scope="col" role="columnheader">
+              <TableHead scope="col">
                 状态
               </TableHead>
-              <TableHead scope="col" role="columnheader">
+              <TableHead scope="col">
                 任务最近成功
               </TableHead>
-              <TableHead scope="col" role="columnheader">
+              <TableHead scope="col">
                 运行信息
               </TableHead>
               <TableHead
                 scope="col"
-                role="columnheader"
                 className="runtime-actions-heading"
               >
                 <span className="sr-only">操作</span>
               </TableHead>
             </TableRow>
           </TableHeader>
-          <TableBody role="rowgroup">
+          <TableBody>
             <RuntimeServices>
               <RuntimeService
                 onDiagnose={onLedgerDiagnose}
@@ -618,7 +616,7 @@ function LedgerDiagnosis({ data, open, onOpenChange, finalFocus }: { data: Syste
           <CollapsibleTrigger render={<Button variant="ghost" size="sm" />}>技术数据<ChevronDown data-icon="inline-end" /></CollapsibleTrigger>
           <CollapsibleContent className="flex min-w-0 flex-col gap-2">
             <CopyValue value={technical} label="复制查账技术数据" buttonOnly />
-            <pre tabIndex={0} className="rounded-md bg-muted p-3 text-xs whitespace-pre-wrap wrap-anywhere">{technical}</pre>
+            <pre tabIndex={0} role="region" aria-label="查账技术数据" className="rounded-md bg-muted p-3 text-xs whitespace-pre-wrap wrap-anywhere"><code>{technical}</code></pre>
           </CollapsibleContent>
         </Collapsible>
       </DialogBody>

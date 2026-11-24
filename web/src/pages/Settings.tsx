@@ -153,6 +153,60 @@ export default function Settings() {
             queryClient.setQueryData(["settings"], { data: next });
             void refreshOperationalData();
           }
+          const paneContent = (
+            <div
+              data-settings-content
+              className="settings-pane"
+              inert={refreshing}
+              aria-busy={refreshing}
+            >
+              {section === "accounts" ? (
+                <AlipayAccountList />
+              ) : section === "backup" ? (
+                <>
+                  <BackupOverview settings={data} />
+                  <Card size="sm" data-settings-archives-card>
+                    <CardHeader>
+                      <CardTitle role="heading" aria-level={2} className="flex items-center gap-2">
+                        <Archive className="size-4 text-muted-foreground" aria-hidden="true" />
+                        历史归档
+                      </CardTitle>
+                      <CardDescription>
+                        历史数据可归档后长期保留，减少主库和日常备份体积。
+                      </CardDescription>
+                      <CardAction>
+                        <Link global to="/settings/archives" className={buttonVariants({ variant: "outline", size: "sm" })}>
+                          历史归档
+                        </Link>
+                      </CardAction>
+                    </CardHeader>
+                  </Card>
+                </>
+              ) : section === "security" ? (
+                <SecuritySettings
+                  key={"security:" + editorVersion}
+                  settings={data}
+                />
+              ) : overlayRoute === "/settings/" + section + "/edit" ? (
+                <Card size="sm" data-settings-editing-backdrop={section}>
+                  <CardHeader>
+                    <CardTitle role="heading" aria-level={2}>
+                      {availableSections.find(([value]) => value === section)?.[1]}
+                    </CardTitle>
+                    <CardDescription>正在弹窗中编辑当前配置。</CardDescription>
+                  </CardHeader>
+                </Card>
+              ) : (
+                <SettingsEditor
+                  key={section + ":" + editorVersion}
+                  section={section}
+                  settings={data}
+                  onSaved={handleInlineSaved}
+                  onFeedback={setSuccess}
+                />
+              )}
+            </div>
+          );
           return (
             <Tabs
               orientation={isMobile ? "horizontal" : "vertical"}
@@ -214,61 +268,10 @@ export default function Settings() {
               )}
               <TabsContent
                 value={section}
+                role={isMobile ? "none" : undefined}
                 className="min-w-0"
-                aria-label={isMobile ? availableSections.find(([value]) => value === section)?.[1] : undefined}
               >
-                <div
-                  data-settings-content
-                  className="settings-pane"
-                  inert={refreshing}
-                  aria-busy={refreshing}
-                >
-                  {section === "accounts" ? (
-                    <AlipayAccountList />
-                  ) : section === "backup" ? (
-                    <>
-                      <BackupOverview settings={data} />
-                      <Card size="sm" data-settings-archives-card>
-                        <CardHeader>
-                          <CardTitle role="heading" aria-level={2} className="flex items-center gap-2">
-                            <Archive className="size-4 text-muted-foreground" aria-hidden="true" />
-                            历史归档
-                          </CardTitle>
-                          <CardDescription>
-                            历史数据可归档后长期保留，减少主库和日常备份体积。
-                          </CardDescription>
-                          <CardAction>
-                            <Link global to="/settings/archives" className={buttonVariants({ variant: "outline", size: "sm" })}>
-                              历史归档
-                            </Link>
-                          </CardAction>
-                        </CardHeader>
-                      </Card>
-                    </>
-                  ) : section === "security" ? (
-                    <SecuritySettings
-                      key={"security:" + editorVersion}
-                      settings={data}
-                    />
-                  ) : overlayRoute === "/settings/" + section + "/edit" ? (
-                    <Card size="sm" data-settings-editing-backdrop={section}>
-                      <CardHeader>
-                        <CardTitle role="heading" aria-level={2}>
-                          {availableSections.find(([value]) => value === section)?.[1]}
-                        </CardTitle>
-                        <CardDescription>正在弹窗中编辑当前配置。</CardDescription>
-                      </CardHeader>
-                    </Card>
-                  ) : (
-                    <SettingsEditor
-                      key={section + ":" + editorVersion}
-                      section={section}
-                      settings={data}
-                      onSaved={handleInlineSaved}
-                      onFeedback={setSuccess}
-                    />
-                  )}
-                </div>
+                {paneContent}
               </TabsContent>
             </Tabs>
           );

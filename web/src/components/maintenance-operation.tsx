@@ -86,7 +86,7 @@ export function MaintenanceConfirmation({ open, onOpenChange, title, description
         <FieldLabel htmlFor={id}>输入“{confirmPhrase}”确认</FieldLabel>
         <Input id={id} autoComplete="off" value={text} onChange={event => setText(event.target.value)} disabled={pending || unknown} />
       </Field></FieldGroup>}
-      {unknown && <Alert>
+      {unknown && <Alert role="alert">
         <AlertTitle>提交结果待确认</AlertTitle>
         <AlertDescription>请求未完整返回，请查询任务状态后再继续。</AlertDescription>
       </Alert>}

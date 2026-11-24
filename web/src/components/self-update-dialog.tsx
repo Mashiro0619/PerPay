@@ -584,8 +584,8 @@ export function SelfUpdateDialog({
                 ))}
               </ol>
 
-              <div className="flex flex-col gap-1.5 rounded-lg border border-border bg-muted/30 p-3 text-sm" role="status">
-                <div className="flex items-center gap-2 font-medium text-foreground">
+              <div className="flex flex-col gap-1.5 rounded-lg border border-border bg-muted/30 p-3 text-sm">
+                <div className="flex items-center gap-2 font-medium text-foreground" role="status">
                   <Spinner aria-hidden="true" />
                   <span>
                     {reconnecting
@@ -594,7 +594,7 @@ export function SelfUpdateDialog({
                   </span>
                 </div>
                 {reconnecting && (
-                  <p className="text-xs text-muted-foreground">
+                  <p role="timer" aria-live="off" className="text-xs text-muted-foreground">
                     容器切换期间页面会自动重连（已等待 {reconnectSeconds} 秒），无需手动刷新。
                   </p>
                 )}

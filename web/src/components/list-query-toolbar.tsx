@@ -170,15 +170,17 @@ export function ListQueryToolbar({
         data-list-toolbar-row
       >
         {selectedMode && lookup?.context?.(selectedMode.value)}
-        <form
+        <search
           className={cn(
             "min-w-0",
             compact
               ? "w-full"
               : "min-w-[min(100%,20rem)] max-w-lg flex-[1_1_20rem]",
           )}
-          role="search"
           aria-label={selectedMode ? lookup!.inputLabel + "精确查询" : label}
+        >
+        <form
+          className="min-w-0 w-full"
           onSubmit={(event) => {
             event.preventDefault();
             if (busy) return;
@@ -306,6 +308,7 @@ export function ListQueryToolbar({
             </Button>
           </FieldGroup>
         </form>
+        </search>
         {!compact && (
           <>
             {primaryControls.length > 0 && (

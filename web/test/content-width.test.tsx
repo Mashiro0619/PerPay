@@ -35,7 +35,8 @@ describe("administrator content width", () => {
     await user.keyboard("{Enter}");
     expect(content()).toHaveAttribute("data-content-width", "full");
     expect(content()).toHaveClass("max-w-none");
-    expect(control).toHaveAttribute("aria-pressed", "true");
+    expect(control).toHaveAccessibleName("切换为收缩布局");
+    expect(control).not.toHaveAttribute("aria-pressed");
     expect(control).toHaveFocus();
     expect(localStorage.getItem(CONTENT_WIDTH_KEY)).toBe("full");
     expect(screen.getByRole("textbox")).toBe(input);

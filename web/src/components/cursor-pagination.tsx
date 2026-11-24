@@ -30,7 +30,6 @@ export function CursorPagination({
     >
       <p
         role="status"
-        aria-live="polite"
         aria-atomic="true"
         className="text-sm text-muted-foreground"
       >

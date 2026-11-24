@@ -23,7 +23,7 @@ import {
 } from "@/lib/reminder-restore-requests";
 import { restoreMessages, type RestoreOutcome } from "@/lib/reminder-restore";
 import { useCursor } from "@/lib/cursor";
-import { workItemHref } from "@/lib/labels";
+import { workItemHref, workItemTitle } from "@/lib/labels";
 import { WorkItemsTable } from "@/components/work-items-table";
 import { useQuickRetryDelivery } from "@/components/detail/NotificationEvidence";
 import { ErrorNotice, QueryView } from "@/components/request-state";
@@ -642,6 +642,15 @@ function RestoreReminder({
         data-reminder-ended={item.ended || undefined}
         size="sm"
         variant="outline"
+        aria-label={
+          (item.ended
+            ? "已结束"
+            : readAgain
+              ? "刷新列表"
+              : state?.error
+                ? "重试恢复"
+                : "恢复提醒") + "：" + workItemTitle(item)
+        }
         disabled={item.ended || pending}
         onClick={(event) => onRestore(event.currentTarget)}
       >

@@ -16,7 +16,7 @@ export function useErrorToast(): (message: string) => void {
   const id = useId();
   return useCallback((message: string) => {
     if (message) {
-      toast.add({ id, title: message, type: "error", timeout: 5000 });
+      toast.add({ id, title: message, type: "error", timeout: 0 });
     } else {
       toast.close(id);
     }

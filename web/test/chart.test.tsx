@@ -836,7 +836,7 @@ describe("shared trend and daily views", () => {
     ).not.toBeInTheDocument();
     expect(screen.getAllByText(
       (_, element) => element?.textContent === "2026-06-01 — 2026-06-30",
-      { selector: '[aria-live="polite"]' },
+      { selector: ".trend-dates" },
     )).toHaveLength(1);
     expect(screen.getByRole("status")).toHaveTextContent("共 30 天");
     const dates = dailyDates();

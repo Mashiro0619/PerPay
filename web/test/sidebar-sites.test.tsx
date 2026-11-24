@@ -171,7 +171,8 @@ describe("website switch preparation", () => {
       expect(view.router.state.location.pathname).toBe("/sites/a/orders");
       expect(currentRow).toBeInTheDocument();
       expect(target).toHaveAttribute("aria-busy", "true");
-      expect(main.querySelector("#main-content")).toHaveAttribute("inert");
+      expect(main).toHaveAttribute("id", "main-content");
+      expect(main).toHaveAttribute("inert");
       expect(nav).toHaveTextContent("正在切换到网站 B…");
       expect(document.title).toContain("网站 A");
 
@@ -188,7 +189,7 @@ describe("website switch preparation", () => {
       await waitFor(() => expect(view.router.state.navigation.state).toBe("idle"));
       expect(view.router.state.location.pathname).toBe("/sites/b/orders");
       expect(currentRow).not.toBeInTheDocument();
-      expect(main.querySelector("#main-content")).not.toHaveAttribute("inert");
+      expect(main).not.toHaveAttribute("inert");
       expect(target).toHaveAttribute("aria-current", "location");
       expect(target).toHaveAttribute("aria-busy", "false");
       expect(frames.some(frame => frame.site === "网站 B")).toBe(true);

@@ -400,7 +400,7 @@ export function ChartAreaInteractive({
             )
           )}
           <div className="trend-caption">
-            <p className="trend-dates" aria-live="polite">
+            <p className="trend-dates">
               {pending
                 ? "正在读取近 " + range + " 天…"
                 : hasDays

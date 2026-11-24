@@ -144,7 +144,7 @@ export function ManualCandidatePicker({
   return (
     <section className="flex min-w-0 flex-col gap-4" aria-label={"选择" + noun}>
       <h3 className="text-sm font-medium">选择{noun}</h3>
-      <div role="search" aria-label={"搜索可关联" + noun}>
+      <search aria-label={"搜索可关联" + noun}>
         <FieldGroup className="flex-row flex-wrap items-start gap-2">
           <Field className="min-w-0 flex-1 basis-40" data-invalid={!!error}>
             <InputGroup>
@@ -185,7 +185,7 @@ export function ManualCandidatePicker({
             搜索
           </Button>
         </FieldGroup>
-      </div>
+      </search>
       {contextId && (
         <ToggleGroup
           aria-label="可能匹配的记录范围"

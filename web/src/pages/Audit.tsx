@@ -21,7 +21,7 @@ import { AuditActor, AuditCaptureNotice, AuditResult, AuditSite, AuditTime } fro
 import { CreatedDateFilter } from "@/components/created-date-filter";
 import { QueryView, ErrorNotice } from "@/components/request-state";
 import { RefreshButton } from "@/components/refresh-button";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { buttonVariants } from "@/components/ui/button";
 import { Empty, EmptyHeader, EmptyTitle, EmptyDescription } from "@/components/admin-empty";
 
@@ -131,7 +131,7 @@ export default function Audit() {
     { id: "source_address", label: "IP", layout: "text", cell: event => <span className="list-code" title={event.source_address ?? undefined}>{event.source_address ?? auditContextUnavailable(event)}</span> },
     { id: "client", label: "客户端", layout: "text", cell: event => <span title={event.user_agent ?? undefined}>{auditClientLabel(event)}</span> },
     { id: "outcome", label: "结果", layout: "status", cell: event => <AuditResult {...event} /> },
-    { id: "details", label: "详情", layout: "actions", hideable: false, cell: event => <Link global to={auditEventHref(event)} tabIndex={-1} className="list-secondary-link" aria-label={"查看" + auditActionLabel(event.action) + "详情"}>详情</Link> },
+    { id: "details", label: "详情", layout: "actions", hideable: false, cell: event => <Link global to={auditEventHref(event)} className="list-secondary-link" aria-label={"查看" + auditActionLabel(event.action) + "详情"}>详情</Link> },
     { id: "http_method", label: "方法", layout: "text", defaultVisible: false, cell: event => event.http_method ?? auditContextUnavailable(event) },
     { id: "route", label: "路由", layout: "text", defaultVisible: false, cell: event => <span className="list-code" title={event.route ?? undefined}>{event.route ?? auditContextUnavailable(event)}</span> },
     { id: "http_status", label: "HTTP 状态", layout: "number", defaultVisible: false, cell: event => event.http_status ?? auditContextUnavailable(event) },
@@ -144,19 +144,18 @@ export default function Audit() {
     {metadata.data && <AuditCaptureNotice capture={metadata.data.data.capture} compact />}
     <ErrorNotice error={metadata.error} retry={() => { void metadata.refetch(); }} retainedData={!!metadata.data} />
     <ListColumnsProvider>
+      <Tabs value={view?.id ?? ""} onValueChange={value => {
+        const next = AUDIT_VIEWS.find(item => item.id === value);
+        if (next && next.id !== view?.id) update(auditViewValues(next.id));
+      }} className="min-w-0 w-full gap-0">
       <ListLayout className="w-full" data-business-list="audit">
         <ListToolbarPart area="leading">
-          <Tabs value={view?.id ?? ""} onValueChange={value => {
-            const next = AUDIT_VIEWS.find(item => item.id === value);
-            if (next && next.id !== view?.id) update(auditViewValues(next.id));
-          }}>
-            <div ref={setViewScroller} className="audit-view-scroll" onFocusCapture={event => {
-              const focused = (event.target as HTMLElement).closest('[role="tab"]');
-              if (focused && event.currentTarget.contains(focused)) revealAuditView(event.currentTarget, focused);
-            }}><TabsList variant="line" aria-label="审计视图" className="audit-views">
-              {AUDIT_VIEWS.map(item => <TabsTrigger key={item.id} value={item.id}>{item.label}</TabsTrigger>)}
-            </TabsList></div>
-          </Tabs>
+          <div ref={setViewScroller} className="audit-view-scroll" onFocusCapture={event => {
+            const focused = (event.target as HTMLElement).closest('[role="tab"]');
+            if (focused && event.currentTarget.contains(focused)) revealAuditView(event.currentTarget, focused);
+          }}><TabsList variant="line" aria-label="审计视图" className="audit-views">
+            {AUDIT_VIEWS.map(item => <TabsTrigger key={item.id} value={item.id}>{item.label}</TabsTrigger>)}
+          </TabsList></div>
           {!view && <span className="text-xs text-muted-foreground">自定义筛选</span>}
         </ListToolbarPart>
         <ListToolbarPart>
@@ -183,9 +182,10 @@ export default function Audit() {
             mobileActions={<AuditActions state={exporting} refresh={refresh} refreshing={refreshing} />}
           >
             {exporting.error && <div className="min-w-0 w-full" data-list-menu-feedback><ErrorNotice error={exporting.error} /></div>}
-            {exporting.generated && <p role="status" aria-live="polite" className="w-full text-sm text-muted-foreground" data-list-menu-feedback>文件已生成</p>}
+            {exporting.generated && <p role="status" className="w-full text-sm text-muted-foreground" data-list-menu-feedback>文件已生成</p>}
           </ListQueryToolbar>
         </ListToolbarPart>
+        <TabsContent value={view?.id ?? ""} className="flex min-w-0 flex-col gap-3">
         <OverlayRecordList
           global
           items={(events.data?.data ?? []).map(auditEventHref)}
@@ -213,7 +213,9 @@ export default function Audit() {
           </>}
         </QueryView>
         </OverlayRecordList>
+        </TabsContent>
       </ListLayout>
+      </Tabs>
     </ListColumnsProvider>
   </div>;
 }

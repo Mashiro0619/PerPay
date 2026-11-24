@@ -113,7 +113,7 @@ function TestPaymentForm({ dialog, overlay = false }: { dialog?: TestPaymentDial
       <FieldGroup>
         {request.fixedClientId ? <Field><FieldLabel>本次操作所属网站</FieldLabel><FieldDescription className="break-all">{request.fixedClientId}</FieldDescription></Field> : <SitePicker value={request.clientId} onChange={request.editSite} disabled={create.isPending || !!recovery || !!create.data} />}
         {recovery && (
-          <Alert>
+          <Alert role="alert">
             <AlertCircle />
             <AlertTitle>创建结果待确认</AlertTitle>
             <AlertDescription>

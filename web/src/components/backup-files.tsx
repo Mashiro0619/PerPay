@@ -51,10 +51,10 @@ export function BackupFiles({ blocked }: { blocked: boolean }) {
   const fileColumns: BusinessColumn<ManagedBackupFile>[] = [...columns, {
     id: "actions", label: "操作", layout: "actions", hideable: false,
     cell: file => <div className="flex flex-wrap gap-2">
-      <Button variant="outline" size="sm" disabled={blocked || operation.pending || operation.unknown || !file.sha256} onClick={() => choose(file, "RESTORE")}>
+      <Button variant="outline" size="sm" aria-label={"恢复 " + file.name} disabled={blocked || operation.pending || operation.unknown || !file.sha256} onClick={() => choose(file, "RESTORE")}>
         <RotateCcw data-icon="inline-start" />恢复
       </Button>
-      <Button variant="outline" size="sm" disabled={blocked || operation.pending || operation.unknown || !file.sha256} onClick={() => choose(file, "DELETE_BACKUP")}>
+      <Button variant="outline" size="sm" aria-label={"永久删除 " + file.name} disabled={blocked || operation.pending || operation.unknown || !file.sha256} onClick={() => choose(file, "DELETE_BACKUP")}>
         <Trash2 data-icon="inline-start" />永久删除
       </Button>
     </div>,

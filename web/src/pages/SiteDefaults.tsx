@@ -17,7 +17,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { FieldSet } from "@/components/ui/field";
 import { ScrollingTabs } from "@/components/scrolling-tabs";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   mergeSitePolicy,
   resolveSitePolicyConflicts,
@@ -196,7 +196,7 @@ function DefaultsEditor({ initial }: { initial: DefaultsSnapshot }) {
     <div className="admin-settings-layout flex flex-col gap-5" data-site-defaults>
       <PageHeading title="新网站默认设置" />
       <p className="text-sm text-muted-foreground">仅应用于后续新建的业务网站，已有网站的独立配置保持不变。</p>
-      <Tabs value={section} onValueChange={value => { if (value) setSection(value); }}>
+      <Tabs value={section} onValueChange={value => { if (value) setSection(value); }} className="gap-5">
         <ScrollingTabs selection={{ items: sections, value: section, onValueChange: setSection, label: "默认设置分组" }}>
           <TabsList variant="line" className="min-w-max border-b border-border/70 pb-1" aria-label="默认设置分组" activateOnFocus={false}>
             {sections.map(item => {
@@ -205,7 +205,7 @@ function DefaultsEditor({ initial }: { initial: DefaultsSnapshot }) {
             })}
           </TabsList>
         </ScrollingTabs>
-      </Tabs>
+        <TabsContent value={section} className="flex min-w-0 flex-col gap-5">
       {timeoutError && section !== "integration" && (
         <Alert variant="destructive">
           <AlertTitle>通知超时填写有误，暂时无法保存</AlertTitle>
@@ -220,7 +220,7 @@ function DefaultsEditor({ initial }: { initial: DefaultsSnapshot }) {
       <ErrorNotice error={save.error} />
       <ErrorNotice error={reload.error} />
       {requiresReview && (
-        <Alert>
+        <Alert role="alert">
           <AlertTitle>{writeResultUnknown ? "默认设置保存结果待确认" : "默认设置已变更"}</AlertTitle>
           <AlertDescription>
             <p>{writeResultUnknown
@@ -271,6 +271,8 @@ function DefaultsEditor({ initial }: { initial: DefaultsSnapshot }) {
           </OverlayActions>
         </FieldSet>
       </form>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

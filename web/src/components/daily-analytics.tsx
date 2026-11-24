@@ -296,7 +296,6 @@ export function DailyAnalytics({
                 role="rowgroup"
                 className="daily-cal-body"
                 data-scrollable={isScrollable || undefined}
-                tabIndex={isScrollable ? 0 : undefined}
                 aria-label="每日收款记录"
               >
                 {weeks.map((week) => (
@@ -314,6 +313,7 @@ export function DailyAnalytics({
                         : dailyDeltaPercent(day.confirmed_amount_cents, report.averageCents);
                       const level = calendarHeatLevel(day.confirmed_amount_cents, report.maximum);
                       const isSelected = day.date === selectedDate;
+                      const isFocusable = isSelected || (!selectedDate && day.date === firstDate);
                       const cellLabel = calendarCellDateLabel(day.date, report.today, firstDate);
                       const compactCellLabel = calendarCellDateLabel(
                         day.date,
@@ -339,6 +339,7 @@ export function DailyAnalytics({
                           <Button
                             type="button"
                             variant="ghost"
+                            tabIndex={isFocusable ? 0 : -1}
                             ref={(node) => {
                               if (node) cellRefs.current.set(day.date, node);
                               else cellRefs.current.delete(day.date);
@@ -431,7 +432,7 @@ export function DailyAnalytics({
       <div className="daily-report-footer">
         <div className="daily-report-footer-start">
           {!pending && hasDays && (
-            <p className="trend-dates daily-report-dates" aria-live="polite">
+            <p className="trend-dates daily-report-dates">
               <time dateTime={firstDate}>{firstDate}</time>
               {" — "}
               <time dateTime={lastDate}>{lastDate}</time>

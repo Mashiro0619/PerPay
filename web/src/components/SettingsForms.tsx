@@ -782,6 +782,7 @@ export function SettingsEditor({
                   type="button"
                   variant="ghost"
                   size="xs"
+                  aria-label="恢复默认：订单不存在（404）说明"
                   className="h-auto px-1.5 py-0.5 text-xs text-muted-foreground hover:text-foreground"
                   disabled={save.isPending}
                   onClick={() => {

@@ -1093,9 +1093,9 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
             </a>
           </p>
         )}
-        <p className="sr-only" role="status" aria-live="polite">
+        <p className="sr-only" role="status">
           {awaitingStartup
-            ? "收银台正在加载中，请稍候。"
+            ? ""
             : state.suspended
               ? "付款时间已到，请暂勿付款。"
               : copy.heading}

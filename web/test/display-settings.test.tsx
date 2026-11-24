@@ -315,7 +315,7 @@ describe("instance display settings", () => {
     const user = userEvent.setup();
     const field = screen.getByRole("textbox", { name: "订单不存在（404）说明" });
     expect(field).toHaveValue(customDetail);
-    await user.click(screen.getByRole("button", { name: "恢复默认" }));
+    await user.click(screen.getByRole("button", { name: "恢复默认：订单不存在（404）说明" }));
     expect(field).toHaveValue("");
     await user.click(screen.getByRole("button", { name: "保存" }));
     await waitFor(() => expect(onSaved).toHaveBeenCalledWith(cleared));

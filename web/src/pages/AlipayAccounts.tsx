@@ -127,7 +127,7 @@ export function AlipayAccountList({ onSelect }: { onSelect?: (id: string) => voi
     { id: "app", label: "App ID", cell: account => account.app_id ? <span className="font-mono text-xs">{account.app_id}</span> : <span className="text-muted-foreground">未配置</span> },
     { id: "sites", label: "关联网站", layout: "number", cell: account => account.sites.length ? <Badge variant="secondary" className="tabular-nums" title={account.sites.map(site => site.name).join("、")}>{account.sites.length} 个网站</Badge> : <span className="text-muted-foreground">未分配</span> },
     { id: "actions", label: "操作", layout: "actions", hideable: false, cell: account => onSelect
-      ? <Button variant="outline" size="sm" onClick={() => onSelect(account.id)}>配置</Button>
+      ? <Button variant="outline" size="sm" aria-label={"配置" + account.name} onClick={() => onSelect(account.id)}>配置</Button>
       : <Link to={"/settings/accounts/" + encodeURIComponent(account.id)} className={buttonVariants({ variant: "outline", size: "sm" })} aria-label={"配置" + account.name}>配置</Link> },
   ];
   return <Card size="sm" className="min-w-0" data-account-list aria-labelledby={titleId}>
@@ -745,7 +745,7 @@ export function AlipayAccountEditor({
           {creation.isPending ? "正在重试…" : "重试上一次操作"}
         </Button></OverlayActions>
       </>}
-      {needsReload && !review && <Alert>
+      {needsReload && !review && <Alert role="alert">
         <AlertTitle>{needsReload === "unknown" ? "操作结果待核对" : "账号配置已在其他页面或设备中更新"}</AlertTitle>
         <AlertDescription>
           <p>{needsReload === "unknown" ? "你的输入已保留。请重新读取账号，核对操作是否完成后再继续。" : "你的修改已保留，重新读取后可继续操作。"}</p>
@@ -924,7 +924,7 @@ export function AlipayAccountEditor({
                     />
                     {errors.app_id && <FieldError>{errors.app_id}</FieldError>}
                   </Field>
-                  {pending && <Alert>
+                  {pending && <Alert role="alert">
                     <AlertTitle>新应用密钥待启用</AlertTitle>
                     <AlertDescription>当前仍使用原密钥。上传下面的待启用应用公钥，再填入支付宝提供的公钥并验证启用。</AlertDescription>
                   </Alert>}

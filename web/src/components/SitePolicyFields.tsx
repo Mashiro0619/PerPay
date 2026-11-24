@@ -763,6 +763,7 @@ function OptionalCopyField({
             type="button"
             variant="ghost"
             size="xs"
+            aria-label={"恢复默认：" + label}
             className="h-auto px-1.5 py-0.5 text-xs text-muted-foreground hover:text-foreground"
             disabled={disabled}
             onClick={() => onChange("")}

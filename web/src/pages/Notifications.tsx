@@ -139,6 +139,7 @@ function DeliveryPage({
   const summaryRedelivery = useSummaryRedelivery();
   function renderRowAction(delivery: WebhookDeliverySummary) {
     const state = summaryDeliveryState(delivery);
+    const targetLabel = delivery.order_summary?.product_name ?? label(delivery.event.event_type);
     if (state.retryable) {
       const pending = quickRetry.isPending(delivery.delivery_id);
       return (
@@ -147,6 +148,7 @@ function DeliveryPage({
             type="button"
             size="xs"
             variant="outline"
+            aria-label={(pending ? "正在重试：" : "立即重试：") + targetLabel}
             disabled={pending}
             onClick={() => quickRetry.run(delivery.delivery_id, delivery.event.order_id)}
           >
@@ -164,6 +166,7 @@ function DeliveryPage({
             type="button"
             size="xs"
             variant="outline"
+            aria-label={"重新发送：" + targetLabel}
             disabled={sent}
             onClick={(event) => summaryRedelivery.open(delivery, event.currentTarget)}
           >

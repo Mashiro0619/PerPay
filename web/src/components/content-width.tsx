@@ -55,7 +55,7 @@ function useContentWidth() {
 export function AdminContent({ children, busy = false }: { children: ReactNode; busy?: boolean }) {
   const { mode } = useContentWidth();
   return (
-    <div
+    <main
       id="main-content"
       tabIndex={-1}
       inert={busy}
@@ -73,7 +73,7 @@ export function AdminContent({ children, busy = false }: { children: ReactNode; 
           {children}
         </div>
       </div>
-    </div>
+    </main>
   );
 }
 
@@ -89,12 +89,11 @@ export function ContentWidthControl() {
           size="icon"
           className="hidden lg:inline-flex"
           aria-label={label}
-          aria-pressed={mode === "full"}
           onClick={toggle}
           data-content-width-toggle
         />
       }>
-        <Icon />
+        <Icon aria-hidden="true" />
       </TooltipTrigger>
       <TooltipContent>{label}</TooltipContent>
     </Tooltip>

@@ -78,7 +78,7 @@ export function ErrorNotice({
 
 export function Loading({ label = "正在读取…" }: { label?: string }) {
   return (
-    <div className="flex flex-col gap-3" role="status">
+    <div className="flex flex-col gap-3" aria-busy="true">
       <span className="sr-only">{label}</span>
       <Skeleton className="h-8 w-2/3" />
       <Skeleton className="h-24 w-full" />

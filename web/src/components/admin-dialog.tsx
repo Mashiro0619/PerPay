@@ -87,7 +87,7 @@ function DialogScroll({ children, scrollRef, step = false }: { children: ReactNo
     for (const child of scroll.querySelectorAll(":scope > *, :scope > form > *")) observer.observe(child);
     return () => observer.disconnect();
   }, [children]);
-  return <div ref={element} tabIndex={scrollable ? 0 : -1} data-admin-dialog-scroll
+  return <div ref={element} tabIndex={scrollable ? 0 : -1} role={scrollable ? "region" : undefined} aria-label={scrollable ? "对话框内容" : undefined} data-admin-dialog-scroll
     data-overlay-step-scroll={step || undefined} data-scrollable={scrollable}>{children}</div>;
 }
 export function DialogContent({ className, kind = "form", size, scrollMode = "content", children, initialFocus, ...props }: ComponentProps<typeof DialogUI.DialogContent> & { kind?: "form" | "technical" | "detail" | "compact"; size?: OverlaySize; scrollMode?: "content" | "body" }) {

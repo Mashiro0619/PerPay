@@ -47,19 +47,19 @@ export function SecuritySettings({ settings }: { settings: RuntimeSettings }) {
       </CardHeader>
       <CardContent>
         <div className="settings-link-list">
-          <Link to="/sites" data-settings-link-row className="settings-link-row" aria-label="业务网站密钥与网站 ID">
+          <Link to="/sites" data-settings-link-row className="settings-link-row">
             <span className="settings-link-icon" aria-hidden="true"><Globe className="size-4" /></span>
             <span className="settings-link-copy">
               <span className="settings-link-title">业务网站密钥与网站 ID</span>
-              <span className="settings-link-desc" aria-hidden="true">查看或轮换各网站的原生 API、通知与易支付密钥</span>
+              <span className="settings-link-desc">查看或轮换各网站的原生 API、通知与易支付密钥</span>
             </span>
             <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
           </Link>
-          <Link to="/settings/accounts" data-settings-link-row className="settings-link-row" aria-label="在支付宝账号中管理应用密钥">
+          <Link to="/settings/accounts" data-settings-link-row className="settings-link-row">
             <span className="settings-link-icon" aria-hidden="true"><KeyRound className="size-4" /></span>
             <span className="settings-link-copy">
               <span className="settings-link-title">在支付宝账号中管理应用密钥</span>
-              <span className="settings-link-desc" aria-hidden="true">生成、更换或核对开放平台应用公钥与支付宝公钥</span>
+              <span className="settings-link-desc">生成、更换或核对开放平台应用公钥与支付宝公钥</span>
             </span>
             <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
           </Link>
@@ -70,12 +70,11 @@ export function SecuritySettings({ settings }: { settings: RuntimeSettings }) {
             target="_blank"
             rel="noopener noreferrer"
             className="settings-link-row"
-            aria-label="接入文档"
           >
             <span className="settings-link-icon" aria-hidden="true"><BookOpen className="size-4" /></span>
             <span className="settings-link-copy">
               <span className="settings-link-title">接入文档</span>
-              <span className="settings-link-desc" aria-hidden="true">阅读原生 API 签名规范、回调验证与易支付接入指南</span>
+              <span className="settings-link-desc">阅读原生 API 签名规范、回调验证与易支付接入指南</span>
             </span>
             <ExternalLink className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
           </a>

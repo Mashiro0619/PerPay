@@ -70,7 +70,7 @@ export function AuthLoadingCard({
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="auth-loading-row" role="status">
+        <div className="auth-loading-row" aria-busy="true">
           <Spinner aria-hidden="true" />
           <span>{label}</span>
         </div>

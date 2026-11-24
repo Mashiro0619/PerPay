@@ -176,7 +176,6 @@ export function TestPaymentResult({
       )}
       <Alert
         role="status"
-        aria-live="polite"
         variant={disputed ? "destructive" : "default"}
       >
         <NoticeIcon />

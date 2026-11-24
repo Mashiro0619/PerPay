@@ -120,7 +120,7 @@ function RetryArchiveDeletion({ archive }: { archive: HistoryArchiveSummary }) {
     onSettled: () => queryClient.invalidateQueries({ queryKey: historyArchivesKey }),
   });
   return <div className="flex min-w-0 flex-col gap-2">
-    <Button variant="outline" size="sm" disabled={remove.isPending} onClick={() => remove.mutate()}>{remove.isPending && <Spinner data-icon="inline-start" />}重试删除</Button>
+    <Button variant="outline" size="sm" aria-label={"重试删除归档 " + archive.archive_id} disabled={remove.isPending} onClick={() => remove.mutate()}>{remove.isPending && <Spinner data-icon="inline-start" />}重试删除</Button>
     <ErrorNotice error={remove.error} />
   </div>;
 }
@@ -274,7 +274,7 @@ function ArchiveActions({ archive }: { archive: HistoryArchiveSummary }) {
           <Input id="archive-delete-confirmation" autoComplete="off" value={confirmationText} onChange={event => setConfirmationText(event.target.value)} disabled={remove.isPending || unknown} />
           <FieldDescription>归档编号：{confirmedArchive.archive_id}</FieldDescription>
         </Field></FieldGroup>
-        {unknown ? <Alert><AlertTitle>删除结果待确认</AlertTitle><AlertDescription>请求未完整返回，请刷新归档列表查看结果。</AlertDescription></Alert> : <ErrorNotice error={remove.error} />}
+        {unknown ? <Alert role="alert"><AlertTitle>删除结果待确认</AlertTitle><AlertDescription>请求未完整返回，请刷新归档列表查看结果。</AlertDescription></Alert> : <ErrorNotice error={remove.error} />}
         <AlertDialogFooter>
           <AlertDialogCancel disabled={remove.isPending}>取消</AlertDialogCancel>
           {unknown ? <Button variant="outline" onClick={() => { void refreshAfterUnknown(); }}>刷新归档列表</Button> : <AlertDialogAction variant="destructive" disabled={confirmationText !== "永久删除" || remove.isPending} onClick={() => { if (confirmation) remove.mutate(confirmation); }}>{remove.isPending && <Spinner data-icon="inline-start" />}{remove.isPending ? "正在删除…" : "确认永久删除"}</AlertDialogAction>}

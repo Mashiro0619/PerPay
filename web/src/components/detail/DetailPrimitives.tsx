@@ -67,7 +67,7 @@ export function TechnicalDetails({ data, identifiers = [], title = "技术信息
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   return <div className="flex min-w-0" data-technical-information>
-    <Button ref={trigger} variant="ghost" size="sm" className="h-auto min-h-8 max-w-full whitespace-normal" aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(true)}>
+    <Button ref={trigger} variant="ghost" size="sm" className="h-auto min-h-8 max-w-full whitespace-normal" aria-haspopup="dialog" onClick={() => setOpen(true)}>
       {title}
       <Code aria-hidden="true" data-icon="inline-end" />
     </Button>
@@ -106,7 +106,7 @@ export function TechnicalDetailsDialog({
           <DialogTitle ref={title} tabIndex={-1}>
             {titleText}
           </DialogTitle>
-          <DialogClose render={<Button variant="ghost" size="icon" aria-label={"关闭" + titleText} />}><X /></DialogClose>
+          <DialogClose render={<Button variant="ghost" size="icon" aria-label={"关闭" + titleText} />}><X aria-hidden="true" /></DialogClose>
         </DialogHeader>
         <DialogBody>
           {children}
@@ -128,10 +128,10 @@ export function TechnicalDetailsDialog({
           <pre
             tabIndex={0}
             aria-label={titleText}
-            role="group"
+            role="region"
             className="shrink-0 rounded-md bg-muted p-4 text-xs whitespace-pre-wrap break-all"
           >
-            {JSON.stringify(data, null, 2)}
+            <code>{JSON.stringify(data, null, 2)}</code>
           </pre>
         </DialogBody>
         <DialogFooter className="shrink-0">

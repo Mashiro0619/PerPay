@@ -346,7 +346,7 @@ export function FinancialDialog({
                   </Alert>
                 )}
                 {!stateValid && (
-                  <Alert>
+                  <Alert role="alert">
                     <AlertCircle />
                     <AlertDescription>
                       {refunded ? "本订单已有退款记录。请先核实并处理退款记录，再重新确认收款。" : "订单或流水状态已变化，请关闭后刷新。"}
@@ -355,7 +355,7 @@ export function FinancialDialog({
                 )}
                 {preview.data.order.payable_amount_cents !==
                   preview.data.ledger.amount_cents && (
-                  <Alert>
+                  <Alert role="alert">
                     <AlertCircle />
                     <AlertTitle>
                       流水 {money(preview.data.ledger.amount_cents)}，订单应付 {money(preview.data.order.payable_amount_cents)}，

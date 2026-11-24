@@ -34,7 +34,7 @@ export function OperationRecoveryNotice({
   }, [error, focusOnError]);
   return (
     <div className="flex min-w-0 flex-col gap-3">
-      <Alert>
+      <Alert role="alert">
         <AlertCircle />
         <AlertTitle ref={title} tabIndex={-1} aria-describedby={descriptionId}>
           {heading}

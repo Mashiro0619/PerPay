@@ -29,13 +29,15 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { ErrorNotice, QueryView } from "@/components/request-state";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
   DialogBody,
-  DialogFooter,
 } from "@/components/admin-dialog";
 
 export function AdminAccessEditorPage() {
@@ -170,7 +172,7 @@ export function AdminAccessSettings({
       </CardHeader>
       <CardContent>
         <FieldGroup>
-          {needsReload && !review && <Alert>
+          {needsReload && !review && <Alert role="alert">
             <AlertTitle>{isOperationResultUnknown(save.error) ? "保存结果待确认" : "配置已在其他页面或设备中更新"}</AlertTitle>
             <AlertDescription>
               <p>{isOperationResultUnknown(save.error)
@@ -181,7 +183,7 @@ export function AdminAccessSettings({
               </Button>
             </AlertDescription>
           </Alert>}
-          {review && <Alert>
+          {review && <Alert role="alert">
             <AlertTitle>IP 白名单存在不同修改</AlertTitle>
             <AlertDescription>
               <FieldGroup>
@@ -275,36 +277,35 @@ export function AdminAccessSettings({
           保存白名单
         </Button>
       </OverlayFormActions>
-      <Dialog
+      <AlertDialog
         open={confirm}
         onOpenChange={(value) => {
           if (!save.isPending) setConfirm(value);
         }}
       >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>确认保存 IP 白名单？</DialogTitle>
-          </DialogHeader>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认保存 IP 白名单？</AlertDialogTitle>
+          </AlertDialogHeader>
           <DialogBody>
-            <DialogDescription>
+            <AlertDialogDescription>
               保存立即生效。启用时须允许当前
               IP；不匹配的来源即使已登录也会被拒绝。请确认有服务器离线恢复权限。
-            </DialogDescription>
+            </AlertDialogDescription>
           </DialogBody>
-          <DialogFooter>
-            <Button
-              variant="outline"
+          <AlertDialogFooter safeActionFirst>
+            <AlertDialogCancel
               disabled={save.isPending}
               onClick={() => setConfirm(false)}
             >
               取消
-            </Button>
-            <Button disabled={save.isPending} onClick={() => save.mutate()}>
+            </AlertDialogCancel>
+            <AlertDialogAction disabled={save.isPending} onClick={() => save.mutate()}>
               {save.isPending ? "保存中…" : "确认保存"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   );
 }

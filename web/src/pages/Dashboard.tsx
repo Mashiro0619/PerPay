@@ -56,7 +56,7 @@ function collectionReadinessReason(ledger: SystemStatus["ledger"]) {
 }
 
 function OverviewRecordsLoading({ count }: { count: number }) {
-  return <div role="status" data-overview-record-loading className="flex flex-col gap-3">
+  return <div aria-busy="true" data-overview-record-loading className="flex flex-col gap-3">
     <span className="sr-only">正在读取记录…</span>
     {Array.from({ length: count }, (_, index) => <div key={index} aria-hidden="true" className="flex min-w-0 flex-col gap-2 py-2">
       <div className="flex items-center justify-between gap-4"><Skeleton className="h-4 w-2/3" /><Skeleton className="h-4 w-14" /></div>

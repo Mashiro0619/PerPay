@@ -19,35 +19,51 @@ export function CopyValue({
   size?: "icon-sm" | "icon-xs";
 }) {
   const [state, setState] = useState<"idle" | "success" | "error">("idle");
+  const [announceTick, setAnnounceTick] = useState(0);
   const request = useRef(0);
   const copied = state === "success";
   const failed = state === "error";
   useLayoutEffect(() => {
     setState("idle");
+    setAnnounceTick(0);
     return () => { request.current++; };
   }, [value]);
   useEffect(() => {
-    if (!copied) return;
-    const timer = window.setTimeout(() => setState("idle"), 2000);
+    if (state === "idle") return;
+    const timer = window.setTimeout(() => setState("idle"), state === "error" ? 5000 : 2000);
     return () => window.clearTimeout(timer);
-  }, [copied]);
+  }, [state, announceTick]);
   const block = secret || /[\r\n]/.test(value);
   const copy = () => {
     const current = ++request.current;
-    setState("idle");
     if (!navigator.clipboard) {
       setState("error");
+      setAnnounceTick((tick) => tick + 1);
       return;
     }
+    setState("idle");
     void navigator.clipboard
       .writeText(value)
       .then(() => {
-        if (current === request.current) setState("success");
+        if (current === request.current) {
+          setState("success");
+          setAnnounceTick((tick) => tick + 1);
+        }
       })
       .catch(() => {
-        if (current === request.current) setState("error");
+        if (current === request.current) {
+          setState("error");
+          setAnnounceTick((tick) => tick + 1);
+        }
       });
   };
+  // Toggle a trailing NBSP on repeated copies so VoiceOver re-announces identical status text.
+  const repeatSuffix = announceTick > 0 && announceTick % 2 === 0 ? "\u00A0" : "";
+  const statusMessage = failed
+    ? `复制失败，请选中文本手动复制。${repeatSuffix}`
+    : copied
+      ? `已复制${repeatSuffix}`
+      : "";
   const button = (
     <Button
       variant="ghost"
@@ -88,7 +104,7 @@ export function CopyValue({
         role="status"
         className={failed ? "text-sm text-destructive" : "sr-only"}
       >
-        {failed ? "复制失败，请选中文本手动复制。" : copied ? "已复制" : ""}
+        {statusMessage}
       </span>
     </div>
   );

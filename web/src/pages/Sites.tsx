@@ -110,6 +110,23 @@ export function SiteSettingsPage() {
   const changeSection = (value: string | null) => {
     if (value) void navigate("/sites/" + encodeURIComponent(clientId!) + "/settings/" + value);
   };
+  const paneContent = (
+    <div className="settings-pane">
+      <QueryView query={query}>{({ site, configuration }) => (
+        section === "display" ? (
+          <CheckoutDisplayStudio site={site} onCacheSite={cacheSite} />
+        ) : (
+          <SiteEditor
+            key={site.client_id + ":" + section}
+            initial={site}
+            configuration={configuration}
+            section={section}
+            embedded
+          />
+        )
+      )}</QueryView>
+    </div>
+  );
   return <div className="admin-settings-layout @container/settings flex w-full min-w-0 flex-col gap-6" data-site-settings-section={section}>
     <PageHeading title="网站设置" />
     <Tabs
@@ -160,22 +177,8 @@ export function SiteSettingsPage() {
           </SelectionMotionGroup>
         </div>
       )}
-      <TabsContent value={section} className="min-w-0" aria-label={isMobile ? selected.label : undefined}>
-        <div className="settings-pane">
-          <QueryView query={query}>{({ site, configuration }) => (
-            section === "display" ? (
-              <CheckoutDisplayStudio site={site} onCacheSite={cacheSite} />
-            ) : (
-              <SiteEditor
-                key={site.client_id + ":" + section}
-                initial={site}
-                configuration={configuration}
-                section={section}
-                embedded
-              />
-            )
-          )}</QueryView>
-        </div>
+      <TabsContent value={section} role={isMobile ? "none" : undefined} className="min-w-0">
+        {paneContent}
       </TabsContent>
     </Tabs>
   </div>;
@@ -759,7 +762,7 @@ function SiteEditor({
       <ErrorNotice error={save.error || (action.variables === "delete" || !visible("integration") ? action.error : null)} />
       <ErrorNotice error={reload.error} />
       {requiresReview && (
-        <Alert>
+        <Alert role="alert">
           <AlertTitle>{writeResultUnknown ? "操作结果待确认" : requiresConfigurationReview ? "业务网站配置已变更" : "核对密钥操作结果"}</AlertTitle>
           <AlertDescription>
             <p>{writeResultUnknown

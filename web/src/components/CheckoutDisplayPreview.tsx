@@ -345,9 +345,9 @@ export function CheckoutDisplayPreview({
           onSelectTarget={onSelectTarget}
           className={cn("w-full rounded-md", useTwoColumns ? "text-left" : "text-center")}
         >
-          <p className="text-xs leading-relaxed text-muted-foreground">
+          <span className="block text-xs leading-relaxed text-muted-foreground">
             {paymentInstructionsText}
-          </p>
+          </span>
         </PreviewHotspot>
       </div>
     </div>
@@ -373,9 +373,9 @@ export function CheckoutDisplayPreview({
             onSelectTarget={onSelectTarget}
             className={cn("w-full rounded-md", useTwoColumns ? "text-left" : "text-center")}
           >
-            <p className="text-xs leading-relaxed text-muted-foreground">
+            <span className="block text-xs leading-relaxed text-muted-foreground">
               {terminalNoteText}
-            </p>
+            </span>
           </PreviewHotspot>
         ) : (
           <Button
@@ -517,9 +517,9 @@ export function CheckoutDisplayPreview({
                   onSelectTarget={onSelectTarget}
                   className="w-full rounded-md"
                 >
-                  <div
+                  <span
                     className={cn(
-                      "flex min-w-0",
+                      "flex w-full min-w-0",
                       useTwoColumns
                         ? "flex-col items-start gap-0.5 text-left"
                         : "items-baseline justify-between gap-3",
@@ -537,7 +537,7 @@ export function CheckoutDisplayPreview({
                     >
                       {SAMPLE_PRODUCT}
                     </span>
-                  </div>
+                  </span>
                 </PreviewHotspot>
               )}
               {showMerchantOrderNo && (
@@ -548,9 +548,9 @@ export function CheckoutDisplayPreview({
                   onSelectTarget={onSelectTarget}
                   className="w-full rounded-md"
                 >
-                  <div
+                  <span
                     className={cn(
-                      "flex min-w-0",
+                      "flex w-full min-w-0",
                       useTwoColumns
                         ? "flex-col items-start gap-0.5 text-left"
                         : "items-baseline justify-between gap-3",
@@ -569,7 +569,7 @@ export function CheckoutDisplayPreview({
                       <span className="truncate">{SAMPLE_ORDER_NO}</span>
                       <Copy className="size-3 shrink-0 text-muted-foreground" aria-hidden="true" />
                     </span>
-                  </div>
+                  </span>
                 </PreviewHotspot>
               )}
             </div>
@@ -583,26 +583,26 @@ export function CheckoutDisplayPreview({
                 onSelectTarget={onSelectTarget}
                 className="w-full rounded-md text-left"
               >
-                <div className="flex flex-col gap-1.5 text-xs" data-preview-breakdown>
-                  <div className="flex items-baseline justify-between gap-2">
+                <span className="flex w-full flex-col gap-1.5 text-xs" data-preview-breakdown>
+                  <span className="flex items-baseline justify-between gap-2">
                     <span className="text-muted-foreground">商品原价</span>
                     <span className="tabular-nums text-foreground">
                       {SAMPLE_REQUESTED}
                     </span>
-                  </div>
-                  <div className="flex items-baseline justify-between gap-2">
+                  </span>
+                  <span className="flex items-baseline justify-between gap-2">
                     <span className="text-muted-foreground">自动核对微调</span>
                     <span className="tabular-nums text-foreground">
                       +{SAMPLE_OFFSET}
                     </span>
-                  </div>
-                  <div className="flex items-baseline justify-between gap-2 pt-0.5 font-medium">
+                  </span>
+                  <span className="flex items-baseline justify-between gap-2 pt-0.5 font-medium">
                     <span className="text-foreground">实际应付</span>
                     <span className="tabular-nums text-foreground">
                       {SAMPLE_PAYABLE}
                     </span>
-                  </div>
-                </div>
+                  </span>
+                </span>
               </PreviewHotspot>
             </div>
           )}
@@ -620,13 +620,13 @@ export function CheckoutDisplayPreview({
                 onSelectTarget={onSelectTarget}
                 className="w-full rounded-md text-left"
               >
-                <div
-                  className="flex items-start gap-1.5 text-xs leading-relaxed text-muted-foreground"
+                <span
+                  className="flex w-full items-start gap-1.5 text-xs leading-relaxed text-muted-foreground"
                   data-preview-notice
                 >
                   <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-                  <p className="min-w-0 wrap-anywhere">{customNotice}</p>
-                </div>
+                  <span className="min-w-0 wrap-anywhere">{customNotice}</span>
+                </span>
               </PreviewHotspot>
             </div>
           )}
@@ -829,12 +829,12 @@ export function CheckoutDisplayPreview({
                     onSelectTarget={onSelectTarget}
                     className="max-w-full rounded-full"
                   >
-                    <p
-                      className="checkout-preview-offset-pill"
+                    <span
+                      className="checkout-preview-offset-pill block"
                       data-preview-adjustment-hint
                     >
                       {customAdjustmentHint}
-                    </p>
+                    </span>
                   </PreviewHotspot>
                 )}
               </div>
@@ -867,7 +867,7 @@ export function CheckoutDisplayPreview({
                       onSelectTarget={onSelectTarget}
                       className="rounded-lg"
                     >
-                      <div
+                      <span
                         className="flex flex-wrap items-center justify-center gap-1"
                         data-preview-qr-tools
                       >
@@ -891,7 +891,7 @@ export function CheckoutDisplayPreview({
                           <Download aria-hidden="true" data-icon="inline-start" />
                           保存二维码
                         </span>
-                      </div>
+                      </span>
                     </PreviewHotspot>
                   )}
                 </div>

@@ -7,6 +7,7 @@ export function isAlipaySchemeBlockedBrowser(userAgent: string): boolean {
 /** Synchronous best-effort copy fallback used when Clipboard API is unavailable or raced by app switch. */
 function copyWithExecCommand(amountText: string): boolean {
   if (typeof document === "undefined" || typeof document.execCommand !== "function") return false;
+  const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   const input = document.createElement("textarea");
   input.value = amountText;
   input.setAttribute("readonly", "");
@@ -20,6 +21,7 @@ function copyWithExecCommand(amountText: string): boolean {
     return false;
   } finally {
     input.remove();
+    previousFocus?.focus({ preventScroll: true });
   }
 }
 

@@ -55,7 +55,6 @@ export function LinkedTableRow({
     <TableRow
       className={cn(linkedRowClassName, className)}
       data-business-row={rowId ?? ""}
-      role="row"
       aria-label={ariaLabel}
       onClick={followRowLink}
       onAuxClick={followRowLink}
