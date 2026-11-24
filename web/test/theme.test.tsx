@@ -119,7 +119,7 @@ describe("official neutral appearance", () => {
     theme.setPreference("bad" as "dark");
     expect(theme.getPreference()).toBe("light");
   });
-  it("uses the official accessible theme menu, removes stored key on system, and shows resolved OS theme", async () => {
+  it("uses the official accessible theme menu and removes stored key on system", async () => {
     const { theme, storage } = boot();
     window.perpayTheme = theme;
     render(<ThemeControl />);
@@ -127,7 +127,7 @@ describe("official neutral appearance", () => {
     const user = userEvent.setup();
     trigger.focus();
     await user.keyboard("{ArrowDown}");
-    expect(await screen.findByRole("menuitemradio", { name: "跟随系统（当前浅色）" })).toBeInTheDocument();
+    expect(await screen.findByRole("menuitemradio", { name: "跟随系统" })).toBeInTheDocument();
     await user.click(
       await screen.findByRole("menuitemradio", { name: "深色" }),
     );
