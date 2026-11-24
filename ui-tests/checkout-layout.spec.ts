@@ -38,6 +38,27 @@ test("checkout keeps one query before order information on phones and scales the
     await record(page, info, bounds);
     await info.attach(`checkout-${width}-${height}`, { body: await page.screenshot(), contentType: "image/png" });
   }
+  // Mobile receipt rows render merchant order number as plain text aligned flush with the right column.
+  await page.setViewportSize({ width: 430, height: 900 });
+  await page.goto(manifest.origin + manifest.checkouts.open!);
+  await expect(page.getByRole("button", { name: "复制商家订单号" })).toHaveCount(0);
+  const receipt = await page.evaluate(() => {
+    const product = document.querySelector("[data-product-name]")!.getBoundingClientRect();
+    const orderNo = document.querySelector("[data-merchant-order-no]")!.getBoundingClientRect();
+    const orderRow = document.querySelector("[data-merchant-order-no]")!.closest(".checkout-receipt-row")!.getBoundingClientRect();
+    const productRow = document.querySelector("[data-product-name]")!.closest(".checkout-receipt-row")!.getBoundingClientRect();
+    const price = document.querySelector(".checkout-breakdown-row span:last-child")!.getBoundingClientRect();
+    return {
+      productRight: product.right,
+      orderNoRight: orderNo.right,
+      priceRight: price.right,
+      productRowHeight: productRow.height,
+      orderRowHeight: orderRow.height,
+    };
+  });
+  expect(Math.abs(receipt.orderNoRight - receipt.productRight), JSON.stringify(receipt)).toBeLessThanOrEqual(1);
+  expect(Math.abs(receipt.orderNoRight - receipt.priceRight), JSON.stringify(receipt)).toBeLessThanOrEqual(1);
+  expect(Math.abs(receipt.orderRowHeight - receipt.productRowHeight), JSON.stringify(receipt)).toBeLessThanOrEqual(1);
   await page.setViewportSize({ width: 360, height: 560 });
   await page.goto(manifest.origin + manifest.checkouts.open!);
   await page.getByRole("button", { name: "放大二维码" }).click();

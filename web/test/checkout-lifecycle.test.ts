@@ -312,9 +312,10 @@ describe("checkout desktop composition", () => {
       container.querySelector("[data-payable-amount]"),
     );
     expect(summary).toContainElement(screen.getByText("测试商品"));
-    expect(summary).toContainElement(
-      screen.getByRole("button", { name: "复制商家订单号" }),
-    );
+    expect(summary).toContainElement(screen.getByText("preview-order"));
+    expect(
+      screen.queryByRole("button", { name: "复制商家订单号" }),
+    ).not.toBeInTheDocument();
     expect(container.querySelector("[data-checkout-actions]")).toContainElement(
       screen.getByRole("button", { name: "我已付款，查询状态" }),
     );

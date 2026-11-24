@@ -1014,11 +1014,8 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                         {hasOrderNumber && (
                           <div className="checkout-receipt-row flex items-baseline justify-between gap-3 md:flex-col md:items-stretch md:gap-1">
                             <dt className="shrink-0 text-xs text-muted-foreground">商家订单号</dt>
-                            <dd className="checkout-receipt-value min-w-0" data-merchant-order-no>
-                              <CopyValue
-                                value={order.merchant_order_no}
-                                label="复制商家订单号"
-                              />
+                            <dd className="checkout-receipt-value min-w-0 break-all text-right font-medium text-foreground tabular-nums md:text-left" data-merchant-order-no>
+                              {order.merchant_order_no}
                             </dd>
                           </div>
                         )}

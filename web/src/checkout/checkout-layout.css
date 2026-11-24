@@ -187,13 +187,6 @@
   gap: 0.75rem;
 }
 
-@media (max-width: 767px) {
-  .checkout-receipt-value > div {
-    justify-content: flex-end;
-    text-align: right;
-  }
-}
-
 .checkout-help-link {
   background-color: var(--background);
   box-shadow: 0 0 12px 6px var(--background);
