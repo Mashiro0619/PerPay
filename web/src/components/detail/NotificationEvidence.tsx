@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ExternalLink } from "lucide-react";
 import { result, type WebhookAttempt, type WebhookDeliveryDetail, type WebhookDeliverySummary } from "@/api/client";
 import { attemptResult, latestAttempt, notificationErrorName, notificationRecoveryHint } from "@/lib/detail-summary";
+import { naturalCollator } from "@/lib/format";
 import { label } from "@/lib/labels";
 import { refreshNotificationRecords } from "@/lib/record-refresh";
 import { Link, useNavigate } from "@/navigation";
@@ -354,7 +355,7 @@ const attemptTones = {
 /** Attempts newest first, each titled with its number and what came back. */
 export function attemptEntries(attempts: readonly WebhookAttempt[]): TimelineEntry[] {
   return [...attempts]
-    .sort((a, b) => Date.parse(b.started_at) - Date.parse(a.started_at) || b.attempt_number - a.attempt_number || b.attempt_id.localeCompare(a.attempt_id))
+    .sort((a, b) => Date.parse(b.started_at) - Date.parse(a.started_at) || b.attempt_number - a.attempt_number || naturalCollator.compare(b.attempt_id, a.attempt_id))
     .map(attempt => ({
       id: attempt.attempt_id,
       title: "第 " + attempt.attempt_number + " 次 · " + attemptResult(attempt),

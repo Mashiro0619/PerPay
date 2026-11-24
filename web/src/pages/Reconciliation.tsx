@@ -26,7 +26,8 @@ import { Navigate, useLocation, useSearchParams } from "react-router";
 import { Link, useNavigate } from "@/navigation";
 import { api, result, type ReconciliationIssueContext } from "@/api/client";
 import { useCursor } from "@/lib/cursor";
-import { money, resourceIdPattern, shortId } from "@/lib/format";
+import { money, resourceIdPattern } from "@/lib/format";
+import { ShortId } from "@/components/short-id";
 import { label } from "@/lib/labels";
 import { StatusBadge } from "@/components/business-status";
 import { QueryView } from "@/components/request-state";
@@ -68,15 +69,14 @@ function RelatedOrderLink({ item }: { item: ReconciliationRow }) {
   const merchantOrderNo = item.context?.order_summary?.merchant_order_no ?? item.merchantOrderNo;
   const orderId = item.context?.order_summary?.order_id ?? item.orderId;
   if (!orderId) return <span className="list-code">{merchantOrderNo ?? "—"}</span>;
-  const text = merchantOrderNo ?? "订单 " + shortId(orderId);
   return (
     <Link
       className="list-code reconciliation-order-link"
-      title={merchantOrderNo ?? undefined}
-      aria-label={"查看订单：" + (merchantOrderNo ?? shortId(orderId))}
+      title={merchantOrderNo ?? orderId}
+      aria-label={"查看订单：" + (merchantOrderNo ?? orderId)}
       to={"/orders/" + orderId}
     >
-      {text}
+      {merchantOrderNo ?? <>订单 <ShortId value={orderId} /></>}
     </Link>
   );
 }
@@ -142,7 +142,7 @@ function RelatedRecord({ item, compact = false }: { item: ReconciliationRow; com
 
   if (ledger) {
     const direction = ledger.direction === "CREDIT" ? "收入流水" : "支出流水";
-    const reference = ledger.other_account || ledger.memo || "流水号 " + shortId(ledger.external_event_id);
+    const referenceText = ledger.other_account || ledger.memo || null;
     return (
       <Link
         className="reconciliation-related-record reconciliation-related-link"
@@ -155,7 +155,9 @@ function RelatedRecord({ item, compact = false }: { item: ReconciliationRow; com
         </span>
         <span className="reconciliation-related-meta">
           <ListDateTime value={ledger.occurred_at} inline />
-          <span className="reconciliation-related-detail" title={reference}>{reference}</span>
+          <span className="reconciliation-related-detail" title={referenceText ?? "流水号 " + ledger.external_event_id}>
+            {referenceText ?? <>流水号 <ShortId value={ledger.external_event_id} /></>}
+          </span>
         </span>
       </Link>
     );
@@ -164,9 +166,9 @@ function RelatedRecord({ item, compact = false }: { item: ReconciliationRow; com
   const raw = item.context?.raw_event_summary;
   if (raw) {
     const reference = raw.other_account || raw.memo || null;
-    const rawReference = raw.external_event_id
-      ? "流水号 " + shortId(raw.external_event_id)
-      : "原始记录 " + shortId(raw.raw_event_id);
+    const rawReferenceTitle = raw.external_event_id
+      ? "流水号 " + raw.external_event_id
+      : "原始记录 " + raw.raw_event_id;
     const summary = ["支付宝流水", readableRawDirection(raw.direction_text), readableRawAmount(raw.amount_text)]
       .filter(Boolean)
       .join(" · ");
@@ -175,7 +177,11 @@ function RelatedRecord({ item, compact = false }: { item: ReconciliationRow; com
         <span className="reconciliation-related-title" title={summary}>{summary}</span>
         <span className="reconciliation-related-meta">
           <span title={raw.occurred_at_text ?? undefined}>{compact && <span>原始时间 </span>}{raw.occurred_at_text || "时间未知"}</span>
-          <span className="reconciliation-related-detail" title={reference ?? rawReference}>{reference ?? rawReference}</span>
+          <span className="reconciliation-related-detail" title={reference ?? rawReferenceTitle}>
+            {reference ?? (raw.external_event_id
+              ? <>流水号 <ShortId value={raw.external_event_id} /></>
+              : <>原始记录 <ShortId value={raw.raw_event_id} /></>)}
+          </span>
         </span>
       </div>
     );

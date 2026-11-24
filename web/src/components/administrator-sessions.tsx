@@ -10,7 +10,7 @@ import { useOverlayCloseGuard } from "@/lib/overlay-context";
 import { api, result, type AdminLoginSession } from "@/api/client";
 import { useSession } from "@/auth";
 import { useDraftGuard } from "@/drafts";
-import { dateTime } from "@/lib/format";
+import { dateTime, naturalCollator } from "@/lib/format";
 import { sessionActivity, sessionDevice } from "@/lib/session-device";
 import { useSuccessToast } from "@/components/Feedback";
 import { RefreshButton } from "@/components/refresh-button";
@@ -115,7 +115,7 @@ export function AdministratorSessions({ detailSessionId }: { detailSessionId?: s
   const rows = [...(sessions.data?.data ?? [])].sort((left, right) =>
     Number(right.is_current) - Number(left.is_current) ||
     new Date(right.last_seen_at).getTime() - new Date(left.last_seen_at).getTime() ||
-    left.session_id.localeCompare(right.session_id),
+    naturalCollator.compare(left.session_id, right.session_id),
   );
   const hasOthers = rows.some(row => !row.is_current);
   const details = action ? confirmation(action) : null;

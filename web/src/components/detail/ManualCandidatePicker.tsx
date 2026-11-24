@@ -5,7 +5,8 @@ import { useState } from "react";
 import { Search } from "lucide-react";
 import { result, type ManualSettlementRecommendation } from "@/api/client";
 import { normalizeKeyword } from "@/lib/list-query";
-import { dateTime, money, shortId } from "@/lib/format";
+import { dateTime, money } from "@/lib/format";
+import { ShortId } from "@/components/short-id";
 import { ListDateTime, ListMoney } from "@/components/list-primitives";
 import { Button } from "@/components/ui/button";
 import { Field, FieldGroup, FieldError } from "@/components/ui/field";
@@ -225,7 +226,7 @@ export function ManualCandidatePicker({
                       {choice.website && (
                         <ItemDescription className="line-clamp-none whitespace-normal wrap-anywhere" title={choice.websiteId}>
                           所属网站：{choice.website}
-                          {choice.websiteId && (choice.website === "名称不可用" || query.data.choices.some(other => other.website === choice.website && other.websiteId !== choice.websiteId)) && " · " + shortId(choice.websiteId)}
+                          {choice.websiteId && (choice.website === "名称不可用" || query.data.choices.some(other => other.website === choice.website && other.websiteId !== choice.websiteId)) && <> · <ShortId value={choice.websiteId} /></>}
                         </ItemDescription>
                       )}
                       <ItemDescription className="line-clamp-none whitespace-normal">

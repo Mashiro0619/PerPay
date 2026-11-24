@@ -10,7 +10,8 @@ import {
   type ArchiveOrderSummary, type HistoryArchiveRecord, type HistoryArchiveSummary,
 } from "@/api/history-archives";
 import { Link, useNavigate } from "@/navigation";
-import { count, dateTime, money, shortId } from "@/lib/format";
+import { count, dateTime, money } from "@/lib/format";
+import { ShortId } from "@/components/short-id";
 import { useCursor } from "@/lib/cursor";
 import { isOperationResultUnknown, useOperationWait } from "@/hooks/use-operation-wait";
 import { useMaintenanceAction, useMaintenanceJobs } from "@/hooks/use-maintenance";
@@ -97,7 +98,7 @@ function archiveDateError(value: string): string {
 const archiveColumns: BusinessColumn<HistoryArchiveSummary>[] = [
   { id: "archive", label: "创建时间", layout: "identity", hideable: false, cell: archive => <div className="flex min-w-0 flex-col gap-1">
     {archive.status === "AVAILABLE" ? <Link global to={archivePath(archive.archive_id)} className="text-primary underline-offset-4 hover:underline">{dateTime(archive.created_at)}</Link> : <span>{dateTime(archive.created_at)}</span>}
-    <span className="text-xs text-muted-foreground">{shortId(archive.archive_id)}</span>
+    <ShortId value={archive.archive_id} className="text-xs text-muted-foreground" />
   </div> },
   { id: "before", label: "截止时间（不含）", layout: "datetime", hideable: false, summaryDefault: true, summaryLabel: true, cell: archive => dateTime(archive.before) },
   { id: "orders", label: "订单", layout: "number", hideable: false, summaryDefault: true, summaryLabel: true, cell: archive => count(archive.order_count) },
@@ -349,7 +350,7 @@ function ArchiveContents({ archiveId, orderPage, pending }: { archiveId: string;
 }
 
 const recordColumns: BusinessColumn<HistoryArchiveRecord>[] = [
-  { id: "record", label: "记录", layout: "identity", hideable: false, cell: record => <span title={record.key}>{shortId(record.key)}</span> },
+  { id: "record", label: "记录", layout: "identity", hideable: false, cell: record => <ShortId value={record.key} /> },
   { id: "table", label: "数据类型", layout: "text", hideable: false, summaryDefault: true, summaryLabel: true, cell: record => <span title={record.table}>{archiveTableLabel(record.table)}</span> },
   { id: "detail", label: "内容", layout: "actions", hideable: false, cell: record => <TechnicalDetails title="查看记录" data={record.data} identifiers={[["数据类型", archiveTableLabel(record.table)], ["数据表", record.table], ["记录编号", record.key]]} /> },
 ];

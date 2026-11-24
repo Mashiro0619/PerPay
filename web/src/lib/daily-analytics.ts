@@ -1,4 +1,5 @@
 import type { SystemAnalytics } from "@/api/client";
+import { naturalCollator } from "@/lib/format";
 
 const DAY_MILLISECONDS = 24 * 60 * 60 * 1000;
 const BEIJING_OFFSET_MILLISECONDS = 8 * 60 * 60 * 1000;
@@ -120,7 +121,7 @@ export function compactDeltaPercent(percent: number): string {
 /** Build chronological Monday-to-Sunday calendar weeks covering the given days. */
 export function buildCalendarWeeks(days: readonly DailyDay[]): CalendarCell[][] {
   if (!days.length) return [];
-  const chronological = [...days].sort((a, b) => a.date.localeCompare(b.date));
+  const chronological = [...days].sort((a, b) => naturalCollator.compare(a.date, b.date));
   const byDate = new Map(chronological.map((day) => [day.date, day]));
   const first = calendarDate(chronological[0]!.date);
   const last = calendarDate(chronological.at(-1)!.date);
@@ -146,7 +147,7 @@ export function buildCalendarWeeks(days: readonly DailyDay[]): CalendarCell[][] 
 }
 
 export function buildDailyReport(analytics: SystemAnalytics): DailyReport {
-  const days = [...analytics.daily].sort((a, b) => b.date.localeCompare(a.date));
+  const days = [...analytics.daily].sort((a, b) => naturalCollator.compare(b.date, a.date));
   // The response includes its current Beijing day and ends at the next midnight.
   const today = new Date(
     Date.parse(analytics.to) - 1 + BEIJING_OFFSET_MILLISECONDS,

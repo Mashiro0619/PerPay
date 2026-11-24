@@ -4,7 +4,7 @@ import { ArrowRight, Star, TrendingDown } from "lucide-react";
 import type { SystemAnalytics } from "@/api/client";
 import { Link } from "@/navigation";
 import { cn } from "@/lib/utils";
-import { count, money } from "@/lib/format";
+import { count, money, naturalCollator } from "@/lib/format";
 import {
   CALENDAR_WEEKDAYS,
   buildCalendarWeeks,
@@ -53,7 +53,7 @@ export function DailyAnalytics({
 
   const { weeks, daysByDate, chronologicalDates, indexByDate } = useMemo(() => {
     const calendarWeeks = buildCalendarWeeks(days);
-    const ordered = [...days].sort((a, b) => a.date.localeCompare(b.date));
+    const ordered = [...days].sort((a, b) => naturalCollator.compare(a.date, b.date));
     const map = new Map(ordered.map((day) => [day.date, day]));
     const dates = ordered.map((day) => day.date);
     const indexes = new Map(dates.map((date, index) => [date, index]));

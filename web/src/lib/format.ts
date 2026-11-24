@@ -1,5 +1,10 @@
 export const BUSINESS_TIME_ZONE = "Asia/Shanghai";
 
+export const naturalCollator = new Intl.Collator(undefined, {
+  numeric: true,
+  sensitivity: "base",
+});
+
 const moneyFormatter = new Intl.NumberFormat("zh-CN", {
   style: "currency",
   currency: "CNY",

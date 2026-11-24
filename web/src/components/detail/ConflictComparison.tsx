@@ -1,3 +1,4 @@
+import { useId } from "react";
 import type { LedgerConflictDetail } from "@/api/client";
 import { comparisonAmount, conflictComparison } from "@/lib/conflict-comparison";
 import { money } from "@/lib/format";
@@ -7,6 +8,7 @@ import { Disclosure } from "@/components/record/Disclosure";
 import { FieldList, type Field } from "@/components/record/FieldList";
 import {
   Table,
+  TableCaption,
   TableHeader,
   TableBody,
   TableRow,
@@ -124,6 +126,7 @@ function ComparisonRows({
   compact: boolean;
   label: string;
 }) {
+  const captionId = useId();
   if (compact) {
     return (
       <div role="group" aria-label={label} className="flex min-w-0 flex-col gap-2" data-comparison-mobile>
@@ -169,7 +172,12 @@ function ComparisonRows({
       data-density="compact"
       data-comparison-desktop
     >
-      <Table aria-label={label} className="business-table table-fixed">
+      <Table
+        aria-labelledby={captionId}
+        containerLabel={`${label}横向滚动区域`}
+        className="business-table table-fixed"
+      >
+        <TableCaption id={captionId} className="sr-only">{label}</TableCaption>
         <colgroup>
           <col className="w-[7.5rem]" />
           <col />
@@ -177,9 +185,9 @@ function ComparisonRows({
         </colgroup>
         <TableHeader>
           <TableRow>
-            <TableHead>字段</TableHead>
-            <TableHead className="whitespace-normal">本次收到（新值）</TableHead>
-            <TableHead className="whitespace-normal">已有流水（旧值）</TableHead>
+            <TableHead scope="col">字段</TableHead>
+            <TableHead scope="col" className="whitespace-normal">本次收到（新值）</TableHead>
+            <TableHead scope="col" className="whitespace-normal">已有流水（旧值）</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>

@@ -40,6 +40,7 @@ import { ListColumnsMenu, useListDisplay } from "@/components/list-columns";
 import { useListDensity } from "@/components/list-density";
 import {
   Table,
+  TableCaption,
   TableHeader,
   TableHead,
   TableBody,
@@ -194,6 +195,10 @@ function BusinessTableView<T extends RowData>({
   const compact = useCompactList();
   const inlineColumns = useListDisplay();
   const columnsId = useId();
+  const captionId = useId();
+  const [sortAnnouncement, setSortAnnouncement] = useState("");
+  const tableLabel = ariaLabel ?? (specs[0]?.label ? specs[0].label + "列表" : undefined);
+  const hasSortableColumns = !!control && specs.some((spec) => !!spec.sortBy);
   const preference = useListDensity();
   const density = !requestedDensity || requestedDensity === "default" ? preference : requestedDensity;
   const { ref: container, size, isSummary } = useListSize();
@@ -279,8 +284,14 @@ function BusinessTableView<T extends RowData>({
     onSortingChange: (update) => {
       const next = typeof update === "function" ? update(sorting) : update;
       const sort = next[0];
-      const field = specs.find((column) => column.id === sort?.id)?.sortBy;
-      if (sort && field) control?.setSort(field, sort.desc ? "desc" : "asc");
+      const spec = specs.find((column) => column.id === sort?.id);
+      const field = spec?.sortBy;
+      if (sort && field) {
+        control?.setSort(field, sort.desc ? "desc" : "asc");
+        setSortAnnouncement(
+          `已按${spec.label}${sort.desc ? "降序" : "升序"}排列，当前 ${items.length} 条记录`,
+        );
+      }
     },
   });
   const columnMenu = columnsMenu && !isSummary && (inlineColumns ? (
@@ -374,6 +385,11 @@ function BusinessTableView<T extends RowData>({
       data-embedded={embedded}
     >
       {columnsMenu && <ListColumnsMenu summary={size.container > 0 ? isSummary : undefined}>{columnMenu}</ListColumnsMenu>}
+      {hasSortableColumns && (
+        <p role="status" className="sr-only">
+          {sortAnnouncement}
+        </p>
+      )}
       <div
         className="business-table-surface min-w-0 overflow-hidden"
         data-density={density}
@@ -382,9 +398,7 @@ function BusinessTableView<T extends RowData>({
         {isSummary ? (
           <ItemGroup
             className="business-summary-list"
-            aria-label={
-              ariaLabel ?? (specs[0]?.label ? specs[0].label + "列表" : undefined)
-            }
+            aria-label={tableLabel}
             data-density={density}
           >
             {table.getRowModel().rows.map((row) => (
@@ -409,10 +423,16 @@ function BusinessTableView<T extends RowData>({
                 : tableClassName,
               "business-table table-fixed",
             )}
-            aria-label={ariaLabel}
+            aria-labelledby={tableLabel ? captionId : undefined}
+            containerLabel={tableLabel ? `${tableLabel}横向滚动区域` : undefined}
             data-density={density}
             data-visible-columns={context.visibleColumnCount}
           >
+            {tableLabel && (
+              <TableCaption id={captionId} className="sr-only">
+                {tableLabel}
+              </TableCaption>
+            )}
             <colgroup>
               {table.getVisibleLeafColumns().map((column) => {
                 const index = specs.findIndex((spec) => spec.id === column.id);
@@ -436,20 +456,25 @@ function BusinessTableView<T extends RowData>({
                     );
                     const spec = specs[index]!;
                     const sorted = header.column.getIsSorted();
+                    const align = columnAlignment(spec, index);
                     const label = header.column.getCanSort() ? (
                       <Button
+                        type="button"
                         variant="ghost"
                         size="sm"
-                        className="-mx-2"
+                        className={cn(
+                          "-mx-2 w-[calc(100%+1rem)]",
+                          align === "right" ? "justify-end" : align === "center" ? "justify-center" : "justify-start",
+                        )}
                         onClick={header.column.getToggleSortingHandler()}
                       >
                         {spec.label}
                         {sorted === "asc" ? (
-                          <ArrowUp data-icon="inline-end" />
+                          <ArrowUp data-icon="inline-end" aria-hidden="true" />
                         ) : sorted === "desc" ? (
-                          <ArrowDown data-icon="inline-end" />
+                          <ArrowDown data-icon="inline-end" aria-hidden="true" />
                         ) : (
-                          <ArrowUpDown data-icon="inline-end" />
+                          <ArrowUpDown data-icon="inline-end" aria-hidden="true" />
                         )}
                       </Button>
                     ) : (
@@ -458,13 +483,14 @@ function BusinessTableView<T extends RowData>({
                     return (
                       <TableHead
                         key={header.id}
+                        scope="col"
                         className={cn(
                           spec.headerClassName,
-                          columnAlignment(spec, index) === "right" && "text-right",
+                          align === "right" && "text-right",
                         )}
                         data-column-layout={columnLayout(spec, index)}
                         data-column-id={spec.id}
-                        data-column-align={columnAlignment(spec, index)}
+                        data-column-align={align}
                         aria-sort={
                           sorted
                             ? sorted === "asc"

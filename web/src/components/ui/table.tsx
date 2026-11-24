@@ -3,11 +3,33 @@
 import * as React from "react"
 import { cn } from "cn"
 
-function Table({ className, ...props }: React.ComponentProps<"table">) {
+function Table({
+  className,
+  containerLabel,
+  containerLabelledBy,
+  ...props
+}: React.ComponentProps<"table"> & {
+  containerLabel?: string
+  containerLabelledBy?: string
+}) {
+  const regionLabel =
+    containerLabel ??
+    (!containerLabelledBy && props["aria-label"]
+      ? `${props["aria-label"]}横向滚动区域`
+      : undefined)
+  const isScrollRegion = Boolean(regionLabel || containerLabelledBy)
   return (
     <div
       data-slot="table-container"
-      className="relative w-full overflow-x-auto"
+      tabIndex={isScrollRegion ? 0 : undefined}
+      role={isScrollRegion ? "region" : undefined}
+      aria-label={regionLabel}
+      aria-labelledby={containerLabelledBy}
+      className={cn(
+        "relative w-full overflow-x-auto",
+        isScrollRegion &&
+          "focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring"
+      )}
     >
       <table
         data-slot="table"
@@ -64,10 +86,15 @@ function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
   )
 }
 
-function TableHead({ className, ...props }: React.ComponentProps<"th">) {
+function TableHead({
+  className,
+  scope = "col",
+  ...props
+}: React.ComponentProps<"th">) {
   return (
     <th
       data-slot="table-head"
+      scope={scope}
       className={cn(
         "min-h-10 px-2 py-2 text-left align-middle font-medium whitespace-nowrap text-foreground [&:has([role=checkbox])]:pr-0",
         className
