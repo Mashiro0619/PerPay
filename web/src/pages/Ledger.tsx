@@ -59,7 +59,7 @@ export function LedgerList({ onManual }: { onManual?: (trigger: HTMLButtonElemen
   let filters: ReturnType<typeof readLedgerFilters> | undefined;
   let filterError: Error | undefined;
   try { filters = readLedgerFilters(search); }
-  catch (error) { filterError = error instanceof Error ? error : new Error("流水筛选条件无效。"); }
+  catch (error) { filterError = error instanceof Error ? error : new Error("流水筛选条件无效。", { cause: error }); }
   const query = useQuery({
     ...retainListData(["administrator-ledger", filters?.direction, filters?.state, filters?.association_status, filters?.has_reversals, filters?.associated_from, filters?.associated_to, filters?.min_amount_cents, filters?.max_amount_cents], control.query),
     queryKey: ["administrator-ledger", filters, pagination.cursor, filterError?.message],

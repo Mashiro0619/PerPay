@@ -248,7 +248,7 @@ function ArchiveActions({ archive }: { archive: HistoryArchiveSummary }) {
       setTimeout(() => URL.revokeObjectURL(url), 1000);
       success("归档文件已开始下载");
     } catch (error) {
-      if (!operation.signal.aborted) setDownloadError(error instanceof Error ? error : new Error("下载失败，请重试。"));
+      if (!operation.signal.aborted) setDownloadError(error instanceof Error ? error : new Error("下载失败，请重试。", { cause: error }));
     } finally {
       if (!operation.signal.aborted) { download.current = null; setDownloading(false); }
     }

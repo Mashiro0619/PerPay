@@ -258,7 +258,7 @@ function IntegrationContent({ site, siteDirty = false, disabled = false, showCli
       setError(null);
       setRefreshRequired(false);
     } catch (reason) {
-      setError(reason instanceof Error ? reason : new Error("读取失败，请重试。"));
+      setError(reason instanceof Error ? reason : new Error("读取失败，请重试。", { cause: reason }));
     }
   }
 
@@ -280,7 +280,7 @@ function IntegrationContent({ site, siteDirty = false, disabled = false, showCli
       }
     } catch (reason) {
       if (current === generation.current && !controller.signal.aborted) {
-        setReadError(reason instanceof Error ? reason : new Error("请求失败，请重试。"));
+        setReadError(reason instanceof Error ? reason : new Error("请求失败，请重试。", { cause: reason }));
         if (reason instanceof ApiError && reason.status === 409) setRefreshRequired(true);
       }
     } finally {

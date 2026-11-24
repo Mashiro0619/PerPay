@@ -1,6 +1,6 @@
 export class OperationTimeoutError extends Error {
-  constructor() {
-    super("等待操作结果超时。停止等待不代表服务端已取消操作。");
+  constructor(options?: ErrorOptions) {
+    super("等待操作结果超时。停止等待不代表服务端已取消操作。", options);
     this.name = "OperationTimeoutError";
   }
 }
@@ -36,7 +36,7 @@ export async function waitForOperation<T>(
       operation.signal.reason instanceof DOMException &&
       operation.signal.reason.name === "TimeoutError"
     )
-      throw new OperationTimeoutError();
+      throw new OperationTimeoutError({ cause: error });
     throw error;
   } finally {
     window.clearTimeout(timer);

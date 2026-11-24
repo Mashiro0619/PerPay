@@ -354,8 +354,8 @@ const attemptTones = {
 
 /** Attempts newest first, each titled with its number and what came back. */
 export function attemptEntries(attempts: readonly WebhookAttempt[]): TimelineEntry[] {
-  return [...attempts]
-    .sort((a, b) => Date.parse(b.started_at) - Date.parse(a.started_at) || b.attempt_number - a.attempt_number || naturalCollator.compare(b.attempt_id, a.attempt_id))
+  return attempts
+    .toSorted((a, b) => Date.parse(b.started_at) - Date.parse(a.started_at) || b.attempt_number - a.attempt_number || naturalCollator.compare(b.attempt_id, a.attempt_id))
     .map(attempt => ({
       id: attempt.attempt_id,
       title: "第 " + attempt.attempt_number + " 次 · " + attemptResult(attempt),

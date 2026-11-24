@@ -69,7 +69,7 @@ export function DraftProvider({ children }: { children: ReactNode }) {
   };
   const protectedOperation = (next: Location) => {
     const retained = retainedOwners(next);
-    return [...protections.current].reverse().find(([, protection]) => !retained.has(protection.owner) && protection.check())?.[0] ?? null;
+    return [...protections.current].findLast(([, protection]) => !retained.has(protection.owner) && protection.check())?.[0] ?? null;
   };
   // React Router supports one blocker. Keep submitted operations and drafts
   // in the same arbiter rather than letting either guard replace the other.

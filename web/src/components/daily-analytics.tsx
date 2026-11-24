@@ -53,7 +53,7 @@ export function DailyAnalytics({
 
   const { weeks, daysByDate, chronologicalDates, indexByDate } = useMemo(() => {
     const calendarWeeks = buildCalendarWeeks(days);
-    const ordered = [...days].sort((a, b) => naturalCollator.compare(a.date, b.date));
+    const ordered = days.toSorted((a, b) => naturalCollator.compare(a.date, b.date));
     const map = new Map(ordered.map((day) => [day.date, day]));
     const dates = ordered.map((day) => day.date);
     const indexes = new Map(dates.map((date, index) => [date, index]));

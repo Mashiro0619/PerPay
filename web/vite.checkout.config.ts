@@ -15,7 +15,7 @@ export default defineConfig(({ mode }) => ({
       mode === "server" ? "../web-dist/checkout-ssr" : "../web-dist/checkout",
     emptyOutDir: true,
     sourcemap: false,
-    target: "es2022",
+    target: "es2023",
     manifest: mode !== "server",
     ssr:
       mode === "server"

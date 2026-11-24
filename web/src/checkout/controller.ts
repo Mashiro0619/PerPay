@@ -207,18 +207,17 @@ export function createCheckoutController(initial: CheckoutInitial) {
     active = controller;
     const request = ++generation;
     const start = mono();
-    let timedOut = false;
+    const signal = AbortSignal.any([
+      controller.signal,
+      AbortSignal.timeout(10000),
+    ]);
     const current = () =>
-      alive && generation === request && !controller.signal.aborted;
+      alive && generation === request && !signal.aborted;
     if (manual) {
       manualTracking = checking;
       manualDeadline = mono() + 30000;
       emit({ busy: true, feedback: checking ? "正在查询付款结果…" : "" });
     }
-    const timeout = setTimeout(() => {
-      timedOut = true;
-      controller.abort();
-    }, 10000);
     const task = (async () => {
     try {
       const requestInit: RequestInit & { priority?: "high" | "low" | "auto" } = {
@@ -232,7 +231,7 @@ export function createCheckoutController(initial: CheckoutInitial) {
         cache: "no-store",
         credentials: "same-origin",
         redirect: "error",
-        signal: controller.signal,
+        signal,
       };
       const response = await fetch(target, requestInit);
       if (!current()) return;
@@ -348,7 +347,12 @@ export function createCheckoutController(initial: CheckoutInitial) {
       }
       updateClock();
       schedule(interval());
-    } catch {
+    } catch (error) {
+      const timedOut =
+        (signal.aborted &&
+          signal.reason instanceof DOMException &&
+          signal.reason.name === "TimeoutError") ||
+        (error instanceof DOMException && error.name === "TimeoutError");
       if (
         !alive ||
         request !== generation ||
@@ -374,7 +378,6 @@ export function createCheckoutController(initial: CheckoutInitial) {
       });
       schedule(Math.min(30000, 1000 * 2 ** Math.min(failures, 5)));
     } finally {
-      clearTimeout(timeout);
       if (active === controller) {
         active = undefined;
         inflight = undefined;

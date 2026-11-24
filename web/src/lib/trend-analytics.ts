@@ -61,7 +61,7 @@ export function buildTrendReport(analytics: SystemAnalytics): TrendReport {
   const daily = buildDailyReport(analytics);
   let cumulativeAmount = 0;
   let cumulativeOrders = 0;
-  const data = [...daily.days].reverse().map((day) => {
+  const data = daily.days.toReversed().map((day) => {
     cumulativeAmount += day.confirmed_amount_cents;
     cumulativeOrders += day.orders_created;
     return {

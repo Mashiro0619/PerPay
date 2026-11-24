@@ -61,7 +61,7 @@ function orderTimeline(events: readonly AdminOrderEvent[], matches: readonly Pay
   const operations = new Map(matches.flatMap(match => [match.creation_operation, match.resolution_operation]
     .filter(operation => operation !== null && operation !== undefined)
     .map(operation => [operation.financial_operation_id, operation] as const)));
-  return [...events].sort((a, b) => b.sequence - a.sequence).map(event => {
+  return events.toSorted((a, b) => b.sequence - a.sequence).map(event => {
     const operationId = event.details.financial_operation_id;
     const operation = typeof operationId === "string" ? operations.get(operationId) : undefined;
     const explanation = eventExplanation(event);
@@ -88,7 +88,7 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
   const history = order.reconciliation.exceptions.filter(isHistoricalException);
   const ledgers = new Map(matches.map(match => [match.ledger_entry_id, match.ledger_entry]));
   const candidates = new Map(matches.flatMap(match => match.candidate ? [[match.candidate.candidate_id, match.candidate] as const] : []));
-  const confirmed = [...order.events].reverse().find(event => event.event_type === "PAYMENT_CONFIRMED");
+  const confirmed = order.events.findLast(event => event.event_type === "PAYMENT_CONFIRMED");
   const unpaid = order.payment.status === "UNPAID";
   const ended = unpaid && (order.checkout.status === "EXPIRED" || order.checkout.status === "CLOSED");
   const dispute = order.payment.status === "DISPUTED" ? disputeState(order) : null;

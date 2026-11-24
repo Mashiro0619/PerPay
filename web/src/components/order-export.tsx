@@ -109,7 +109,7 @@ export function OrderExport({
     } catch (error) {
       if (active.current === operation && !operation.signal.aborted)
         setError(
-          error instanceof Error ? error : new Error("导出失败，请重试。"),
+          error instanceof Error ? error : new Error("导出失败，请重试。", { cause: error }),
         );
     } finally {
       if (active.current === operation) {

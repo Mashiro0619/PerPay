@@ -23,7 +23,7 @@ export default defineConfig({
     outDir: "../web-dist/admin",
     emptyOutDir: true,
     sourcemap: false,
-    target: "es2022",
+    target: "es2023",
     rollupOptions: {
       output: {
         manualChunks(id) {

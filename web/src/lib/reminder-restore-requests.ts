@@ -50,35 +50,41 @@ export function useReminderRestores() {
     mutationFn: async ({ command }: Attempt) => {
       const controller = new AbortController();
       controllers.current.add(controller);
+      const signal = AbortSignal.any([
+        controller.signal,
+        AbortSignal.timeout(20_000),
+      ]);
       let detach = () => {};
       const aborted = new Promise<never>((_resolve, reject) => {
-        const abort = () => reject(controller.signal.reason);
-        controller.signal.addEventListener("abort", abort, { once: true });
-        detach = () => controller.signal.removeEventListener("abort", abort);
+        const abort = () => reject(signal.reason);
+        signal.addEventListener("abort", abort, { once: true });
+        detach = () => signal.removeEventListener("abort", abort);
       });
-      const timer = window.setTimeout(
-        () =>
-          controller.abort(
-            new DOMException(
-              "等待恢复结果超时，请重试上一次操作或刷新列表核查。",
-              "TimeoutError",
-            ),
-          ),
-        20_000,
-      );
       try {
         if (!alive.current) controller.abort();
         const outcome = await Promise.race([
           Promise.resolve().then(() => {
-            controller.signal.throwIfAborted();
-            return restoreReminder(command, controller.signal);
+            signal.throwIfAborted();
+            return restoreReminder(command, signal);
           }),
           aborted,
         ]);
-        controller.signal.throwIfAborted();
+        signal.throwIfAborted();
         return outcome;
+      } catch (error) {
+        if (
+          (signal.aborted &&
+            signal.reason instanceof DOMException &&
+            signal.reason.name === "TimeoutError") ||
+          (error instanceof DOMException && error.name === "TimeoutError")
+        ) {
+          throw new DOMException(
+            "等待恢复结果超时，请重试上一次操作或刷新列表核查。",
+            "TimeoutError",
+          );
+        }
+        throw error;
       } finally {
-        window.clearTimeout(timer);
         detach();
         controllers.current.delete(controller);
       }

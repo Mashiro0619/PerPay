@@ -25,7 +25,7 @@ export async function decodeQrImage(file: File, signal: AbortSignal): Promise<st
 
   let bitmap: ImageBitmap;
   try { bitmap = await createImageBitmap(file); }
-  catch { throw new Error("无法读取图片，请重新导出为 PNG、JPG 或 WebP 后重试。"); }
+  catch (error) { throw new Error("无法读取图片，请重新导出为 PNG、JPG 或 WebP 后重试。", { cause: error }); }
   const canvas = document.createElement("canvas");
   try {
     signal.throwIfAborted();
@@ -35,8 +35,8 @@ export async function decodeQrImage(file: File, signal: AbortSignal): Promise<st
     }
     const context = canvas.getContext("2d", { willReadFrequently: true });
     if (!context) throw new Error("当前浏览器无法读取图片，请换一个浏览器或手动粘贴收款码内容。");
-    const { default: readQr } = await import("jsqr").catch(() => {
-      throw new Error("识别组件加载失败，请重试或手动粘贴收款码内容。");
+    const { default: readQr } = await import("jsqr").catch((error) => {
+      throw new Error("识别组件加载失败，请重试或手动粘贴收款码内容。", { cause: error });
     });
     for (const edge of [1024, 2048]) {
       await yieldToMain();

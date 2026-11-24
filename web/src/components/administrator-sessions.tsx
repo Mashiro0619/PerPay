@@ -112,7 +112,7 @@ export function AdministratorSessions({ detailSessionId }: { detailSessionId?: s
     onSettled: () => { sending.current = false; },
   });
   useOverlayCloseGuard(() => sending.current || operation.isPending);
-  const rows = [...(sessions.data?.data ?? [])].sort((left, right) =>
+  const rows = (sessions.data?.data ?? []).toSorted((left, right) =>
     Number(right.is_current) - Number(left.is_current) ||
     new Date(right.last_seen_at).getTime() - new Date(left.last_seen_at).getTime() ||
     naturalCollator.compare(left.session_id, right.session_id),

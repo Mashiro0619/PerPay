@@ -30,7 +30,7 @@ export function useAuditExport(filters: AuditFilters) {
       if (!range) throw new Error("请先选择发生日期范围，再导出全部匹配日志。");
       if (range.days > 366) throw new Error("导出日期跨度最多 366 天，请缩小范围。");
     } catch (reason) {
-      setError(reason instanceof Error ? reason : new Error("请检查发生日期范围。"));
+      setError(reason instanceof Error ? reason : new Error("请检查发生日期范围。", { cause: reason }));
       return;
     }
     const operation = new AbortController();
@@ -54,7 +54,7 @@ export function useAuditExport(filters: AuditFilters) {
       setGenerated(true);
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (reason) {
-      if (active.current === operation && !operation.signal.aborted) setError(reason instanceof Error ? reason : new Error("导出失败，请重试。"));
+      if (active.current === operation && !operation.signal.aborted) setError(reason instanceof Error ? reason : new Error("导出失败，请重试。", { cause: reason }));
     } finally {
       if (active.current === operation) { active.current = null; setPending(false); }
     }

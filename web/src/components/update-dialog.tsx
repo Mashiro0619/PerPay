@@ -189,11 +189,11 @@ export function UpdateDialog(props: Props) {
       if (!canPresent(next)) return Promise.resolve();
       // The optional cross-tab lock remains held until the popup is actually
       // mounted, or this candidate is canceled. Queuing never marks it seen.
-      return new Promise<void>(resolve => {
-        next.release = resolve;
-        setPresentation(next);
-        setOpen(true);
-      });
+      const { promise, resolve } = Promise.withResolvers<void>();
+      next.release = resolve;
+      setPresentation(next);
+      setOpen(true);
+      return promise;
     };
     let operation: Promise<unknown>;
     try {
