@@ -25,6 +25,7 @@ import { pathToFileURL } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 
 import { RuntimeSecretCipher, type EncryptedSecret } from "../settings/crypto.ts";
+import { DATABASE_COMPATIBILITY } from "../version.ts";
 
 import {
   createVerifiedDatabaseBackup,
@@ -99,6 +100,15 @@ export interface RestoreMigrationBackupResult {
   readonly quarantinedDatabaseName: string;
   readonly sha256: string;
   readonly instanceId: string | null;
+}
+
+export interface RollbackFailedMigrationOptions {
+  readonly dataDirectory: string;
+  readonly confirmReplaceCurrentDatabase: boolean;
+  readonly masterKey: Uint8Array;
+  readonly minBackupMtimeMilliseconds?: number | undefined;
+  readonly maxSupportedSchemaVersion?: number | undefined;
+  readonly now?: number | undefined;
 }
 
 export interface RestoreOperationalBackupOptions {
@@ -1060,6 +1070,103 @@ export function restoreMigrationBackup(
     if (!retainMaintenanceLock && (!targetReplaced || replacementDurable)) {
       lock.release();
     }
+  }
+}
+
+/**
+ * Automatically selects and restores the matching pre-migration backup when a failed
+ * upgrade left the active database on a schema newer than this application version.
+ */
+export function rollbackFailedMigrationBackup(
+  options: RollbackFailedMigrationOptions,
+): RestoreMigrationBackupResult {
+  if (!options.confirmReplaceCurrentDatabase) {
+    throw new Error(
+      "restoring replaces the active database; explicit replacement confirmation is required",
+    );
+  }
+  const maxSupported = options.maxSupportedSchemaVersion ?? DATABASE_COMPATIBILITY.maximum;
+  if (!Number.isSafeInteger(maxSupported) || maxSupported < 1) {
+    throw new RangeError("max supported schema version must be a positive integer");
+  }
+  const minMtime = options.minBackupMtimeMilliseconds;
+  if (minMtime !== undefined && (!Number.isFinite(minMtime) || minMtime < 0)) {
+    throw new RangeError("minimum backup modification timestamp is invalid");
+  }
+
+  const directory = inspectDataDirectory(options.dataDirectory);
+  const target = resolve(directory, DATABASE_NAME);
+  inspectOrdinaryFile(target, "application database");
+
+  const live = readDatabaseSchemaAndInstance(target);
+  if (live.schemaVersion === null || live.schemaVersion <= maxSupported) {
+    throw new Error(
+      `application database schema (${live.schemaVersion ?? "unknown"}) is not ahead of supported schema ${maxSupported}; refusing automatic migration rollback`,
+    );
+  }
+
+  const candidates = listMigrationBackups(directory)
+    .filter((backup) => backup.fromVersion <= maxSupported && backup.toVersion >= live.schemaVersion!)
+    .map((backup) => {
+      const path = join(directory, backup.name);
+      const stat = lstatSync(path);
+      return { backup, path, mtimeMs: stat.mtimeMs };
+    })
+    .filter((entry) => minMtime === undefined || entry.mtimeMs >= minMtime)
+    .sort((left, right) =>
+      right.backup.fromVersion - left.backup.fromVersion ||
+      right.mtimeMs - left.mtimeMs ||
+      right.backup.toVersion - left.backup.toVersion
+    );
+
+  for (const entry of candidates) {
+    const backupMeta = readDatabaseSchemaAndInstance(entry.path);
+    if (live.instanceId !== null && backupMeta.instanceId !== null && backupMeta.instanceId !== live.instanceId) {
+      continue;
+    }
+    return restoreMigrationBackup({
+      dataDirectory: directory,
+      backupName: entry.backup.name,
+      confirmReplaceCurrentDatabase: true,
+      masterKey: options.masterKey,
+      ...(options.now !== undefined ? { now: options.now } : {}),
+    });
+  }
+
+  throw new Error(
+    `no matching pre-migration backup found for database schema v${live.schemaVersion} (supported <= v${maxSupported})`,
+  );
+}
+
+function readDatabaseSchemaAndInstance(path: string): {
+  readonly schemaVersion: number | null;
+  readonly instanceId: string | null;
+} {
+  const database = new DatabaseSync(path, {
+    readOnly: true,
+    timeout: SQLITE_TIMEOUT_MILLISECONDS,
+    readBigInts: true,
+    defensive: true,
+  });
+  try {
+    let schemaVersion: number | null = null;
+    if (tableExists(database, "schema_migrations")) {
+      const row = database.prepare("SELECT max(version) AS version FROM schema_migrations").get() as
+        | { readonly version: bigint | number | null }
+        | undefined;
+      const version = Number(row?.version ?? Number.NaN);
+      if (Number.isSafeInteger(version) && version >= 1) schemaVersion = version;
+    }
+    let instanceId: string | null = null;
+    if (tableExists(database, "system_metadata")) {
+      const row = database.prepare("SELECT value FROM system_metadata WHERE key = 'instance_id'").get() as
+        | { readonly value: string }
+        | undefined;
+      if (row && /^[0-9a-f]{32}$/u.test(row.value)) instanceId = row.value;
+    }
+    return { schemaVersion, instanceId };
+  } finally {
+    database.close();
   }
 }
 
@@ -2418,6 +2525,7 @@ export async function runMaintenanceCommand(arguments_: readonly string[], envir
   const actions: Record<string, string> = { "clear-stale-publication-lock": "maintenance.publication_lock.clear",
     "clear-stale-maintenance-lock": "maintenance.lock.clear", "delete-pre-restore-quarantine": "maintenance.quarantine.delete",
     "prune-pre-restore-quarantines": "maintenance.quarantine.prune", "restore-migration-backup": "maintenance.restore",
+    "rollback-failed-migration": "maintenance.restore",
     "list-migration-backups": "maintenance.backups.list", "list-pre-restore-quarantines": "maintenance.quarantine.list",
     "inspect-maintenance-lock": "maintenance.lock.inspect", "inspect-publication-lock": "maintenance.publication_lock.inspect",
     "inspect-storage": "maintenance.storage.inspect", "compact-database": "maintenance.database.compact", "archive-history": "maintenance.history.archive" };
@@ -2617,6 +2725,62 @@ async function executeCommand(arguments_: readonly string[], environment: NodeJS
     return;
   }
   if (
+    arguments_[0] === "rollback-failed-migration" &&
+    (
+      (arguments_.length === 2 && arguments_[1] === RESTORE_CONFIRMATION_ARGUMENT) ||
+      (
+        arguments_.length === 4 &&
+        arguments_[1] === "--since-ms" &&
+        arguments_[2] !== undefined &&
+        /^\d+$/u.test(arguments_[2]) &&
+        arguments_[3] === RESTORE_CONFIRMATION_ARGUMENT
+      )
+    )
+  ) {
+    const minBackupMtimeMilliseconds = arguments_.length === 4 ? Number(arguments_[2]) : undefined;
+    const masterKey = resolveMaintenanceMasterKey(environment);
+    // If a killed container left a short-lived startup lease behind (<= 30s), wait briefly
+    // for it to expire cleanly rather than weakening database lease invariants.
+    const leaseWaitDeadline = Date.now() + 35_000;
+    let result: RestoreMigrationBackupResult;
+    while (true) {
+      try {
+        result = rollbackFailedMigrationBackup({
+          dataDirectory,
+          confirmReplaceCurrentDatabase: true,
+          masterKey,
+          ...(minBackupMtimeMilliseconds !== undefined ? { minBackupMtimeMilliseconds } : {}),
+        });
+        break;
+      } catch (error) {
+        const leaseStillLive =
+          error instanceof Error &&
+          error.message.includes("application database is still owned") &&
+          Date.now() < leaseWaitDeadline;
+        if (!leaseStillLive) throw error;
+        await new Promise<void>((resolve) => setTimeout(resolve, 1_000));
+      }
+    }
+    output(result, value => {
+      const target = artifactAuditTarget("backup", {
+        name: value.backupName,
+        sha256: value.sha256,
+        schemaVersion: value.restoredSchemaVersion,
+        instanceId: value.instanceId,
+      });
+      return [{
+        ...target,
+        instanceId: value.instanceId,
+        details: {
+          ...target.details,
+          quarantined_database_name: value.quarantinedDatabaseName,
+          restore_completed: true,
+        },
+      }];
+    });
+    return;
+  }
+  if (
     arguments_.length === 3 &&
     arguments_[0] === "restore-migration-backup" &&
     arguments_[1] !== undefined &&
@@ -2645,6 +2809,7 @@ async function executeCommand(arguments_: readonly string[], environment: NodeJS
     `clear-stale-maintenance-lock --force-unreadable-lock --confirm-no-maintenance-process|` +
     `clear-stale-publication-lock LOCK_TOKEN --confirm-no-maintenance-process|` +
     `clear-stale-publication-lock --force-unreadable-lock --confirm-no-maintenance-process|` +
+    `rollback-failed-migration [--since-ms EPOCH_MS] ${RESTORE_CONFIRMATION_ARGUMENT}|` +
     `restore-migration-backup BACKUP_NAME ${RESTORE_CONFIRMATION_ARGUMENT}>`,
   );
 }

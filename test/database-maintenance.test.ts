@@ -29,6 +29,7 @@ import {
   publicationLockPath,
   restoreMigrationBackup,
   restoreOperationalBackup,
+  rollbackFailedMigrationBackup,
 } from "../src/database/maintenance.ts";
 import {
   acquireDatabaseMaintenanceLock,
@@ -1794,6 +1795,86 @@ describe("database migration backup maintenance", () => {
       assert.equal(existsSync(databaseMaintenanceLockPath(databasePath)), true);
       assert.equal(existsSync(`${databasePath}-wal`), true);
       assert.equal(existsSync(databasePath), false);
+    }
+  });
+
+  it("automatically rolls back only when the live schema is ahead and a matching fresh pre-migration backup exists", async () => {
+    const directory = temporaryDirectory();
+    const databasePath = join(directory, "perpay.sqlite3");
+    const fromVersion = DATABASE_COMPATIBILITY.maximum;
+    const futureVersion = fromVersion + 1;
+    const backupName = `perpay.sqlite3.pre-migration-v${fromVersion}-to-v${futureVersion}.sqlite3`;
+    const backupPath = join(directory, backupName);
+
+    const database = await openTestDatabase(databasePath);
+    try {
+      await database.backupDetailed(backupPath);
+      database.write((connection) => {
+        connection.prepare(
+          "INSERT INTO system_metadata(key, value, updated_at) VALUES ('post_migration_marker', 'future', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
+        ).run();
+      });
+    } finally {
+      database.close();
+    }
+
+    // 1. Refuses when live schema is NOT ahead of the current application version.
+    assert.throws(
+      () => rollbackFailedMigrationBackup({
+        dataDirectory: directory,
+        confirmReplaceCurrentDatabase: true,
+        masterKey: TEST_MASTER_KEY,
+      }),
+      /not ahead of supported schema/u,
+    );
+
+    // 2. Advance live DB schema_migrations to simulate a newer-version migration commit before startup failure.
+    const migrated = new DatabaseSync(databasePath);
+    try {
+      migrated.prepare(
+        "INSERT INTO schema_migrations(version, name, checksum, applied_at) VALUES (?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
+      ).run(futureVersion, "simulated_future_migration", "0".repeat(64));
+    } finally {
+      migrated.close();
+    }
+
+    // Old app refuses to open the migrated DB directly.
+    await assert.rejects(() => AppDatabase.open(databasePath), /unknown(?: or renamed)? migration/u);
+
+    // 3. Refuses when backup mtime is older than minBackupMtimeMilliseconds (protects against stale historical backups).
+    const backupMtimeMs = lstatSync(backupPath).mtimeMs;
+    assert.throws(
+      () => rollbackFailedMigrationBackup({
+        dataDirectory: directory,
+        confirmReplaceCurrentDatabase: true,
+        masterKey: TEST_MASTER_KEY,
+        minBackupMtimeMilliseconds: backupMtimeMs + 60_000,
+      }),
+      /no matching pre-migration backup/u,
+    );
+
+    // 4. Automatically restores the matching pre-migration backup, quarantines migrated DB, and lets old app reopen cleanly.
+    const restored = rollbackFailedMigrationBackup({
+      dataDirectory: directory,
+      confirmReplaceCurrentDatabase: true,
+      masterKey: TEST_MASTER_KEY,
+      minBackupMtimeMilliseconds: Math.floor(backupMtimeMs - 5_000),
+    });
+    assert.equal(restored.backupName, backupName);
+    assert.equal(restored.restoredSchemaVersion, fromVersion);
+    assert.equal(existsSync(join(directory, restored.quarantinedDatabaseName)), true);
+
+    const reopened = await openTestDatabase(databasePath);
+    try {
+      assert.equal(reopened.integrityCheck().ok, true);
+      assert.equal(
+        reopened.read((connection) =>
+          connection.prepare("SELECT value FROM system_metadata WHERE key = 'post_migration_marker'").get(),
+        ),
+        undefined,
+      );
+    } finally {
+      reopened.close();
     }
   });
 });

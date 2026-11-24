@@ -439,3 +439,62 @@ test("complete configuration downloads bind both versions, remain available whil
     assert.equal((await request({ ...base, protocol: "epay_v2", return_url: merchantOrigin + "/return?trade_no=collision" })).status, 422);
   } finally { f.close(); }
 });
+
+test("V1 and V2 idempotent retries still return existing orders after pausing notifications or changing notification origin", async () => {
+  const f = await fixture();
+  try {
+    const createdByProtocol = new Map<EpayProtocol, Record<string, unknown>>();
+    for (const protocol of ["epay_v1", "epay_v2"] as const) {
+      const outTradeNo = `${protocol}-notify-retry`;
+      const created = await (await f.create(protocol, outTradeNo)).json() as Record<string, unknown>;
+      assert.equal(created.code, protocol === "epay_v1" ? 1 : 0, JSON.stringify(created));
+      createdByProtocol.set(protocol, created);
+    }
+
+    // 1. Pause site notifications: identical retries must return the existing orders instead of idempotency_conflict.
+    let site = f.sites.get(f.first.site.clientId)!;
+    site = f.sites.update(site.clientId, {
+      revision: site.revision,
+      configuration: { ...site.configuration, notifications_enabled: false },
+    }, audit);
+
+    for (const protocol of ["epay_v1", "epay_v2"] as const) {
+      const outTradeNo = `${protocol}-notify-retry`;
+      const replay = await (await f.create(protocol, outTradeNo)).json() as Record<string, unknown>;
+      assert.equal(replay.code, protocol === "epay_v1" ? 1 : 0, JSON.stringify(replay));
+      assert.equal(replay.trade_no, createdByProtocol.get(protocol)!.trade_no);
+
+      // Changed notify_url on the same out_trade_no must still fail as conflict.
+      const conflict = await (await f.create(protocol, outTradeNo, f.first.credentials, {
+        notify_url: merchantOrigin + "/notify-other",
+      })).json() as { code: number };
+      assert.equal(conflict.code, -1);
+
+      // Brand-new order with notify_url must still be rejected while notifications are paused.
+      const blockedNew = await (await f.create(protocol, `${protocol}-blocked-new`)).json() as { code: number };
+      assert.equal(blockedNew.code, -1);
+    }
+
+    // 2. Re-enable notifications with a new allowed origin: identical historical retries must still succeed.
+    f.sites.update(site.clientId, {
+      revision: site.revision,
+      configuration: {
+        ...site.configuration,
+        notifications_enabled: true,
+        notification_origin: "https://new-merchant.example.com",
+      },
+    }, audit);
+
+    for (const protocol of ["epay_v1", "epay_v2"] as const) {
+      const outTradeNo = `${protocol}-notify-retry`;
+      const replay = await (await f.create(protocol, outTradeNo)).json() as Record<string, unknown>;
+      assert.equal(replay.code, protocol === "epay_v1" ? 1 : 0, JSON.stringify(replay));
+      assert.equal(replay.trade_no, createdByProtocol.get(protocol)!.trade_no);
+
+      const conflict = await (await f.create(protocol, outTradeNo, f.first.credentials, {
+        notify_url: "https://new-merchant.example.com/notify",
+      })).json() as { code: number };
+      assert.equal(conflict.code, -1);
+    }
+  } finally { f.close(); }
+});

@@ -270,7 +270,7 @@ export interface AppDependencies {
   readonly clock?: (() => number) | undefined;
   readonly demoMode?: boolean;
   readonly updateChecker?: (Pick<OfficialUpdateChecker, "check"> & Partial<Pick<OfficialUpdateChecker, "refreshAfterSeconds">>) | undefined;
-  readonly selfUpdate?: Pick<SelfUpdateService, "status" | "apply"> | undefined;
+  readonly selfUpdate?: (Pick<SelfUpdateService, "status" | "apply"> & Partial<Pick<SelfUpdateService, "guardMaintenanceStart">>) | undefined;
   readonly backupHealth?: (() => BackupHealth | PromiseLike<BackupHealth>) | undefined;
   readonly ledger?: LedgerStore | undefined;
   readonly ledgerNextRunAt?: (() => number | null) | undefined;
@@ -709,7 +709,11 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     const request = await readJson(context, maintenanceRequestSchema, MAX_JSON_BODY_BYTES);
     const session = requireCurrentSession(context, dependencies.identity);
     if (!dependencies.maintenance) throw new MaintenanceError(503, "maintenance_unavailable", "维护服务尚未启动");
-    const job = dependencies.maintenance.start(request, { session, address: remoteAddress(context, dependencies.config.trustedProxy) });
+    const startMaintenance = () =>
+      dependencies.maintenance!.start(request, { session, address: remoteAddress(context, dependencies.config.trustedProxy) });
+    const job = selfUpdate.guardMaintenanceStart
+      ? await selfUpdate.guardMaintenanceStart(startMaintenance)
+      : startMaintenance();
     dependencies.activity?.record({ action: "maintenance.requested", sourceType: "HTTP", actorType: "ADMIN",
       actorId: session.session.username, subjectType: "maintenance", subjectId: job.id, details: { kind: job.kind } });
     return context.json({ data: job }, 202);

@@ -90,6 +90,7 @@ interface WebhookTargetDecision {
   readonly rejection?: {
     readonly url: string;
     readonly code: WebhookTargetErrorCode;
+    readonly format: WebhookTargetFormat;
   } | undefined;
 }
 
@@ -482,7 +483,7 @@ export class OrderService {
     if (!webhook.enabled) {
       return {
         target: null,
-        rejection: { url: request.notify_url, code: "webhook_disabled" },
+        rejection: { url: request.notify_url, code: "webhook_disabled", format },
       };
     }
     if (webhook.allowedOrigin === null || (format === "NATIVE_JSON_V1" && webhook.secret === null)) {
@@ -499,7 +500,7 @@ export class OrderService {
       if (!(error instanceof WebhookTargetError)) throw error;
       return {
         target: null,
-        rejection: { url: request.notify_url, code: error.code },
+        rejection: { url: request.notify_url, code: error.code, format },
       };
     }
   }

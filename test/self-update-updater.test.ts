@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { describe, it, type TestContext } from "node:test";
 import { parse } from "yaml";
 import {
+  buildOneOffMaintenanceSpec,
   buildRecreateSpec,
   demuxDockerLogs,
   DockerClient,
@@ -16,9 +17,12 @@ import {
 } from "../src/update/docker-client.ts";
 import {
   createUpdaterServer,
+  DEFAULT_UPDATER_HEALTH_TIMEOUT_MS,
   ensureUpdaterToken,
   OFFICIAL_IMAGE_REPOSITORY,
   resolveComposeProject,
+  resolveHealthTimeoutMilliseconds,
+  resolveStopTimeoutSeconds,
   UpdaterOrchestrator,
   type UpdateExecutionJob,
 } from "../src/update/updater-core.ts";
@@ -36,6 +40,11 @@ interface MockContainerRecord {
   hostConfig: Record<string, unknown>;
   networks: Record<string, { Aliases?: string[]; IPAddress?: string }>;
   logs: string;
+  oneoff?: boolean;
+  stopTimeout?: number;
+  healthcheck?: Record<string, unknown>;
+  restartCount?: number;
+  cmd?: readonly string[] | null;
 }
 
 async function startMockDockerEngine(
@@ -45,13 +54,21 @@ async function startMockDockerEngine(
     failBackupCreate?: boolean;
     pullError?: string;
     pingFail?: boolean;
+    appStopTimeout?: number;
+    backupStopTimeout?: number;
+    appHealthcheck?: Record<string, unknown>;
+    onPull?: () => void;
+    onOneOffRun?: (record: MockContainerRecord) => { exitCode: number; logs: string };
+    oldAppRollbackBehavior?: "healthy" | "schema_mismatch_until_restored";
   } = {},
 ) {
   const containers = new Map<string, MockContainerRecord>();
   const pulledImages = new Set<string>();
   const events: string[] = [];
+  const stopTimeouts: Array<{ id: string; service: string; t: number }> = [];
   let createdBodies: Array<{ name: string; body: DockerCreateContainerBody }> = [];
   let connectedExtraNetworks: Array<{ network: string; containerId: string }> = [];
+  let dbRestoredByOneOff = false;
   let seq = 1;
 
   containers.set("app-old-id-123456", {
@@ -76,6 +93,8 @@ async function startMockDockerEngine(
       proxy_net: { Aliases: ["perpay-app"], IPAddress: "172.21.0.5" },
     },
     logs: "",
+    ...(options.appStopTimeout !== undefined ? { stopTimeout: options.appStopTimeout } : {}),
+    ...(options.appHealthcheck !== undefined ? { healthcheck: options.appHealthcheck } : {}),
   });
 
   containers.set("backup-old-id-999", {
@@ -91,6 +110,7 @@ async function startMockDockerEngine(
     hostConfig: { ReadonlyRootfs: true, CapDrop: ["ALL"], NetworkMode: "none" },
     networks: { none: {} },
     logs: "",
+    ...(options.backupStopTimeout !== undefined ? { stopTimeout: options.backupStopTimeout } : {}),
   });
 
   const server = http.createServer(async (req, res) => {
@@ -119,6 +139,7 @@ async function startMockDockerEngine(
       const repo = url.searchParams.get("fromImage") ?? "";
       const tag = url.searchParams.get("tag") ?? "";
       events.push(`pull:${repo}:${tag}`);
+      options.onPull?.();
       if (options.pullError) {
         return send(200, JSON.stringify({ error: options.pullError }) + "\n", "application/x-ndjson");
       }
@@ -141,6 +162,7 @@ async function startMockDockerEngine(
         Labels: {
           "com.docker.compose.project": "perpay",
           "com.docker.compose.service": item.service,
+          ...(item.oneoff ? { "com.docker.compose.oneoff": "true" } : {}),
         },
       }));
       return send(200, list);
@@ -161,16 +183,19 @@ async function startMockDockerEngine(
           ExitCode: item.exitCode,
           Health: { Status: item.healthy ? "healthy" : "starting" },
         },
-        RestartCount: item.status === "restarting" ? 1 : 0,
+        RestartCount: item.restartCount ?? (item.status === "restarting" ? 1 : 0),
         Config: {
           Hostname: item.id.slice(0, 12),
           User: "1000:1000",
           Env: item.env,
-          Cmd: item.service === "backup" ? ["node", "dist/backup/runner.js", "schedule"] : ["node", "dist/main.js"],
+          Cmd: item.cmd !== undefined ? item.cmd : (item.service === "backup" ? ["node", "dist/backup/runner.js", "schedule"] : ["node", "dist/main.js"]),
           Image: item.image,
+          ...(item.stopTimeout !== undefined ? { StopTimeout: item.stopTimeout } : {}),
+          ...(item.healthcheck !== undefined ? { Healthcheck: item.healthcheck } : {}),
           Labels: {
             "com.docker.compose.project": "perpay",
             "com.docker.compose.service": item.service,
+            ...(item.oneoff ? { "com.docker.compose.oneoff": "true" } : {}),
           },
         },
         HostConfig: item.hostConfig,
@@ -183,6 +208,8 @@ async function startMockDockerEngine(
     if (req.method === "POST" && stopMatch) {
       const item = containers.get(decodeURIComponent(stopMatch[1]!));
       if (!item) return send(404, { message: "No such container" });
+      const t = Number(url.searchParams.get("t") ?? "10");
+      stopTimeouts.push({ id: item.id, service: item.service, t });
       item.running = false;
       item.status = "exited";
       events.push(`stop:${item.service}:${item.id}`);
@@ -202,7 +229,8 @@ async function startMockDockerEngine(
     if (req.method === "POST" && url.pathname === "/containers/create") {
       const name = url.searchParams.get("name") ?? `container-${seq}`;
       const body = JSON.parse(rawBody) as DockerCreateContainerBody;
-      const service = body.Labels?.["com.docker.compose.service"] ?? "unknown";
+      const isOneOff = body.Labels?.["com.docker.compose.oneoff"] === "true";
+      const service = isOneOff ? "oneoff" : (body.Labels?.["com.docker.compose.service"] ?? "unknown");
       if (service === "backup" && options.failBackupCreate) {
         return send(500, { message: "simulated backup create failure" });
       }
@@ -212,12 +240,16 @@ async function startMockDockerEngine(
         id,
         name: name.startsWith("/") ? name : `/${name}`,
         service,
+        oneoff: isOneOff,
         image: body.Image,
         running: false,
         status: "created",
         exitCode: 0,
         healthy: false,
         env: [...(body.Env ?? [])],
+        cmd: body.Cmd ?? null,
+        ...(body.StopTimeout !== undefined ? { stopTimeout: body.StopTimeout } : {}),
+        ...(body.Healthcheck !== undefined ? { healthcheck: body.Healthcheck } : {}),
         hostConfig: body.HostConfig,
         networks: body.NetworkingConfig?.EndpointsConfig
           ? Object.fromEntries(Object.entries(body.NetworkingConfig.EndpointsConfig).map(([k, v]) => [k, { Aliases: [...(v.Aliases ?? [])], IPAddress: "172.20.0.9" }]))
@@ -233,7 +265,22 @@ async function startMockDockerEngine(
       const item = containers.get(decodeURIComponent(startMatch[1]!));
       if (!item) return send(404, { message: "No such container" });
       events.push(`start:${item.service}:${item.id}`);
-      if (item.service === "app" && item.id.startsWith("app-new-") && options.newAppBehavior === "exit_error") {
+      if (item.oneoff) {
+        const outcome = options.onOneOffRun?.(item) ?? { exitCode: 0, logs: "" };
+        if (outcome.exitCode === 0 && (item.cmd?.includes("rollback-failed-migration") || item.cmd?.includes("restore-migration-backup"))) {
+          dbRestoredByOneOff = true;
+        }
+        item.running = false;
+        item.status = "exited";
+        item.exitCode = outcome.exitCode;
+        item.logs = outcome.logs;
+      } else if (item.id === "app-old-id-123456" && options.oldAppRollbackBehavior === "schema_mismatch_until_restored" && !dbRestoredByOneOff) {
+        item.running = false;
+        item.status = "exited";
+        item.exitCode = 1;
+        item.healthy = false;
+        item.logs = "Error: database contains unknown migration 50 future_schema_v50";
+      } else if (item.service === "app" && item.id.startsWith("app-new-") && options.newAppBehavior === "exit_error") {
         item.running = false;
         item.status = "exited";
         item.exitCode = 1;
@@ -253,6 +300,14 @@ async function startMockDockerEngine(
           : true;
       }
       return send(204);
+    }
+
+    const waitMatch = /^\/containers\/([^/]+)\/wait$/u.exec(url.pathname);
+    if (req.method === "POST" && waitMatch) {
+      const item = containers.get(decodeURIComponent(waitMatch[1]!));
+      if (!item) return send(404, { message: "No such container" });
+      events.push(`wait:${item.service}:${item.id}`);
+      return send(200, { StatusCode: item.exitCode, Error: null });
     }
 
     const removeMatch = /^\/containers\/([^/]+)$/u.exec(url.pathname);
@@ -296,6 +351,7 @@ async function startMockDockerEngine(
     baseUrl: `http://127.0.0.1:${address.port}`,
     containers,
     events,
+    stopTimeouts,
     createdBodies,
     connectedExtraNetworks,
   };
@@ -716,5 +772,280 @@ describe("self-update sidecar updater", () => {
     assert.equal(compose.services?.updater?.user, "0:1000");
     assert.deepEqual(compose.services?.updater?.cap_drop, ["ALL"]);
     assert.equal(compose.services?.updater?.read_only, true);
+  });
+
+  it("aborts update cleanly if maintenance starts during image pull and respects container stop_grace_period", async (context) => {
+    let maintenanceActive = false;
+    const pullRaceMock = await startMockDockerEngine(context, {
+      newAppBehavior: "healthy",
+      onPull: () => {
+        maintenanceActive = true;
+      },
+    });
+    const pullRaceOrchestrator = new UpdaterOrchestrator({
+      docker: new DockerClient({ baseUrl: pullRaceMock.baseUrl }),
+      composeProject: "perpay",
+      sleep: async () => {},
+      healthCheck: async () => true,
+      checkAppMaintenance: async () => ({ active: maintenanceActive, operation: maintenanceActive ? "RESTORE" : null }),
+    });
+    pullRaceOrchestrator.start({
+      operation_id: randomUUID(),
+      target_version: "1.0.0",
+      previous_version: "1.0.0-rc.5",
+    });
+    await pullRaceOrchestrator.settled();
+
+    const aborted = pullRaceOrchestrator.state().latest;
+    assert.equal(aborted?.status, "FAILED");
+    assert.equal(aborted?.rolled_back, false);
+    assert.match(aborted?.error ?? "", /拉取镜像期间启动了维护任务/u);
+    // Neither backup nor app should ever have been stopped!
+    assert.equal(pullRaceMock.stopTimeouts.length, 0);
+    assert.equal(pullRaceMock.containers.get("app-old-id-123456")?.running, true);
+    assert.equal(pullRaceMock.containers.get("backup-old-id-999")?.running, true);
+
+    // When container declares StopTimeout (e.g. compose stop_grace_period: 7h = 25200s), stopContainer must preserve it.
+    const graceMock = await startMockDockerEngine(context, {
+      newAppBehavior: "healthy",
+      appStopTimeout: 25_200,
+      backupStopTimeout: 25_200,
+    });
+    const graceOrchestrator = new UpdaterOrchestrator({
+      docker: new DockerClient({ baseUrl: graceMock.baseUrl }),
+      composeProject: "perpay",
+      sleep: async () => {},
+      healthCheck: async () => true,
+    });
+    graceOrchestrator.start({
+      operation_id: randomUUID(),
+      target_version: "1.0.0",
+      previous_version: "1.0.0-rc.5",
+    });
+    await graceOrchestrator.settled();
+
+    assert.equal(graceOrchestrator.state().latest?.status, "SUCCEEDED");
+    assert.deepEqual(
+      graceMock.stopTimeouts.map(item => ({ service: item.service, t: item.t })),
+      [
+        { service: "backup", t: 25_200 },
+        { service: "app", t: 25_200 },
+      ],
+    );
+    assert.equal(resolveStopTimeoutSeconds(30, null), 30);
+  });
+
+  it("allows slow large-DB upgrades exceeding 90s to succeed and aligns timeout with container Healthcheck.StartPeriod", async (context) => {
+    // 1. Default orchestrator timeout must NOT kill a container that becomes ready at 120s.
+    const slowMock = await startMockDockerEngine(context, {
+      newAppBehavior: "healthy",
+      appHealthcheck: {
+        StartPeriod: 5 * 60 * 1_000_000_000, // 5m in nanoseconds (matching docker-compose.yml)
+        Interval: 30 * 1_000_000_000,
+        Retries: 3,
+      },
+    });
+    let now = 1_700_000_000_000;
+    const startMs = now;
+    const slowOrchestrator = new UpdaterOrchestrator({
+      docker: new DockerClient({ baseUrl: slowMock.baseUrl }),
+      composeProject: "perpay",
+      clock: () => now,
+      sleep: async (ms) => { now += ms; },
+      healthCheck: async () => (now - startMs) >= 120_000,
+    });
+
+    slowOrchestrator.start({
+      operation_id: randomUUID(),
+      target_version: "1.0.0",
+      previous_version: "1.0.0-rc.5",
+    });
+    await slowOrchestrator.settled();
+
+    assert.equal(slowOrchestrator.state().latest?.status, "SUCCEEDED");
+    assert.ok(now - startMs >= 120_000);
+    assert.ok(DEFAULT_UPDATER_HEALTH_TIMEOUT_MS >= 300_000);
+
+    // 2. Container declaring a 10m StartPeriod stretches deadline past 6m automatically.
+    const derived = resolveHealthTimeoutMilliseconds(90_000, {
+      Id: "x",
+      Name: "/app",
+      Image: "img",
+      State: { Status: "running", Running: true },
+      Config: {
+        Image: "img",
+        Healthcheck: { StartPeriod: 600 * 1_000_000_000, Interval: 30 * 1_000_000_000, Retries: 3 },
+      },
+      HostConfig: {},
+    });
+    assert.equal(derived, 690_000);
+  });
+
+  it("automatically restores the pre-migration database via an offline old-image maintenance container when rollback hits newer schema", async (context) => {
+    const mock = await startMockDockerEngine(context, {
+      newAppBehavior: "exit_error",
+      oldAppRollbackBehavior: "schema_mismatch_until_restored",
+      onOneOffRun: (record) => {
+        assert.equal(record.hostConfig.NetworkMode, "none");
+        assert.equal((record.hostConfig.RestartPolicy as { Name?: string })?.Name, "no");
+        assert.equal(record.hostConfig.PortBindings, undefined);
+        assert.equal(record.cmd?.[0], "node");
+        assert.equal(record.cmd?.[1], "dist/database/maintenance.js");
+        assert.equal(record.cmd?.[2], "rollback-failed-migration");
+        assert.equal(record.cmd?.[3], "--since-ms");
+        assert.equal(record.cmd?.[5], "--confirm-replace-current-database");
+        return {
+          exitCode: 0,
+          logs: JSON.stringify({
+            backupName: "perpay.sqlite3.pre-migration-v49-to-v50.sqlite3",
+            restoredSchemaVersion: 49,
+            quarantinedDatabaseName: "perpay.sqlite3.before-restore-test",
+          }) + "\n",
+        };
+      },
+    });
+    const orchestrator = new UpdaterOrchestrator({
+      docker: new DockerClient({ baseUrl: mock.baseUrl }),
+      composeProject: "perpay",
+      sleep: async () => {},
+      healthCheck: async (inspect) => inspect.Id === "app-old-id-123456" && inspect.State.Running,
+    });
+
+    orchestrator.start({
+      operation_id: randomUUID(),
+      target_version: "1.0.0",
+      previous_version: "1.0.0-rc.5",
+    });
+    await orchestrator.settled();
+
+    const latest = orchestrator.state().latest;
+    assert.equal(latest?.status, "FAILED");
+    assert.equal(latest?.rolled_back, true);
+    assert.match(latest?.error ?? "", /已自动恢复迁移前数据库快照（perpay\.sqlite3\.pre-migration-v49-to-v50\.sqlite3）/u);
+    // One-off container must have been removed after completing restore, and old app + backup must be running!
+    assert.equal([...mock.containers.values()].some(c => c.oneoff), false);
+    assert.equal(mock.containers.get("app-old-id-123456")?.running, true);
+    assert.equal(mock.containers.get("backup-old-id-999")?.running, true);
+
+    // Also verify buildOneOffMaintenanceSpec strips ports/networking and keeps oneoff label + volumes.
+    const oneOffSpec = buildOneOffMaintenanceSpec(
+      {
+        Id: "old123",
+        Name: "/perpay-app-1",
+        Image: "sha256:oldimage",
+        State: { Status: "exited", Running: false },
+        Config: {
+          User: "1000:1000",
+          Image: `${OFFICIAL_IMAGE_REPOSITORY}:latest`,
+          Env: ["PERPAY_DATA_DIR=/data"],
+          Labels: {
+            "com.docker.compose.project": "perpay",
+            "com.docker.compose.service": "app",
+          },
+        },
+        HostConfig: {
+          Binds: ["perpay-data:/data"],
+          PortBindings: { "6190/tcp": [{ HostPort: "6190" }] },
+          RestartPolicy: { Name: "unless-stopped" },
+        },
+      },
+      ["node", "dist/database/maintenance.js", "list-migration-backups"],
+    );
+    assert.equal(oneOffSpec.Image, "sha256:oldimage");
+    assert.equal(oneOffSpec.HostConfig.NetworkMode, "none");
+    assert.equal(oneOffSpec.HostConfig.PortBindings, undefined);
+    assert.deepEqual(oneOffSpec.HostConfig.RestartPolicy, { Name: "no" });
+    assert.equal(oneOffSpec.Labels?.["com.docker.compose.oneoff"], "true");
+  });
+
+  it("falls back to list-migration-backups + restore-migration-backup when rolling back to a legacy old image", async (context) => {
+    const oneOffCommands: string[][] = [];
+    const mock = await startMockDockerEngine(context, {
+      newAppBehavior: "exit_error",
+      oldAppRollbackBehavior: "schema_mismatch_until_restored",
+      onOneOffRun: (record) => {
+        const cmd = [...(record.cmd ?? [])];
+        oneOffCommands.push(cmd);
+        if (cmd[2] === "rollback-failed-migration") {
+          return { exitCode: 1, logs: "usage: maintenance <list-migration-backups|restore-migration-backup>" };
+        }
+        if (cmd[2] === "list-migration-backups") {
+          return {
+            exitCode: 0,
+            logs: JSON.stringify({
+              backups: [
+                { name: "perpay.sqlite3.pre-migration-v48-to-v49.sqlite3", fromVersion: 48, toVersion: 49 },
+                { name: "perpay.sqlite3.pre-migration-v49-to-v50.sqlite3", fromVersion: 49, toVersion: 50 },
+              ],
+            }) + "\n",
+          };
+        }
+        assert.equal(cmd[2], "restore-migration-backup");
+        assert.equal(cmd[3], "perpay.sqlite3.pre-migration-v49-to-v50.sqlite3");
+        return { exitCode: 0, logs: JSON.stringify({ backupName: cmd[3], restoredSchemaVersion: 49 }) + "\n" };
+      },
+    });
+    const orchestrator = new UpdaterOrchestrator({
+      docker: new DockerClient({ baseUrl: mock.baseUrl }),
+      composeProject: "perpay",
+      sleep: async () => {},
+      healthCheck: async (inspect) => inspect.Id === "app-old-id-123456" && inspect.State.Running,
+    });
+
+    orchestrator.start({
+      operation_id: randomUUID(),
+      target_version: "1.0.0",
+      previous_version: "1.0.0-rc.5",
+    });
+    await orchestrator.settled();
+
+    assert.equal(orchestrator.state().latest?.rolled_back, true);
+    assert.deepEqual(
+      oneOffCommands.map(cmd => cmd[2]),
+      ["rollback-failed-migration", "list-migration-backups", "restore-migration-backup"],
+    );
+    assert.equal(mock.containers.get("app-old-id-123456")?.running, true);
+  });
+
+  it("detects live app maintenance via real /healthz responses (status=maintenance and 503 database_maintenance_in_progress)", async (context) => {
+    for (const scenario of [
+      { status: 200, body: { status: "maintenance", operation: "RESTORE" } },
+      { status: 503, body: { status: "unhealthy", database: { ok: false, result: "database_maintenance_in_progress" } } },
+    ]) {
+      const appHealthServer = http.createServer((_req, res) => {
+        res.writeHead(scenario.status, { "content-type": "application/json" });
+        res.end(JSON.stringify(scenario.body));
+      });
+      appHealthServer.listen(0, "127.0.0.1");
+      await once(appHealthServer, "listening");
+      const healthAddr = appHealthServer.address();
+      assert.ok(healthAddr && typeof healthAddr === "object");
+      context.after(async () => {
+        await new Promise<void>(resolve => { appHealthServer.close(() => resolve()); appHealthServer.closeAllConnections(); });
+      });
+
+      const mock = await startMockDockerEngine(context, { newAppBehavior: "healthy" });
+      const oldApp = mock.containers.get("app-old-id-123456")!;
+      oldApp.env = [`PERPAY_PORT=${healthAddr.port}`];
+      oldApp.networks = { perpay_default: { IPAddress: "127.0.0.1" } };
+
+      const orchestrator = new UpdaterOrchestrator({
+        docker: new DockerClient({ baseUrl: mock.baseUrl }),
+        composeProject: "perpay",
+        sleep: async () => {},
+      });
+      orchestrator.start({
+        operation_id: randomUUID(),
+        target_version: "1.0.0",
+        previous_version: "1.0.0-rc.5",
+      });
+      await orchestrator.settled();
+
+      const latest = orchestrator.state().latest;
+      assert.equal(latest?.status, "FAILED");
+      assert.match(latest?.error ?? "", /维护任务/u);
+      assert.equal(mock.stopTimeouts.length, 0);
+      assert.equal(mock.events.length, 0);
+    }
   });
 });

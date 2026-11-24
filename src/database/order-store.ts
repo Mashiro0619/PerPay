@@ -139,6 +139,7 @@ export interface CreateStoredOrderInput {
   readonly webhookTargetRejection?: {
     readonly url: string;
     readonly code: WebhookTargetErrorCode;
+    readonly format?: WebhookTargetFormat;
   } | undefined;
   readonly returnUrl?: string | null;
   readonly returnUrlRejection?: {
@@ -388,6 +389,7 @@ export class OrderStore {
             idempotent.webhookTarget,
             input.webhookTarget ?? null,
             input.webhookTargetRejection,
+            expectedWebhookTargetFormat(input.epay),
           )
         ) {
           return { kind: "idempotency_conflict", orderId: idempotent.order.orderId };
@@ -431,6 +433,7 @@ export class OrderStore {
             migratedReplay.webhookTarget,
             input.webhookTarget ?? null,
             input.webhookTargetRejection,
+            expectedWebhookTargetFormat(input.epay),
           )
         ) {
           return { kind: "idempotency_conflict", orderId: migratedReplay.order.orderId };
@@ -1728,17 +1731,25 @@ function sameWebhookTarget(
     stored.requestFingerprintVersion === requested.requestFingerprintVersion;
 }
 
+function expectedWebhookTargetFormat(epay: EpayOrderCreation | undefined): WebhookTargetFormat {
+  if (!epay) return "NATIVE_JSON_V1";
+  return epay.protocol === "epay_v1" ? "EPAY_V1" : "EPAY_V2";
+}
+
 function sameWebhookTargetRequest(
   stored: StoredWebhookTarget | null,
   requested: PreparedWebhookTarget | null,
   rejected: CreateStoredOrderInput["webhookTargetRejection"],
+  expectedFormat: WebhookTargetFormat,
 ): boolean {
   if (!rejected) return sameWebhookTarget(stored, requested);
   if (!stored || requested) return false;
+  const format = rejected.format ?? expectedFormat;
+  if (stored.format !== format) return false;
   try {
     return sameWebhookTarget(
       stored,
-      prepareWebhookTarget(rejected.url, stored.allowedOrigin),
+      prepareWebhookTarget(rejected.url, stored.allowedOrigin, format),
     );
   } catch {
     return false;
@@ -1784,6 +1795,9 @@ function validateWebhookTargetInput(input: CreateStoredOrderInput): void {
   if (rejected) {
     if (rejected.url !== requestedUrl) {
       throw new RangeError("rejected order webhook target does not match the request");
+    }
+    if (rejected.format !== undefined && rejected.format !== expectedWebhookTargetFormat(input.epay)) {
+      throw new RangeError("rejected order webhook target format does not match the request");
     }
     return;
   }

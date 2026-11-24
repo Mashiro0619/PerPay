@@ -53,7 +53,7 @@ describe("AppDatabase", () => {
       assert.deepEqual(reopened.health(), { ok: true, result: "ok" });
       reopened.close();
     } finally {
-      rmSync(directory, { recursive: true, force: true });
+      rmSync(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
     }
   });
 
@@ -81,7 +81,7 @@ describe("AppDatabase", () => {
       assert.deepEqual(restored.health(), { ok: true, result: "ok" });
       restored.close();
     } finally {
-      rmSync(directory, { recursive: true, force: true });
+      rmSync(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
     }
   });
 
@@ -160,7 +160,7 @@ describe("AppDatabase", () => {
       assert.deepEqual(recovered.health(), { ok: true, result: "ok" });
       recovered.close();
     } finally {
-      rmSync(directory, { recursive: true, force: true });
+      rmSync(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
     }
   });
 
@@ -178,7 +178,7 @@ describe("AppDatabase", () => {
       assert.deepEqual(database.health(), { ok: true, result: "ok" });
       database.close();
     } finally {
-      rmSync(directory, { recursive: true, force: true });
+      rmSync(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
     }
   });
 
@@ -195,7 +195,7 @@ describe("AppDatabase", () => {
       assert.deepEqual(database.health(), { ok: false, result: "order_clock_ahead" });
       database.close();
     } finally {
-      rmSync(directory, { recursive: true, force: true });
+      rmSync(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
     }
   });
 
@@ -219,7 +219,7 @@ describe("AppDatabase", () => {
         }
       }
     } finally {
-      rmSync(directory, { recursive: true, force: true });
+      rmSync(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
     }
   });
 
@@ -235,7 +235,7 @@ describe("AppDatabase", () => {
       await assert.rejects(() => AppDatabase.open(databasePath), /migration checksum mismatch/);
       assert.equal(existsSync(`${databasePath}-wal`), false);
     } finally {
-      rmSync(directory, { recursive: true, force: true });
+      rmSync(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
     }
   });
 
@@ -255,7 +255,69 @@ describe("AppDatabase", () => {
         /schema=invalid/,
       );
     } finally {
-      rmSync(directory, { recursive: true, force: true });
+      rmSync(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+    }
+  });
+
+  it("rolls back the entire pending migration batch atomically when a later migration fails", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "perpay-atomic-migration-"));
+    const databasePath = join(directory, "database.sqlite3");
+    try {
+      const { createPreAccountDatabase } = await import("./legacy-settings-fixture.ts");
+      const { RuntimeSecretCipher } = await import("../src/settings/crypto.ts");
+      const masterKey = Buffer.alloc(32, 0x22);
+      const fixture = createPreAccountDatabase(databasePath);
+      try {
+        const instanceId = fixture.owner.instanceId();
+        const cipher = new RuntimeSecretCipher(masterKey, instanceId);
+        const guard = cipher.createGuard();
+        const secret = cipher.encrypt("provider_private_key", 1, Buffer.from("legacy-private-key", "utf8"));
+        fixture.owner.write((connection) => {
+          connection.prepare(
+            `INSERT INTO runtime_master_key_guard(singleton_key, cipher_version, nonce, ciphertext, authentication_tag, created_at)
+             VALUES (1, ?, ?, ?, ?, ?)`,
+          ).run(guard.cipherVersion, guard.nonce, guard.ciphertext, guard.authenticationTag, Date.now());
+          connection.prepare(
+            `INSERT INTO runtime_secrets(secret_name, secret_version, cipher_version, nonce, ciphertext, authentication_tag, secret_fingerprint, updated_at)
+             VALUES ('provider_private_key', 1, ?, ?, ?, ?, ?, ?)`,
+          ).run(secret.cipherVersion, secret.nonce, secret.ciphertext, secret.authenticationTag, "a".repeat(64), Date.now());
+        });
+      } finally {
+        fixture.owner.close();
+      }
+
+      // Roll the seeded DB back to schema 35 so both v36 and v37 are pending.
+      const legacy = new DatabaseSync(databasePath, { readBigInts: true });
+      try {
+        legacy.exec("ALTER TABLE admin_sessions DROP COLUMN user_agent; ALTER TABLE admin_sessions DROP COLUMN source_address; DELETE FROM schema_migrations WHERE version = 36;");
+      } finally {
+        legacy.close();
+      }
+
+      // Opening without masterKey runs v36 inside the batch and fails on v37 (multiple_alipay_accounts).
+      await assert.rejects(() => AppDatabase.open(databasePath), /database migration 37/u);
+
+      // Verify v36 was rolled back atomically along with v37 — schema stays at v35!
+      const inspect = new DatabaseSync(databasePath, { readOnly: true, readBigInts: true });
+      try {
+        const maxVersion = Number((inspect.prepare("SELECT max(version) AS version FROM schema_migrations").get() as { version: bigint }).version);
+        assert.equal(maxVersion, 35);
+        const columns = (inspect.prepare("PRAGMA table_info(admin_sessions)").all() as Array<{ name: string }>).map(row => row.name);
+        assert.equal(columns.includes("user_agent"), false);
+        assert.equal(columns.includes("source_address"), false);
+      } finally {
+        inspect.close();
+      }
+
+      // Supplying the valid masterKey subsequently upgrades the untouched v35 DB cleanly.
+      const upgraded = await AppDatabase.open(databasePath, { masterKey });
+      try {
+        assert.equal(upgraded.integrityCheck().ok, true);
+      } finally {
+        upgraded.close();
+      }
+    } finally {
+      rmSync(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
     }
   });
 });

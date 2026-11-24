@@ -22,9 +22,27 @@ const token = configuredToken || ensureUpdaterToken(
   process.env.PERPAY_UPDATER_TOKEN_FILE?.trim() || "/run/perpay-updater-secrets/token",
 );
 
+function parseOptionalPositiveIntEnv(name: string, min: number, max: number): number | undefined {
+  const raw = process.env[name]?.trim();
+  if (!raw) return undefined;
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed < min || parsed > max) {
+    throw new Error(`${name} must be an integer between ${min} and ${max}`);
+  }
+  return parsed;
+}
+
+const healthTimeoutSeconds = parseOptionalPositiveIntEnv("PERPAY_UPDATER_HEALTH_TIMEOUT_SECONDS", 30, 7200);
+const stopTimeoutSeconds = parseOptionalPositiveIntEnv("PERPAY_UPDATER_STOP_TIMEOUT_SECONDS", 10, 86400);
+
 const docker = new DockerClient({ socketPath });
 const composeProject = await resolveComposeProject(docker, process.env.PERPAY_COMPOSE_PROJECT);
-const orchestrator = new UpdaterOrchestrator({ docker, composeProject });
+const orchestrator = new UpdaterOrchestrator({
+  docker,
+  composeProject,
+  ...(healthTimeoutSeconds !== undefined ? { healthTimeoutMilliseconds: healthTimeoutSeconds * 1_000 } : {}),
+  ...(stopTimeoutSeconds !== undefined ? { stopTimeoutSeconds } : {}),
+});
 const server = createUpdaterServer({
   orchestrator,
   token,

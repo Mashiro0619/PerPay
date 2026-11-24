@@ -398,4 +398,119 @@ describe("self-update configuration and HTTP orchestration", () => {
     assert.equal(afterStatus.active_job?.id, acceptedId);
     assert.equal(afterStatus.active_job?.stage, "pulling");
   });
+
+  it("enforces bidirectional mutual exclusion between online updates and maintenance jobs including during image pull", async (context) => {
+    const dir = makeFixtureDirectory();
+    const services = await createConfiguredHttpServices({
+      directory: dir,
+      apiSecret: null,
+      collectionCodePayload: "https://qr.alipay.com/self-update-mutex",
+    });
+    context.after(() => {
+      services.database.close();
+      rmSync(dir, { recursive: true, force: true });
+    });
+
+    let remoteActive: UpdateExecutionJob | null = null;
+    let statusShouldFail = false;
+    let releaseRemoteStatusGate: (() => void) | null = null;
+    let remoteStatusGate: Promise<void> | null = null;
+
+    const client: UpdaterClient = {
+      status: async () => {
+        if (remoteStatusGate) await remoteStatusGate;
+        if (statusShouldFail) throw new Error("updater temporarily unreachable");
+        return { active: remoteActive, latest: remoteActive };
+      },
+      apply: async (request) => {
+        remoteActive = {
+          id: request.operation_id,
+          target_version: request.target_version,
+          previous_version: request.previous_version,
+          status: "RUNNING",
+          stage: "pulling",
+          message: "正在拉取官方镜像…",
+          backup_name: request.backup_name ?? null,
+          rolled_back: false,
+          started_at: Date.now(),
+          finished_at: null,
+          error: null,
+        };
+        return remoteActive;
+      },
+    };
+    let maintenanceRuns = 0;
+    const maintenance = new MaintenanceController({
+      pause: async () => {},
+      resume: async () => {},
+      run: async () => {
+        maintenanceRuns += 1;
+        return { backup_name: "perpay-manual.sqlite3" };
+      },
+    });
+    const selfUpdate = new SelfUpdateService({
+      updaterClient: client,
+      maintenance,
+      currentVersion: "1.0.0-rc.5",
+    });
+    const app = createApp({ ...services, maintenance, selfUpdate, startedAt: new Date() });
+    const auth = await login(app);
+
+    const postMaintenance = (body: Record<string, unknown>) =>
+      app.request(`${ORIGIN}/api/admin/v1/maintenance/jobs`, {
+        method: "POST",
+        headers: { cookie: auth.cookie, origin: ORIGIN, "x-csrf-token": auth.csrf, "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+    // 1. Start online update (skip backup -> immediately handed off to updater in stage=pulling)
+    const applyRes = await app.request(`${ORIGIN}/api/admin/v1/system/update/apply`, {
+      method: "POST",
+      headers: { cookie: auth.cookie, origin: ORIGIN, "x-csrf-token": auth.csrf, "content-type": "application/json" },
+      body: JSON.stringify({ operation_id: randomUUID(), target_version: "1.0.0", create_backup: false }),
+    });
+    assert.equal(applyRes.status, 202);
+
+    // 2. Attempting ARCHIVE, RESTORE, or BACKUP while updater is pulling must be rejected with 409 update_in_progress!
+    for (const payload of [
+      { operation_id: randomUUID(), kind: "ARCHIVE", before: "2026-01-01" },
+      { operation_id: randomUUID(), kind: "RESTORE", name: "perpay-backup.sqlite3", expected_sha256: "a".repeat(64) },
+      { operation_id: randomUUID(), kind: "BACKUP" },
+    ]) {
+      const blocked = await postMaintenance(payload);
+      assert.equal(blocked.status, 409, `expected 409 for ${payload.kind}`);
+      assert.equal(((await blocked.json()) as { error: { code: string } }).error.code, "update_in_progress");
+    }
+    assert.equal(maintenanceRuns, 0);
+
+    // 3. If updater briefly becomes unreachable while an active handoff is known, fail closed for maintenance!
+    statusShouldFail = true;
+    const blockedUnreachable = await postMaintenance({ operation_id: randomUUID(), kind: "ARCHIVE", before: "2026-01-01" });
+    assert.equal(blockedUnreachable.status, 409);
+    assert.equal(((await blockedUnreachable.json()) as { error: { code: string } }).error.code, "update_in_progress");
+    statusShouldFail = false;
+
+    // 4. Once updater finishes (active=null), concurrent maintenance admission blocks POST /update/apply!
+    remoteActive = null;
+    remoteStatusGate = new Promise<void>(resolve => { releaseRemoteStatusGate = resolve; });
+
+    const maintenancePromise = postMaintenance({ operation_id: randomUUID(), kind: "BACKUP" });
+    // Let the maintenance handler enter guardMaintenanceStart and block on client.status().
+    await new Promise<void>(resolve => setImmediate(resolve));
+
+    const racingApply = await app.request(`${ORIGIN}/api/admin/v1/system/update/apply`, {
+      method: "POST",
+      headers: { cookie: auth.cookie, origin: ORIGIN, "x-csrf-token": auth.csrf, "content-type": "application/json" },
+      body: JSON.stringify({ operation_id: randomUUID(), target_version: "1.0.0", create_backup: false }),
+    });
+    assert.equal(racingApply.status, 409);
+    assert.equal(((await racingApply.json()) as { error: { code: string } }).error.code, "maintenance_in_progress");
+
+    releaseRemoteStatusGate!();
+    remoteStatusGate = null;
+    const allowedMaintenance = await maintenancePromise;
+    assert.equal(allowedMaintenance.status, 202);
+    await maintenance.settled();
+    assert.equal(maintenanceRuns, 1);
+  });
 });

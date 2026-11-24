@@ -543,6 +543,52 @@ describe("OrderStore", () => {
     });
   });
 
+  it("matches rejected webhook target replay using the protocol format without allowing cross-format collisions", async () => {
+    await withStore(async ({ store }) => {
+      syncProfile(store, "https://qr.example.test/profile-epay-format");
+      const allowedOrigin = "https://hooks.example.test";
+      const targetUrl = `${allowedOrigin}/epay/notify`;
+      const request = createOrderRequestSchema.parse({
+        idempotency_key: "idem-epay-v1-target",
+        merchant_order_no: "merchant-epay-v1-target",
+        amount_cents: 800,
+        product_name: "epay-v1-target",
+        notify_url: targetUrl,
+      });
+      const created = store.createOrder({
+        ...createInput(request),
+        webhookTarget: prepareWebhookTarget(targetUrl, allowedOrigin, "EPAY_V1"),
+      });
+      assert.equal(created.kind, "created");
+
+      // Replaying with a rejected target whose format does not match the stored EPAY_V1 target must conflict.
+      assert.equal(
+        store.createOrder({
+          ...createInput(request),
+          webhookTargetRejection: {
+            url: targetUrl,
+            code: "webhook_disabled",
+            format: "NATIVE_JSON_V1",
+          },
+        }).kind,
+        "idempotency_conflict",
+      );
+
+      // Replaying with mismatched explicit rejection format vs input.epay throws RangeError.
+      assert.throws(
+        () => store.createOrder({
+          ...createInput(request),
+          webhookTargetRejection: {
+            url: targetUrl,
+            code: "webhook_disabled",
+            format: "EPAY_V1",
+          },
+        }),
+        /format does not match/u,
+      );
+    });
+  });
+
   it("keeps a closed amount cooling, preserves the snapshot on replay, and releases at the exact boundary", async () => {
     await withStore(async ({ database, store, setNow }) => {
       syncProfile(store, "https://qr.example.test/cooldown");

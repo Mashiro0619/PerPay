@@ -590,30 +590,38 @@ async function migrate(
   if (newestApplied > newestKnown) throw new Error("database schema is newer than this application; refusing startup");
   const insert = connection.prepare("INSERT INTO schema_migrations(version, name, checksum, applied_at) VALUES (?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))");
   const versions = new Set(rows.map((row) => row.version));
-  for (const migration of migrations) {
-    if (versions.has(migration.version)) continue;
+  const pendingMigrations = migrations.filter((migration) => !versions.has(migration.version));
+  if (pendingMigrations.length > 0) {
+    // Commit all pending migrations atomically in a single transaction so a mid-upgrade
+    // failure in a later version never leaves an earlier migration committed on disk.
     connection.exec("BEGIN IMMEDIATE");
     try {
-      connection.exec(migration.sql);
-      if (migration.postApply === "upgrade_ledger_semantic_fingerprints_v2") {
-        upgradeLedgerSemanticFingerprints(connection);
-      } else if (migration.postApply === "backfill_evidence_fingerprints_v1") {
-        backfillEvidenceFingerprints(connection);
-      } else if (migration.postApply === "normalize_fixed_accounts_v1") {
-        normalizeFixedAccounts(connection);
-      } else if (migration.postApply === "migrate_websites_v1") {
-        migrateSiteData(connection, masterKey);
-      } else if (migration.postApply === "migrate_alipay_accounts_v1") {
-        migrateAlipayAccounts(connection, masterKey);
+      for (const migration of pendingMigrations) {
+        try {
+          connection.exec(migration.sql);
+          if (migration.postApply === "upgrade_ledger_semantic_fingerprints_v2") {
+            upgradeLedgerSemanticFingerprints(connection);
+          } else if (migration.postApply === "backfill_evidence_fingerprints_v1") {
+            backfillEvidenceFingerprints(connection);
+          } else if (migration.postApply === "normalize_fixed_accounts_v1") {
+            normalizeFixedAccounts(connection);
+          } else if (migration.postApply === "migrate_websites_v1") {
+            migrateSiteData(connection, masterKey);
+          } else if (migration.postApply === "migrate_alipay_accounts_v1") {
+            migrateAlipayAccounts(connection, masterKey);
+          }
+          insert.run(migration.version, migration.name, migrationChecksum(migration));
+        } catch (error) {
+          throw new Error(`database migration ${migration.version} (${migration.name}) failed`, { cause: error });
+        }
       }
-      insert.run(migration.version, migration.name, migrationChecksum(migration));
-      // A long migration owns SQLite's write lock, so renew in that same
+      // A long migration batch owns SQLite's write lock, so renew in that same
       // transaction immediately before publishing the migrated schema.
       renewStartupLease();
       connection.exec("COMMIT");
     } catch (error) {
       if (connection.isTransaction) connection.exec("ROLLBACK");
-      throw new Error(`database migration ${migration.version} (${migration.name}) failed`, { cause: error });
+      throw error;
     }
   }
 }

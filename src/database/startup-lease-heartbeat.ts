@@ -69,7 +69,14 @@ export class StartupLeaseHeartbeat {
     if (this.#stopped) return;
     if (!renewBeforeStopping) {
       this.#stopped = true;
-      await this.#worker.terminate();
+      try {
+        const stopped = waitForMessage(this.#worker, "stopped", 1_000);
+        this.#worker.postMessage({ kind: "stop", renewBeforeStopping: false });
+        await stopped;
+      } catch {
+        // Fall through to forced worker termination if the heartbeat thread is unresponsive.
+      }
+      await this.#worker.terminate().catch(() => undefined);
       return;
     }
     this.assertHealthy();

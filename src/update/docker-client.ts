@@ -107,6 +107,7 @@ const MAX_JSON_RESPONSE_BYTES = 4 * 1024 * 1024;
 const MAX_PULL_STREAM_BYTES = 64 * 1024 * 1024;
 const MAX_PULL_LINE_BYTES = 64 * 1024;
 const MAX_LOGS_RESPONSE_BYTES = 256 * 1024;
+const MAX_TIMER_MILLISECONDS = 2_147_483_647;
 
 export function normalizeContainerName(name: string): string {
   return name.startsWith("/") ? name.slice(1) : name;
@@ -116,7 +117,7 @@ export function normalizeContainerName(name: string): string {
  * Demultiplex Docker's 8-byte stream framing ([streamType, 0, 0, 0, uint32BE len])
  * when present, falling back to plain UTF-8 text for TTY containers.
  */
-export function demuxDockerLogs(buffer: Buffer): string {
+export function demuxDockerLogs(buffer: Buffer, maxChars = 800): string {
   let offset = 0;
   const frames: Buffer[] = [];
   let validFrames = false;
@@ -141,7 +142,7 @@ export function demuxDockerLogs(buffer: Buffer): string {
     validFrames = true;
   }
   const text = (validFrames && offset === buffer.byteLength ? Buffer.concat(frames) : buffer).toString("utf8");
-  return text.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/gu, "").trim().slice(-800);
+  return text.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/gu, "").trim().slice(-Math.max(1, maxChars));
 }
 
 function sanitizeRecreateLabels(labels: Record<string, string> | undefined): Record<string, string> | undefined {
@@ -227,6 +228,46 @@ export function buildRecreateSpec(
   };
 
   return { body, extraNetworks };
+}
+
+/**
+ * Builds an offline, non-restarting one-off maintenance container spec derived from an existing
+ * app container so updater can run maintenance commands using the old image without mounting
+ * business data or secret volumes into the updater container itself.
+ */
+export function buildOneOffMaintenanceSpec(
+  inspect: DockerContainerInspect,
+  cmd: readonly string[],
+): DockerCreateContainerBody {
+  const sanitizedHostConfig: Record<string, unknown> = { ...inspect.HostConfig };
+  delete sanitizedHostConfig.PortBindings;
+  delete sanitizedHostConfig.PublishAllPorts;
+  delete sanitizedHostConfig.Links;
+  delete sanitizedHostConfig.ExtraHosts;
+  delete sanitizedHostConfig.Dns;
+  delete sanitizedHostConfig.DnsOptions;
+  delete sanitizedHostConfig.DnsSearch;
+  sanitizedHostConfig.NetworkMode = "none";
+  sanitizedHostConfig.RestartPolicy = { Name: "no" };
+  sanitizedHostConfig.AutoRemove = false;
+
+  const labels: Record<string, string> = {
+    ...(sanitizeRecreateLabels(inspect.Config.Labels) ?? {}),
+    "com.docker.compose.oneoff": "true",
+  };
+
+  return {
+    ...(inspect.Config.User !== undefined ? { User: inspect.Config.User } : {}),
+    ...(inspect.Config.Env ? { Env: [...inspect.Config.Env] } : {}),
+    Entrypoint: [],
+    Cmd: [...cmd],
+    Healthcheck: { Test: ["NONE"] },
+    Image: inspect.Image || inspect.Config.Image,
+    ...(inspect.Config.Volumes ? { Volumes: inspect.Config.Volumes } : {}),
+    ...(inspect.Config.WorkingDir !== undefined ? { WorkingDir: inspect.Config.WorkingDir } : {}),
+    Labels: labels,
+    HostConfig: sanitizedHostConfig,
+  };
 }
 
 export class DockerClient {
@@ -384,11 +425,16 @@ export class DockerClient {
   }
 
   async stopContainer(id: string, timeoutSeconds = 30): Promise<void> {
+    const clampedTimeout = Math.max(1, Math.trunc(timeoutSeconds));
+    const requestTimeoutMs = Math.min(
+      MAX_TIMER_MILLISECONDS,
+      Math.max(this.#requestTimeoutMs, (clampedTimeout + 15) * 1_000),
+    );
     const response = await this.#rawRequest(
       "POST",
-      `/containers/${encodeURIComponent(id)}/stop?t=${Math.max(1, Math.trunc(timeoutSeconds))}`,
+      `/containers/${encodeURIComponent(id)}/stop?t=${clampedTimeout}`,
       undefined,
-      Math.max(this.#requestTimeoutMs, (timeoutSeconds + 15) * 1_000),
+      requestTimeoutMs,
     );
     if (response.statusCode === 204 || response.statusCode === 304 || response.statusCode === 404) return;
     throw new DockerApiError(response.statusCode, extractDockerMessage(response.body) ?? `停止容器失败（HTTP ${response.statusCode}）`);
@@ -426,6 +472,23 @@ export class DockerClient {
     throw new DockerApiError(response.statusCode, extractDockerMessage(response.body) ?? `启动容器失败（HTTP ${response.statusCode}）`);
   }
 
+  async waitContainer(
+    id: string,
+    timeoutMilliseconds = 10 * 60_000,
+  ): Promise<{ readonly StatusCode: number; readonly Error?: { readonly Message?: string } | null }> {
+    const clampedTimeoutMs = Math.min(MAX_TIMER_MILLISECONDS, Math.max(this.#requestTimeoutMs, Math.trunc(timeoutMilliseconds)));
+    const response = await this.#rawRequest(
+      "POST",
+      `/containers/${encodeURIComponent(id)}/wait`,
+      undefined,
+      clampedTimeoutMs,
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw new DockerApiError(response.statusCode, extractDockerMessage(response.body) ?? `等待容器退出失败（HTTP ${response.statusCode}）`);
+    }
+    return JSON.parse(response.body) as { readonly StatusCode: number; readonly Error?: { readonly Message?: string } | null };
+  }
+
   async connectNetwork(
     networkName: string,
     containerId: string,
@@ -440,16 +503,21 @@ export class DockerClient {
     throw new DockerApiError(response.statusCode, extractDockerMessage(response.body) ?? `连接网络失败（HTTP ${response.statusCode}）`);
   }
 
-  async containerLogsTail(id: string, tail = 20): Promise<string> {
+  async containerLogsTail(
+    id: string,
+    tail = 20,
+    options: { readonly stdoutOnly?: boolean; readonly maxChars?: number } = {},
+  ): Promise<string> {
+    const stderr = options.stdoutOnly ? "false" : "true";
     const response = await this.#rawBufferRequest(
       "GET",
-      `/containers/${encodeURIComponent(id)}/logs?stdout=true&stderr=true&tail=${Math.max(1, Math.min(100, tail))}`,
+      `/containers/${encodeURIComponent(id)}/logs?stdout=true&stderr=${stderr}&tail=${Math.max(1, Math.min(100, tail))}`,
       undefined,
       this.#requestTimeoutMs,
       MAX_LOGS_RESPONSE_BYTES,
     );
     if (response.statusCode < 200 || response.statusCode >= 300) return "";
-    return demuxDockerLogs(response.body);
+    return demuxDockerLogs(response.body, options.maxChars ?? (options.stdoutOnly ? 64 * 1024 : 800));
   }
 
   async #jsonRequest<T>(method: string, path: string, body?: unknown): Promise<T> {

@@ -75,6 +75,8 @@ export class SelfUpdateService {
   readonly #clock: () => number;
   readonly #requests = new Map<string, StoredLocalRequest>();
   #starting = false;
+  #maintenanceStarting = 0;
+  #lastKnownRemoteActive = false;
   #localActive: UpdateExecutionJob | null = null;
   #localLatest: UpdateExecutionJob | null = null;
   #handoffExecution: Promise<void> | null = null;
@@ -89,6 +91,45 @@ export class SelfUpdateService {
 
   async settled(): Promise<void> {
     await this.#handoffExecution;
+  }
+
+  /**
+   * Serializes maintenance job creation against local and remote self-update execution.
+   * Holds a synchronous admission counter across the remote status probe so a concurrent
+   * POST /system/update/apply cannot slip in before maintenance.start() marks itself active.
+   */
+  async guardMaintenanceStart<T>(start: () => T): Promise<T> {
+    if (this.#starting || this.#localActive !== null) {
+      throw new SelfUpdateError(409, "update_in_progress", "正在执行在线更新，请等待更新完成后再启动维护任务。");
+    }
+    this.#maintenanceStarting += 1;
+    try {
+      if (this.#client !== null) {
+        let remote: UpdaterState;
+        try {
+          remote = await this.#client.status();
+          this.#lastKnownRemoteActive = remote.active !== null;
+        } catch {
+          if (this.#lastKnownRemoteActive) {
+            throw new SelfUpdateError(
+              409,
+              "update_in_progress",
+              "在线更新任务可能仍在伴生更新服务中执行，请等待更新完成后再启动维护任务。",
+            );
+          }
+          remote = { active: null, latest: null };
+        }
+        if (remote.active !== null) {
+          throw new SelfUpdateError(409, "update_in_progress", "正在执行在线更新，请等待更新完成后再启动维护任务。");
+        }
+      }
+      if (this.#starting || this.#localActive !== null) {
+        throw new SelfUpdateError(409, "update_in_progress", "正在执行在线更新，请等待更新完成后再启动维护任务。");
+      }
+      return start();
+    } finally {
+      this.#maintenanceStarting -= 1;
+    }
   }
 
   async status(): Promise<SelfUpdateStatus> {
@@ -115,6 +156,7 @@ export class SelfUpdateService {
     }
     try {
       const remote = await this.#client.status();
+      this.#lastKnownRemoteActive = remote.active !== null;
       const active = this.#localActive ?? remote.active;
       const latest = selectLatestJob(this.#localLatest, remote.latest);
       return {
@@ -182,6 +224,9 @@ export class SelfUpdateService {
     if (this.#localActive || this.#starting) {
       throw new SelfUpdateError(409, "update_in_progress", "已有在线更新任务正在执行，请等待当前更新完成。");
     }
+    if (this.#maintenanceStarting > 0) {
+      throw new SelfUpdateError(409, "maintenance_in_progress", "已有维护任务正在启动，请等待完成后再开始更新。");
+    }
 
     // Acquire synchronous lock before the first await so concurrent POST /apply calls cannot race.
     this.#starting = true;
@@ -190,6 +235,7 @@ export class SelfUpdateService {
       let remoteState: UpdaterState;
       try {
         remoteState = await this.#client.status();
+        this.#lastKnownRemoteActive = remoteState.active !== null;
       } catch {
         throw new SelfUpdateError(
           503,
@@ -205,7 +251,7 @@ export class SelfUpdateService {
         return remoteState.latest;
       }
 
-      if (this.#maintenance && (this.#maintenance.paused || this.#maintenance.state().active !== null)) {
+      if (this.#maintenanceStarting > 0 || (this.#maintenance && (this.#maintenance.paused || this.#maintenance.state().active !== null))) {
         throw new SelfUpdateError(409, "maintenance_in_progress", "已有维护任务正在执行，请等待完成后再开始更新。");
       }
 
@@ -217,6 +263,7 @@ export class SelfUpdateService {
           previous_version: this.#currentVersion,
           backup_name: null,
         });
+        this.#lastKnownRemoteActive = job.status === "QUEUED" || job.status === "RUNNING";
         this.#rememberRequest(request, job, true);
         this.#localLatest = job;
         return job;
@@ -276,12 +323,17 @@ export class SelfUpdateService {
           this.#localActive = handingOff;
           this.#localLatest = handingOff;
 
+          if (this.#maintenanceStarting > 0 || maintenance.paused || maintenance.state().active !== null) {
+            throw new SelfUpdateError(409, "maintenance_in_progress", "已有维护任务正在执行，已中止移交在线更新。");
+          }
+
           const remoteJob = await client.apply({
             operation_id: request.operation_id,
             target_version: request.target_version,
             previous_version: this.#currentVersion,
             backup_name: backupName,
           });
+          this.#lastKnownRemoteActive = remoteJob.status === "QUEUED" || remoteJob.status === "RUNNING";
           stored.job = remoteJob;
           stored.handedOff = true;
           this.#localActive = null;
@@ -289,10 +341,12 @@ export class SelfUpdateService {
         } catch (error) {
           // Probe updater status once before reporting failure in case the apply request succeeded right before a timeout.
           const probed = await client.status().catch(() => null);
+          if (probed) this.#lastKnownRemoteActive = probed.active !== null;
           const accepted =
             (probed?.active?.id === request.operation_id ? probed.active : null) ??
             (probed?.latest?.id === request.operation_id ? probed.latest : null);
           if (accepted) {
+            this.#lastKnownRemoteActive = accepted.status === "QUEUED" || accepted.status === "RUNNING";
             stored.job = accepted;
             stored.handedOff = true;
             this.#localActive = null;
