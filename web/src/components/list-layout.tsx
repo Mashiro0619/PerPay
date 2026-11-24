@@ -1,6 +1,7 @@
 import { createContext, useContext, useLayoutEffect, useMemo, useState, type ComponentProps, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
+import { createRafCoalescer } from "@/lib/raf-coalesce";
 
 type ToolbarHost = { leading: HTMLDivElement | null; controls: HTMLDivElement | null };
 const ToolbarContext = createContext<ToolbarHost | null>(null);
@@ -14,11 +15,17 @@ export function useMeasuredHeight(node: HTMLElement | null, property: string, ow
       const rect = node.getBoundingClientRect();
       if (rect.width > 0 && rect.height > 0) target.style.setProperty(property, `${rect.height}px`);
     };
+    const throttled = createRafCoalescer(measure);
     measure();
-    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(throttled.schedule);
     observer?.observe(node);
-    window.addEventListener("resize", measure);
-    return () => { observer?.disconnect(); window.removeEventListener("resize", measure); target.style.removeProperty(property); };
+    window.addEventListener("resize", throttled.schedule);
+    return () => {
+      throttled.cancel();
+      observer?.disconnect();
+      window.removeEventListener("resize", throttled.schedule);
+      target.style.removeProperty(property);
+    };
   }, [node, property, owner]);
 }
 

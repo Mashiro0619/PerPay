@@ -1,12 +1,22 @@
-import { createContext, useCallback, useContext, useEffect, useId, useMemo, useState, type ReactNode } from "react";
+import { createContext, lazy, Suspense, useCallback, useContext, useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import { isReleaseVersion, isPrereleaseVersion } from "../../src/shared/release-version";
 import { useQuery } from "@tanstack/react-query";
 import { api, ApiError, queryClient, result, sessionKey, type OfficialUpdate } from "@/api/client";
 import { isUpdateChannel, setUpdatePreferences, useUpdatePreferences, type UpdateChannel } from "@/lib/update-preferences";
 import { dismissUpdateVersion, restoreUpdateReminders, useUpdateReminder } from "@/lib/update-reminders";
-import { UpdateDialog, type UpdateDialogRequest } from "@/components/update-dialog";
-import { SelfUpdateDialog } from "@/components/self-update-dialog";
+import type { UpdateDialogRequest } from "@/components/update-dialog";
 import { readActiveSelfUpdateHint, type ActiveSelfUpdateHint } from "@/api/self-update";
+
+const UpdateDialog = lazy(() =>
+  import("@/components/update-dialog").then((module) => ({
+    default: module.UpdateDialog,
+  })),
+);
+const SelfUpdateDialog = lazy(() =>
+  import("@/components/self-update-dialog").then((module) => ({
+    default: module.SelfUpdateDialog,
+  })),
+);
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -221,14 +231,18 @@ function UpdateOwner({ children }: { children: ReactNode }) {
   return (
     <OfficialUpdateContext value={value}>
       {children}
-      <SelfUpdateDialog
-        open={value.selfUpdateRequest !== null}
-        onOpenChange={(opened) => { if (!opened) value.closeSelfUpdate(); }}
-        targetVersion={value.selfUpdateRequest?.targetVersion ?? ""}
-        currentVersion={value.selfUpdateRequest?.currentVersion ?? ""}
-        releaseUrl={value.selfUpdateRequest?.releaseUrl}
-        returnFocus={value.selfUpdateRequest?.returnFocus}
-      />
+      {value.selfUpdateRequest !== null && (
+        <Suspense fallback={null}>
+          <SelfUpdateDialog
+            open
+            onOpenChange={(opened) => { if (!opened) value.closeSelfUpdate(); }}
+            targetVersion={value.selfUpdateRequest.targetVersion}
+            currentVersion={value.selfUpdateRequest.currentVersion}
+            releaseUrl={value.selfUpdateRequest.releaseUrl}
+            returnFocus={value.selfUpdateRequest.returnFocus}
+          />
+        </Suspense>
+      )}
     </OfficialUpdateContext>
   );
 }
@@ -247,15 +261,21 @@ function useOfficialUpdate() {
 
 export function OfficialUpdateDialog() {
   const { update, checked, preferences, selection, dialogRequest, clearDialogRequest, openSelfUpdate } = useOfficialUpdate();
-  return <UpdateDialog
-    channel={preferences.channel}
-    selection={selection}
-    candidate={checked && !selection.pending?.manual && !dialogRequest && !update.isFetching && !update.isError ? update.data?.data : undefined}
-    request={dialogRequest}
-    onRequestHandled={clearDialogRequest}
-    onStartUpdate={openSelfUpdate}
-    upgradeGuide={upgradeGuide}
-  />;
+  const candidate = checked && !selection.pending?.manual && !dialogRequest && !update.isFetching && !update.isError ? update.data?.data : undefined;
+  if (!candidate && !dialogRequest) return null;
+  return (
+    <Suspense fallback={null}>
+      <UpdateDialog
+        channel={preferences.channel}
+        selection={selection}
+        candidate={candidate}
+        request={dialogRequest}
+        onRequestHandled={clearDialogRequest}
+        onStartUpdate={openSelfUpdate}
+        upgradeGuide={upgradeGuide}
+      />
+    </Suspense>
+  );
 }
 
 export function useOfficialUpdateAvailable(): boolean {

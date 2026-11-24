@@ -130,19 +130,25 @@ export function renderCheckoutPage(input: CheckoutPageInput): string {
         }
       : null,
   };
+  const initialVisualState = initialCheckoutState(initial);
   const titleSubject =
     order && showMerchantOrderNo
       ? order.merchantOrderNo
-      : checkoutCopy[initialCheckoutState(initial)].heading;
+      : checkoutCopy[initialVisualState].heading;
   const title = titleSubject + " | " + initial.systemName + " 收银台";
   const nonceAttr = input.cspNonce ? ' nonce="' + escapeHtml(input.cspNonce) + '"' : "";
   const themeTag = input.cspNonce
     ? '<script' + nonceAttr + '>' + checkoutFrontend.themeInline + '</script>'
     : '<script src="' + checkoutFrontend.theme + '"></script>';
+  const qrPreloadTag =
+    initialVisualState === "UNPAID" && initial.qrAvailable && initial.qrUrl
+      ? '<link rel="preload" as="image" href="' + escapeHtml(initial.qrUrl) + '" fetchpriority="high">'
+      : "";
   return (
     '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="text-scale" content="scale"><meta name="color-scheme" content="light dark"><meta name="theme-color" content="#ffffff"><meta name="robots" content="noindex, nofollow, noarchive"><title>' +
     escapeHtml(title) +
     '</title>' +
+    qrPreloadTag +
     themeTag +
     checkoutFrontend.styles
       .map((href) => '<link rel="stylesheet" href="' + href + '">')

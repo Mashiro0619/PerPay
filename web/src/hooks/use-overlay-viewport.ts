@@ -1,4 +1,5 @@
 import { useLayoutEffect, useState, type CSSProperties } from "react";
+import { createRafCoalescer } from "@/lib/raf-coalesce";
 
 type Viewport = { width: number; height: number; left: number; top: number };
 
@@ -16,14 +17,16 @@ export function useOverlayViewport(): CSSProperties {
       };
       setViewport(previous => previous && Object.keys(next).every(key => previous[key as keyof Viewport] === next[key as keyof Viewport]) ? previous : next);
     };
+    const throttled = createRafCoalescer(measure);
     measure();
-    visible?.addEventListener("resize", measure);
-    visible?.addEventListener("scroll", measure, { passive: true });
-    window.addEventListener("resize", measure);
+    visible?.addEventListener("resize", throttled.schedule);
+    visible?.addEventListener("scroll", throttled.schedule, { passive: true });
+    window.addEventListener("resize", throttled.schedule);
     return () => {
-      visible?.removeEventListener("resize", measure);
-      visible?.removeEventListener("scroll", measure);
-      window.removeEventListener("resize", measure);
+      throttled.cancel();
+      visible?.removeEventListener("resize", throttled.schedule);
+      visible?.removeEventListener("scroll", throttled.schedule);
+      window.removeEventListener("resize", throttled.schedule);
     };
   }, []);
   return viewport ? {

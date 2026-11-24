@@ -15,6 +15,7 @@ import type { DashboardChartType } from "@/api/client";
 import type { TrendDay, TrendMetric } from "@/lib/trend-analytics";
 import { money, count } from "@/lib/format";
 import { dailyWeekday } from "@/lib/daily-analytics";
+import { createRafCoalescer } from "@/lib/raf-coalesce";
 import { useChartSeriesMotion } from "@/components/selection-motion";
 import {
   ChartContainer,
@@ -94,15 +95,16 @@ export function TrendPlot({
           : next,
       );
     };
+    const throttled = createRafCoalescer(measure);
     measure();
     const resize =
       typeof ResizeObserver === "undefined"
         ? null
-        : new ResizeObserver(measure);
+        : new ResizeObserver(throttled.schedule);
     const labels =
       typeof MutationObserver === "undefined"
         ? null
-        : new MutationObserver(measure);
+        : new MutationObserver(throttled.schedule);
     if (plotRef.current) {
       resize?.observe(plotRef.current);
       labels?.observe(plotRef.current, {
@@ -110,13 +112,15 @@ export function TrendPlot({
         childList: true,
         characterData: true,
         attributes: true,
+        attributeFilter: ["width", "height", "style", "transform", "font-size"],
       });
     }
-    window.addEventListener("resize", measure);
+    window.addEventListener("resize", throttled.schedule);
     return () => {
+      throttled.cancel();
       resize?.disconnect();
       labels?.disconnect();
-      window.removeEventListener("resize", measure);
+      window.removeEventListener("resize", throttled.schedule);
     };
   }, []);
 

@@ -84,12 +84,21 @@ export class ApiError extends Error {
   }
 }
 
+type PriorityRequestInit = RequestInit & { priority?: "high" | "low" | "auto" };
+
 client.setConfig({
   baseUrl: window.location.origin,
   credentials: "same-origin",
   cache: "no-store",
   redirect: "error",
   signal: sessionController.signal,
+  fetch: (input, init) => {
+    const unattended =
+      input instanceof Request && input.headers.get("X-PerPay-Unattended") === "1";
+    if (!unattended) return globalThis.fetch(input, init);
+    const lowPriorityInit: PriorityRequestInit = { ...init, priority: "low" };
+    return globalThis.fetch(input, lowPriorityInit);
+  },
 });
 
 client.interceptors.request.use((request) => {

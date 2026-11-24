@@ -2,6 +2,15 @@ const maximumFileBytes = 10 * 1024 * 1024;
 const maximumPixels = 24_000_000;
 const maximumImageEdge = 8192;
 
+async function yieldToMain(): Promise<void> {
+  const sched = (globalThis as { scheduler?: { yield?: () => Promise<void> } }).scheduler;
+  if (typeof sched?.yield === "function") {
+    await sched.yield();
+    return;
+  }
+  await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+}
+
 export const qrImageAccept = "image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp";
 
 export async function decodeQrImage(file: File, signal: AbortSignal): Promise<string> {
@@ -30,7 +39,7 @@ export async function decodeQrImage(file: File, signal: AbortSignal): Promise<st
       throw new Error("识别组件加载失败，请重试或手动粘贴收款码内容。");
     });
     for (const edge of [1024, 2048]) {
-      await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+      await yieldToMain();
       signal.throwIfAborted();
       const scale = Math.min(1, edge / longestEdge);
       canvas.width = Math.max(1, Math.round(bitmap.width * scale));

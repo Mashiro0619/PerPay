@@ -24,6 +24,22 @@ export default defineConfig({
     emptyOutDir: true,
     sourcemap: false,
     target: "es2022",
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return;
+          if (/[\\/]node_modules[\\/](?:react|react-dom|react-router|scheduler)[\\/]/.test(id)) {
+            return "vendor-react";
+          }
+          if (/[\\/]node_modules[\\/]@tanstack[\\/]/.test(id)) {
+            return "vendor-tanstack";
+          }
+          if (/[\\/]node_modules[\\/](?:@base-ui|@floating-ui)[\\/]/.test(id)) {
+            return "vendor-ui";
+          }
+        },
+      },
+    },
   },
   server: {
     host: "127.0.0.1",

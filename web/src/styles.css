@@ -4137,3 +4137,20 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* CSS containment for isolated dashboard/calendar widgets and off-screen list items. */
+.daily-cal-surface,
+.site-overview-panel {
+  contain: layout style paint;
+}
+.trend-card {
+  contain: layout style;
+}
+.daily-cal-week:nth-child(n + 7) {
+  content-visibility: auto;
+  contain-intrinsic-block-size: auto 3.5rem;
+}
+.business-summary-list > :nth-child(n + 8) {
+  content-visibility: auto;
+  contain-intrinsic-block-size: auto 7rem;
+}

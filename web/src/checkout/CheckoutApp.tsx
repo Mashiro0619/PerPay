@@ -5,7 +5,7 @@ import {
 } from "../../../src/shared/checkout-display";
 import { alipayQrLaunchUrl } from "../../../src/shared/collection-code";
 import { cn } from "cn";
-import { useEffect, useRef, useState, useSyncExternalStore, type MouseEvent } from "react";
+import { lazy, Suspense, useEffect, useRef, useState, useSyncExternalStore, type MouseEvent } from "react";
 import {
   AlertCircle,
   ArrowLeft,
@@ -18,7 +18,6 @@ import {
   Maximize,
   RefreshCw,
   WalletCards,
-  X,
 } from "lucide-react";
 import { Button, buttonVariants } from "../components/ui/button";
 import {
@@ -32,15 +31,6 @@ import {
 } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert";
-import {
-  Dialog,
-  DialogTrigger,
-  DialogClose,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "../components/ui/dialog";
 import { Separator } from "../components/ui/separator";
 import { Spinner } from "../components/ui/spinner";
 import { ThemeControl } from "../theme";
@@ -61,6 +51,8 @@ import { useQrDownload } from "./use-qr-download";
 import { AlipayLogo } from "./AlipayLogo";
 import "./checkout-layout.css";
 
+const CheckoutQrDialog = lazy(() => import("./CheckoutQrDialog"));
+
 export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
   const [controller] = useState(() => createCheckoutController(initial));
   const state = useSyncExternalStore(
@@ -74,6 +66,7 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
     [launchingAlipay, setLaunchingAlipay] = useState(false),
     [launchHint, setLaunchHint] = useState("");
   const qrImage = useRef<HTMLImageElement>(null),
+    qrExpandButton = useRef<HTMLButtonElement>(null),
     qrRetryButton = useRef<HTMLButtonElement>(null),
     heading = useRef<HTMLHeadingElement>(null),
     wasExpanded = useRef(false),
@@ -827,6 +820,7 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                               src={qrSource}
                               width={240}
                               height={240}
+                              fetchPriority="high"
                               className="block h-auto max-w-full bg-white"
                               alt="用于支付此订单的支付宝付款二维码"
                               data-qr-image
@@ -840,47 +834,34 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                         </div>
                         {showQrTools && (
                           <div className="checkout-qr-tools flex flex-wrap justify-center gap-1.5" data-checkout-qr-tools>
-                            <Dialog open={expanded} onOpenChange={setExpanded}>
-                              <DialogTrigger render={<Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground" />}>
-                                <Maximize aria-hidden="true" data-icon="inline-start" />
-                                放大二维码
-                              </DialogTrigger>
-                              <DialogContent className="checkout-qr-dialog" showCloseButton={false}>
-                                <DialogHeader className="checkout-qr-header">
-                                  <DialogTitle>付款二维码</DialogTitle>
-                                  <DialogClose render={<Button variant="ghost" size="icon-sm" aria-label="关闭二维码" />}>
-                                    <X aria-hidden="true" />
-                                  </DialogClose>
-                                </DialogHeader>
-                                <div className="checkout-qr-body">
-                                  <div className="checkout-qr-stage" data-qr-dialog-body>
-                                    <img
-                                      src={qrSource}
-                                      width={640}
-                                      height={640}
-                                      className="rounded-lg bg-white"
-                                      alt="放大的支付宝付款二维码"
-                                      data-qr-dialog-image
-                                      onError={() => {
-                                        setQrFailed(true);
-                                        setExpanded(false);
-                                      }}
-                                    />
-                                  </div>
-                                  <div className="checkout-qr-information">
-                                    <p
-                                      className="checkout-qr-amount text-center text-2xl font-semibold tracking-tight whitespace-nowrap tabular-nums"
-                                      data-checkout-money-digits={amountIntegerDigits}
-                                    >
-                                      {formattedAmount}
-                                    </p>
-                                    <DialogDescription>
-                                      请严格按此金额付款，切勿修改金额或重复付款。
-                                    </DialogDescription>
-                                  </div>
-                                </div>
-                              </DialogContent>
-                            </Dialog>
+                            <Button
+                              ref={qrExpandButton}
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              aria-haspopup="dialog"
+                              className="text-muted-foreground hover:text-foreground"
+                              onClick={() => setExpanded(true)}
+                            >
+                              <Maximize aria-hidden="true" data-icon="inline-start" />
+                              放大二维码
+                            </Button>
+                            {expanded && (
+                              <Suspense fallback={null}>
+                                <CheckoutQrDialog
+                                  open={expanded}
+                                  onOpenChange={setExpanded}
+                                  qrSource={qrSource}
+                                  formattedAmount={formattedAmount}
+                                  amountIntegerDigits={amountIntegerDigits}
+                                  finalFocus={qrExpandButton}
+                                  onImageError={() => {
+                                    setQrFailed(true);
+                                    setExpanded(false);
+                                  }}
+                                />
+                              </Suspense>
+                            )}
                             <Button
                               variant="ghost"
                               size="sm"

@@ -6,6 +6,7 @@ import { auditEventsQuery, auditListKey, auditMetadataQuery, AUDIT_FILTER_KEYS, 
 import { AUDIT_VIEWS, auditActionLabel, auditCaptureLabel, auditClientLabel, auditContextUnavailable, auditEventHref, auditViewValues, selectedAuditView } from "@/lib/audit";
 import { useListQuery, type ListQueryControl } from "@/lib/list-query";
 import { useCursor } from "@/lib/cursor";
+import { createRafCoalescer } from "@/lib/raf-coalesce";
 import { Link } from "@/navigation";
 import { PageHeading } from "@/components/page-heading";
 import { PageHeaderActionLink, PageHeaderActions } from "@/components/page-header-actions";
@@ -65,12 +66,17 @@ export default function Audit() {
       const selected = scroller.querySelector<HTMLElement>('[aria-selected="true"]');
       if (selected) revealAuditView(scroller, selected);
     };
+    const throttled = createRafCoalescer(reveal);
     reveal();
-    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(reveal);
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(throttled.schedule);
     observer?.observe(scroller);
     if (scroller.firstElementChild) observer?.observe(scroller.firstElementChild);
-    window.addEventListener("resize", reveal);
-    return () => { observer?.disconnect(); window.removeEventListener("resize", reveal); };
+    window.addEventListener("resize", throttled.schedule);
+    return () => {
+      throttled.cancel();
+      observer?.disconnect();
+      window.removeEventListener("resize", throttled.schedule);
+    };
   }, [view?.id, viewScroller]);
   const pagination = useCursor();
   const baseControl = useListQuery(timeSort, "occurred_at", "desc", true);

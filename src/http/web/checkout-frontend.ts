@@ -7,6 +7,7 @@ interface ManifestEntry {
   file: string;
   css?: string[];
   imports?: string[];
+  dynamicImports?: string[];
   isEntry?: boolean;
 }
 interface CheckoutAsset {
@@ -55,6 +56,11 @@ export function loadCheckoutFrontend() {
     for (const id of item.imports ?? []) {
       const dependency = manifest[id];
       if (!dependency) throw new Error("checkout manifest dependency missing");
+      collect(dependency);
+    }
+    for (const id of item.dynamicImports ?? []) {
+      const dependency = manifest[id];
+      if (!dependency) throw new Error("checkout manifest dynamic dependency missing");
       collect(dependency);
     }
   }

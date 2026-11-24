@@ -402,7 +402,7 @@ describe("checkout desktop composition", () => {
 });
 
 describe("checkout compact QR and page shell", () => {
-  it("uses the complete server QR without a second padded border in either view", () => {
+  it("uses the complete server QR without a second padded border in either view", async () => {
     const { container } = render(
       createElement(CheckoutApp, { initial: initial() }),
     );
@@ -410,10 +410,14 @@ describe("checkout compact QR and page shell", () => {
     const extraPadding = /(?:^|\s)(?:[\w-]+:)*p(?:[xytrblse])?-\S+/;
     expect(image.getAttribute("class")).not.toMatch(extraPadding);
     fireEvent.click(screen.getByRole("button", { name: "放大二维码" }));
+    await act(async () => {
+      await import("../src/checkout/CheckoutQrDialog");
+    });
+    const dialog = screen.getByRole("dialog");
     const expanded = document.querySelector("[data-qr-dialog-image]")!;
     expect(expanded.getAttribute("class")).not.toMatch(extraPadding);
     expect(expanded).toHaveAttribute("src", image.getAttribute("src"));
-    expect(screen.getByRole("dialog")).toHaveTextContent("¥10.01");
+    expect(dialog).toHaveTextContent("¥10.01");
   });
   it("centers an intrinsic-height checkout between flexible page tracks without fixing its position", () => {
     const { container } = render(
@@ -935,6 +939,9 @@ describe("checkout shadcn view and PNG lifecycle", () => {
   it("updates main and expanded amounts from the same public response", async () => {
     prepareDownload();
     fireEvent.click(screen.getByRole("button", { name: "放大二维码" }));
+    await act(async () => {
+      await import("../src/checkout/CheckoutQrDialog");
+    });
     expect(
       screen.getByRole("dialog", { name: "付款二维码" }),
     ).toHaveTextContent("¥10.01");

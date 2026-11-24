@@ -1,5 +1,6 @@
 import { lazy, Suspense, useId, useLayoutEffect, useRef, useState } from "react";
 import type { TrendDay } from "@/lib/trend-analytics";
+import { createRafCoalescer } from "@/lib/raf-coalesce";
 import { TrendSeriesSymbol } from "@/components/trend-series-symbol";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -44,9 +45,10 @@ export function CombinedTrendPlot({ data, today }: { data: TrendDay[]; today: st
         previous.viewportWidth === next.viewportWidth ? previous : next,
       );
     };
+    const throttled = createRafCoalescer(measure);
     measure();
-    const resize = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
-    const labels = typeof MutationObserver === "undefined" ? null : new MutationObserver(measure);
+    const resize = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(throttled.schedule);
+    const labels = typeof MutationObserver === "undefined" ? null : new MutationObserver(throttled.schedule);
     if (viewport.current) resize?.observe(viewport.current);
     if (chart.current) {
       resize?.observe(chart.current);
@@ -55,11 +57,12 @@ export function CombinedTrendPlot({ data, today }: { data: TrendDay[]; today: st
         attributeFilter: ["width", "height", "style", "transform", "font-size"],
       });
     }
-    window.addEventListener("resize", measure);
+    window.addEventListener("resize", throttled.schedule);
     return () => {
+      throttled.cancel();
       resize?.disconnect();
       labels?.disconnect();
-      window.removeEventListener("resize", measure);
+      window.removeEventListener("resize", throttled.schedule);
     };
   }, []);
 

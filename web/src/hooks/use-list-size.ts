@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import type { TableSize } from "@/lib/table-columns";
+import { createRafCoalescer } from "@/lib/raf-coalesce";
 
 const SUMMARY_WIDTH_REM = 40;
 
@@ -28,16 +29,18 @@ export function useListSize<T extends HTMLElement = HTMLDivElement>() {
       );
     }
 
+    const throttled = createRafCoalescer(measure);
     measure();
     const observer =
       typeof ResizeObserver === "undefined"
         ? null
-        : new ResizeObserver(measure);
+        : new ResizeObserver(throttled.schedule);
     if (ref.current) observer?.observe(ref.current);
-    window.addEventListener("resize", measure);
+    window.addEventListener("resize", throttled.schedule);
     return () => {
+      throttled.cancel();
       observer?.disconnect();
-      window.removeEventListener("resize", measure);
+      window.removeEventListener("resize", throttled.schedule);
     };
   }, []);
 

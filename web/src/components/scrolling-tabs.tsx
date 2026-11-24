@@ -1,6 +1,7 @@
 import { useCallback, useId, useLayoutEffect, useState, type ReactNode } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useReducedMotion } from "@/lib/motion";
+import { createRafCoalescer } from "@/lib/raf-coalesce";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
@@ -45,12 +46,21 @@ export function ScrollingTabs({ children, selection }: { children: ReactNode; se
         ? document.activeElement.closest<HTMLElement>('[role="tab"]') : null;
       reveal(focused ?? scroller.querySelector<HTMLElement>('[aria-selected="true"]'));
     };
+    const throttled = createRafCoalescer(resized);
+    const throttledScroll = createRafCoalescer(measure);
     resized();
-    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(resized);
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(throttled.schedule);
     observer?.observe(scroller);
     if (scroller.firstElementChild) observer?.observe(scroller.firstElementChild);
-    window.addEventListener("resize", resized);
-    return () => { observer?.disconnect(); window.removeEventListener("resize", resized); };
+    scroller.addEventListener("scroll", throttledScroll.schedule, { passive: true });
+    window.addEventListener("resize", throttled.schedule);
+    return () => {
+      throttled.cancel();
+      throttledScroll.cancel();
+      observer?.disconnect();
+      scroller.removeEventListener("scroll", throttledScroll.schedule);
+      window.removeEventListener("resize", throttled.schedule);
+    };
   }, [children, scroller, measure, reveal]);
   function scroll(direction: number) {
     scroller?.scrollBy({ left: direction * Math.max(100, scroller.clientWidth * .65), behavior: reducedMotion ? "instant" : "smooth" });
@@ -70,7 +80,7 @@ export function ScrollingTabs({ children, selection }: { children: ReactNode; se
     </div>}
     <div className="flex min-w-0 items-center gap-1" data-settings-tabs-strip>
       <Button variant="ghost" size="icon-sm" aria-label="向前滚动设置分类" hidden={!edges.before && !edges.after} disabled={!edges.before} onClick={() => scroll(-1)}><ChevronLeft /></Button>
-      <div ref={setScroller} className="no-scrollbar min-w-0 flex-1 scroll-p-1 overflow-x-auto p-1" data-settings-tabs-scroll onScroll={measure}
+      <div ref={setScroller} className="no-scrollbar min-w-0 flex-1 scroll-p-1 overflow-x-auto p-1" data-settings-tabs-scroll
         onFocusCapture={event => {
           // Moving a pointer-focused tab can cancel the touch's following click.
           if (event.target.matches(":focus-visible")) reveal(event.target.closest<HTMLElement>('[role="tab"]'));

@@ -221,18 +221,20 @@ export function createCheckoutController(initial: CheckoutInitial) {
     }, 10000);
     const task = (async () => {
     try {
-      const response = await fetch(target, {
+      const requestInit: RequestInit & { priority?: "high" | "low" | "auto" } = {
         method: checking ? "POST" : "GET",
         headers: {
           accept: "application/json",
           ...(checking ? { "content-type": "application/json" } : {}),
         },
         ...(checking ? { body: "{}" } : {}),
+        ...(manual ? {} : { priority: "low" }),
         cache: "no-store",
         credentials: "same-origin",
         redirect: "error",
         signal: controller.signal,
-      });
+      };
+      const response = await fetch(target, requestInit);
       if (!current()) return;
       if (!response.ok) {
         if (state.busy || manualTracking) {

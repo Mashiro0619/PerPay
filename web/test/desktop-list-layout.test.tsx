@@ -316,7 +316,7 @@ describe("desktop business list composition", () => {
       expect(document.querySelectorAll("[data-business-row]")).toHaveLength(1);
       width = 1300;
       act(() => window.dispatchEvent(new Event("resize")));
-      expect(screen.getByRole("columnheader", { name: hiddenColumn })).toBeVisible();
+      expect(await screen.findByRole("columnheader", { name: hiddenColumn })).toBeVisible();
     },
   );
 
