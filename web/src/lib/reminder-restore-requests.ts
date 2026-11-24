@@ -10,7 +10,7 @@ import {
 
 export type ReminderRestoreState = {
   command: RestoreCommand;
-  status: "pending" | "success" | "error";
+  status: "pending" | "refreshing" | "success" | "error";
   error: unknown;
 };
 const keyOf = (item: AdminWorkItem) =>
@@ -22,7 +22,7 @@ export const needsReminderRefresh = (state: ReminderRestoreState | undefined) =>
 type Attempt = {
   key: string;
   command: RestoreCommand;
-  onSuccess: (outcome: RestoreOutcome) => void;
+  onSuccess: (outcome: RestoreOutcome) => void | Promise<void>;
 };
 
 /** A refreshed row may disappear before its receipt arrives; the list owns the requests. */
@@ -42,6 +42,13 @@ export function useReminderRestores() {
   }, []);
   function update(key: string, state: ReminderRestoreState) {
     current.current = new Map(current.current).set(key, state);
+    setStates(current.current);
+  }
+  function remove(key: string) {
+    if (!current.current.has(key)) return;
+    const next = new Map(current.current);
+    next.delete(key);
+    current.current = next;
     setStates(current.current);
   }
   const mutation = useMutation({
@@ -88,10 +95,20 @@ export function useReminderRestores() {
       if (!alive.current) return;
       update(attempt.key, {
         command: attempt.command,
-        status: "success",
+        status: "refreshing",
         error: null,
       });
-      attempt.onSuccess(outcome);
+      void Promise.resolve(attempt.onSuccess(outcome)).finally(() => {
+        if (!alive.current) return;
+        const latest = current.current.get(attempt.key);
+        if (latest?.status === "refreshing" && latest.command === attempt.command) {
+          update(attempt.key, {
+            command: attempt.command,
+            status: "success",
+            error: null,
+          });
+        }
+      });
     },
     onError: (error, attempt) => {
       if (alive.current)
@@ -104,8 +121,15 @@ export function useReminderRestores() {
   });
   return {
     get: (item: AdminWorkItem) => states.get(keyOf(item)),
+    clear: (item: AdminWorkItem) => remove(keyOf(item)),
+    markRefreshing(item: AdminWorkItem) {
+      const key = keyOf(item);
+      const previous = current.current.get(key);
+      if (!previous) return;
+      update(key, { command: previous.command, status: "refreshing", error: null });
+    },
     pendingCount: [...states.values()].filter(
-      (state) => state.status === "pending",
+      (state) => state.status === "pending" || state.status === "refreshing",
     ).length,
     submit(item: AdminWorkItem, onSuccess: Attempt["onSuccess"]) {
       const key = keyOf(item);
@@ -113,6 +137,7 @@ export function useReminderRestores() {
       if (
         item.ended ||
         previous?.status === "pending" ||
+        previous?.status === "refreshing" ||
         needsReminderRefresh(previous)
       )
         return false;

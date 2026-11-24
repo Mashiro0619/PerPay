@@ -93,7 +93,80 @@ describe("disputed order review", () => {
     expect([...before.released]).toEqual([match.payment_match_id]);
     const after = disputeState({ ...open, refund_mark: { ...order.refund_mark, marked: true } });
     expect([...after.dismissible]).toEqual([reversal.exception_id]);
+    expect([...after.restorable]).toEqual(["ignored"]);
+    expect(after.allDismissed).toBe(false);
     expect(after.released.size).toBe(0);
     expect(after.guidance).not.toBe(before.guidance);
+
+    const allIgnored: AdminOrderDetail = {
+      ...disputed(),
+      refund_mark: { ...order.refund_mark, marked: true },
+      reconciliation: {
+        exceptions: [{ ...reversal, reminder_ignored: true }],
+        matches: [],
+      },
+    };
+    const settled = disputeState(allIgnored);
+    expect(settled.dismissible.size).toBe(0);
+    expect([...settled.restorable]).toEqual([reversal.exception_id]);
+    expect(settled.allDismissed).toBe(true);
+    expect(settled.guidance).toContain("本次争议提醒已忽略");
+    expect(settled.notice(true)).toContain("本次争议提醒已忽略");
+  });
+
+  it("offers restoring an already-ignored dispute reminder directly from the order page", async () => {
+    const exceptionId = "99999999-9999-4999-8999-999999999998";
+    const writes: Array<{ path: string; body: Record<string, unknown> }> = [];
+    vi.stubGlobal("fetch", vi.fn(async (request: Request) => {
+      const body = await request.json() as Record<string, unknown>;
+      writes.push({ path: new URL(request.url).pathname, body });
+      return json({
+        data: {
+          operation_id: body.operation_id,
+          type: "FINANCIAL_EXCEPTION",
+          resource_id: exceptionId,
+          restored: true,
+        },
+      });
+    }));
+    const data: AdminOrderDetail = {
+      ...disputed(),
+      refund_mark: { ...order.refund_mark, marked: true },
+      reconciliation: {
+        ...order.reconciliation,
+        exceptions: [{
+          exception_id: exceptionId,
+          status: "OPEN",
+          reminder_ignored: true,
+          exception_type: "RECONCILIATION_CONFLICT",
+          provider_account_key: "primary",
+          ledger_entry_id: ledgerId,
+          order_id: orderId,
+          candidate_id: null,
+          context_key: "reversal",
+          exception_fingerprint: "b".repeat(64),
+          resolution_operation_id: null,
+          resolution: null,
+          resolved_at: null,
+          created_at: order.created_at,
+          details: { reason: "settlement_reversed" },
+        }],
+      },
+    };
+    const state = disputeState(data);
+    const exception = data.reconciliation.exceptions[0]!;
+    mount(
+      <OrderExceptionRecord
+        exception={exception}
+        order={data}
+        ledger={{ ...ledger, state: "CONFLICT" }}
+        dismissible={state.dismissible.has(exception.exception_id)}
+        restorable={state.restorable.has(exception.exception_id)}
+      />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "恢复提醒" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "已恢复提醒" })).toBeDisabled());
+    expect(writes).toHaveLength(1);
+    expect(writes[0]!.path).toBe("/api/admin/v1/work-items/FINANCIAL_EXCEPTION/" + exceptionId + "/actions/restore");
   });
 });

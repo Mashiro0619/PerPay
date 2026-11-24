@@ -15,6 +15,7 @@ import { Section, Sections } from "@/components/record/Sections";
 import { RecordTime, Timeline, type TimelineEntry } from "@/components/record/Timeline";
 import { ConflictComparison, conflictAttentionCount } from "./ConflictComparison";
 import { evidenceLinkClass } from "./EvidenceParts";
+import { useReminderVisibilityAction } from "./use-reminder-visibility";
 
 const explanations: Record<string, string> = {
   DUPLICATE_EXTERNAL_ID: "同一支付宝流水号对应不同交易内容，已有流水未被覆盖。",
@@ -39,6 +40,14 @@ export function ConflictRecord({ detail }: { detail: LedgerConflictDetail }) {
   const finalFocus = useRef<HTMLElement | null>(null);
   const setMessage = useSuccessToast();
   const conflict = detail.conflict;
+  const reminderIgnored = conflict.status === "OPEN" && conflict.reminder_ignored;
+  const reminder = useReminderVisibilityAction({
+    type: "LEDGER_CONFLICT",
+    resourceId: conflict.conflict_id,
+    ignored: reminderIgnored,
+    enabled: conflict.status === "OPEN",
+    onRefresh: refreshFinancialRecords,
+  });
   const existing = detail.existing_ledger_entry;
   const operation = detail.resolution_operation;
   const action =
@@ -63,7 +72,7 @@ export function ConflictRecord({ detail }: { detail: LedgerConflictDetail }) {
   return <>
     <OverlaySummary>
       <RecordSummary label="冲突概况"
-        status={<StatusBadge value={conflict.reminder_ignored ? "NONE" : conflict.status} label={conflictStateLabel(conflict)} />}
+        status={<StatusBadge value={reminderIgnored ? "NONE" : conflict.status} label={conflictStateLabel(conflict)} />}
         meta={[explanations[conflict.conflict_type]]}
         nav={[
           ...(hasComparison ? [{ id: "comparison", label: "交易对照", ...(attention ? { count: attention } : {}) }] : []),
@@ -90,6 +99,7 @@ export function ConflictRecord({ detail }: { detail: LedgerConflictDetail }) {
     </Sections>
     <ActionBar menuLabel="更多操作，冲突记录操作"
       primary={canResolve && { label: label(action), disabled: completed, onSelect: trigger => { finalFocus.current = trigger; setConfirm(true); } }}
+      menu={reminder.action ? [reminder.action] : []}
       technical={[{ title: "冲突记录技术信息", data: detail, identifiers: [
         ["冲突编号", conflict.conflict_id],
         ["关联内部流水编号", existing?.ledger_entry_id ?? null],

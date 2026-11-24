@@ -433,3 +433,144 @@ it("triggers immediate notification retry inline from active work items", async 
   expect(await screen.findByText("已发起立即重试")).toBeVisible();
   expect(posts).toEqual(["/api/admin/v1/webhooks/deliveries/" + retryDeliveryId + "/actions/retry"]);
 });
+
+describe("selective and inline reminder dismissal", () => {
+  const secondItem: AdminWorkItem = {
+    ...item,
+    type: "LEDGER_CONFLICT",
+    conflict_type: "INVALID_AMOUNT",
+    external_event_id: "ALI-SEL-002",
+    resource_id: "00000000-0000-4000-8000-000000000099",
+    detail_url: "/api/admin/v1/reconciliation/conflicts/00000000-0000-4000-8000-000000000099",
+  };
+
+  it("supports multi-select checkboxes, selection bar ignore-selected, and idempotent retry on lost response", async () => {
+    const writes: Array<{ path: string; body: Record<string, unknown> }> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (request: Request) => {
+        if (request.method === "POST") {
+          const body = await request.json() as Record<string, unknown>;
+          writes.push({ path: new URL(request.url).pathname, body });
+          if (writes.length === 1) throw new TypeError("lost response");
+          return json({ data: { operation_id: body.operation_id, ignored_count: 2 } });
+        }
+        return page([item, secondItem]);
+      }),
+    );
+    const user = userEvent.setup();
+    renderPage("");
+    await screen.findByRole("link", { name: "收入尚未匹配订单" });
+    expect(screen.queryByRole("region", { name: "已选提醒操作" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("checkbox", { name: "全选当前页提醒" }));
+    const bar = await screen.findByRole("region", { name: "已选提醒操作" });
+    expect(bar).toHaveTextContent("已选 2 项");
+    expect(screen.getByLabelText("当前地址")).toHaveTextContent("");
+
+    await user.click(within(bar).getByRole("button", { name: "忽略已选（2）" }));
+    const dialog = await screen.findByRole("alertdialog", { name: "忽略已选的 2 条提醒" });
+    await user.click(within(dialog).getByRole("button", { name: "确认忽略" }));
+    await waitFor(() => expect(writes).toHaveLength(1));
+    await screen.findByText(/无法连接服务/);
+
+    // Retrying after lost response must reuse the exact operation_id and items payload.
+    await user.click(within(dialog).getByRole("button", { name: "确认忽略" }));
+    expect(await screen.findByText("已忽略选中的 2 条提醒。")).toBeVisible();
+    expect(writes).toHaveLength(2);
+    expect(writes[0]!.path).toBe("/api/admin/v1/work-items/actions/ignore-selected");
+    expect(writes[1]!.body).toEqual(writes[0]!.body);
+    expect(writes[0]!.body).toEqual({
+      operation_id: expect.stringMatching(/^[0-9a-f-]{36}$/),
+      items: [
+        { type: "FINANCIAL_EXCEPTION", resource_id: item.resource_id },
+        { type: "LEDGER_CONFLICT", resource_id: secondItem.resource_id },
+      ],
+    });
+    expect(screen.queryByRole("region", { name: "已选提醒操作" })).not.toBeInTheDocument();
+  });
+
+  it("ignores a single active reminder inline and uses the site-scoped ignore-selected endpoint in a site workspace", async () => {
+    const writes: Array<{ path: string; body: Record<string, unknown> }> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (request: Request) => {
+        const path = new URL(request.url).pathname;
+        if (request.method === "GET" && path === "/api/admin/v1/sites/site_a") {
+          return json({ data: { client_id: "site_a", deleted_at: null, configuration: { name: "订阅主站" } } });
+        }
+        if (request.method === "POST") {
+          const body = await request.json() as Record<string, unknown>;
+          writes.push({ path, body });
+          return json({ data: { operation_id: body.operation_id, ignored_count: 1 } });
+        }
+        return page([item]);
+      }),
+    );
+    const user = userEvent.setup();
+    renderPage("?api_client_id=site_a");
+    await screen.findByRole("link", { name: "收入尚未匹配订单" });
+    await user.click(screen.getByRole("button", { name: "忽略提醒：收入尚未匹配订单" }));
+    const dialog = await screen.findByRole("alertdialog", { name: "忽略提醒 · 收入尚未匹配订单" });
+    expect(dialog).toHaveTextContent("仅限业务网站“订阅主站”");
+    expect(dialog).toHaveTextContent("仅关闭当前选中的这条提醒");
+    await user.click(within(dialog).getByRole("button", { name: "确认忽略" }));
+    expect(await screen.findByText("已忽略选中的 1 条提醒。")).toBeVisible();
+    expect(writes).toHaveLength(1);
+    expect(writes[0]!.path).toBe("/api/admin/v1/sites/site_a/work-items/actions/ignore-selected");
+    expect(writes[0]!.body).not.toHaveProperty("api_client_id");
+    expect(writes[0]!.body).toEqual({
+      operation_id: expect.stringMatching(/^[0-9a-f-]{36}$/),
+      items: [{ type: "FINANCIAL_EXCEPTION", resource_id: item.resource_id }],
+    });
+  });
+
+  it("offers a desktop reset-to-priority sort button when active reminders are sorted by another field", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => page([item])));
+    const user = userEvent.setup();
+    renderPage("?sort_by=created_at&sort_order=asc");
+    const resetButton = await screen.findByRole("button", { name: "恢复需要处理优先排序" });
+    expect(resetButton).toBeVisible();
+    await user.click(resetButton);
+    await waitFor(() => expect(screen.queryByRole("button", { name: "恢复需要处理优先排序" })).not.toBeInTheDocument());
+  });
+
+  it("locks tabs and visibility switches while a restore is pending and clears 409 refresh state after refresh", async () => {
+    let resolveRestore!: (response: Response) => void;
+    let restored = false;
+    const ignoredItem: AdminWorkItem = {
+      ...item,
+      ignored_at: "2026-09-07T12:00:00Z",
+      ignored_by: "admin",
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (request: Request) => {
+        if (request.method === "POST") {
+          return new Promise<Response>((resolve) => {
+            resolveRestore = resolve;
+          });
+        }
+        return page(restored ? [] : [ignoredItem]);
+      }),
+    );
+    const user = userEvent.setup();
+    renderPage("?visibility=IGNORED");
+    const restoreBtn = await screen.findByRole("button", { name: /^恢复提醒/ });
+    await user.click(restoreBtn);
+    expect(screen.getByText("1 条提醒正在恢复…")).toBeVisible();
+    expect(screen.getByRole("tab", { name: "账务异常" })).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByRole("button", { name: "待处理" })).toBeDisabled();
+
+    // Server returns 409 conflict without work_item_ended (e.g. concurrent state change) -> offers 刷新列表.
+    resolveRestore(apiError("operation_conflict", "state changed", 409));
+    const refreshBtn = await screen.findByRole("button", { name: /^刷新列表/ });
+    expect(refreshBtn).toBeEnabled();
+    expect(screen.getByRole("button", { name: "待处理" })).toBeEnabled();
+
+    // Clicking 刷新列表 refreshes the list and clears the stuck refresh state.
+    restored = true;
+    await user.click(refreshBtn);
+    await screen.findByText("暂无已忽略提醒");
+  });
+});

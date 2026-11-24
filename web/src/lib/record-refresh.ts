@@ -27,7 +27,7 @@ export function refreshOrderRecords(orderId: string): Promise<void> {
 export function refreshNotificationRecords(orderId: string | null | undefined, deliveryId: string): Promise<void> {
   return queryClient.invalidateQueries({ predicate: query => {
     const domain = String(query.queryKey[0]);
-    return ["notifications", "orders", "work-items"].includes(domain)
+    return ["notifications", "orders", "work-items", "status", "site-overview"].includes(domain)
       || (Boolean(orderId) && ["order", "order-notifications"].includes(domain) && query.queryKey.includes(orderId))
       || (["notification", "notification-attempts"].includes(domain) && query.queryKey.includes(deliveryId));
   } });
@@ -41,7 +41,7 @@ export function refreshNotificationProjections(
   const deliveryIds = options?.deliveryIds ?? [];
   return queryClient.invalidateQueries({ predicate: query => {
     const domain = String(query.queryKey[0]);
-    if (["notifications", "orders", "work-items"].includes(domain)) return true;
+    if (["notifications", "orders", "work-items", "status", "site-overview"].includes(domain)) return true;
     if (Boolean(orderId) && !options?.excludeOrderNotifications && domain === "order-notifications" && query.queryKey.includes(orderId)) return true;
     if (deliveryIds.length > 0 && ["notification", "notification-attempts"].includes(domain)) {
       return deliveryIds.some(id => query.queryKey.includes(id));
@@ -51,7 +51,7 @@ export function refreshNotificationProjections(
 }
 
 const financialProjections = new Set([
-  "orders", "order", "work-items", "reconciliation", "analytics", "site-overview",
+  "orders", "order", "work-items", "status", "reconciliation", "analytics", "site-overview",
   "administrator-ledger", "administrator-ledger-detail", "ledger", "ledger-candidates",
   "match", "exception", "candidate", "conflict", "manual-candidates",
   "order-notifications", "notifications", "notification",

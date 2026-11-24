@@ -5,13 +5,14 @@ import { queryClient, result, type AdminOrderDetailEnvelope, type WebhookAttempt
 import { attemptResult } from "@/lib/detail-summary";
 import { money } from "@/lib/format";
 import { label } from "@/lib/labels";
-import { refreshNotificationProjections } from "@/lib/record-refresh";
+import { refreshNotificationProjections, refreshNotificationRecords } from "@/lib/record-refresh";
 import { useQuery } from "@/lib/workspace-query";
 import { Link, useDetailBack } from "@/navigation";
 import { useWorkspace, useWorkspaceApi } from "@/workspace";
 import { OrderStatusBadge } from "@/components/business-status";
 import { DetailNavigation, DetailPage } from "@/components/detail/DetailPrimitives";
 import { attemptEntries, deliveryAdvice, deliveryFields, deliveryPhrase, deliveryState, DeliveryStatus, nextAttemptLabel, useRedelivery, useRetryDelivery } from "@/components/detail/NotificationEvidence";
+import { useReminderVisibilityAction } from "@/components/detail/use-reminder-visibility";
 import { OverlaySummary } from "@/components/overlay-actions";
 import { PageHeaderActions } from "@/components/page-header-actions";
 import { PageHeading } from "@/components/page-heading";
@@ -94,6 +95,22 @@ function DeliveryRecord({ detail, attempts, order }: {
   const redelivery = useRedelivery({ ...detail, attempts: made });
   const retry = useRetryDelivery(detail);
   const { confirmationRevoked, retryable, resendable, nextAttemptAt } = deliveryState(detail);
+  const canToggleReminder =
+    detail.is_latest &&
+    !confirmationRevoked &&
+    (delivery.status === "RETRY_WAIT" ||
+      delivery.status === "DEAD_LETTER" ||
+      (delivery.status === "LEASED" &&
+        delivery.attempt_count >= 1 &&
+        Boolean(delivery.last_error_code)));
+  const reminderIgnored = canToggleReminder && Boolean(detail.reminder_ignored);
+  const reminder = useReminderVisibilityAction({
+    type: "NOTIFICATION_FAILURE",
+    resourceId: delivery.delivery_id,
+    ignored: reminderIgnored,
+    enabled: canToggleReminder,
+    onRefresh: () => refreshNotificationRecords(detail.event.order_id, delivery.delivery_id),
+  });
   const advice = deliveryAdvice(detail, made);
   const site = detail.target.site_name ?? "业务网站名称暂不可用";
   // Until the attempts are read, the delivery's own counter says how many there are.
@@ -105,6 +122,7 @@ function DeliveryRecord({ detail, attempts, order }: {
         meta={[<>
           已尝试 {delivery.attempt_count} 次
           {!!nextAttemptAt && <> · {nextAttemptLabel(detail)} <RecordTime value={nextAttemptAt} /></>}
+          {reminderIgnored && <> · 提醒已忽略</>}
         </>]}
         nav={[
           { id: "overview", label: "通知信息" },
@@ -144,7 +162,10 @@ function DeliveryRecord({ detail, attempts, order }: {
         (resendable && delivery.status === "DEAD_LETTER" && { label: "重新发送", disabled: redelivery.sent, onSelect: redelivery.open })
       }
       // Sending a confirmed notification again is rare, so it stays out of the way.
-      menu={resendable && delivery.status === "ACKNOWLEDGED" ? [{ label: "重新发送", disabled: redelivery.sent, onSelect: redelivery.open }] : []}
+      menu={[
+        ...(resendable && delivery.status === "ACKNOWLEDGED" ? [{ label: "重新发送", disabled: redelivery.sent, onSelect: redelivery.open }] : []),
+        ...(reminder.action ? [reminder.action] : []),
+      ]}
       technical={[{ title: "通知技术信息", data: { ...detail, attempts: made }, identifiers: [
         ["网站 ID", detail.target.api_client_id], ["通知编号", delivery.delivery_id], ["事件编号", detail.event.event_id],
         ["内部订单编号", detail.event.order_id], ["回调地址编号", detail.target.target_id], ["原通知编号", delivery.predecessor_delivery_id],

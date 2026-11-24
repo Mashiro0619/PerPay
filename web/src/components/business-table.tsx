@@ -72,6 +72,7 @@ export type BusinessCellContext = {
   visibleColumnCount: number;
 };
 export type BusinessColumnLayout =
+  | "select"
   | "identity"
   | "text"
   | "amount"
@@ -81,6 +82,8 @@ export type BusinessColumnLayout =
   | "actions";
 export type BusinessColumn<T> = ResponsiveColumn & {
   label: string;
+  header?: () => ReactNode;
+  menuHidden?: boolean;
   cell: (item: T, context: BusinessCellContext) => ReactNode;
   sortBy?: string;
   className?: string;
@@ -300,7 +303,7 @@ function BusinessTableView<T extends RowData>({
         {isSummary ? "显示信息（首项与操作固定）" : "显示列（首列与操作列固定）"}
       </FieldLegend>
       <FieldGroup>
-        {table.getAllLeafColumns().map((column) => (
+        {table.getAllLeafColumns().filter((column) => !specs.find((spec) => spec.id === column.id)?.menuHidden).map((column) => (
           <Field key={column.id} orientation="horizontal" data-disabled={!column.getCanHide() || undefined}>
             <Checkbox
               id={columnsId + "-" + column.id}
@@ -350,7 +353,7 @@ function BusinessTableView<T extends RowData>({
               ? "显示信息（首项与操作固定）"
               : "显示列（首列与操作列固定）"}
           </DropdownMenuLabel>
-          {table.getAllLeafColumns().map((column) => (
+          {table.getAllLeafColumns().filter((column) => !specs.find((spec) => spec.id === column.id)?.menuHidden).map((column) => (
             <DropdownMenuCheckboxItem
               key={column.id}
               disabled={!column.getCanHide()}
@@ -477,6 +480,8 @@ function BusinessTableView<T extends RowData>({
                           <ArrowUpDown data-icon="inline-end" aria-hidden="true" />
                         )}
                       </Button>
+                    ) : spec.header ? (
+                      spec.header()
                     ) : (
                       <table.FlexRender header={header} />
                     );

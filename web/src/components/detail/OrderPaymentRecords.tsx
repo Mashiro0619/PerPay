@@ -11,7 +11,7 @@ import { FieldList, type Field } from "@/components/record/FieldList";
 import { SubRecord } from "@/components/record/SubRecord";
 import { RecordTime } from "@/components/record/Timeline";
 import type { DatedTechnicalEntry } from "@/components/record/ActionBar";
-import { useIgnoreDisputeReminder } from "./disputed-order-actions";
+import { useIgnoreDisputeReminder, useRestoreDisputeReminder } from "./disputed-order-actions";
 import { useRelatedLedger } from "./EvidenceParts";
 import { useAssociateIncome, useReverseMatch } from "./FinancialActions";
 
@@ -93,7 +93,7 @@ export function OrderMatchRecord({ match, release = false }: { match: PaymentMat
  * One reconciliation exception of this order. The entry and candidate come
  * from the order's associations when it has them, and are read otherwise.
  */
-export function OrderExceptionRecord({ exception, order, ledger, candidate: knownCandidate, candidateAnchor = false, dismissible = false }: {
+export function OrderExceptionRecord({ exception, order, ledger, candidate: knownCandidate, candidateAnchor = false, dismissible = false, restorable = false }: {
   exception: FinancialException;
   order: AdminOrderDetail;
   ledger?: ReconciliationLedgerEntry | undefined;
@@ -102,6 +102,8 @@ export function OrderExceptionRecord({ exception, order, ledger, candidate: know
   candidateAnchor?: boolean;
   /** A refund is on record, so this dispute reminder may be dismissed. */
   dismissible?: boolean;
+  /** An open dispute reminder is currently ignored and can be restored here. */
+  restorable?: boolean;
 }) {
   const api = useWorkspaceApi();
   const { entry, query } = useRelatedLedger(exception.ledger_entry_id, ledger);
@@ -113,6 +115,7 @@ export function OrderExceptionRecord({ exception, order, ledger, candidate: know
   const candidate = knownCandidate ?? candidateQuery.data?.data;
   const payment = order.payment.status;
   const resolution = exceptionResolution(exception);
+  const reminderIgnored = exception.status === "OPEN" && exception.reminder_ignored;
   // The order footer already offers a general association entry; the exception
   // sub-record only adds a shortcut for its own specific available credit entry.
   const canAssociate = !["UNMATCHED_DEBIT", "UNLINKED_REFUND"].includes(exception.exception_type) &&
@@ -129,13 +132,19 @@ export function OrderExceptionRecord({ exception, order, ledger, candidate: know
     ledgerLabel: entry ? money(entry.amount_cents) + " · " + dateTime(entry.occurred_at) : undefined,
   });
   const ignore = useIgnoreDisputeReminder(exception.exception_id);
+  const restore = useRestoreDisputeReminder(exception.exception_id);
   const fields = entry ? ledgerFields(entry) : { primary: [], extra: [] };
   return <SubRecord id={"exception-" + exception.exception_id} title={label(exception.exception_type)}
-    status={<StatusBadge value={exception.reminder_ignored ? "NONE" : exception.status} label={exceptionStateLabel(exception)} />}
+    status={<StatusBadge value={reminderIgnored ? "NONE" : exception.status} label={exceptionStateLabel(exception)} />}
     description={exceptionExplanation(exception)}
     href={"/reconciliation/exceptions/" + exception.exception_id}
-    actions={[...(canAssociate ? [associate.action] : []), ...(dismissible ? [ignore.action] : [])]} actionsLabel="更多操作，异常记录操作">
+    actions={[
+      ...(canAssociate ? [associate.action] : []),
+      ...(dismissible ? [ignore.action] : []),
+      ...(restorable ? [restore.action] : []),
+    ]} actionsLabel="更多操作，异常记录操作">
     {dismissible && <ErrorNotice error={ignore.error} />}
+    {restorable && <ErrorNotice error={restore.error} />}
     {!entry && exception.ledger_entry_id && query.isPending && <Loading label="正在读取关联流水…" />}
     {!ledger && exception.ledger_entry_id && <ErrorNotice scope="page" error={query.error} retry={() => { void query.refetch(); }} />}
     <FieldList items={[

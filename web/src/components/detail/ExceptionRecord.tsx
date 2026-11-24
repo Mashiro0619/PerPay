@@ -12,9 +12,11 @@ import { RecordSummary } from "@/components/record/RecordSummary";
 import { Section, Sections } from "@/components/record/Sections";
 import { Timeline, type TimelineEntry } from "@/components/record/Timeline";
 import { ErrorNotice } from "@/components/request-state";
+import { refreshFinancialRecords } from "@/lib/record-refresh";
 import { useAssociateIncome } from "./FinancialActions";
 import { useRelatedOrder } from "./DetailPrimitives";
 import { evidenceLinkClass, evidenceNoteClass, ledgerEntryFields, orderLedgerComparison, PendingEvidence, RelatedOrderRecord, useRelatedLedger } from "./EvidenceParts";
+import { useReminderVisibilityAction } from "./use-reminder-visibility";
 
 /** A financial exception: why it was raised, the order and the entry it concerns, and what became of it. */
 export function ExceptionRecord({ exception }: { exception: FinancialException }) {
@@ -30,6 +32,14 @@ export function ExceptionRecord({ exception }: { exception: FinancialException }
   });
   const candidate: MatchCandidate | undefined = candidateQuery.data?.data;
   const retired = ["UNMATCHED_DEBIT", "UNLINKED_REFUND"].includes(exception.exception_type);
+  const reminderIgnored = exception.status === "OPEN" && exception.reminder_ignored;
+  const reminder = useReminderVisibilityAction({
+    type: "FINANCIAL_EXCEPTION",
+    resourceId: exception.exception_id,
+    ignored: reminderIgnored,
+    enabled: !retired && exception.status === "OPEN",
+    onRefresh: refreshFinancialRecords,
+  });
   const payment = order?.payment.status ?? null;
   const resolution = exceptionResolution(exception);
   const canAssociate = !retired && exception.status === "OPEN" &&
@@ -52,7 +62,7 @@ export function ExceptionRecord({ exception }: { exception: FinancialException }
   return <>
     <OverlaySummary>
       <RecordSummary label="异常概况"
-        status={<StatusBadge value={exception.reminder_ignored ? "NONE" : exception.status} label={exceptionStateLabel(exception)} />}
+        status={<StatusBadge value={reminderIgnored ? "NONE" : exception.status} label={exceptionStateLabel(exception)} />}
         meta={[exceptionExplanation(exception)]}
         compare={order && entry ? orderLedgerComparison(order, entry) : []}
         nav={[
@@ -86,6 +96,7 @@ export function ExceptionRecord({ exception }: { exception: FinancialException }
     </Sections>
     <ActionBar menuLabel="更多操作，异常记录操作"
       primary={canAssociate && associate.action}
+      menu={reminder.action ? [reminder.action] : []}
       technical={[{ title: "账务异常技术信息", data: exception, identifiers: [
         ["异常编号", exception.exception_id],
         ["网站 ID", order?.api_client_id ?? clientId ?? null],

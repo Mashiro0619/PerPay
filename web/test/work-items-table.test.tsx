@@ -310,4 +310,36 @@ describe("work item business context", () => {
     expect(screen.getByText("已结束")).toBeVisible();
     expect(screen.queryByTitle("2026/10/30 12:00（北京时间）")).not.toBeInTheDocument();
   });
+
+  it.each([1440, 390])("shows ignored operator once, hides created_at by default in ignored desktop view, and keeps category in ALL view at %spx", (width) => {
+    mobileMedia(width);
+    const ignored = notification({
+      ignored_at: "2026-10-30T05:00:00.000Z",
+      ignored_by: "值班审核员",
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={["/work-items?visibility=IGNORED"]}>
+          <WorkItemsTable
+            items={[ignored]}
+            control={control}
+            showCategoryInIgnored
+            actions={() => <button type="button">恢复提醒</button>}
+          />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    const firstRow = rows()[0]!;
+    expect(within(firstRow).getByText("通知失败", { exact: true })).toBeVisible();
+    if (width === 1440) {
+      expect(screen.getByRole("columnheader", { name: "忽略时间" })).toBeVisible();
+      expect(screen.queryByRole("columnheader", { name: "创建时间" })).not.toBeInTheDocument();
+      const ignoredCell = firstRow.querySelector<HTMLElement>('[data-column-id="ignored_at"]')!;
+      expect(within(ignoredCell).getByText("值班审核员")).toBeVisible();
+      expect(within(firstRow).getAllByText(/值班审核员/)).toHaveLength(1);
+    } else {
+      expect(within(firstRow).getByText("忽略时间", { selector: "dt" })).toBeVisible();
+      expect(within(firstRow).getAllByText(/值班审核员/)).toHaveLength(1);
+    }
+  });
 });

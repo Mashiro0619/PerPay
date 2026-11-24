@@ -199,4 +199,49 @@ describe("readable financial exception detail", () => {
     ]);
     expect(requests.every(request => request.method === "GET")).toBe(true);
   });
+
+  it("ignores and restores an OPEN exception reminder symmetrically from its detail menu", async () => {
+    let reminderIgnored = false;
+    const writes: Array<{ path: string; body: Record<string, unknown> }> = [];
+    vi.stubGlobal("fetch", vi.fn(async (request: Request) => {
+      const path = new URL(request.url).pathname;
+      if (request.method === "POST") {
+        const body = await request.json() as Record<string, unknown>;
+        writes.push({ path, body });
+        if (path.endsWith("/ignore-all")) {
+          reminderIgnored = true;
+          return json({ data: { operation_id: body.operation_id, ignored_count: 1 } });
+        }
+        reminderIgnored = false;
+        return json({
+          data: {
+            operation_id: body.operation_id,
+            type: "FINANCIAL_EXCEPTION",
+            resource_id: exceptionId,
+            restored: true,
+          },
+        });
+      }
+      if (path === "/api/admin/v1/sites/shop") return json({ data: { client_id: "shop", deleted_at: null, configuration: { name: "测试网站" } } });
+      if (path.endsWith("/reconciliation/exceptions/" + exceptionId)) return json({ data: { ...financialException, reminder_ignored: reminderIgnored } });
+      if (path.endsWith("/orders/" + orderId)) return json({ data: { ...order, api_client_id: "shop" } });
+      if (path.endsWith("/reconciliation/ledger-entries/" + ledgerId)) return json({ data: availableLedger });
+      if (path.endsWith("/reconciliation/candidates/" + candidateId)) return json({ data: candidate });
+      throw new Error("unexpected request " + path);
+    }));
+    mountPage("/sites/shop");
+    await opened();
+    await settle();
+    const user = userEvent.setup();
+    await user.click(await recordAction("忽略此提醒", "异常记录操作"));
+    expect(await screen.findByText("本条提醒已忽略")).toBeVisible();
+    await settle();
+    expect(writes[0]!.path).toBe("/api/admin/v1/sites/shop/work-items/actions/ignore-all");
+    expect(writes[0]!.body).not.toHaveProperty("api_client_id");
+    expect(writes[0]!.body).toMatchObject({ type: "FINANCIAL_EXCEPTION", resource_id: exceptionId });
+
+    await user.click(await recordAction("恢复提醒", "异常记录操作"));
+    expect(await screen.findByText("本次提醒恢复已完成。")).toBeVisible();
+    expect(writes[1]!.path).toBe("/api/admin/v1/sites/shop/work-items/FINANCIAL_EXCEPTION/" + exceptionId + "/actions/restore");
+  });
 });

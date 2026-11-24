@@ -5,7 +5,7 @@ import { cn } from "cn";
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 
 const interactiveTargetSelector =
-  "a, button, input, select, textarea, label, summary, [role=button], [contenteditable], [data-row-action], [data-summary-actions]";
+  "a, button, input, select, textarea, label, summary, [role=button], [role=checkbox], [contenteditable], [data-row-action], [data-summary-actions]";
 
 export function followRowLink(event: ReactMouseEvent<HTMLElement>) {
   if (event.defaultPrevented || ![0, 1].includes(event.button)) return;

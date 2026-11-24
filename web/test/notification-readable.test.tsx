@@ -681,4 +681,49 @@ describe("readable delivery attempts", () => {
     for (const resolve of resolvers.values()) resolve();
     expect(await screen.findAllByText("已发起立即重试")).not.toHaveLength(0);
   });
+
+  it("shows ignored reminder status and supports ignoring and restoring a failed notification reminder from detail", async () => {
+    let reminderIgnored = false;
+    const writes: Array<{ path: string; body: Record<string, unknown> }> = [];
+    vi.stubGlobal("fetch", vi.fn(async (request: Request) => {
+      const path = new URL(request.url).pathname;
+      if (request.method === "POST") {
+        const body = await request.json() as Record<string, unknown>;
+        writes.push({ path, body });
+        if (path.endsWith("/ignore-all")) {
+          reminderIgnored = true;
+          return json({ data: { operation_id: body.operation_id, ignored_count: 1 } });
+        }
+        reminderIgnored = false;
+        return json({
+          data: {
+            operation_id: body.operation_id,
+            type: "NOTIFICATION_FAILURE",
+            resource_id: deliveryId,
+            restored: true,
+          },
+        });
+      }
+      if (path.endsWith("/attempts")) return json({ data: delivery.attempts });
+      if (path.includes("/orders/")) return json({ data: paidOrder });
+      return json({
+        data: {
+          ...delivery,
+          reminder_ignored: reminderIgnored,
+        },
+      });
+    }));
+    mountDetail();
+    await screen.findByRole("region", { name: "通知信息" });
+    const user = userEvent.setup();
+    await user.click(await recordAction("忽略此提醒", "通知记录操作"));
+    expect(await screen.findByText("本条提醒已忽略")).toBeVisible();
+    expect(await screen.findByText(/提醒已忽略/)).toBeVisible();
+    expect(writes[0]!.path).toBe("/api/admin/v1/work-items/actions/ignore-all");
+    expect(writes[0]!.body).toMatchObject({ type: "NOTIFICATION_FAILURE", resource_id: deliveryId });
+
+    await user.click(await recordAction("恢复提醒", "通知记录操作"));
+    expect(await screen.findByText("本次提醒恢复已完成。")).toBeVisible();
+    expect(writes[1]!.path).toBe("/api/admin/v1/work-items/NOTIFICATION_FAILURE/" + deliveryId + "/actions/restore");
+  });
 });

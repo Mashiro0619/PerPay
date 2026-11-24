@@ -63,7 +63,7 @@ const lists = [
     hiddenColumn: "创建时间",
     summaryFields: ["关联记录"],
     summaryStatuses: [],
-    centeredColumns: ["actionable_at", "created_at", "actions"],
+    centeredColumns: ["select", "actionable_at", "created_at", "actions"],
     rightAlignedColumns: ["payable_amount_cents"],
   },
   {
@@ -233,12 +233,16 @@ describe("desktop business list composition", () => {
       expect(screen.queryByRole("button", { name: "列表密度" })).not.toBeInTheDocument();
       expect(view.container.querySelector("[data-business-list]")).toHaveClass("w-full", "min-w-0");
       expect(view.container.querySelector("[data-business-list]")).not.toHaveClass("max-w-[1600px]", "mx-auto");
-      expect(table.querySelector("tbody td")).toHaveAttribute("data-column-layout", "identity");
+      if (path === "/work-items") {
+        expect(table.querySelector('tbody td[data-column-id="select"]')).toHaveAttribute("data-column-layout", "select");
+      }
+      const identityCell = table.querySelector('tbody td[data-column-id="identity"]');
+      expect(identityCell).toHaveAttribute("data-column-layout", "identity");
       expectColumnAlignment(table, centeredColumns, optionalCenteredColumns, rightAlignedColumns);
       expect(table).toHaveAttribute("data-density", "compact");
       expect(table).toHaveClass("table-fixed");
-      expect(table.querySelector("tbody td")).not.toHaveClass("py-2");
-      expect(table.querySelector("tbody td")).not.toHaveClass("w-full");
+      expect(identityCell).not.toHaveClass("py-2");
+      expect(identityCell).not.toHaveClass("w-full");
     },
   );
 

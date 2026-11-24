@@ -1,6 +1,6 @@
 import { ListLayout, ListToolbarPart } from "@/components/list-layout";
 import { useWorkspace } from "@/workspace";
-import { useQuery } from '@/lib/workspace-query';
+import { useQuery } from "@/lib/workspace-query";
 import { useWorkspaceApi } from "@/workspace";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { RefreshButton } from "@/components/refresh-button";
@@ -11,11 +11,12 @@ import { ListQueryToolbar } from "@/components/list-query-toolbar";
 import { ListActionsMenu } from "@/components/list-actions-menu";
 import { ListColumnsProvider } from "@/components/list-columns";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
-import { useEffect, useRef, useState } from "react";
-import { onlineManager, useMutation } from '@tanstack/react-query';
-import { RefreshCw, EyeOff } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { onlineManager, useMutation } from "@tanstack/react-query";
+import { RefreshCw, EyeOff, RotateCcw } from "lucide-react";
 import { useLocation, useSearchParams } from "react-router";
-import { refreshOperationalData, result, type AdminWorkItem, type AdminWorkItemTypeFilter } from "@/api/client";
+import { ApiError, refreshOperationalData, result, type AdminWorkItem, type AdminWorkItemTypeFilter } from "@/api/client";
+import { waitForOperation } from "@/lib/operation-timeout";
 import {
   useReminderRestores,
   needsReminderRefresh,
@@ -24,7 +25,7 @@ import {
 import { restoreMessages, type RestoreOutcome } from "@/lib/reminder-restore";
 import { useCursor } from "@/lib/cursor";
 import { workItemHref, workItemTitle } from "@/lib/labels";
-import { WorkItemsTable } from "@/components/work-items-table";
+import { WorkItemsTable, workItemKey } from "@/components/work-items-table";
 import { useQuickRetryDelivery } from "@/components/detail/NotificationEvidence";
 import { ErrorNotice, QueryView } from "@/components/request-state";
 import { CursorPagination } from "@/components/cursor-pagination";
@@ -52,75 +53,195 @@ import {
   AlertDialogCancel,
   AlertDialogAction,
 } from "@/components/admin-dialog";
+
 const filters = [
   ["ALL", "全部提醒"],
   ["FINANCIAL_EXCEPTION", "账务异常"],
   ["LEDGER_CONFLICT", "账本冲突"],
   ["NOTIFICATION_FAILURE", "通知失败"],
 ] as const;
+
 type Visibility = WorkItemVisibility;
+
+type IgnoreBatchRequest =
+  | {
+      readonly mode: "all";
+      readonly type: AdminWorkItemTypeFilter;
+      readonly name: string;
+      readonly q: string;
+      readonly operation_id: string;
+      readonly clientId: string | null;
+      readonly siteName: string | null;
+    }
+  | {
+      readonly mode: "selected";
+      readonly items: readonly {
+        readonly type: AdminWorkItem["type"];
+        readonly resource_id: string;
+        readonly title: string;
+      }[];
+      readonly operation_id: string;
+      readonly clientId: string | null;
+      readonly siteName: string | null;
+    };
+
+const safeIgnoreRejectionCodes: Readonly<Record<string, number>> = {
+  validation_failed: 422,
+  csrf_invalid: 403,
+  origin_not_allowed: 403,
+  auth_rate_limited: 429,
+  work_item_not_found: 404,
+  order_not_found: 404,
+};
+
+function isSafeIgnoreRejection(error: unknown): boolean {
+  return (
+    error instanceof ApiError &&
+    safeIgnoreRejectionCodes[error.code] === error.status
+  );
+}
+
 export default function WorkItems() {
   const api = useWorkspaceApi();
   const { clientId: workspaceClientId, site } = useWorkspace();
   const mounted = useMounted();
   const [search, setSearch] = useSearchParams();
   const { type, visibility } = workItemFilters(search, workspaceClientId);
-  const [batch, setBatch] = useState<{
-    type: AdminWorkItemTypeFilter;
-    name: string;
-    q: string;
-    operation_id: string;
-    clientId: string | null;
-    siteName: string | null;
-  } | null>(null);
+  const restores = useReminderRestores();
+  const [batch, setBatch] = useState<IgnoreBatchRequest | null>(null);
+  const [lastBatch, setLastBatch] = useState<IgnoreBatchRequest | null>(null);
+  const [selectionClearSignal, setSelectionClearSignal] = useState(0);
   const finalFocus = useRef<HTMLElement | null>(null);
   const cancelIgnore = useRef<HTMLButtonElement | null>(null);
+  const ignoreController = useRef<AbortController | null>(null);
   const setMessage = useSuccessToast();
+
+  useEffect(() => {
+    return () => {
+      ignoreController.current?.abort();
+    };
+  }, []);
+
   const ignore = useMutation({
     networkMode: "always",
     retry: false,
-    mutationFn: (input: NonNullable<typeof batch>) => {
-      if (!onlineManager.isOnline() || !navigator.onLine)
+    mutationFn: async (input: IgnoreBatchRequest) => {
+      if (!onlineManager.isOnline() || !navigator.onLine) {
         throw new Error("网络已断开，忽略操作未提交。恢复连接后请重新提交。");
-      return result(
-        api.ignoreAllAdministratorWorkItems({
-          body: {
-            operation_id: input.operation_id,
-            type: input.type,
-            ...(input.clientId ? { api_client_id: input.clientId } : {}),
-            ...(input.q ? { q: input.q } : {}),
-          },
-        }),
-      );
+      }
+      const controller = new AbortController();
+      ignoreController.current = controller;
+      try {
+        return await waitForOperation(controller, async (signal) => {
+          if (input.mode === "selected") {
+            const response = await result(
+              api.ignoreSelectedAdministratorWorkItems({
+                signal,
+                body: {
+                  operation_id: input.operation_id,
+                  ...(input.clientId ? { api_client_id: input.clientId } : {}),
+                  items: input.items.map((item) => ({
+                    type: item.type,
+                    resource_id: item.resource_id,
+                  })),
+                },
+              }),
+            );
+            const data = response?.data;
+            if (
+              !data ||
+              data.operation_id !== input.operation_id ||
+              typeof data.ignored_count !== "number"
+            ) {
+              throw new Error(
+                "操作结果未完整返回，暂时无法确认是否成功。请重试上一次操作或刷新列表核查。",
+              );
+            }
+            return response;
+          }
+          const response = await result(
+            api.ignoreAllAdministratorWorkItems({
+              signal,
+              body: {
+                operation_id: input.operation_id,
+                type: input.type,
+                ...(input.clientId ? { api_client_id: input.clientId } : {}),
+                ...(input.q ? { q: input.q } : {}),
+              },
+            }),
+          );
+          const data = response?.data;
+          if (
+            !data ||
+            data.operation_id !== input.operation_id ||
+            typeof data.ignored_count !== "number"
+          ) {
+            throw new Error(
+              "操作结果未完整返回，暂时无法确认是否成功。请重试上一次操作或刷新列表核查。",
+            );
+          }
+          return response;
+        });
+      } finally {
+        if (ignoreController.current === controller) {
+          ignoreController.current = null;
+        }
+      }
     },
     onSuccess: ({ data }, input) => {
       void refreshOperationalData();
       if (!mounted.current) return;
       setBatch(null);
-      setMessage(
-        "已忽略“" +
-          input.name +
-          "”" +
-          (input.q ? "关键词“" + input.q + "”" : "") +
-          "中的 " +
-          data.ignored_count +
-          " 条提醒。",
-      );
-      setSearch(
-        (current) => {
-          const next = new URLSearchParams(current);
-          next.delete("cursor");
-          next.delete("page");
-          return next;
-        },
-        { replace: true },
-      );
+      setSelectionClearSignal((value) => value + 1);
+      if (input.mode === "selected") {
+        setMessage(
+          data.ignored_count > 0
+            ? input.items.length === 1
+              ? "已忽略选中的 1 条提醒。"
+              : "已忽略选中的 " + data.ignored_count + " 条提醒。"
+            : "所选提醒已处于忽略状态。",
+        );
+      } else {
+        setMessage(
+          "已忽略“" +
+            input.name +
+            "”" +
+            (input.q ? "关键词“" + input.q + "”" : "") +
+            "中的 " +
+            data.ignored_count +
+            " 条提醒。",
+        );
+        setSearch(
+          (current) => {
+            const next = new URLSearchParams(current);
+            next.delete("cursor");
+            next.delete("page");
+            return next;
+          },
+          { replace: true },
+        );
+      }
     },
   });
+
+  const navigationLocked = ignore.isPending || restores.pendingCount > 0;
+
+  function openIgnoreDialog(request: IgnoreBatchRequest, trigger?: HTMLElement | null) {
+    finalFocus.current =
+      trigger ??
+      (document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null);
+    ignore.reset();
+    setLastBatch(request);
+    setBatch(request);
+  }
+
   function select(
     nextType: AdminWorkItemTypeFilter,
     nextVisibility: Visibility,
   ) {
+    if (navigationLocked) return;
     setSearch(
       (current) => {
         const next = new URLSearchParams(current);
@@ -143,73 +264,116 @@ export default function WorkItems() {
     );
     setMessage("");
   }
+
+  const shownBatch = batch ?? lastBatch;
+  const dialogTitle = !shownBatch
+    ? "确认忽略提醒"
+    : shownBatch.mode === "all"
+      ? `忽略全部筛选结果（跨页） · ${shownBatch.name}`
+      : shownBatch.items.length === 1
+        ? `忽略提醒 · ${shownBatch.items[0]!.title}`
+        : `忽略已选的 ${shownBatch.items.length} 条提醒`;
+
   return (
     <>
       <ListLayout>
-      <Tabs
-        value={type}
-        onValueChange={(value) =>
-          select(value as AdminWorkItemTypeFilter, visibility)
-        }
-        className="w-full min-w-0 gap-3"
-        data-business-list="work-items"
-      >
-        <ListToolbarPart area="leading">
-        {/* Keep tab indicators and focus rings inside the horizontal scroller. */}
-        <div className="-m-1 min-w-0 scroll-p-1 overflow-x-auto p-1">
-          <TabsList aria-label="待处理类型">
-            {filters.filter(([value]) => !workspaceClientId || value !== "LEDGER_CONFLICT").map(([value, name]) => (
-              <TabsTrigger
-                key={value}
-                value={value}
-                disabled={ignore.isPending}
-                onFocus={(event) =>
-                  event.currentTarget.scrollIntoView({
-                    block: "nearest",
-                    inline: "nearest",
-                  })
-                }
-              >
-                {name}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </div>
-        </ListToolbarPart>
-        {workspaceClientId !== null && <Alert><AlertTitle>仅显示本站提醒</AlertTitle><AlertDescription>账本冲突及归属未知的异常请到「待处理（全部网站）」处理。</AlertDescription></Alert>}
-        <TabsContent value={type}>
-          <WorkItemPage
-            key={type + ":" + visibility}
-            type={type}
-            visibility={visibility}
-            busy={ignore.isPending}
-            onVisibility={(next) => select(type, next)}
-            onIgnore={(trigger) => {
-              finalFocus.current =
-                trigger ??
-                (document.activeElement instanceof HTMLElement
-                  ? document.activeElement
-                  : null);
-              ignore.reset();
-              setBatch({
-                type,
-                clientId: workspaceClientId,
-                siteName: site?.data?.data.configuration?.name ?? null,
-                q: (search.get("q") ?? "").trim(),
-                name: filters.find(([value]) => value === type)![1],
-                operation_id: crypto.randomUUID(),
-              });
-            }}
-          />
-        </TabsContent>
-      </Tabs>
+        <Tabs
+          value={type}
+          onValueChange={(value) =>
+            select(value as AdminWorkItemTypeFilter, visibility)
+          }
+          className="w-full min-w-0 gap-3"
+          data-business-list="work-items"
+        >
+          <ListToolbarPart area="leading">
+            {/* Keep tab indicators and focus rings inside the horizontal scroller. */}
+            <div className="-m-1 min-w-0 scroll-p-1 overflow-x-auto p-1">
+              <TabsList aria-label="待处理类型">
+                {filters
+                  .filter(([value]) => !workspaceClientId || value !== "LEDGER_CONFLICT")
+                  .map(([value, name]) => (
+                    <TabsTrigger
+                      key={value}
+                      value={value}
+                      disabled={navigationLocked}
+                      onFocus={(event) =>
+                        event.currentTarget.scrollIntoView({
+                          block: "nearest",
+                          inline: "nearest",
+                        })
+                      }
+                    >
+                      {name}
+                    </TabsTrigger>
+                  ))}
+              </TabsList>
+            </div>
+          </ListToolbarPart>
+          {workspaceClientId !== null && (
+            <Alert>
+              <AlertTitle>仅显示本站提醒</AlertTitle>
+              <AlertDescription>
+                账本冲突及归属未知的异常请到「待处理（全部网站）」处理。
+              </AlertDescription>
+            </Alert>
+          )}
+          <TabsContent value={type}>
+            <WorkItemPage
+              key={type + ":" + visibility}
+              type={type}
+              visibility={visibility}
+              busy={ignore.isPending}
+              navigationLocked={navigationLocked}
+              restores={restores}
+              selectionClearSignal={selectionClearSignal}
+              onVisibility={(next) => select(type, next)}
+              onIgnoreAll={(trigger) => {
+                openIgnoreDialog(
+                  {
+                    mode: "all",
+                    type,
+                    clientId: workspaceClientId,
+                    siteName: site?.data?.data.configuration?.name ?? null,
+                    q: (search.get("q") ?? "").trim(),
+                    name: filters.find(([value]) => value === type)![1],
+                    operation_id: crypto.randomUUID(),
+                  },
+                  trigger,
+                );
+              }}
+              onIgnoreSelected={(items, trigger) => {
+                if (items.length === 0) return;
+                openIgnoreDialog(
+                  {
+                    mode: "selected",
+                    clientId: workspaceClientId,
+                    siteName: site?.data?.data.configuration?.name ?? null,
+                    items: items.map((item) => ({
+                      type: item.type,
+                      resource_id: item.resource_id,
+                      title: workItemTitle(item),
+                    })),
+                    operation_id: crypto.randomUUID(),
+                  },
+                  trigger,
+                );
+              }}
+            />
+          </TabsContent>
+        </Tabs>
       </ListLayout>
       <AlertDialog
         open={!!batch}
         onOpenChange={(open, event) => {
           if (!open) {
-            if (ignore.isPending) event.cancel();
-            else setBatch(null);
+            if (ignore.isPending) {
+              event.cancel();
+              return;
+            }
+            if (ignore.error && !isSafeIgnoreRejection(ignore.error)) {
+              void refreshOperationalData();
+            }
+            setBatch(null);
           }
         }}
       >
@@ -219,26 +383,43 @@ export default function WorkItems() {
           className="max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] overflow-y-auto sm:max-w-lg"
         >
           <AlertDialogHeader>
-            <AlertDialogTitle>
-              忽略全部筛选结果（跨页） · {batch?.name}
-            </AlertDialogTitle>
+            <AlertDialogTitle>{dialogTitle}</AlertDialogTitle>
           </AlertDialogHeader>
-          <DialogBody><AlertDialogDescription>
-              {batch?.clientId && <>
-                {batch.siteName ? <>仅限业务网站“{batch.siteName}”</> : <>仅限当前业务网站</>}。
-                网站 ID：<span className="font-mono wrap-anywhere">{batch.clientId}</span>。
-                不含其他网站及未归属提醒。
-              </>}
-              {batch?.q ? (
+          <DialogBody>
+            <AlertDialogDescription>
+              {shownBatch?.clientId && (
                 <>
-                  关键词“{batch.q}
-                  ”在此分类中的全部匹配项（跨页）。
+                  {shownBatch.siteName ? (
+                    <>仅限业务网站“{shownBatch.siteName}”</>
+                  ) : (
+                    <>仅限当前业务网站</>
+                  )}
+                  。网站 ID：
+                  <span className="font-mono wrap-anywhere">
+                    {shownBatch.clientId}
+                  </span>
+                  。不含其他网站及未归属提醒。
                 </>
-              ) : (
-                <>此分类的全部匹配项（跨页）。</>
               )}
-              仅关闭现有提醒，不删除记录、处理冲突或停止通知重试；新增提醒不受影响。
-            </AlertDialogDescription></DialogBody>
+              {shownBatch?.mode === "all" ? (
+                shownBatch.q ? (
+                  <>
+                    关键词“{shownBatch.q}
+                    ”在此分类中的全部匹配项（跨页）。
+                  </>
+                ) : (
+                  <>此分类的全部匹配项（跨页）。</>
+                )
+              ) : shownBatch?.mode === "selected" ? (
+                shownBatch.items.length === 1 ? (
+                  <>仅关闭当前选中的这条提醒。</>
+                ) : (
+                  <>仅关闭当前勾选的 {shownBatch.items.length} 条提醒。</>
+                )
+              ) : null}
+              仅关闭现有提醒，不删除记录、处理冲突或停止通知重试；新增提醒不受影响，后续可在“已忽略”中随时恢复。
+            </AlertDialogDescription>
+          </DialogBody>
           <ErrorNotice error={ignore.error} />
           <AlertDialogFooter>
             <AlertDialogCancel ref={cancelIgnore} disabled={ignore.isPending}>
@@ -262,18 +443,27 @@ export default function WorkItems() {
     </>
   );
 }
+
 function WorkItemPage({
   type,
   visibility,
   busy,
+  navigationLocked,
+  restores,
+  selectionClearSignal,
   onVisibility,
-  onIgnore,
+  onIgnoreAll,
+  onIgnoreSelected,
 }: {
   type: AdminWorkItemTypeFilter;
   visibility: Visibility;
   busy: boolean;
+  navigationLocked: boolean;
+  restores: ReturnType<typeof useReminderRestores>;
+  selectionClearSignal: number;
   onVisibility: (value: Visibility) => void;
-  onIgnore: (trigger?: HTMLElement | null) => void;
+  onIgnoreAll: (trigger?: HTMLElement | null) => void;
+  onIgnoreSelected: (items: readonly AdminWorkItem[], trigger?: HTMLElement | null) => void;
 }) {
   const mounted = useMounted();
   const { clientId } = useWorkspace();
@@ -288,7 +478,15 @@ function WorkItemPage({
   const location = useLocation();
   const locationKey = useRef(location.key);
   locationKey.current = location.key;
-  const restores = useReminderRestores();
+  const [selectedMap, setSelectedMap] = useState<ReadonlyMap<string, AdminWorkItem>>(
+    () => new Map(),
+  );
+
+  // Clear selection whenever scope, filters, page, or ignore completion changes.
+  useEffect(() => {
+    setSelectedMap(new Map());
+  }, [type, visibility, clientId, pagination.pageKey, listQuery.query.q, listQuery.query.sortBy, listQuery.query.sortOrder, selectionClearSignal]);
+
   type Position = {
     sequence: number;
     cursor: string | undefined;
@@ -320,13 +518,55 @@ function WorkItemPage({
   const work = useQuery(workItemsQuery(clientId, listQuery, pagination.cursor, type, visibility));
   const quickRetry = useQuickRetryDelivery();
   const setRestoredMessage = useSuccessToast();
+
+  // Keep selected items synchronized with items visible on the current page.
+  const pageItems = work.data?.data ?? [];
+  const selectedKeys = useMemo(() => {
+    const visibleIds = new Set(pageItems.map(workItemKey));
+    const keys = new Set<string>();
+    for (const key of selectedMap.keys()) {
+      if (visibleIds.has(key)) keys.add(key);
+    }
+    return keys;
+  }, [pageItems, selectedMap]);
+  const selectedItems = useMemo(
+    () => pageItems.filter((item) => !item.ended && selectedKeys.has(workItemKey(item))),
+    [pageItems, selectedKeys],
+  );
+
+  function toggleItemSelection(item: AdminWorkItem, checked: boolean) {
+    if (item.ended) return;
+    const key = workItemKey(item);
+    setSelectedMap((current) => {
+      const next = new Map(current);
+      if (checked) next.set(key, item);
+      else next.delete(key);
+      return next;
+    });
+  }
+
+  function toggleAllOnPage(checked: boolean) {
+    setSelectedMap(() => {
+      const next = new Map<string, AdminWorkItem>();
+      if (checked) {
+        for (const item of pageItems) {
+          if (!item.ended) next.set(workItemKey(item), item);
+        }
+      }
+      return next;
+    });
+  }
+
   function restore(item: AdminWorkItem, trigger: HTMLElement) {
-    if (item.ended || restores.get(item)?.status === "pending") return;
-    const id = item.type + ":" + item.resource_id;
-    const ids =
-      work.data?.data.map(
-        (candidate) => candidate.type + ":" + candidate.resource_id,
-      ) ?? [];
+    const currentState = restores.get(item);
+    if (
+      item.ended ||
+      currentState?.status === "pending" ||
+      currentState?.status === "refreshing"
+    )
+      return;
+    const id = workItemKey(item);
+    const ids = pageItems.map(workItemKey);
     const index = Math.max(0, ids.indexOf(id));
     const action: Position = {
       sequence: (latestAction.current?.sequence ?? 0) + 1,
@@ -344,27 +584,37 @@ function WorkItemPage({
     const completed = async (outcome: RestoreOutcome | "refresh") => {
       action.completed = true;
       await refreshOperationalData();
+      if (outcome === "refresh") {
+        restores.clear(item);
+      }
       if (!mounted.current) return;
       const latest = latestAction.current;
+      if (
+        latest === action &&
+        locationKey.current === action.locationKey &&
+        outcome !== "refresh"
+      ) {
+        setRestoredMessage(restoreMessages[outcome]);
+      }
       if (!latest?.completed || locationKey.current !== latest.locationKey)
         return;
-      if (latest === action && outcome !== "refresh")
-        setRestoredMessage(restoreMessages[outcome]);
       setPosition({ ...latest });
     };
-    const readAgain = needsReminderRefresh(restores.get(item));
-    if (
-      !readAgain &&
-      !restores.submit(item, (outcome) => {
-        void completed(outcome);
-      })
-    )
+    const readAgain = needsReminderRefresh(currentState);
+    if (readAgain) {
+      restores.markRefreshing(item);
+      latestAction.current = action;
+      setPosition(null);
+      setRestoredMessage("");
+      void completed("refresh");
       return;
+    }
+    if (!restores.submit(item, (outcome) => completed(outcome))) return;
     latestAction.current = action;
     setPosition(null);
     setRestoredMessage("");
-    if (readAgain) void completed("refresh");
   }
+
   useEffect(() => {
     if (!position || work.isFetching || work.isPlaceholderData) return;
     if (latestAction.current?.sequence !== position.sequence) {
@@ -448,6 +698,7 @@ function WorkItemPage({
     }
     setPosition(null);
   }, [position, work.data, work.isFetching, work.isPlaceholderData, work.isError, pagination]);
+
   const cannotIgnore =
     busy ||
     work.isPending ||
@@ -457,7 +708,7 @@ function WorkItemPage({
     <ToggleGroup
       variant="outline"
       value={[visibility]}
-      disabled={busy}
+      disabled={navigationLocked}
       onValueChange={(value) => {
         if (value[0]) onVisibility(value[0] as Visibility);
       }}
@@ -467,162 +718,250 @@ function WorkItemPage({
       <ToggleGroupItem value="IGNORED">已忽略</ToggleGroupItem>
     </ToggleGroup>
   );
+  const canResetPrioritySort =
+    visibility === "ACTIVE" && listQuery.query.sortBy !== "priority";
   return (
     <ListColumnsProvider>
-    <div className="flex flex-col gap-3">
-      <ListToolbarPart>
-      <ListQueryToolbar
-        control={listQuery}
-        label="提醒关键词搜索"
-        desktopFilters={visibilityControl}
-        desktopActions={
-          <>
-            {visibility === "ACTIVE" && (
-              <Button
-                variant="outline"
-                disabled={cannotIgnore}
-                onClick={(event) => onIgnore(event.currentTarget)}
-              >
-                忽略全部筛选结果（跨页）
-              </Button>
-            )}
-            <RefreshButton disabled={busy || work.isFetching} onClick={() => {
-                void work.refetch();
-              }} busy={busy || work.isFetching} />
-          </>
-        }
-        mobileLeading={visibilityControl}
-        mobileActions={
-          <ListActionsMenu label="更多提醒操作" disabled={busy}>
-            {(trigger) => (
+      <div className="flex flex-col gap-3">
+        <ListToolbarPart>
+          <ListQueryToolbar
+            control={listQuery}
+            label="提醒关键词搜索"
+            desktopFilters={visibilityControl}
+            desktopActions={
               <>
-                {visibility === "ACTIVE" && (
-                  <DropdownMenuItem
-                    disabled={cannotIgnore}
-                    onClick={() => onIgnore(trigger.current)}
+                {canResetPrioritySort && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={busy}
+                    aria-label="恢复需要处理优先排序"
+                    onClick={() => listQuery.setSort("priority", "desc")}
                   >
-                    <EyeOff />
-                    忽略全部筛选结果（跨页）
-                  </DropdownMenuItem>
+                    <RotateCcw aria-hidden="true" data-icon="inline-start" />
+                    默认排序
+                  </Button>
                 )}
-                <DropdownMenuItem
+                {visibility === "ACTIVE" && (
+                  <Button
+                    variant="outline"
+                    disabled={cannotIgnore}
+                    onClick={(event) => onIgnoreAll(event.currentTarget)}
+                  >
+                    忽略全部筛选结果（跨页）
+                  </Button>
+                )}
+                <RefreshButton
                   disabled={busy || work.isFetching}
                   onClick={() => {
                     void work.refetch();
                   }}
+                  busy={busy || work.isFetching}
+                />
+              </>
+            }
+            mobileLeading={visibilityControl}
+            mobileActions={
+              <ListActionsMenu label="更多提醒操作" disabled={navigationLocked}>
+                {(trigger) => (
+                  <>
+                    {visibility === "ACTIVE" && (
+                      <DropdownMenuItem
+                        disabled={cannotIgnore}
+                        onClick={() => onIgnoreAll(trigger.current)}
+                      >
+                        <EyeOff />
+                        忽略全部筛选结果（跨页）
+                      </DropdownMenuItem>
+                    )}
+                    <DropdownMenuItem
+                      disabled={busy || work.isFetching}
+                      onClick={() => {
+                        void work.refetch();
+                      }}
+                    >
+                      <RefreshCw />
+                      刷新
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </ListActionsMenu>
+            }
+            disabled={busy}
+            sorts={sortFields.map((value) => ({
+              value,
+              label: {
+                actionable_at: "提醒时间",
+                created_at: "创建时间",
+                ignored_at: "忽略时间",
+                priority: "需要处理优先",
+              }[value],
+            }))}
+          />
+        </ListToolbarPart>
+        {visibility === "ACTIVE" && selectedItems.length > 0 && (
+          <div
+            role="region"
+            aria-label="已选提醒操作"
+            data-work-items-selection-bar
+            className="work-items-selection-bar"
+          >
+            <span className="text-sm font-medium text-foreground">
+              已选 {selectedItems.length} 项
+            </span>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                disabled={busy}
+                onClick={(event) =>
+                  onIgnoreSelected(selectedItems, event.currentTarget)
+                }
+              >
+                <EyeOff aria-hidden="true" data-icon="inline-start" />
+                忽略已选（{selectedItems.length}）
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={busy}
+                onClick={() => setSelectedMap(new Map())}
+              >
+                取消选择
+              </Button>
+            </div>
+          </div>
+        )}
+        {restores.pendingCount > 0 && (
+          <p role="status" className="text-sm text-muted-foreground">
+            {restores.pendingCount} 条提醒正在恢复…
+          </p>
+        )}
+        <OverlayRecordList
+          items={pageItems.map(workItemHref)}
+          hasPrevious={pagination.canStepPrevious}
+          hasNext={!!work.data?.page.next_cursor}
+          pending={work.isPending || work.isPlaceholderData || busy}
+          failed={!work.isPending && work.data === undefined && !!work.error}
+          pageKey={pagination.pageKey}
+          onPreviousPage={pagination.replacePrevious}
+          onNextPage={() => pagination.replaceNext(work.data?.page.next_cursor)}
+        >
+          <QueryView query={work}>
+            {(page) => (
+              <>
+                <div
+                  ref={list}
+                  tabIndex={-1}
+                  role="region"
+                  aria-label={
+                    visibility === "IGNORED" ? "已忽略提醒列表" : "待处理提醒列表"
+                  }
+                  aria-busy={work.isFetching || work.isPlaceholderData}
+                  className="min-w-0 outline-none"
                 >
-                  <RefreshCw />
-                  刷新
-                </DropdownMenuItem>
+                  <WorkItemsTable
+                    items={page.data}
+                    control={listQuery}
+                    showCategoryInIgnored={type === "ALL"}
+                    selection={
+                      visibility === "ACTIVE"
+                        ? {
+                            selectedKeys,
+                            disabled: busy,
+                            onToggle: toggleItemSelection,
+                            onToggleAll: toggleAllOnPage,
+                          }
+                        : undefined
+                    }
+                    emptyTitle={
+                      listQuery.query.q
+                        ? "暂无符合条件的提醒"
+                        : visibility === "IGNORED"
+                          ? "暂无已忽略提醒"
+                          : undefined
+                    }
+                    actions={
+                      visibility === "IGNORED"
+                        ? (item) => (
+                            <RestoreReminder
+                              key={item.ignored_at}
+                              item={item}
+                              state={restores.get(item)}
+                              onRestore={(trigger) => restore(item, trigger)}
+                            />
+                          )
+                        : undefined
+                    }
+                    inlineAction={
+                      visibility === "ACTIVE"
+                        ? (item) => {
+                            if (item.ended) return null;
+                            const canQuickRetry =
+                              item.type === "NOTIFICATION_FAILURE" &&
+                              item.status === "RETRY_WAIT";
+                            const retryPending = canQuickRetry
+                              ? quickRetry.isPending(item.resource_id)
+                              : false;
+                            return (
+                              <div className="flex flex-wrap items-center justify-center gap-1" data-row-action>
+                                {canQuickRetry && (
+                                  <Button
+                                    type="button"
+                                    size="xs"
+                                    variant="outline"
+                                    disabled={busy || retryPending}
+                                    onClick={() =>
+                                      quickRetry.run(item.resource_id, item.order_id)
+                                    }
+                                  >
+                                    {retryPending && (
+                                      <Spinner aria-hidden="true" data-icon="inline-start" />
+                                    )}
+                                    {retryPending ? "正在重试…" : "立即重试"}
+                                  </Button>
+                                )}
+                                <Button
+                                  type="button"
+                                  size="xs"
+                                  variant="ghost"
+                                  data-work-item-ignore
+                                  aria-label={"忽略提醒：" + workItemTitle(item)}
+                                  disabled={busy}
+                                  onClick={(event) =>
+                                    onIgnoreSelected([item], event.currentTarget)
+                                  }
+                                >
+                                  忽略
+                                </Button>
+                              </div>
+                            );
+                          }
+                        : undefined
+                    }
+                  />
+                </div>
+                <CursorPagination
+                  previousLabel={pagination.previousLabel}
+                  page={pagination.page}
+                  count={page.data.length}
+                  hasNext={!!page.page.next_cursor}
+                  pending={work.isPending || work.isPlaceholderData || busy}
+                  onPrevious={pagination.previous}
+                  onNext={() => pagination.next(page.page.next_cursor)}
+                />
               </>
             )}
-          </ListActionsMenu>
-        }
-        disabled={busy}
-        sorts={sortFields.map((value) => ({
-          value,
-          label: {
-            actionable_at: "提醒时间",
-            created_at: "创建时间",
-            ignored_at: "忽略时间",
-            priority: "需要处理优先",
-          }[value],
-        }))}
-      />
-      </ListToolbarPart>
-      {restores.pendingCount > 0 && (
-        <p role="status" className="text-sm text-muted-foreground">
-          {restores.pendingCount} 条提醒正在恢复…
-        </p>
-      )}
-      <OverlayRecordList
-        items={(work.data?.data ?? []).map(workItemHref)}
-        hasPrevious={pagination.canStepPrevious}
-        hasNext={!!work.data?.page.next_cursor}
-        pending={work.isPending || work.isPlaceholderData || busy}
-        failed={!work.isPending && work.data === undefined && !!work.error}
-        pageKey={pagination.pageKey}
-        onPreviousPage={pagination.replacePrevious}
-        onNextPage={() => pagination.replaceNext(work.data?.page.next_cursor)}
-      >
-      <QueryView query={work}>
-        {(page) => (
-          <>
-            <div
-              ref={list}
-              tabIndex={-1}
-              role="region"
-              aria-label={
-                visibility === "IGNORED" ? "已忽略提醒列表" : "待处理提醒列表"
-              }
-              aria-busy={work.isFetching || work.isPlaceholderData}
-              className="min-w-0 outline-none"
-            >
-              <WorkItemsTable
-                items={page.data}
-                control={listQuery}
-                emptyTitle={
-                  listQuery.query.q
-                    ? "暂无符合条件的提醒"
-                    : visibility === "IGNORED"
-                      ? "暂无已忽略提醒"
-                      : undefined
-                }
-                actions={
-                  visibility === "IGNORED"
-                    ? (item) => (
-                        <RestoreReminder
-                          key={item.ignored_at}
-                          item={item}
-                          state={restores.get(item)}
-                          onRestore={(trigger) => restore(item, trigger)}
-                        />
-                      )
-                    : undefined
-                }
-                inlineAction={
-                  visibility === "ACTIVE"
-                    ? (item) => {
-                        if (item.type !== "NOTIFICATION_FAILURE" || item.ended || item.status !== "RETRY_WAIT") {
-                          return null;
-                        }
-                        const pending = quickRetry.isPending(item.resource_id);
-                        return (
-                          <div data-row-action>
-                            <Button
-                              type="button"
-                              size="xs"
-                              variant="outline"
-                              disabled={busy || pending}
-                              onClick={() => quickRetry.run(item.resource_id, item.order_id)}
-                            >
-                              {pending && <Spinner aria-hidden="true" data-icon="inline-start" />}
-                              {pending ? "正在重试…" : "立即重试"}
-                            </Button>
-                          </div>
-                        );
-                      }
-                    : undefined
-                }
-              />
-            </div>
-            <CursorPagination
-              previousLabel={pagination.previousLabel}
-              page={pagination.page}
-              count={page.data.length}
-              hasNext={!!page.page.next_cursor}
-              pending={work.isFetching || work.isPlaceholderData || busy}
-              onPrevious={pagination.previous}
-              onNext={() => pagination.next(page.page.next_cursor)}
-            />
-          </>
-        )}
-      </QueryView>
-      </OverlayRecordList>
-    </div>
+          </QueryView>
+        </OverlayRecordList>
+      </div>
     </ListColumnsProvider>
   );
 }
+
 function RestoreReminder({
   item,
   state,
@@ -633,10 +972,10 @@ function RestoreReminder({
   onRestore: (trigger: HTMLElement) => void;
 }) {
   const readAgain = needsReminderRefresh(state);
-  const pending = state?.status === "pending";
+  const pending = state?.status === "pending" || state?.status === "refreshing";
   if (item.ended && !pending && !state?.error) return null;
   return (
-    <div className="flex flex-col items-end gap-2">
+    <div className="flex flex-col items-center gap-1.5">
       <Button
         data-reminder-restore
         data-reminder-ended={item.ended || undefined}
@@ -663,7 +1002,7 @@ function RestoreReminder({
               ? "重试恢复"
               : "恢复提醒"}
       </Button>
-      {!!state?.error && (
+      {!!state?.error && !item.ended && (
         <>
           <span role="status" className="sr-only">
             恢复结果暂未确认，请重试或查看错误说明。
@@ -690,6 +1029,7 @@ function RestoreReminder({
     </div>
   );
 }
+
 function useMounted() {
   const mounted = useRef(false);
   useEffect(() => {

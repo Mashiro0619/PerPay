@@ -111,7 +111,7 @@ const actions: Readonly<Record<string, string>> = {
   "financial.auto_settlement": "自动确认收款", "financial.manual_settlement": "人工确认收款",
   "financial.reverse_settlement": "撤销收款关联", "financial.supersede_candidate": "更新待确认的收款关联",
   "financial.record_refund": "记录历史退款",
-  "work_items.ignore_all": "批量忽略提醒", "work_items.ignore": "忽略提醒", "work_items.restore": "恢复提醒",
+  "work_items.ignore_all": "批量忽略提醒", "work_items.ignore_selected": "忽略已选提醒", "work_items.ignore": "忽略提醒", "work_items.restore": "恢复提醒",
   "webhook.delivery_redelivered": "重新发送通知", "webhook.delivery_retried": "立即重试通知", "webhook.signing_key_initialized": "初始化通知签名密钥",
   "webhook.signing_key_rotated": "更换通知签名密钥", "webhook.delivery": "发送通知", "webhook.dispatch": "通知调度",
   "http.request": "接口请求", "http.read": "接口查询", "audit.export": "导出审计日志（旧版）", "audit.export_generated": "导出审计日志",
@@ -184,10 +184,19 @@ const workItemsLayoutLabels: Readonly<Record<string, string>> = {
   SIDE_BY_SIDE: "与订单并排",
 };
 
+const ignoreScopeLabels: Readonly<Record<string, string>> = {
+  single: "单条提醒",
+  selected: "已选提醒",
+  all: "全部筛选结果（跨页）",
+};
+
 export function auditValue(value: AuditJsonValue | undefined, field?: string): string {
   if (value === undefined) return "未记录";
   if (value === null) return "未设置";
   if (typeof value === "boolean") return value ? "是" : "否";
+  if (field === "ignore_scope" && typeof value === "string" && ignoreScopeLabels[value]) {
+    return ignoreScopeLabels[value]!;
+  }
   if (field === "dashboard_chart_type" && typeof value === "string" && chartTypeLabels[value]) {
     return chartTypeLabels[value]!;
   }

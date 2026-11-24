@@ -117,7 +117,9 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
     return <OrderExceptionRecord key={exception.exception_id} exception={exception} order={order}
       candidate={exception.candidate_id ? candidates.get(exception.candidate_id) : undefined}
       ledger={exception.ledger_entry_id ? ledgers.get(exception.ledger_entry_id) : undefined}
-      candidateAnchor={candidateAnchor} dismissible={!!dispute && dispute.dismissible.has(exception.exception_id)} />;
+      candidateAnchor={candidateAnchor}
+      dismissible={!!dispute && dispute.dismissible.has(exception.exception_id)}
+      restorable={!!dispute && dispute.restorable.has(exception.exception_id)} />;
   };
 
   const checkout: RecordAction = {
@@ -177,7 +179,7 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
           { id: "history", label: "动态" },
         ]} />
     </OverlaySummary>
-    {dispute ? <RecordNotice tone="danger" {...(exceptions.length ? { jump: { section: "payments", label: pending } } : {})}>
+    {dispute ? <RecordNotice tone={dispute.allDismissed ? "warning" : "danger"} {...(exceptions.length ? { jump: { section: "payments", label: pending } } : {})}>
       <p>{dispute.notice(!active.length && !unassociated)}</p>
     </RecordNotice> : exceptions.length > 0 ? <RecordNotice tone="warning" jump={{ section: "payments", label: pending }}>
       该订单存在待核对异常：{[...new Set(exceptions.map(exception => label(exception.exception_type)))].join("、")}
