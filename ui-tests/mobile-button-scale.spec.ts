@@ -10,7 +10,7 @@ async function centered(target: Locator, page: Page) {
 
 async function tapMenuItemEdge(page: Page, target: Locator) {
   const geometry = await expectTouchTarget(target);
-  expect(geometry.visual.height).toBeCloseTo(40, 1);
+  expect(geometry.visual.height).toBeCloseTo(44, 1);
   expect(geometry.generated, "menu rows use their own complete touch area").toBe(false);
   const point = { x: geometry.visual.x + geometry.visual.width / 2, y: geometry.visual.y + 1 };
   expect(await target.evaluate((element, point) => {
@@ -89,7 +89,7 @@ test.describe("compact mobile button visuals and separate touch targets", () => 
       const wizardGeometry = await expectTouchTarget(wizard);
       const refreshGeometry = await expectTouchTarget(refresh);
       for (const geometry of [wizardGeometry, refreshGeometry]) {
-        expect(geometry.visual.height).toBeCloseTo(40, 1);
+        expect(geometry.visual.height).toBeCloseTo(44, 1);
         expect(geometry.generated).toBe(false);
       }
       expect(refreshGeometry.y).toBeGreaterThanOrEqual(wizardGeometry.y + wizardGeometry.height - .5);
@@ -133,7 +133,7 @@ test.describe("compact mobile button visuals and separate touch targets", () => 
 
       // The input-group action retains its own layout space beside the editable input.
       const modeGeometry = await expectTouchTarget(mode);
-      expect(modeGeometry.visual.height).toBeCloseTo(40, 1);
+      expect(modeGeometry.visual.height).toBeCloseTo(44, 1);
       const inputBox = (await keyword.boundingBox())!;
       const inputPoint = { x: inputBox.x + 3, y: inputBox.y + inputBox.height / 2 };
       expect(await keyword.evaluate((element, point) => document.elementFromPoint(point.x, point.y) === element, inputPoint)).toBe(true);

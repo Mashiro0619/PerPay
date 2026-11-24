@@ -88,7 +88,7 @@ async function containedControls(card: Locator, touch = false) {
   expect(geometry.dateTokens).toHaveLength(2);
   expect(geometry.dateTokens.every(token => token.textLines === 1), "the range wraps between dates instead of splitting an individual date").toBe(true);
   expect(geometry.periodValue.fits, "the complete selected period fits its value slot without an ellipsis").toBe(true);
-  if (touch) expect(geometry.period.height, "the period selector retains a 40px touch height").toBeGreaterThanOrEqual(40);
+  if (touch) expect(geometry.period.height, "the period selector retains a 44px touch height").toBeGreaterThanOrEqual(44);
   for (let i = 0; i < geometry.controls.length; i++) for (let j = i + 1; j < geometry.controls.length; j++) {
     const first = geometry.controls[i]!, second = geometry.controls[j]!;
     const horizontal = Math.min(first.right, second.right) - Math.max(first.left, second.left);

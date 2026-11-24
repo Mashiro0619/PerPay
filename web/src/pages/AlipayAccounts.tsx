@@ -248,7 +248,7 @@ function AccountPublicKeyField({ value, title = "应用公钥", copyLabel = "复
   return <Field data-account-public-key>
     <FieldLabel htmlFor={id}>{title}</FieldLabel>
     <InputGroup>
-      <InputGroupTextarea id={id} value={value} readOnly rows={3} className="settings-long-text min-w-0 resize-none" spellCheck={false} />
+      <InputGroupTextarea id={id} value={value} readOnly rows={3} className="settings-long-text min-w-0 resize-y" spellCheck={false} />
       <InputGroupAddon align="block-end" className="justify-end">
         <CopyValue value={value} label={copyLabel} buttonOnly />
       </InputGroupAddon>

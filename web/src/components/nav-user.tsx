@@ -57,7 +57,7 @@ export function NavUser({
             <EllipsisVerticalIcon className="ml-auto group-data-[collapsible=icon]:hidden" />
           </DropdownMenuTrigger>
           <DropdownMenuContent
-            className="min-w-[min(14rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)]"
+            className="min-w-[min(14rem,calc(100dvw-2rem))] max-w-[calc(100dvw-2rem)]"
             side={isMobile ? "bottom" : "right"}
             align="end"
             sideOffset={4}

@@ -32,7 +32,7 @@ describe("administrator dialog presentation", () => {
     expect(dialog).toHaveClass("overflow-hidden", "data-[size=default]:sm:max-w-lg");
     expect(dialog.querySelector("[data-admin-dialog-body]")).toHaveClass("min-h-0", "overflow-y-auto");
     expect(dialog.querySelector("[data-slot=alert-dialog-header]")).toHaveClass("text-left");
-    expect(dialog.querySelector("[data-slot=alert-dialog-footer]")).toHaveClass("flex-col-reverse", "sm:flex-row");
+    expect(dialog.querySelector("[data-slot=alert-dialog-footer]")).toHaveClass("flex-col", "sm:flex-row");
     await waitFor(() => expect(within(dialog).getByRole("button", { name: "取消" })).toHaveFocus());
     expect(within(dialog).queryByRole("button", { name: "关闭对话框" })).not.toBeInTheDocument();
   });

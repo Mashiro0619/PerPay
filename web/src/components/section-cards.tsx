@@ -126,7 +126,7 @@ export function SectionCards({
                   <span className="overview-kpi-link-cue" aria-hidden="true">
                     <ArrowUpRight
                       aria-hidden="true"
-                      className="size-3.5 shrink-0 transition-transform group-hover/card:translate-x-0.5 group-hover/card:-translate-y-0.5"
+                      className="size-3.5 shrink-0 motion-safe:transition-transform motion-safe:group-hover/card:translate-x-0.5 motion-safe:group-hover/card:-translate-y-0.5"
                     />
                   </span>
                 )}
@@ -138,7 +138,7 @@ export function SectionCards({
                 aria-label={pending || card.href ? undefined : `${card.title}：${card.value}`}
                 className={cn(
                   "overview-metric-value min-w-0 text-xl font-semibold whitespace-nowrap tabular-nums focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
-                  card.href && "[@media(pointer:coarse)]:min-h-[40px]",
+                  card.href && "[@media(pointer:coarse)]:min-h-[44px]",
                   !card.href && "overflow-x-auto",
                 )}
               >

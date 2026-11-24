@@ -190,7 +190,7 @@ export function DialogHeader({ className, ...props }: ComponentProps<typeof Dial
 export function AlertDialogHeader({ className, ...props }: ComponentProps<typeof AlertUI.AlertDialogHeader>) {
   return <AlertUI.AlertDialogHeader {...props} className={cn(className, "flex shrink-0 flex-col items-stretch gap-2 text-left")} />;
 }
-const footer = "shrink-0 flex-col-reverse flex-nowrap items-stretch sm:flex-row sm:justify-end";
+const footer = "shrink-0 flex-col flex-nowrap items-stretch sm:flex-row sm:justify-end";
 export function DialogFooter({ className, ...props }: ComponentProps<typeof DialogUI.DialogFooter>) {
   return <DialogUI.DialogFooter {...props} className={cn(className, footer)} />;
 }
@@ -198,5 +198,5 @@ export function AlertDialogFooter({ className, safeActionFirst = false, ...props
   return <AlertUI.AlertDialogFooter {...props} className={cn(className, footer, safeActionFirst && "flex-col sm:flex-row")} />;
 }
 export function DialogBody({ className, ...props }: ComponentProps<"div">) {
-  return <div {...props} data-admin-dialog-body className={cn("-mx-4 flex min-h-0 flex-col gap-4 overflow-y-auto px-4 pb-1", className)} />;
+  return <div {...props} data-admin-dialog-body className={cn("-mx-4 flex min-h-0 flex-col gap-4 overflow-y-auto overscroll-contain px-4 pb-1", className)} />;
 }

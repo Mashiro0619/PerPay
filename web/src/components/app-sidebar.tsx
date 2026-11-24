@@ -125,7 +125,7 @@ export function AppSidebar({
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>
-      <div data-sidebar-scroll-body className="no-scrollbar flex min-h-0 flex-1 flex-col overflow-y-auto">
+      <div data-sidebar-scroll-body className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
         <SidebarContent className="flex-none overflow-visible lg:flex-1 lg:overflow-auto group-data-[collapsible=icon]:gap-1 group-data-[collapsible=icon]:py-2 group-data-[collapsible=icon]:[&_[data-slot=sidebar-group]]:py-0">
           <nav aria-label="主导航">
             <NavMain items={items.slice(0, 4)} pathname={pathname} />

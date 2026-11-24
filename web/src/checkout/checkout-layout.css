@@ -19,6 +19,10 @@
 /* Studio backdrop matching the admin auth stage: 4-layer background-image with zero pseudo-elements. */
 .checkout-stage {
   overflow-x: clip;
+  padding-top: env(safe-area-inset-top);
+  padding-right: env(safe-area-inset-right);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
   background-color: var(--background);
   background-image:
     radial-gradient(
@@ -71,8 +75,10 @@
   background-color: var(--card);
   box-shadow: 0 1px 2px oklch(0 0 0 / 5%);
 }
-.checkout-theme-control button:hover {
-  background-color: var(--muted);
+@media (hover: hover) {
+  .checkout-theme-control button:hover:not(:disabled) {
+    background-color: var(--muted);
+  }
 }
 
 .checkout-card {
@@ -188,9 +194,17 @@
 }
 
 .checkout-help-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.5rem;
   background-color: var(--background);
   box-shadow: 0 0 12px 6px var(--background);
   padding: 0.125rem 0.25rem;
+}
+@media (pointer: coarse) {
+  .checkout-help-link {
+    min-height: 44px;
+  }
 }
 
 .checkout-notice-banner {
@@ -242,9 +256,9 @@
   transition: none;
   display: flex;
   flex-direction: column;
-  width: min(32rem, calc(var(--overlay-viewport-width, 100vw) - 16px));
-  max-width: calc(var(--overlay-viewport-width, 100vw) - 16px);
-  height: min(40rem, calc(var(--overlay-viewport-height, 100dvh) - 16px), calc(var(--overlay-viewport-width, 100vw) + 8rem));
+  width: min(32rem, calc(var(--overlay-viewport-width, 100dvw) - 16px));
+  max-width: calc(var(--overlay-viewport-width, 100dvw) - 16px);
+  height: min(40rem, calc(var(--overlay-viewport-height, 100dvh) - 16px), calc(var(--overlay-viewport-width, 100dvw) + 8rem));
   max-height: calc(var(--overlay-viewport-height, 100dvh) - 16px);
   padding: clamp(8px, 2vw, 16px);
   gap: 12px;
@@ -278,6 +292,7 @@
   min-width: 0;
   min-height: 0;
   overflow: auto;
+  overscroll-behavior: contain;
   text-align: center;
 }
 

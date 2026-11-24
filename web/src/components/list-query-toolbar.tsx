@@ -204,32 +204,7 @@ export function ListQueryToolbar({
               data-disabled={busy}
             >
               <InputGroup>
-                <InputGroupInput
-                  ref={searchInput}
-                  type="search"
-                  className="[&::-webkit-search-cancel-button]:appearance-none"
-                  aria-label={selectedMode ? lookup!.inputLabel : label}
-                  name={selectedMode ? lookup!.inputName : "q"}
-                  placeholder={
-                    selectedMode?.placeholder ??
-                    (compact ? "关键词" : "输入关键词，回车搜索")
-                  }
-                  value={selectedMode ? lookupDraft : draft}
-                  required={!!selectedMode}
-                  maxLength={selectedMode ? lookup?.maxLength : undefined}
-                  pattern={selectedMode?.pattern}
-                  autoComplete={selectedMode ? "off" : undefined}
-                  disabled={busy}
-                  aria-invalid={!!error}
-                  onChange={(event) => {
-                    if (selectedMode) {
-                      setLookupDraft(event.target.value);
-                      lookup?.onReset?.();
-                    } else setDraft(event.target.value);
-                    setError("");
-                  }}
-                />
-                <InputGroupAddon>
+                <InputGroupAddon align="inline-start">
                   {lookup ? (
                     <DropdownMenu>
                       <DropdownMenuTrigger
@@ -251,7 +226,7 @@ export function ListQueryToolbar({
                         )}
                         <ChevronDown data-icon="inline-end" />
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent align="start" className="w-max max-w-[calc(100vw-2rem)]">
+                      <DropdownMenuContent align="start" className="w-max max-w-[calc(100dvw-2rem)]">
                         <DropdownMenuGroup>
                           <DropdownMenuRadioGroup
                             value={mode}
@@ -280,6 +255,31 @@ export function ListQueryToolbar({
                     <Search />
                   )}
                 </InputGroupAddon>
+                <InputGroupInput
+                  ref={searchInput}
+                  type="search"
+                  className="[&::-webkit-search-cancel-button]:appearance-none"
+                  aria-label={selectedMode ? lookup!.inputLabel : label}
+                  name={selectedMode ? lookup!.inputName : "q"}
+                  placeholder={
+                    selectedMode?.placeholder ??
+                    (compact ? "关键词" : "输入关键词，回车搜索")
+                  }
+                  value={selectedMode ? lookupDraft : draft}
+                  required={!!selectedMode}
+                  maxLength={selectedMode ? lookup?.maxLength : undefined}
+                  pattern={selectedMode?.pattern}
+                  autoComplete={selectedMode ? "off" : undefined}
+                  disabled={busy}
+                  aria-invalid={!!error}
+                  onChange={(event) => {
+                    if (selectedMode) {
+                      setLookupDraft(event.target.value);
+                      lookup?.onReset?.();
+                    } else setDraft(event.target.value);
+                    setError("");
+                  }}
+                />
                 {(selectedMode ? lookupDraft : draft || control.query.q) && (
                   <InputGroupAddon align="inline-end">
                     <InputGroupButton
@@ -333,7 +333,7 @@ export function ListQueryToolbar({
               <PopoverTrigger render={<Button type="button" variant="outline" className={!desktopActions ? "ml-auto" : undefined} aria-label="列表显示" data-list-display-trigger />}>
                 <Columns3 data-icon="inline-start" />显示
               </PopoverTrigger>
-              <PopoverContent align="end" className="max-h-[min(36rem,calc(100dvh-2rem))] overflow-y-auto" data-list-display-menu>
+              <PopoverContent align="end" className="max-h-[min(36rem,calc(100dvh-2rem))] overflow-y-auto overscroll-contain" data-list-display-menu>
                 <PopoverTitle>列表显示</PopoverTitle>
                 <ListDensityOptions />
                 {!summary && <Separator />}

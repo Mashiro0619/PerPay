@@ -61,7 +61,7 @@ export function SectionNav({ items, label = "分区导航" }: { items: readonly 
   return <nav ref={root} aria-label={label} data-record-nav className="-mb-px flex min-w-0 gap-4 overflow-x-auto">
     {items.map(item => <Button key={item.id} type="button" variant="link" size="sm" aria-current={active === item.id ? "true" : undefined}
       onClick={() => { if (showSection(root.current, item.id)) setActive(item.id); }}
-      className="h-auto gap-0 rounded-none border-0 border-b-2 border-transparent px-0 pt-1 pb-2 text-[0.8125rem] leading-5 font-normal text-muted-foreground transition-colors duration-(--motion-instant) hover:text-foreground hover:no-underline focus-visible:text-foreground focus-visible:underline focus-visible:ring-0 aria-[current=true]:border-foreground aria-[current=true]:text-foreground pointer-coarse:min-h-10">
+      className="h-auto gap-0 rounded-none border-0 border-b-2 border-transparent px-0 pt-1 pb-2 text-[0.8125rem] leading-5 font-normal text-muted-foreground transition-colors duration-(--motion-instant) hover:text-foreground hover:no-underline focus-visible:text-foreground focus-visible:underline focus-visible:ring-0 aria-[current=true]:border-foreground aria-[current=true]:text-foreground pointer-coarse:min-h-11">
       {item.label}{item.count !== undefined && <Count value={item.count} className="ml-1" />}
     </Button>)}
   </nav>;

@@ -2,6 +2,12 @@
   * {
     @apply border-border outline-ring;
   }
+  html {
+    scroll-padding-top: calc(var(--admin-header-height, 3rem) + 0.75rem);
+  }
+  html:has(#root) {
+    scrollbar-gutter: stable;
+  }
   body {
     @apply bg-background text-foreground font-sans;
     margin: 0;
@@ -31,6 +37,15 @@
   h4 {
     overflow-wrap: anywhere;
   }
+  h1,
+  h2,
+  h3,
+  th {
+    text-wrap: balance;
+  }
+  p {
+    text-wrap: pretty;
+  }
   pre {
     white-space: pre-wrap;
     overflow-wrap: anywhere;
@@ -44,19 +59,19 @@
   }
 }
 @media (pointer: coarse) {
-  /* Keep compact visuals within independent 40px touch slots. */
+  /* Keep compact visuals within independent 44px touch slots. */
   [class~="group/button"],
   [data-slot="toggle"],
   [data-slot="toggle-group-item"] {
-    min-width: 40px;
+    min-width: 44px;
     min-height: 32px;
-    margin-block: 4px;
+    margin-block: 6px;
   }
   [class~="touch-icon"] {
     width: 32px;
     height: 32px;
     min-width: 32px;
-    margin-inline: 4px;
+    margin-inline: 6px;
   }
   [class~="group/button"]::before,
   [data-slot="toggle"]::before,
@@ -69,8 +84,8 @@
     /* These outlined controls use a 1px border around the padding box. */
     width: calc(100% + 2px);
     height: calc(100% + 2px);
-    min-width: 40px;
-    min-height: 40px;
+    min-width: 44px;
+    min-height: 44px;
     transform: translate(-50%, -50%);
   }
   [data-slot="toggle"][data-variant="default"]::before,
@@ -82,7 +97,7 @@
   [class~="group/button"][type="submit"],
   :is([data-slot="dialog-footer"], [data-slot="alert-dialog-footer"], [data-slot="sheet-footer"], [data-checkout-actions]) [class~="group/button"] {
     min-height: 36px;
-    margin-block: 2px;
+    margin-block: 4px;
   }
   [data-slot="select-trigger"],
   [data-slot="input"],
@@ -99,8 +114,8 @@
   [data-slot="select-item"],
   a.list-site-identity,
   a.list-secondary-link {
-    min-width: 40px;
-    min-height: 40px;
+    min-width: 44px;
+    min-height: 44px;
   }
   [data-slot="input-group"] [class~="group/button"],
   [data-spacing="0"] > [data-slot="toggle-group-item"] {
@@ -108,11 +123,11 @@
   }
   /* Tabs and joined choices are compound controls, with a slot per choice. */
   [data-slot="tabs-list"] {
-    min-height: max(40px, calc(2rem + 8px));
-    padding-block: 4px;
+    min-height: max(44px, calc(2rem + 12px));
+    padding-block: 6px;
   }
   [data-slot="tabs-trigger"] {
-    min-width: 40px;
+    min-width: 44px;
     min-height: 32px;
     height: max(32px, 2rem);
   }
@@ -127,7 +142,7 @@
   }
   [data-slot="input-group"] {
     height: auto;
-    min-height: 40px;
+    min-height: 44px;
   }
   [data-slot="input-group-addon"][data-align="inline-start"],
   [data-slot="input-group-addon"][data-align="inline-end"] {
@@ -146,11 +161,14 @@
   [data-admin-dialog-body] { padding-top: 4px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    transition-duration: 0.01ms !important;
+  html {
+    scroll-behavior: auto;
+  }
+  [data-slot="spinner"] {
+    animation-duration: 6s;
+  }
+  .animate-pulse {
+    animation: none;
   }
 }
 :is([data-slot="input"], [data-slot="textarea"]),
@@ -158,49 +176,56 @@
 a:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 
 /* Copy confirmation decorates only the icon; the text and button stay stable. */
-[data-copy-feedback] { animation: copy-confirm var(--console-motion-fast, 140ms) var(--console-ease, cubic-bezier(0.22, 1, 0.36, 1)); }
+@media (prefers-reduced-motion: no-preference) {
+  [data-copy-feedback] { animation: copy-confirm var(--console-motion-fast, 140ms) var(--console-ease, cubic-bezier(0.22, 1, 0.36, 1)); }
+}
 @keyframes copy-confirm { from { transform: scale(0.82); } to { transform: scale(1); } }
-@media (prefers-reduced-motion: reduce) { [data-copy-feedback] { animation: none !important; } }
 
 /* Constrain overlays to the actual visible browser area, including the IME. */
 [data-overlay-viewport="dialog"] {
   top: calc(var(--overlay-viewport-top, 0px) + var(--overlay-viewport-height, 100dvh) / 2);
-  left: calc(var(--overlay-viewport-left, 0px) + var(--overlay-viewport-width, 100vw) / 2);
-  width: calc(var(--overlay-viewport-width, 100vw) - 2rem);
+  left: calc(var(--overlay-viewport-left, 0px) + var(--overlay-viewport-width, 100dvw) / 2);
+  width: calc(var(--overlay-viewport-width, 100dvw) - 2rem);
   min-width: 0;
   max-height: calc(var(--overlay-viewport-height, 100dvh) - 2rem);
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
 }
-/* Dialogs enter by rising a little while fading in, and leave faster with a
-   plain fade. Transitions, unlike keyframes, reverse cleanly when a dialog is
-   closed while still opening. The backdrop and popup rules must stay free of
-   animate-in/animate-out classes: a running keyframe animation would win. */
+/* Dialogs enter with a safe fade by default; spatial rise/scale/slide opt in
+   only when reduced motion is not requested. Transitions, unlike keyframes,
+   reverse cleanly when a dialog is closed while still opening. */
 :is([data-slot="dialog-overlay"], [data-slot="alert-dialog-overlay"]) { transition: opacity var(--motion-base) linear; }
 :is([data-slot="dialog-overlay"], [data-slot="alert-dialog-overlay"]):is([data-starting-style], [data-ending-style]) { opacity: 0; }
 :is([data-slot="dialog-overlay"], [data-slot="alert-dialog-overlay"])[data-ending-style] { transition-duration: var(--motion-fast); }
 [data-overlay-viewport="dialog"] {
-  transition:
-    opacity var(--motion-slow) var(--motion-ease-enter),
-    translate var(--motion-slow) var(--motion-ease-enter),
-    scale var(--motion-slow) var(--motion-ease-enter);
+  transition: opacity var(--motion-base) linear;
 }
 [data-overlay-viewport="dialog"][data-starting-style] {
-  --tw-translate-y: calc(-50% + var(--motion-shift-md));
   opacity: 0;
-  scale: var(--motion-scale-in);
 }
 [data-overlay-viewport="dialog"][data-ending-style] {
   opacity: 0;
   transition-duration: var(--motion-fast);
   transition-timing-function: var(--motion-ease-exit);
 }
-@media (max-width: 47.999rem) {
-  /* Full-screen panels on phones slide up instead of scaling. */
-  [data-overlay-viewport="dialog"]:is([data-overlay-content], [data-admin-dialog="form"], [data-admin-dialog="technical"])[data-starting-style] {
-    translate: 0 var(--motion-shift-lg);
-    scale: none;
+@media (prefers-reduced-motion: no-preference) {
+  [data-overlay-viewport="dialog"] {
+    transition:
+      opacity var(--motion-slow) var(--motion-ease-enter),
+      translate var(--motion-slow) var(--motion-ease-enter),
+      scale var(--motion-slow) var(--motion-ease-enter);
+  }
+  [data-overlay-viewport="dialog"][data-starting-style] {
+    --tw-translate-y: calc(-50% + var(--motion-shift-md));
+    scale: var(--motion-scale-in);
+  }
+  @media (max-width: 47.999rem) {
+    /* Full-screen panels on phones slide up instead of scaling. */
+    [data-overlay-viewport="dialog"]:is([data-overlay-content], [data-admin-dialog="form"], [data-admin-dialog="technical"])[data-starting-style] {
+      translate: 0 var(--motion-shift-lg);
+      scale: none;
+    }
   }
 }
 [data-overlay-viewport="dialog"] > :not(button) { min-width: 0; }

@@ -1,7 +1,7 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 
-/** A 40px touch target allows half a CSS pixel for fractional layout rounding. */
-export const MIN_TOUCH_TARGET_SIZE = 39.5;
+/** A 44px touch target allows half a CSS pixel for fractional layout rounding. */
+export const MIN_TOUCH_TARGET_SIZE = 43.5;
 
 /** Measure the visible control and its generated touch extension, then probe the real hit area. */
 export function measureTouchTarget(element: Element) {
@@ -54,12 +54,12 @@ export function measureTouchTarget(element: Element) {
     width: viewport?.width ?? innerWidth, height: viewport?.height ?? innerHeight,
   };
   // Probe the full extension on compact controls. Native rounded controls may
-  // be much wider/taller: verify an actual central 40px target within them,
+  // be much wider/taller: verify an actual central 44px target within them,
   // avoiding curved corners outside that target.
   const expandedX = left < bounds.left - .5 || right > bounds.right + .5;
   const expandedY = top < bounds.top - .5 || bottom > bounds.bottom + .5;
-  const probeWidth = expandedX ? right - left : Math.min(40, right - left);
-  const probeHeight = expandedY ? bottom - top : Math.min(40, bottom - top);
+  const probeWidth = expandedX ? right - left : Math.min(44, right - left);
+  const probeHeight = expandedY ? bottom - top : Math.min(44, bottom - top);
   const probeLeft = (left + right - probeWidth) / 2;
   const probeTop = (top + bottom - probeHeight) / 2;
   // Subpixel points less than 1 CSS px from a shared edge can be rounded

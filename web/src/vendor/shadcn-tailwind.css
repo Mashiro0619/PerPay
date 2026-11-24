@@ -557,10 +557,10 @@
     linear-gradient(
       calc(90deg + var(--shimmer-angle)),
       var(--_base) calc(50% - var(--_spread)),
-      color-mix(in oklab, var(--_highlight), var(--_base) 50%)
+      color-mix(in oklch, var(--_highlight), var(--_base) 50%)
         calc(50% - var(--_spread) * 0.5),
       var(--_highlight) 50%,
-      color-mix(in oklab, var(--_highlight), var(--_base) 50%)
+      color-mix(in oklch, var(--_highlight), var(--_base) 50%)
         calc(50% + var(--_spread) * 0.5),
       var(--_base) calc(50% + var(--_spread))
     )
@@ -607,7 +607,7 @@
 @utility shimmer-color-* {
   --shimmer-color: --value(--color, [color]);
   --shimmer-color: color-mix(
-    in oklab,
+    in oklch,
     --value(--color, [color]) calc(--modifier(integer) * 1%),
     transparent
   );

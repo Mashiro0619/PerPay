@@ -49,7 +49,7 @@ export function ThemeControl({ className, submenu = false }: { className?: strin
   </DropdownMenuRadioGroup>;
   if (submenu) return <DropdownMenuSub>
     <DropdownMenuSubTrigger aria-label={"外观，当前" + modes.find((mode) => mode.value === preference)?.label}><Icon />外观</DropdownMenuSubTrigger>
-    <DropdownMenuSubContent className="w-44 max-w-[calc(100vw-2rem)]">{choices}</DropdownMenuSubContent>
+    <DropdownMenuSubContent className="w-44 max-w-[calc(100dvw-2rem)]">{choices}</DropdownMenuSubContent>
   </DropdownMenuSub>;
   return (
     <div className={className}>

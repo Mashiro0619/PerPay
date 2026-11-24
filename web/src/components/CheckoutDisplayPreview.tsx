@@ -525,7 +525,7 @@ export function CheckoutDisplayPreview({
                         : "items-baseline justify-between gap-3",
                     )}
                   >
-                    <span className="shrink-0 text-[11px] text-muted-foreground">
+                    <span className="shrink-0 text-[0.6875rem] text-muted-foreground">
                       商品
                     </span>
                     <span
@@ -556,12 +556,12 @@ export function CheckoutDisplayPreview({
                         : "items-baseline justify-between gap-3",
                     )}
                   >
-                    <span className="shrink-0 text-[11px] text-muted-foreground">
+                    <span className="shrink-0 text-[0.6875rem] text-muted-foreground">
                       商家订单号
                     </span>
                     <span
                       className={cn(
-                        "inline-flex min-w-0 items-center gap-1.5 font-mono text-[11px] text-foreground",
+                        "inline-flex min-w-0 items-center gap-1.5 font-mono text-[0.6875rem] text-foreground",
                         !useTwoColumns && "justify-end",
                       )}
                       data-preview-order-no

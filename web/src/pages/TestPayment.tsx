@@ -124,6 +124,9 @@ function TestPaymentForm({ dialog, overlay = false }: { dialog?: TestPaymentDial
         <Field data-invalid={!!validation}>
           <FieldLabel htmlFor="test-payment-amount">测试金额（元）</FieldLabel>
           <InputGroup>
+            <InputGroupAddon align="inline-start">
+              <InputGroupText>¥</InputGroupText>
+            </InputGroupAddon>
             <InputGroupInput
               id="test-payment-amount"
               ref={amountField}
@@ -144,9 +147,6 @@ function TestPaymentForm({ dialog, overlay = false }: { dialog?: TestPaymentDial
                     : "test-payment-hint"
               }
             />
-            <InputGroupAddon align="inline-start">
-              <InputGroupText>¥</InputGroupText>
-            </InputGroupAddon>
           </InputGroup>
           <FieldDescription
             id={recovery ? recoveryHintId : "test-payment-hint"}

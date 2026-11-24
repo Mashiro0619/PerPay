@@ -29,7 +29,7 @@ describe("bounded secret content", () => {
       const textbox = screen.getByRole("textbox");
       expect(textbox).toHaveClass(
         "max-h-[min(16rem,40dvh)]",
-        "resize-none",
+        "resize-y",
         "overflow-y-auto",
       );
       expect(textbox).toHaveValue(longValue);

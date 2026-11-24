@@ -420,12 +420,12 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
         order
           ? isTerminalOrder
             ? cn(
-                "order-5 px-(--card-spacing) pt-1 pb-(--card-spacing)",
+                "px-(--card-spacing) pt-1 pb-(--card-spacing)",
                 useTwoColumns &&
-                  "md:order-none md:col-start-1 md:row-start-3 md:rounded-none md:px-6 md:pt-0 md:pb-6 lg:px-8 lg:pb-8",
+                  "md:col-start-1 md:row-start-3 md:rounded-none md:px-6 md:pt-0 md:pb-6 lg:px-8 lg:pb-8",
               )
             : cn(
-                "order-3 pt-0 md:order-none",
+                "pt-0",
                 hasSummaryBody ? "pb-1" : "pb-(--card-spacing)",
                 useTwoColumns &&
                   "md:col-start-1 md:row-start-3 md:rounded-none md:px-6 md:pt-0 md:pb-6 lg:px-8 lg:pb-8",
@@ -610,7 +610,7 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
           <div
             className={cn(
               "flex min-w-0 flex-col",
-              isTerminalOrder ? "order-1 gap-4 md:order-none" : "order-1 gap-3 md:order-none",
+              isTerminalOrder ? "gap-4" : "gap-3",
               order &&
                 useTwoColumns &&
                 (hasActions
@@ -918,9 +918,9 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
           {showOpenInstructions && (
             <div
               className={cn(
-                "order-2 -mt-1 px-(--card-spacing) text-center text-[0.8125rem] leading-relaxed text-muted-foreground",
+                "-mt-1 px-(--card-spacing) text-center text-[0.8125rem] leading-relaxed text-muted-foreground",
                 useTwoColumns &&
-                  "md:order-none md:col-start-3 md:row-start-2 md:mt-0 md:self-start md:px-6 md:pt-0 md:pb-6 md:text-left md:text-sm lg:px-8 lg:pb-8",
+                  "md:col-start-3 md:row-start-2 md:mt-0 md:self-start md:px-6 md:pt-0 md:pb-6 md:text-left md:text-sm lg:px-8 lg:pb-8",
               )}
               data-checkout-payment-instructions
             >
@@ -952,9 +952,9 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
           {terminalNoteText && (
             <div
               className={cn(
-                "order-2 -mt-1 px-(--card-spacing) text-center text-[0.8125rem] leading-relaxed text-muted-foreground",
+                "-mt-1 px-(--card-spacing) text-center text-[0.8125rem] leading-relaxed text-muted-foreground",
                 useTwoColumns &&
-                  "md:order-none md:col-start-3 md:row-start-2 md:mt-0 md:self-start md:px-6 md:pt-0 md:pb-6 md:text-left md:text-sm lg:px-8 lg:pb-8",
+                  "md:col-start-3 md:row-start-2 md:mt-0 md:self-start md:px-6 md:pt-0 md:pb-6 md:text-left md:text-sm lg:px-8 lg:pb-8",
               )}
               data-checkout-terminal-note
             >
@@ -970,11 +970,11 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
               </div>
             </div>
           )}
-          {actions}
+          {!isTerminalOrder && actions}
           {order && hasSummaryPanel && (
             <>
               {hasSummaryBody && (
-                <div className={cn("px-(--card-spacing) md:hidden", isTerminalOrder ? "order-3" : "order-4")}>
+                <div className="px-(--card-spacing) md:hidden">
                   <Separator />
                 </div>
               )}
@@ -982,11 +982,11 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
               <section
                 aria-label="订单信息"
                 className={cn(
-                  "checkout-summary min-w-0 flex-col gap-4 md:order-none md:col-start-3 md:row-start-1 md:flex md:gap-5",
+                  "checkout-summary min-w-0 flex-col gap-4 md:col-start-3 md:row-start-1 md:flex md:gap-5",
                   hasSummaryBody ? "flex" : "hidden",
                   isTerminalOrder
-                    ? cn("order-4", hasActions ? "pb-0" : "pb-(--card-spacing)")
-                    : "order-5 pb-(--card-spacing)",
+                    ? hasActions ? "pb-0" : "pb-(--card-spacing)"
+                    : "pb-(--card-spacing)",
                   hasRightFooterNote
                     ? "md:px-6 md:pt-6 md:pb-4 lg:px-8 lg:pt-8"
                     : "md:row-span-3 md:p-6 lg:p-8",
@@ -1079,6 +1079,7 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
               </section>
             </>
           )}
+          {isTerminalOrder && actions}
         </Card>
         {helpUrl && (
           <p className="checkout-help-row text-right text-sm text-muted-foreground" data-checkout-help>

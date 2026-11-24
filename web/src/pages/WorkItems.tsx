@@ -665,7 +665,7 @@ function RestoreReminder({
             </PopoverTrigger>
             <PopoverContent
               align="end"
-              className="max-h-[calc(100dvh-2rem)] max-w-[calc(100vw-2rem)] overflow-y-auto"
+              className="max-h-[calc(100dvh-2rem)] max-w-[calc(100dvw-2rem)] overflow-y-auto overscroll-contain"
             >
               <PopoverHeader>
                 <PopoverTitle>恢复提醒错误说明</PopoverTitle>

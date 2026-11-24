@@ -33,7 +33,7 @@ export function HeaderWorkspaceSwitcher({ name }: { name: string }) {
       <span className="truncate">{name}</span>
       <ChevronDown data-icon="inline-end" aria-hidden="true" />
     </DropdownMenuTrigger>
-    <DropdownMenuContent align="start" aria-label="查看范围" className="w-72 max-w-[calc(100vw-2rem)]">
+    <DropdownMenuContent align="start" aria-label="查看范围" className="w-72 max-w-[calc(100dvw-2rem)]">
       <RequestNoticeProvider>
         <RequestNoticeBanner showRuntimeLink={false} renderRetry={renderMenuRetry} />
         <span role="status" className="sr-only">{switching ? `正在切换到${pendingName}…` : ""}</span>

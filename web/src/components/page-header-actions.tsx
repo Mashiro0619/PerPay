@@ -98,7 +98,7 @@ export function PageHeaderActions({ children }: { children: ReactNode }) {
 export function PageHeaderMenuContent({ children, busy = false }: { children?: ReactNode; busy?: boolean }) {
   const host = useContext(ActionsContext);
   const switching = useWorkspaceSwitching();
-  return <DropdownMenuContent align="end" aria-label="页面操作" data-header-mobile-actions className="w-56 max-w-[calc(100vw-2rem)]" inert={busy || switching}>
+  return <DropdownMenuContent align="end" aria-label="页面操作" data-header-mobile-actions className="w-56 max-w-[calc(100dvw-2rem)]" inert={busy || switching}>
     <PageActionMenuContext value={host?.triggerRef ?? null}>
       {children && <><DropdownMenuGroup>{children}</DropdownMenuGroup><DropdownMenuSeparator /></>}
       <DropdownMenuGroup><ThemeControl submenu /></DropdownMenuGroup>

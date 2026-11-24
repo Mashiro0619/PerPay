@@ -73,7 +73,7 @@ export function CopyValue({
             readOnly
             value={value}
             rows={8}
-            className="max-h-[min(16rem,40dvh)] resize-none overflow-y-auto"
+            className="max-h-[min(16rem,40dvh)] resize-y overflow-y-auto"
             aria-label={secret ? "密钥内容" : "可复制内容"}
             spellCheck={false}
           />

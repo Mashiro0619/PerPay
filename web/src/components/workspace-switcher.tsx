@@ -160,7 +160,7 @@ export function WorkspaceSwitcher({
         <ListFilter />
         <span className="sr-only">查看范围</span>
       </PopoverTrigger>
-      <PopoverContent side="right" align="start" className="max-h-[min(32rem,calc(100dvh-2rem))] overflow-y-auto">
+      <PopoverContent side="right" align="start" className="max-h-[min(32rem,calc(100dvh-2rem))] overflow-y-auto overscroll-contain">
         <PopoverTitle>查看范围</PopoverTitle>
         <p className="text-xs text-muted-foreground">当前：{selectedName}</p>
         <RequestNoticeProvider>
@@ -182,7 +182,7 @@ export function WorkspaceSwitcher({
         render={
           <SidebarMenuButton
             tooltip="查看范围"
-            className="pointer-coarse:min-h-10"
+            className="pointer-coarse:min-h-11"
             aria-label={`查看范围 ${selectedName}，${open ? "收起" : "展开"}`}
             aria-describedby={currentNameId}
           />
