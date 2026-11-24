@@ -54,7 +54,7 @@ async function containedControls(card: Locator, touch = false) {
         }
         return { name: control.getAttribute("aria-label") ?? control.textContent, ...box, textLines: new Set(lines.map(line => Math.round(line.top))).size, textFits: lines.every(line => line.left >= box.left - 1 && line.right <= box.right + 1 && line.top >= box.top - 1 && line.bottom <= box.bottom + 1) };
       });
-    const dates = header.querySelector(".trend-dates")!;
+    const dates = element.querySelector(".trend-dates")!;
     const dateBox = rect(dates);
     const range = document.createRange();
     range.selectNodeContents(dates);
@@ -82,6 +82,8 @@ async function containedControls(card: Locator, touch = false) {
     expect(control.right, `${control.name}: stays within the card`).toBeLessThanOrEqual(geometry.frame.right + 1);
   }
   expect(geometry.controls.filter(control => !control.textFits), "every control retains its complete label").toEqual([]);
+  expect(geometry.dateBox.left, "the date range stays within the card").toBeGreaterThanOrEqual(geometry.frame.left - 1);
+  expect(geometry.dateBox.right, "the date range stays within the card").toBeLessThanOrEqual(geometry.frame.right + 1);
   expect(geometry.dateTextFits, "the date range can wrap without clipping").toBe(true);
   expect(geometry.dateTokens).toHaveLength(2);
   expect(geometry.dateTokens.every(token => token.textLines === 1), "the range wraps between dates instead of splitting an individual date").toBe(true);
@@ -142,12 +144,12 @@ async function exerciseControls(page: Page, card: Locator, touch: boolean) {
     await expect(choice).toHaveAttribute("aria-pressed", "true");
     await expect(plot).toHaveAttribute("aria-label", name === "新建订单" ? /每日新建订单/ : /每日付款确认金额/);
   }
-  await activate(card.getByRole("tab", { name: "每日数据", exact: true }), page, touch);
+  await activate(metrics.getByRole("button", { name: "每日数据", exact: true }), page, touch);
   await expect(card.getByRole("region", { name: "每日数据", exact: true })).toBeVisible();
-  await expect(card.getByRole("group", { name: "趋势指标", exact: true })).toHaveCount(0);
+  await expect(card.getByRole("group", { name: "趋势指标", exact: true })).toHaveCount(1);
   await expect(card.getByRole("group", { name: "图表类型", exact: true })).toHaveCount(0);
   await expect(card.getByRole("button", { name: /^图表类型：/ })).toHaveCount(0);
-  await activate(card.getByRole("tab", { name: "图表", exact: true }), page, touch);
+  await activate(metrics.getByRole("button", { name: "确认金额", exact: true }), page, touch);
   await expect(plot).toHaveAttribute("data-chart-type", "LINE");
 }
 
@@ -166,20 +168,19 @@ for (const width of [1440, 1920]) {
     const card = trendCard(page);
     await ready(page, card);
     await capture(card, info, `trend-card-${width}`);
-    const controls = card.locator(".trend-controls");
     const groups = await sameRow([
-      card.getByRole("group", { name: "趋势指标", exact: true }),
       card.getByRole("group", { name: "图表类型", exact: true }),
-      controls.getByRole("combobox", { name: "统计周期", exact: true }),
-      controls.getByRole("tablist", { name: "收款趋势视图", exact: true }),
+      card.getByRole("group", { name: "趋势指标", exact: true }),
+      card.getByRole("combobox", { name: "统计周期", exact: true }),
     ]);
     const headerRow = await sameRow([card.locator(".trend-identity"), card.locator(".trend-actions")]);
     const titleBox = await bounds(card.locator(".trend-title"));
-    const datesBox = await bounds(card.locator(".trend-dates"));
-    expect(datesBox.y, "the date range sits cleanly beneath the title").toBeGreaterThanOrEqual(titleBox.bottom - 1);
+    const plotBox = await bounds(card.locator('[data-slot="chart"]'));
+    const datesBox = await bounds(card.locator(".trend-caption .trend-dates"));
+    expect(datesBox.y, "the date range sits cleanly in the footer beneath the chart").toBeGreaterThanOrEqual(plotBox.bottom - 1);
     const fit = await containedControls(card);
     expect(fit.controls.filter(control => control.textLines > 1), "wide controls retain their labels on one line instead of compressing the text").toEqual([]);
-    await record(page, info, { feature: "trend-header-unified-row", width, groups, headerRow, titleBox, datesBox, fit });
+    await record(page, info, { feature: "trend-header-unified-row", width, groups, headerRow, titleBox, plotBox, datesBox, fit });
 
     if (width === 1440) {
       const writes: string[] = [];

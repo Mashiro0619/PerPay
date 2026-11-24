@@ -9,7 +9,6 @@ import { Navigate, useLocation } from "react-router";
 import { Link } from "@/navigation";
 import { useOverview } from "@/features/overview/use-overview";
 import { useWorkspace } from "@/workspace";
-import { useIsMobile } from "@/hooks/use-mobile";
 import type { SystemStatus } from "@/api/client";
 import {
   deferredInstance,
@@ -89,7 +88,6 @@ function DashboardContent() {
     changeRange,
   } = useOverview();
   const { site } = useWorkspace();
-  const mobile = useIsMobile();
   const [metricsAwaitingRefresh, setMetricsAwaitingRefresh] = useState(false);
   // Keep current KPIs unknown through the reconnect request. Retained snapshots
   // remain useful for the dated trend, but must not be relabelled as today.
@@ -301,7 +299,8 @@ function DashboardContent() {
         pending={!analytics.isPaused && (analytics.isPending || analytics.isPlaceholderData)}
       />}
       {clientId && (showSummaryCards || showWorkItems) && <ErrorNotice scope="page" error={workSummary.error} retry={() => { void workSummary.refetch(); }} />}
-      {mobile ? [records, hero] : [hero, records]}
+      {hero}
+      {records}
       {!hasVisibleSection && (
         <Card size="sm" data-overview-empty-sections>
           <CardHeader>

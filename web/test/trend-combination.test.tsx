@@ -160,19 +160,18 @@ describe("amount and order combination view", () => {
     await user.keyboard("{Enter}");
     expect(combined).toHaveAttribute("aria-pressed", "true");
     expect(screen.queryByRole("group", { name: "图表类型" })).not.toBeInTheDocument();
-    await user.click(screen.getByRole("tab", { name: "每日数据" }));
+    await user.click(screen.getByRole("button", { name: "每日数据" }));
     expect(screen.getByRole("status")).toHaveTextContent("共 30 天");
     const report = screen.getByRole("region", { name: "每日数据" });
     const dates = Array.from(report.querySelectorAll<HTMLTimeElement>(".daily-date time[datetime]"))
       .map(time => time.dateTime);
     expect(dates).toHaveLength(30);
-    await user.click(screen.getByRole("tab", { name: "图表" }));
+    await user.click(screen.getByRole("button", { name: "金额与订单" }));
     expect(screen.getByRole("button", { name: "金额与订单" })).toHaveAttribute("aria-pressed", "true");
-    await user.click(screen.getByRole("tab", { name: "每日数据" }));
+    await user.click(screen.getByRole("button", { name: "每日数据" }));
     expect(screen.getByRole("status")).toHaveTextContent("共 30 天");
     expect(Array.from(report.querySelectorAll<HTMLTimeElement>(".daily-date time[datetime]"))
       .map(time => time.dateTime)).toEqual(dates);
-    await user.click(screen.getByRole("tab", { name: "图表" }));
     await user.click(screen.getByRole("button", { name: "确认金额" }));
     expect(screen.getByRole("button", { name: "累计图" })).toHaveAttribute("aria-pressed", "true");
     expect(plot(container)).toHaveAttribute("data-chart-type", "LINE");

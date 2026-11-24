@@ -321,18 +321,16 @@ test.describe("compact mobile button visuals and separate touch targets", () => 
       await page.setViewportSize({ width, height: 900 });
       await login(page, manifest);
       const card = page.locator(".trend-card");
-      const tabs = card.getByRole("tablist", { name: "收款趋势视图", exact: true });
-      await expect(tabs).toBeVisible();
-      const tabsBox = (await tabs.boundingBox())!;
-      expect(tabsBox.height).toBeCloseTo(40, 1);
-      expect(tabsBox.width).toBeLessThan(180);
-      for (const name of ["图表", "每日数据"]) {
-        const target = tabs.getByRole("tab", { name, exact: true });
+      const modes = card.getByRole("group", { name: "趋势指标", exact: true });
+      await expect(modes).toBeVisible();
+      const modesBox = (await modes.boundingBox())!;
+      for (const name of ["确认金额", "新建订单", "金额与订单", "每日数据"]) {
+        const target = modes.getByRole("button", { name, exact: true });
         expect((await centered(target, page)).visual.height).toBeCloseTo(32, 1);
       }
-      await tabs.getByRole("tab", { name: "每日数据", exact: true }).tap();
+      await modes.getByRole("button", { name: "每日数据", exact: true }).tap();
       await expect(card.getByRole("region", { name: "每日数据", exact: true })).toBeVisible();
-      await tabs.getByRole("tab", { name: "图表", exact: true }).tap();
+      await modes.getByRole("button", { name: "确认金额", exact: true }).tap();
       const types = card.getByRole("button", { name: /^图表类型：/ });
       const typeGeometry = [];
       for (const [name, value] of [["面积图", "AREA"], ["柱状图", "BAR"], ["累计图", "LINE"]] as const) {
@@ -344,13 +342,12 @@ test.describe("compact mobile button visuals and separate touch targets", () => 
         await page.getByRole("menuitemradio", { name, exact: true }).tap();
         await expect(card.locator('[data-slot="chart"]')).toHaveAttribute("data-chart-type", value);
       }
-      await record(page, info, { compactChoices: "trend", width, tabsBox, typeGeometry });
+      await record(page, info, { compactChoices: "trend", width, modesBox, typeGeometry });
       if (width === 320) {
         await page.evaluate(() => document.documentElement.style.fontSize = "200%");
         await page.clock.runFor(100);
-        expect((await tabs.boundingBox())!.height).toBeLessThanOrEqual(80);
-        for (const name of ["图表", "每日数据"]) {
-          const label = await tabs.getByRole("tab", { name, exact: true }).evaluate(element => {
+        for (const name of ["确认金额", "新建订单", "金额与订单", "每日数据"]) {
+          const label = await modes.getByRole("button", { name, exact: true }).evaluate(element => {
             const bounds = element.getBoundingClientRect();
             const range = document.createRange();
             range.selectNodeContents(element);

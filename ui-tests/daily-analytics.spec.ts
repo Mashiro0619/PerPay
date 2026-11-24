@@ -38,7 +38,7 @@ function dailyFixture(base: SystemAnalytics, range: SystemAnalytics["range_days"
 }
 
 async function showDaily(page: Page) {
-  await page.getByRole("tab", { name: "每日数据", exact: true }).click();
+  await page.getByRole("button", { name: "每日数据", exact: true }).click();
   await expect(page.getByRole("region", { name: "每日数据", exact: true })).toBeVisible();
 }
 
@@ -145,7 +145,7 @@ test("complete daily data survives presentation changes and updates for website,
   const dates = await visibleDates(page);
   expect(dates).toHaveLength(30);
   const beforePresentation = reads;
-  await page.getByRole("tab", { name: "图表", exact: true }).click();
+  await page.getByRole("button", { name: "确认金额", exact: true }).click();
   await expect(page.locator('[data-slot="chart"]')).toBeVisible();
   await showDaily(page);
   await expect(status).toHaveText("共 30 天");

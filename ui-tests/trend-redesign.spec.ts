@@ -84,12 +84,12 @@ test("one cent across New Year stays readable in each chart and presentation cha
   await expect(card.locator("[data-trend-sparse]")).toContainText("¥0.01");
   await expect(card.locator('[data-trend-summary="average"]')).toContainText("¥0.00");
   await expect(card.locator('[data-trend-summary="peak"]')).toContainText("¥0.01");
-  await card.getByRole("tab", { name: "每日数据", exact: true }).click();
+  await metrics.getByRole("button", { name: "每日数据", exact: true }).click();
   const report = card.getByRole("region", { name: "每日数据", exact: true });
   const dates = await report.locator(".daily-date time").evaluateAll(elements => elements.map(element => element.getAttribute("datetime")));
   expect(dates).toHaveLength(30);
   await expect(report.getByRole("status")).toHaveText("共 30 天");
-  await card.getByRole("tab", { name: "图表", exact: true }).click();
+  await metrics.getByRole("button", { name: "确认金额", exact: true }).click();
   const readsBeforePresentation = reads();
 
   for (const [type, label] of TYPES) {
@@ -109,13 +109,13 @@ test("one cent across New Year stays readable in each chart and presentation cha
     await expect(card.locator("[data-metric-value]")).toHaveText("¥0.01");
   }
 
-  await card.getByRole("tab", { name: "每日数据", exact: true }).click();
+  await metrics.getByRole("button", { name: "每日数据", exact: true }).click();
   await expect(report.getByRole("status")).toHaveText("共 30 天");
   expect(await report.locator(".daily-date time").evaluateAll(elements => elements.map(element => element.getAttribute("datetime")))).toEqual(dates);
   expect(reads()).toBe(readsBeforePresentation);
   await record(page, info, { scenario: "one-cent-cross-year", preservedDates: dates, reads: reads() });
   await page.setViewportSize({ width: 320, height: 900 });
-  await card.getByRole("tab", { name: "图表", exact: true }).click();
+  await metrics.getByRole("button", { name: "确认金额", exact: true }).click();
   for (const [type, label] of TYPES) {
     await card.getByRole("button", { name: /^图表类型：/ }).click();
     await page.getByRole("menuitemradio", { name: label, exact: true }).click();
@@ -134,7 +134,8 @@ test("zero days and a single current day keep their distinct statistical meaning
   const card = trendCard(page);
   const plot = card.locator('[data-slot="chart"]');
   await expect(plot).toBeVisible();
-  await expect(card.getByText("这段时间暂无确认收款", { exact: true })).toBeVisible();
+  await expect(card.locator("[data-metric-value]")).toHaveText("¥0.00");
+  await expect(card.locator(".trend-caption .trend-dates")).toContainText(TODAY);
   await expect(card.locator("[data-trend-sparse]")).toHaveCount(0);
   await card.getByRole("button", { name: "柱状图", exact: true }).click();
   await expect(plot).toHaveAttribute("data-chart-type", "BAR");
@@ -153,13 +154,13 @@ test("zero days and a single current day keep their distinct statistical meaning
   await expect(card.locator('[data-trend-summary="peak"]')).toContainText("—");
   await expect(card.locator("[data-trend-sparse]")).toContainText(TODAY);
   await expect(card.locator("[data-trend-sparse]")).toContainText("¥123.45");
-  await expect(card.getByText("这段时间暂无确认收款", { exact: true })).toHaveCount(0);
+  await expect(card.locator(".trend-caption .trend-dates")).toContainText(`${TODAY} — ${TODAY}`);
   for (const [type, label] of TYPES) {
     await card.getByRole("button", { name: label, exact: true }).click();
     await expect(plot).toHaveAttribute("data-chart-type", type);
     if (type !== "BAR") await expect(plot.locator("[data-trend-point]")).toHaveCount(1);
   }
-  await card.getByRole("tab", { name: "每日数据", exact: true }).click();
+  await card.getByRole("button", { name: "每日数据", exact: true }).click();
   const report = card.getByRole("region", { name: "每日数据", exact: true });
   await expect(report.locator(".daily-date time")).toHaveCount(1);
   await expect(report.getByText("今日", { exact: true })).toBeVisible();

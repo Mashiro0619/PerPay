@@ -296,19 +296,19 @@ test.describe("mobile overlay regression with synthetic visible viewport", () =>
     for (const width of [320, 360]) {
       await page.setViewportSize({ width, height: 560 });
       await page.goto(manifest.origin + "/admin/");
-      const tabs = page.getByRole("tablist", { name: "收款趋势视图", exact: true });
-      await expect(tabs).toBeVisible();
-      const geometry = await Promise.all((await tabs.getByRole("tab").all()).map(tab => tab.evaluate(measureTabText)));
-      expect(geometry.map(tab => tab.text)).toEqual(["图表", "每日数据"]);
+      const modes = page.getByRole("group", { name: "趋势指标", exact: true });
+      await expect(modes).toBeVisible();
+      const geometry = await Promise.all((await modes.getByRole("button").all()).map(tab => tab.evaluate(measureTabText)));
+      expect(geometry.map(tab => tab.text)).toEqual(["确认金额", "新建订单", "金额与订单", "每日数据"]);
       expect(geometry.every(tab => tab.lines === 1), "tab text occupies exactly one rendered line").toBe(true);
       expect(geometry.every(tab => tab.contained), "every visible tab character fits without clipping").toBe(true);
-      const daily = tabs.getByRole("tab", { name: "每日数据", exact: true });
+      const daily = modes.getByRole("button", { name: "每日数据", exact: true });
       await daily.click();
-      await expect(daily).toHaveAttribute("aria-selected", "true");
+      await expect(daily).toHaveAttribute("aria-pressed", "true");
       await expect(page.getByRole("region", { name: "每日数据", exact: true })).toBeVisible();
-      const chart = tabs.getByRole("tab", { name: "图表", exact: true });
-      await chart.click();
-      await expect(chart).toHaveAttribute("aria-selected", "true");
+      const amount = modes.getByRole("button", { name: "确认金额", exact: true });
+      await amount.click();
+      await expect(amount).toHaveAttribute("aria-pressed", "true");
       await expect(page.locator('[data-slot="chart"]')).toBeVisible();
       await record(page, info, { evidence: "browser touch viewport", width, trendTabs: geometry });
     }

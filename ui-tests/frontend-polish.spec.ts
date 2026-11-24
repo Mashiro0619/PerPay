@@ -218,19 +218,19 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
         await trend.getByRole("button", { name: "确认金额", exact: true }).click();
       }));
       observations.push(await observe(page, "daily-view-and-data-retention", async () => {
-        await trend.getByRole("tab", { name: "每日数据", exact: true }).click();
+        await trend.getByRole("button", { name: "每日数据", exact: true }).click();
         const daily = trend.getByRole("region", { name: "每日数据", exact: true });
         await expect(daily.getByRole("status")).toHaveText("共 30 天");
         const dates = await daily.locator(".daily-date time").evaluateAll(elements => elements.map(element => element.getAttribute("datetime")));
         expect(dates).toHaveLength(30);
-        await trend.getByRole("tab", { name: "图表", exact: true }).click();
+        await trend.getByRole("button", { name: "确认金额", exact: true }).click();
         await page.waitForTimeout(200);
-        await trend.getByRole("tab", { name: "每日数据", exact: true }).click();
+        await trend.getByRole("button", { name: "每日数据", exact: true }).click();
         await expect(daily.getByRole("status")).toHaveText("共 30 天");
         expect(await daily.locator(".daily-date time").evaluateAll(elements => elements.map(element => element.getAttribute("datetime")))).toEqual(dates);
       }));
       await capture("daily-complete");
-      await trend.getByRole("tab", { name: "图表", exact: true }).click();
+      await trend.getByRole("button", { name: "确认金额", exact: true }).click();
       observations.push(await observe(page, "overview-refresh", () => refreshOverview(page, manifest, mobile)));
 
       observations.push(await observe(page, "navigate-to-orders", () => navigateToOrders(page, mobile)));
@@ -324,8 +324,8 @@ if (phase === "final") {
     const trend = page.locator('[data-slot="card"]').filter({ has: page.getByRole("heading", { name: "收款趋势", exact: true }) });
     const metricGroup = trend.getByRole("group", { name: "趋势指标", exact: true });
     const typeGroup = trend.getByRole("group", { name: "图表类型", exact: true });
-    const chartTab = trend.getByRole("tab", { name: "图表", exact: true });
-    const dailyTab = trend.getByRole("tab", { name: "每日数据", exact: true });
+    const amountButton = metricGroup.getByRole("button", { name: "确认金额", exact: true });
+    const dailyButton = metricGroup.getByRole("button", { name: "每日数据", exact: true });
     await expect(trend.locator("[data-selection-indicator]").first()).toHaveAttribute("data-selection-mode", "motion");
     const initialStyles = await page.locator("style").allTextContents();
     await page.evaluate(() => {
@@ -481,26 +481,28 @@ if (phase === "final") {
       expect(await trend.locator("[data-metric-value]").innerText()).toBe(expectedAmount);
       await page.clock.runFor(25);
     }
-    await dailyTab.click();
+    await dailyButton.click();
     const daily = trend.getByRole("region", { name: "每日数据", exact: true });
     await expect(daily.getByRole("status")).toHaveText("共 30 天");
     const dates = await daily.locator(".daily-date time").evaluateAll(elements => elements.map(element => element.getAttribute("datetime")));
     expect(dates).toHaveLength(30);
     for (let index = 0; index < 2; index++) {
-      await chartTab.click({ force: true });
-      expect(await chartTab.getAttribute("aria-selected")).toBe("true");
+      await amountButton.click({ force: true });
+      expect(await amountButton.getAttribute("aria-pressed")).toBe("true");
       await page.clock.runFor(25);
-      await dailyTab.click({ force: true });
-      expect(await dailyTab.getAttribute("aria-selected")).toBe("true");
+      await dailyButton.click({ force: true });
+      expect(await dailyButton.getAttribute("aria-pressed")).toBe("true");
       await expect(daily.getByRole("status")).toHaveText("共 30 天");
       expect(await daily.locator(".daily-date time").evaluateAll(elements => elements.map(element => element.getAttribute("datetime")))).toEqual(dates);
       await page.clock.runFor(25);
     }
-    await dailyTab.focus();
+    await dailyButton.focus();
     await page.keyboard.press("ArrowLeft");
     await page.keyboard.press("Enter");
-    await expect(chartTab).toBeFocused();
-    await expect(chartTab).toHaveAttribute("aria-selected", "true");
+    const combined = metricGroup.getByRole("button", { name: "金额与订单", exact: true });
+    await expect(combined).toBeFocused();
+    await expect(combined).toHaveAttribute("aria-pressed", "true");
+    await amountButton.click();
     const amount = metricGroup.getByRole("button", { name: "确认金额", exact: true });
     await amount.focus();
     await page.keyboard.press("ArrowRight");

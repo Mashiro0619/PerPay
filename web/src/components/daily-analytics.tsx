@@ -429,9 +429,18 @@ export function DailyAnalytics({
       )}
 
       <div className="daily-report-footer">
-        <p role="status" aria-live="polite" aria-atomic="true" className="daily-report-status">
-          {pending ? "正在读取每日数据…" : !analytics ? "等待统计数据" : `共 ${totalDays} 天`}
-        </p>
+        <div className="daily-report-footer-start">
+          {!pending && hasDays && (
+            <p className="trend-dates daily-report-dates" aria-live="polite">
+              <time dateTime={firstDate}>{firstDate}</time>
+              {" — "}
+              <time dateTime={lastDate}>{lastDate}</time>
+            </p>
+          )}
+          <p role="status" aria-live="polite" aria-atomic="true" className="daily-report-status">
+            {pending ? "正在读取每日数据…" : !analytics ? "等待统计数据" : `共 ${totalDays} 天`}
+          </p>
+        </div>
         {!pending && hasDays && report && analytics && (
           <div className="daily-report-meta-group">
             {peakDate && (

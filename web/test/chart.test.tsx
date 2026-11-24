@@ -92,6 +92,13 @@ describe("official shadcn interactive chart", () => {
     expect(values[0]).toHaveAttribute("data-value-length", "10");
     expect(screen.getByText("区间累计")).toBeVisible();
     expect(container.querySelector("[data-slot=card-footer]")).toBeNull();
+    expect(container.querySelector(".trend-header .trend-dates")).toBeNull();
+    expect(container.querySelector(".trend-caption .trend-dates")).toHaveTextContent(
+      "2026-06-01 — 2026-06-07",
+    );
+    expect(container.querySelector(".trend-caption")).not.toHaveTextContent("有收款");
+    expect(container.querySelector(".trend-caption")).not.toHaveTextContent("按日展示");
+    expect(container.querySelector(".trend-caption")).not.toHaveTextContent("按日累计增长");
     await userEvent.click(screen.getByRole("button", { name: "新建订单" }));
     expect(values[0]).toHaveTextContent("1,105");
     for (const value of values) {
@@ -252,8 +259,8 @@ describe("official shadcn interactive chart", () => {
         screen.getByRole("button", { name: "新建订单" }),
       ).toHaveAccessibleDescription("28");
       expect(
-        screen.queryByRole("button", { name: "每日数据" }),
-      ).not.toBeInTheDocument();
+        screen.getByRole("button", { name: "每日数据" }),
+      ).toHaveAttribute("aria-pressed", "false");
     },
   );
   it("switches period through the official toggle group without fetching records itself", async () => {
@@ -809,21 +816,21 @@ describe("shared trend and daily views", () => {
       />,
     );
     const trend = screen.getByRole("heading", { name: "收款趋势" });
-    const chartTab = screen.getByRole("tab", { name: "图表" });
-    const dailyTab = screen.getByRole("tab", { name: "每日数据" });
+    const amountButton = screen.getByRole("button", { name: "确认金额" });
+    const ordersButton = screen.getByRole("button", { name: "新建订单" });
+    const dailyButton = screen.getByRole("button", { name: "每日数据" });
     expect(
       screen.queryByRole("grid", { name: "每日收款日历" }),
     ).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "新建订单" }));
-    await user.click(dailyTab);
+    await user.click(ordersButton);
+    await user.click(dailyButton);
     const grid = screen.getAllByRole("grid", { name: "每日收款日历" })[0]!;
     expect(grid.closest('[data-slot="card"]')).toBe(
       trend.closest('[data-slot="card"]'),
     );
     expect(container.querySelectorAll('[data-slot="card"]')).toHaveLength(1);
-    expect(
-      screen.queryByRole("group", { name: "趋势指标" }),
-    ).not.toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "趋势指标" })).toBeVisible();
+    expect(dailyButton).toHaveAttribute("aria-pressed", "true");
     expect(
       screen.queryByRole("group", { name: "图表类型" }),
     ).not.toBeInTheDocument();
@@ -834,15 +841,15 @@ describe("shared trend and daily views", () => {
     expect(screen.getByRole("status")).toHaveTextContent("共 30 天");
     const dates = dailyDates();
     expect(dates).toHaveLength(30);
-    await user.click(chartTab);
+    await user.click(ordersButton);
     expect(
       screen.queryByRole("grid", { name: "每日收款日历" }),
     ).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "新建订单" })).toHaveAttribute(
+    expect(ordersButton).toHaveAttribute(
       "aria-pressed",
       "true",
     );
-    await user.click(dailyTab);
+    await user.click(dailyButton);
     expect(screen.getByRole("status")).toHaveTextContent("共 30 天");
     expect(dailyDates()).toEqual(dates);
     await user.click(screen.getByRole("combobox", { name: "统计周期" }));
@@ -856,7 +863,7 @@ describe("shared trend and daily views", () => {
         onRangeChange={change}
       />,
     );
-    expect(dailyTab).toHaveAttribute("aria-selected", "true");
+    expect(dailyButton).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("region", { name: "每日数据" })).toHaveAttribute(
       "aria-busy",
       "true",
@@ -872,10 +879,10 @@ describe("shared trend and daily views", () => {
     );
     expect(screen.getByRole("status")).toHaveTextContent("共 7 天");
     expect(dailyDates()).toHaveLength(7);
-    dailyTab.focus();
-    await user.keyboard("{ArrowLeft}{Enter}");
-    expect(chartTab).toHaveFocus();
-    expect(chartTab).toHaveAttribute("aria-selected", "true");
+    dailyButton.focus();
+    await user.keyboard("{ArrowLeft}{ArrowLeft}{ArrowLeft}{Enter}");
+    expect(amountButton).toHaveFocus();
+    expect(amountButton).toHaveAttribute("aria-pressed", "true");
   });
 
   it("shows the new website's complete daily data after returning from the chart view", async () => {
@@ -884,14 +891,14 @@ describe("shared trend and daily views", () => {
     const { rerender } = render(
       <ChartAreaInteractive analytics={data} range={30} pending={false} onRangeChange={onRangeChange} scopeKey="site-a" />,
     );
-    await userEvent.click(screen.getByRole("tab", { name: "每日数据" }));
-    await userEvent.click(screen.getByRole("tab", { name: "图表" }));
+    await userEvent.click(screen.getByRole("button", { name: "每日数据" }));
+    await userEvent.click(screen.getByRole("button", { name: "确认金额" }));
     const otherSite = structuredClone(data);
     otherSite.daily[2]!.confirmed_amount_cents = 987654;
     rerender(
       <ChartAreaInteractive analytics={otherSite} range={30} pending={false} onRangeChange={onRangeChange} scopeKey="site-b" />,
     );
-    await userEvent.click(screen.getByRole("tab", { name: "每日数据" }));
+    await userEvent.click(screen.getByRole("button", { name: "每日数据" }));
     expect(screen.queryByRole("button", { name: /导出 CSV/ })).not.toBeInTheDocument();
     expect(screen.getByRole("status")).toHaveTextContent("共 30 天");
     expect(dailyDates()).toHaveLength(30);

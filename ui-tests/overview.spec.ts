@@ -126,8 +126,8 @@ test.describe("touch overview links", () => {
       expect(targets.length).toBeGreaterThan(0);
       expect(targets.filter(target => target.width < MIN_TOUCH_TARGET_SIZE || target.height < MIN_TOUCH_TARGET_SIZE)).toEqual([]);
       await record(page, info, { width, touchTargets: targets });
-      // The chart follows the reminder list on mobile. Its selected control must
-      // be in the viewport for the audit's paint and hit-test evidence.
+      // Ensure the trend metric control is scrolled into the viewport for the
+      // audit's paint and hit-test evidence.
       await page.getByRole("group", { name: "趋势指标", exact: true }).scrollIntoViewIfNeeded();
       await page.clock.runFor(100);
       await audit(page, info, "overview-touch-" + width);

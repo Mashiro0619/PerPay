@@ -441,7 +441,7 @@ describe("navigation and draft protection", () => {
     await userEvent.setup().click(await screen.findByRole("option", { name: "近 7 天" }));
     expect(await screen.findByText("正在读取近 7 天…")).toBeVisible();
     expect(container.querySelector("[data-slot=chart]")).toBeNull();
-    await userEvent.click(screen.getByRole("tab", { name: "每日数据" }));
+    await userEvent.click(screen.getByRole("button", { name: "每日数据" }));
     const daily = screen.getByRole("region", { name: "每日数据" });
     expect(daily).toHaveAttribute("aria-busy", "true");
     expect(within(daily).queryAllByRole("gridcell")).toHaveLength(0);
@@ -453,8 +453,8 @@ describe("navigation and draft protection", () => {
       );
     });
     expect(
-      await screen.findByRole("tab", { name: "每日数据" }),
-    ).toHaveAttribute("aria-selected", "true");
+      await screen.findByRole("button", { name: "每日数据" }),
+    ).toHaveAttribute("aria-pressed", "true");
     expect(screen.queryByText("正在读取近 7 天…")).not.toBeInTheDocument();
     const loadedDaily = screen.getByRole("region", { name: "每日数据" });
     expect(loadedDaily).not.toHaveAttribute("aria-busy", "true");
@@ -650,34 +650,37 @@ describe("overview layout", () => {
     expect(card.getByRole("link", { name: "接入业务网站" })).toHaveAttribute("href", "/sites");
     expect(new URL(card.getByRole("link", { name: "测试收款" }).getAttribute("href")!, "http://localhost").searchParams.get("overlay")).toBe("/test-payment");
     expect(screen.queryByRole("heading", { name: "收款趋势" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("tab", { name: "每日数据" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "每日数据" })).not.toBeInTheDocument();
   });
 
-  it("places trends immediately after metrics, before recent activity and daily detail", async () => {
-    mount({ path: "/", configured: true, hasOrders: true });
-    const trend = await screen.findByRole("heading", { name: "收款趋势" });
-    const metrics = screen.getByText("今日确认金额", { exact: true });
-    const work = screen.getByRole("heading", { name: "全部待处理" });
-    const recent = screen.getByRole("heading", {
-      name: "最近订单",
-    });
-    const daily = screen.getByRole("tab", { name: "每日数据" });
-    const precedes = (a: Element, b: Element) =>
-      Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
-    expect(trend.closest("[data-content-width]")).toHaveClass("max-w-7xl", "mx-auto");
-    expect(trend.closest("[data-overview-layout]")).not.toHaveClass("max-w-7xl", "mx-auto");
-    expect(daily).toHaveAttribute("aria-selected", "false");
-    expect(
-      screen.queryByRole("table", { name: "每日收款数据" }),
-    ).not.toBeInTheDocument();
-    expect(precedes(metrics, trend)).toBe(true);
-    expect(precedes(trend, work)).toBe(true);
-    expect(precedes(trend, recent)).toBe(true);
-    expect(precedes(daily, work)).toBe(true);
-    expect(daily.closest("[data-slot=card]")).toBe(
-      trend.closest("[data-slot=card]"),
-    );
-  });
+  it.each([false, true])(
+    "places trends immediately after metrics, before recent activity and daily detail (mobile: %s)",
+    async (mobile) => {
+      mount({ path: "/", configured: true, hasOrders: true, mobile });
+      const trend = await screen.findByRole("heading", { name: "收款趋势" });
+      const metrics = screen.getByText("今日确认金额", { exact: true });
+      const work = screen.getByRole("heading", { name: "全部待处理" });
+      const recent = screen.getByRole("heading", {
+        name: "最近订单",
+      });
+      const daily = screen.getByRole("button", { name: "每日数据" });
+      const precedes = (a: Element, b: Element) =>
+        Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+      expect(trend.closest("[data-content-width]")).toHaveClass("max-w-7xl", "mx-auto");
+      expect(trend.closest("[data-overview-layout]")).not.toHaveClass("max-w-7xl", "mx-auto");
+      expect(daily).toHaveAttribute("aria-pressed", "false");
+      expect(
+        screen.queryByRole("table", { name: "每日收款数据" }),
+      ).not.toBeInTheDocument();
+      expect(precedes(metrics, trend)).toBe(true);
+      expect(precedes(trend, work)).toBe(true);
+      expect(precedes(trend, recent)).toBe(true);
+      expect(precedes(daily, work)).toBe(true);
+      expect(daily.closest("[data-slot=card]")).toBe(
+        trend.closest("[data-slot=card]"),
+      );
+    },
+  );
 });
 
 describe("responsive page actions", () => {
@@ -864,7 +867,7 @@ describe("shared content width navigation", () => {
 
   it("preserves the daily-report tab, every date and analytics observers when width changes", async () => {
     const { fetchMock, container } = mount({ path: "/", configured: true, hasOrders: true });
-    const tab = await screen.findByRole("tab", { name: "每日数据" });
+    const tab = await screen.findByRole("button", { name: "每日数据" });
     await userEvent.click(tab);
     const report = await screen.findByRole("region", { name: "每日数据" });
     const before = fetchMock.mock.calls.length;
@@ -872,12 +875,12 @@ describe("shared content width navigation", () => {
     const dates = Array.from(grid.querySelectorAll<HTMLTimeElement>(".daily-date time[datetime]"))
       .map((time) => time.dateTime);
     expect(dates).toHaveLength(30);
-    await userEvent.click(screen.getByRole("tab", { name: "图表" }));
+    await userEvent.click(screen.getByRole("button", { name: "确认金额" }));
     await userEvent.click(tab);
     expect(within(report).getByRole("status")).toHaveTextContent("共 30 天");
     expect(fetchMock).toHaveBeenCalledTimes(before);
     await userEvent.click(screen.getByRole("button", { name: "切换为全屏布局" }));
-    expect(tab).toHaveAttribute("aria-selected", "true");
+    expect(tab).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("grid", { name: "每日收款日历" })).toBe(grid);
     expect(Array.from(grid.querySelectorAll<HTMLTimeElement>(".daily-date time[datetime]"))
       .map((time) => time.dateTime)).toEqual(dates);

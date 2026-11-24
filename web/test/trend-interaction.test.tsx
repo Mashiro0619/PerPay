@@ -322,13 +322,13 @@ describe("trend chart remembered preferences", () => {
     await screen.findByRole("application");
     await user.click(screen.getByRole("button", { name: "累计图" }));
     await user.click(screen.getByRole("button", { name: "新建订单" }));
-    await user.click(screen.getByRole("tab", { name: "每日数据" }));
+    await user.click(screen.getByRole("button", { name: "每日数据" }));
     expect(
       screen.queryByRole("group", { name: "图表类型" }),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole("group", { name: "趋势指标" }),
-    ).not.toBeInTheDocument();
+      screen.getByRole("group", { name: "趋势指标" }),
+    ).toBeVisible();
     expect(screen.getByRole("status")).toHaveTextContent(
       "共 30 天",
     );
@@ -337,7 +337,7 @@ describe("trend chart remembered preferences", () => {
       .map(time => time.dateTime);
     expect(dates).toHaveLength(30);
 
-    await user.click(screen.getByRole("tab", { name: "图表" }));
+    await user.click(screen.getByRole("button", { name: "新建订单" }));
     expectSelectedType("LINE", container);
     expect(screen.getByRole("button", { name: "新建订单" })).toHaveAttribute(
       "aria-pressed",
@@ -346,7 +346,7 @@ describe("trend chart remembered preferences", () => {
     expect(container.querySelector("[data-metric-value]")).toHaveTextContent(
       "28",
     );
-    await user.click(screen.getByRole("tab", { name: "每日数据" }));
+    await user.click(screen.getByRole("button", { name: "每日数据" }));
     expect(screen.getByRole("status")).toHaveTextContent(
       "共 30 天",
     );
@@ -411,7 +411,7 @@ describe("trend chart remembered preferences", () => {
     );
     expect(screen.getByText("正在读取近 30 天…")).toBeVisible();
 
-    await user.click(screen.getByRole("tab", { name: "每日数据" }));
+    await user.click(screen.getByRole("button", { name: "每日数据" }));
     expect(screen.getByRole("region", { name: "每日数据" })).toHaveAttribute(
       "aria-busy",
       "true",
@@ -436,7 +436,7 @@ describe("trend chart remembered preferences", () => {
     expect(screen.getByRole("status")).toHaveTextContent(
       "共 30 天",
     );
-    await user.click(screen.getByRole("tab", { name: "图表" }));
+    await user.click(screen.getByRole("button", { name: "确认金额" }));
     expect(container.querySelector("[data-metric-value]")).toHaveTextContent(
       "¥678.90",
     );

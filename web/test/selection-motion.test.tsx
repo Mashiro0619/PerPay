@@ -344,7 +344,7 @@ describe("chart series motion", () => {
     await waitFor(() => expect(animate).toHaveBeenCalled());
     for (const call of vi.mocked(animate).mock.calls) expect(call[0]).toBeInstanceOf(SVGElement);
     for (const element of container.querySelectorAll<HTMLElement>('.trend-header, .trend-content, .trend-toolbar, .trend-summary, .recharts-cartesian-axis')) expect(element.style.opacity).toBe("");
-    await user.click(screen.getByRole("tab", { name: "每日数据" }));
+    await user.click(screen.getByRole("button", { name: "每日数据" }));
     expect(screen.getByRole("button", { name: /2026-06-01/ })).toBeVisible();
     for (const element of container.querySelectorAll<HTMLElement>('[data-slot="card-content"], .daily-report')) expect(element.style.opacity).toBe("");
   });

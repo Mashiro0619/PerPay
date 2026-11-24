@@ -121,12 +121,12 @@ test("combined money and order series retain independent units, authoritative to
     if (new URL(request.url()).pathname.startsWith("/api/") && !["GET", "HEAD"].includes(request.method())) writes.push(request.method() + " " + new URL(request.url()).pathname);
   });
   await card.getByRole("button", { name: "累计图", exact: true }).click();
-  await card.getByRole("tab", { name: "每日数据", exact: true }).click();
+  await card.getByRole("button", { name: "每日数据", exact: true }).click();
   const daily = card.getByRole("region", { name: "每日数据", exact: true });
   await expect(daily.getByRole("status")).toHaveText("共 30 天");
   const dates = await daily.locator(".daily-date time").allTextContents();
   expect(dates).toHaveLength(30);
-  await card.getByRole("tab", { name: "图表", exact: true }).click();
+  await card.getByRole("button", { name: "确认金额", exact: true }).click();
   const beforePresentation = fixture.reads();
   const combined = card.getByRole("button", { name: "金额与订单", exact: true });
   await combined.click();
@@ -148,11 +148,11 @@ test("combined money and order series retain independent units, authoritative to
   await capture(card, info, "combined-desktop");
   expect(await page.evaluate(() => localStorage.getItem("perpay:dashboard-chart-type"))).toBe("LINE");
 
-  await card.getByRole("tab", { name: "每日数据", exact: true }).click();
-  await expect(card.getByRole("group", { name: "趋势指标", exact: true })).toHaveCount(0);
+  await card.getByRole("button", { name: "每日数据", exact: true }).click();
+  await expect(card.getByRole("group", { name: "趋势指标", exact: true })).toHaveCount(1);
   await expect(daily.getByRole("status")).toHaveText("共 30 天");
   expect(await daily.locator(".daily-date time").allTextContents()).toEqual(dates);
-  await card.getByRole("tab", { name: "图表", exact: true }).click();
+  await combined.click();
   await expectCombined(card, data);
   for (const metric of ["新建订单", "确认金额"]) {
     await card.getByRole("button", { name: metric, exact: true }).click();
@@ -168,8 +168,11 @@ test("combined money and order series retain independent units, authoritative to
     await expect.poll(() => new URL(page.url()).searchParams.get("range")).toBe(String(days));
     await expect.poll(() => fixture.responses.has(days)).toBe(true);
     await expect(card).toHaveAttribute("aria-busy", "false");
-    await expectCombined(card, fixture.responses.get(days)!);
-    await expect(card.locator(".trend-caption")).toContainText(`共 ${days} 天`);
+    const rangeData = fixture.responses.get(days)!;
+    await expectCombined(card, rangeData);
+    await expect(card.locator(".trend-caption .trend-dates")).toContainText(
+      `${rangeData.daily[0]!.date} — ${rangeData.daily.at(-1)!.date}`,
+    );
   }
   expect(await page.evaluate(() => localStorage.getItem("perpay:dashboard-chart-type"))).toBe("LINE");
   expect(writes).toEqual([]);
