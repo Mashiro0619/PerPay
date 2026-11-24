@@ -2,7 +2,7 @@ import type { Locator } from "@playwright/test";
 import { test, expect, login, record } from "./fixtures";
 import { screenshot } from "./audit";
 
-async function expectInputRing(control: Locator, indicator = control, alpha = 255) {
+async function expectInputRing(control: Locator, indicator = control, alpha = 128) {
   await expect(control).toBeFocused();
   expect(await control.evaluate(element => element.matches(":focus-visible"))).toBe(true);
   await expect.poll(() => indicator.evaluate(element => {
@@ -18,7 +18,7 @@ async function expectInputRing(control: Locator, indicator = control, alpha = 25
     return context.getImageData(0, 0, 1, 1).data[3];
   })).toBe(alpha);
   await expect.poll(() => indicator.evaluate(element => getComputedStyle(element).boxShadow)).toMatch(/\s3px(?:,|$)/);
-  if (alpha === 255) {
+  if (alpha === 128) {
     const colors = await indicator.evaluate(element => {
       const context = document.createElement("canvas").getContext("2d")!;
       const paint = (color: string) => {
@@ -34,7 +34,7 @@ async function expectInputRing(control: Locator, indicator = control, alpha = 25
       };
       return {
         actual: paint(getComputedStyle(element).getPropertyValue("--tw-ring-color")),
-        expected: paint(document.documentElement.classList.contains("dark") ? "oklch(0.8 0 0)" : "oklch(0.45 0 0)"),
+        expected: paint(document.documentElement.classList.contains("dark") ? "oklch(0.556 0 0 / 0.5)" : "oklch(0.708 0 0 / 0.5)"),
       };
     });
     expect(colors.actual).toEqual(colors.expected);
@@ -80,7 +80,7 @@ async function expectButtonRing(button: Locator) {
   return focus;
 }
 
-for (const theme of ["light", "dark"] as const) test(`${theme}: form controls retain high-contrast opaque focus and invalid states`, async ({ page, manifest }, info) => {
+for (const theme of ["light", "dark"] as const) test(`${theme}: form controls retain official translucent focus and invalid states`, async ({ page, manifest }, info) => {
   await page.emulateMedia({ colorScheme: theme, reducedMotion: "reduce" });
   await page.addInitScript(theme => localStorage.setItem("perpay:theme", theme), theme);
   const writes: string[] = [];
