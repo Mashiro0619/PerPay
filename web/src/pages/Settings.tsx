@@ -268,8 +268,14 @@ export default function Settings() {
               )}
               <TabsContent
                 value={section}
-                role={isMobile ? "none" : undefined}
                 className="min-w-0"
+                render={
+                  isMobile
+                    ? ({ role: _role, tabIndex: _tabIndex, "aria-labelledby": _labelledBy, ...panelProps }) => (
+                        <div {...panelProps} />
+                      )
+                    : undefined
+                }
               >
                 {paneContent}
               </TabsContent>

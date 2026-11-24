@@ -191,7 +191,11 @@ export default function Audit() {
             {exporting.generated && <p role="status" className="w-full text-sm text-muted-foreground" data-list-menu-feedback>文件已生成</p>}
           </ListQueryToolbar>
         </ListToolbarPart>
-        <TabsContent value={view?.id ?? ""} className="flex min-w-0 flex-col gap-3">
+        <TabsContent
+          value={view?.id ?? ""}
+          aria-label={!view ? "自定义筛选审计日志" : undefined}
+          className="flex min-w-0 flex-col gap-3"
+        >
         <OverlayRecordList
           global
           items={(events.data?.data ?? []).map(auditEventHref)}

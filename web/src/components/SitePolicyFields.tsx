@@ -566,6 +566,13 @@ export function SitePolicyFields({
                   required
                   value={timeoutRaw}
                   onBlur={() => setTimeoutTouched(true)}
+                  onInvalid={(event) => {
+                    event.preventDefault();
+                    setTimeoutTouched(true);
+                    if (notificationPolicyOpen && isFirstInvalidControl(event.currentTarget)) {
+                      event.currentTarget.focus();
+                    }
+                  }}
                   onChange={(event) => {
                     if (disabled) return;
                     const raw = event.target.value;

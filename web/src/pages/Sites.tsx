@@ -178,7 +178,17 @@ export function SiteSettingsPage() {
           </SelectionMotionGroup>
         </div>
       )}
-      <TabsContent value={section} role={isMobile ? "none" : undefined} className="min-w-0">
+      <TabsContent
+        value={section}
+        className="min-w-0"
+        render={
+          isMobile
+            ? ({ role: _role, tabIndex: _tabIndex, "aria-labelledby": _labelledBy, ...panelProps }) => (
+                <div {...panelProps} />
+              )
+            : undefined
+        }
+      >
         {paneContent}
       </TabsContent>
     </Tabs>

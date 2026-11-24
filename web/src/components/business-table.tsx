@@ -289,7 +289,7 @@ function BusinessTableView<T extends RowData>({
       if (sort && field) {
         control?.setSort(field, sort.desc ? "desc" : "asc");
         setSortAnnouncement(
-          `已按${spec.label}${sort.desc ? "降序" : "升序"}排列，当前 ${items.length} 条记录`,
+          `已按${spec.label}${sort.desc ? "降序" : "升序"}排列`,
         );
       }
     },

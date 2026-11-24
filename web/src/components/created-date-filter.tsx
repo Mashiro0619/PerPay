@@ -65,14 +65,19 @@ function selectedPreset(query: ListQueryControl["query"]) {
 function validateDates(from: string, to: string) {
   if (!from || !to) {
     const error = "请同时提供开始和结束日期";
-    return { error, fromError: from ? "" : error, toError: to ? "" : error };
+    return {
+      error,
+      fromFieldError: from ? "" : error,
+      toFieldError: to ? "" : error,
+      rangeError: "",
+    };
   }
   try {
     createdDateRange(from, to);
-    return { error: "", fromError: "", toError: "" };
+    return { error: "", fromFieldError: "", toFieldError: "", rangeError: "" };
   } catch (reason) {
     const error = reason instanceof Error ? reason.message : "日期无效";
-    return { error, fromError: error, toError: error };
+    return { error, fromFieldError: "", toFieldError: "", rangeError: error };
   }
 }
 
@@ -92,17 +97,20 @@ function InlineCreatedDateFilter({
   const [from, setFrom] = useState(() => control.query.createdFrom ?? beijingDate());
   const [to, setTo] = useState(() => control.query.createdTo ?? beijingDate());
   const [touched, setTouched] = useState({ from: false, to: false });
+  const [submitted, setSubmitted] = useState(false);
   const fromInput = useRef<HTMLInputElement>(null);
   const toInput = useRef<HTMLInputElement>(null);
   const rawValidation = selected === "custom"
-    ? validateDates(from, to) : { error: "", fromError: "", toError: "" };
-  const fromError = touched.from ? rawValidation.fromError : "";
-  const toError = touched.to ? rawValidation.toError : "";
-  const error = fromError || toError ? rawValidation.error : "";
+    ? validateDates(from, to)
+    : { error: "", fromFieldError: "", toFieldError: "", rangeError: "" };
+  const showRangeError = Boolean(rawValidation.rangeError) && ((touched.from && touched.to) || submitted);
+  const fromError = (touched.from ? rawValidation.fromFieldError : "") || (showRangeError ? rawValidation.rangeError : "");
+  const toError = (touched.to ? rawValidation.toFieldError : "") || (showRangeError ? rawValidation.rangeError : "");
+  const error = fromError || toError;
   useEffect(() => {
-    fromInput.current?.setCustomValidity(rawValidation.fromError);
-    toInput.current?.setCustomValidity(rawValidation.toError);
-  }, [rawValidation.fromError, rawValidation.toError, selected]);
+    fromInput.current?.setCustomValidity(rawValidation.fromFieldError || rawValidation.rangeError);
+    toInput.current?.setCustomValidity(rawValidation.toFieldError || rawValidation.rangeError);
+  }, [rawValidation.fromFieldError, rawValidation.toFieldError, rawValidation.rangeError, selected]);
 
   function stageCustom(nextFrom: string, nextTo: string) {
     if (!validateDates(nextFrom, nextTo).error)
@@ -125,6 +133,7 @@ function InlineCreatedDateFilter({
               if (!value) return;
               setSelected(value);
               setTouched({ from: false, to: false });
+              setSubmitted(false);
               if (value === "custom") {
                 stageCustom(from, to);
                 return;
@@ -161,11 +170,16 @@ function InlineCreatedDateFilter({
               required
               value={from}
               onBlur={() => setTouched(current => ({ ...current, from: true }))}
-              onInvalid={() => setTouched(current => ({ ...current, from: true }))}
+              onInvalid={() => {
+                setSubmitted(true);
+                setTouched({ from: true, to: true });
+              }}
               onChange={event => {
                 const next = event.target.value;
                 setFrom(next);
-                if (!validateDates(next, to).fromError) {
+                const nextValidation = validateDates(next, to);
+                if (!nextValidation.error) setSubmitted(false);
+                if (!nextValidation.fromFieldError && !nextValidation.rangeError) {
                   setTouched(current => ({ ...current, from: false }));
                 }
                 stageCustom(next, to);
@@ -185,11 +199,16 @@ function InlineCreatedDateFilter({
               required
               value={to}
               onBlur={() => setTouched(current => ({ ...current, to: true }))}
-              onInvalid={() => setTouched(current => ({ ...current, to: true }))}
+              onInvalid={() => {
+                setSubmitted(true);
+                setTouched({ from: true, to: true });
+              }}
               onChange={event => {
                 const next = event.target.value;
                 setTo(next);
-                if (!validateDates(from, next).toError) {
+                const nextValidation = validateDates(from, next);
+                if (!nextValidation.error) setSubmitted(false);
+                if (!nextValidation.toFieldError && !nextValidation.rangeError) {
                   setTouched(current => ({ ...current, to: false }));
                 }
                 stageCustom(from, next);

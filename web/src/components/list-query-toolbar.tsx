@@ -193,6 +193,14 @@ export function ListQueryToolbar({
                 searchInput.current?.focus();
                 return;
               }
+              if (
+                selectedMode.pattern &&
+                !new RegExp("^(?:" + selectedMode.pattern + ")$").test(trimmed)
+              ) {
+                setError("请输入有效的" + selectedMode.label + "格式。");
+                searchInput.current?.focus();
+                return;
+              }
               setError("");
               lookup.onSubmit(selectedMode.value, trimmed);
               return;

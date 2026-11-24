@@ -110,13 +110,14 @@ export function DailyAnalytics({
     else if (event.key === "Home") targetIndex = 0;
     else if (event.key === "End") targetIndex = chronologicalDates.length - 1;
 
-    if (targetIndex === null || targetIndex < 0 || targetIndex >= chronologicalDates.length) {
+    if (targetIndex === null) return;
+    event.preventDefault();
+    if (targetIndex < 0 || targetIndex >= chronologicalDates.length) {
       return;
     }
 
     const targetDate = chronologicalDates[targetIndex];
     if (!targetDate) return;
-    event.preventDefault();
     setSelection({ scope: scopeKey, date: targetDate });
     const targetNode = cellRefs.current.get(targetDate);
     if (targetNode) {

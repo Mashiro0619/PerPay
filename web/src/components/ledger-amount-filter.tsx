@@ -17,19 +17,26 @@ export function LedgerAmountFilter(props: LedgerAmountFilterProps) {
 
 function validateAmounts(minimum: string, maximum: string) {
   let min: number | undefined, max: number | undefined;
-  let minError = "", maxError = "";
+  let minFieldError = "", maxFieldError = "";
   try { min = parseLedgerAmount(minimum); }
-  catch (reason) { minError = reason instanceof Error ? reason.message : "金额范围无效。"; }
+  catch (reason) { minFieldError = reason instanceof Error ? reason.message : "金额范围无效。"; }
   try { max = parseLedgerAmount(maximum); }
-  catch (reason) { maxError = reason instanceof Error ? reason.message : "金额范围无效。"; }
-  if (minError || maxError)
-    return { min, max, error: minError || maxError, minError, maxError };
+  catch (reason) { maxFieldError = reason instanceof Error ? reason.message : "金额范围无效。"; }
+  if (minFieldError || maxFieldError)
+    return {
+      min,
+      max,
+      error: minFieldError || maxFieldError,
+      minFieldError,
+      maxFieldError,
+      rangeError: "",
+    };
   try {
     validateLedgerAmountRange(min, max);
-    return { min, max, error: "", minError: "", maxError: "" };
+    return { min, max, error: "", minFieldError: "", maxFieldError: "", rangeError: "" };
   } catch (reason) {
     const error = reason instanceof Error ? reason.message : "金额范围无效。";
-    return { min, max, error, minError: error, maxError: error };
+    return { min, max, error, minFieldError: "", maxFieldError: "", rangeError: error };
   }
 }
 
@@ -39,17 +46,19 @@ function InlineLedgerAmountFilter({ control, searchParams }: LedgerAmountFilterP
   const [minimum, setMinimum] = useState(() => ledgerAmountInput(search.get("min_amount_cents")));
   const [maximum, setMaximum] = useState(() => ledgerAmountInput(search.get("max_amount_cents")));
   const [touched, setTouched] = useState({ min: false, max: false });
+  const [submitted, setSubmitted] = useState(false);
   const minInput = useRef<HTMLInputElement>(null);
   const maxInput = useRef<HTMLInputElement>(null);
   const id = useId();
-  const { error: rawError, minError: rawMinError, maxError: rawMaxError } = validateAmounts(minimum, maximum);
-  const minError = touched.min ? rawMinError : "";
-  const maxError = touched.max ? rawMaxError : "";
-  const error = minError || maxError ? rawError : "";
+  const raw = validateAmounts(minimum, maximum);
+  const showRangeError = Boolean(raw.rangeError) && ((touched.min && touched.max) || submitted);
+  const minError = (touched.min ? raw.minFieldError : "") || (showRangeError ? raw.rangeError : "");
+  const maxError = (touched.max ? raw.maxFieldError : "") || (showRangeError ? raw.rangeError : "");
+  const error = minError || maxError;
   useEffect(() => {
-    minInput.current?.setCustomValidity(rawMinError);
-    maxInput.current?.setCustomValidity(rawMaxError);
-  }, [rawMinError, rawMaxError]);
+    minInput.current?.setCustomValidity(raw.minFieldError || raw.rangeError);
+    maxInput.current?.setCustomValidity(raw.maxFieldError || raw.rangeError);
+  }, [raw.minFieldError, raw.maxFieldError, raw.rangeError]);
 
   function stage(nextMinimum: string, nextMaximum: string) {
     const { min, max, error } = validateAmounts(nextMinimum, nextMaximum);
@@ -77,11 +86,16 @@ function InlineLedgerAmountFilter({ control, searchParams }: LedgerAmountFilterP
             value={minimum}
             maxLength={24}
             onBlur={() => setTouched(current => ({ ...current, min: true }))}
-            onInvalid={() => setTouched(current => ({ ...current, min: true }))}
+            onInvalid={() => {
+              setSubmitted(true);
+              setTouched({ min: true, max: true });
+            }}
             onChange={event => {
               const next = event.target.value;
               setMinimum(next);
-              if (!validateAmounts(next, maximum).minError) {
+              const nextValidation = validateAmounts(next, maximum);
+              if (!nextValidation.error) setSubmitted(false);
+              if (!nextValidation.minFieldError && !nextValidation.rangeError) {
                 setTouched(current => ({ ...current, min: false }));
               }
               stage(next, maximum);
@@ -105,11 +119,16 @@ function InlineLedgerAmountFilter({ control, searchParams }: LedgerAmountFilterP
             value={maximum}
             maxLength={24}
             onBlur={() => setTouched(current => ({ ...current, max: true }))}
-            onInvalid={() => setTouched(current => ({ ...current, max: true }))}
+            onInvalid={() => {
+              setSubmitted(true);
+              setTouched({ min: true, max: true });
+            }}
             onChange={event => {
               const next = event.target.value;
               setMaximum(next);
-              if (!validateAmounts(minimum, next).maxError) {
+              const nextValidation = validateAmounts(minimum, next);
+              if (!nextValidation.error) setSubmitted(false);
+              if (!nextValidation.maxFieldError && !nextValidation.rangeError) {
                 setTouched(current => ({ ...current, max: false }));
               }
               stage(minimum, next);

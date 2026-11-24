@@ -1,4 +1,4 @@
-import { createContext, lazy, Suspense, useCallback, useContext, useEffect, useId, useMemo, useState, type ReactNode } from "react";
+import { Component, createContext, lazy, Suspense, useCallback, useContext, useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import { isReleaseVersion, isPrereleaseVersion } from "../../src/shared/release-version";
 import { useQuery } from "@tanstack/react-query";
 import { api, ApiError, queryClient, result, sessionKey, type OfficialUpdate } from "@/api/client";
@@ -226,22 +226,58 @@ function useUpdateOwner() {
 
 const OfficialUpdateContext = createContext<ReturnType<typeof useUpdateOwner> | null>(null);
 
+class LazyDialogBoundary extends Component<
+  { children: ReactNode; resetKey?: unknown; onFailure?: () => void },
+  { hasError: boolean }
+> {
+  override state = { hasError: false };
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  override componentDidUpdate(prevProps: { resetKey?: unknown }) {
+    if (this.state.hasError && prevProps.resetKey !== this.props.resetKey) {
+      this.setState({ hasError: false });
+    }
+  }
+  override componentDidCatch() {
+    toast.add({
+      title: "更新窗口加载失败，请刷新页面后重试。",
+      type: "error",
+      timeout: 5000,
+    });
+    this.props.onFailure?.();
+  }
+  override render() {
+    return this.state.hasError ? null : this.props.children;
+  }
+}
+
 function UpdateOwner({ children }: { children: ReactNode }) {
   const value = useUpdateOwner();
+  const [lastSelfUpdateRequest, setLastSelfUpdateRequest] = useState(value.selfUpdateRequest);
+  if (value.selfUpdateRequest && value.selfUpdateRequest !== lastSelfUpdateRequest) {
+    setLastSelfUpdateRequest(value.selfUpdateRequest);
+  }
+  const activeSelfUpdate = value.selfUpdateRequest ?? lastSelfUpdateRequest;
   return (
     <OfficialUpdateContext value={value}>
       {children}
-      {value.selfUpdateRequest !== null && (
-        <Suspense fallback={null}>
-          <SelfUpdateDialog
-            open
-            onOpenChange={(opened) => { if (!opened) value.closeSelfUpdate(); }}
-            targetVersion={value.selfUpdateRequest.targetVersion}
-            currentVersion={value.selfUpdateRequest.currentVersion}
-            releaseUrl={value.selfUpdateRequest.releaseUrl}
-            returnFocus={value.selfUpdateRequest.returnFocus}
-          />
-        </Suspense>
+      {activeSelfUpdate !== null && (
+        <LazyDialogBoundary
+          resetKey={value.selfUpdateRequest}
+          onFailure={value.closeSelfUpdate}
+        >
+          <Suspense fallback={null}>
+            <SelfUpdateDialog
+              open={value.selfUpdateRequest !== null}
+              onOpenChange={(opened) => { if (!opened) value.closeSelfUpdate(); }}
+              targetVersion={activeSelfUpdate.targetVersion}
+              currentVersion={activeSelfUpdate.currentVersion}
+              releaseUrl={activeSelfUpdate.releaseUrl}
+              returnFocus={activeSelfUpdate.returnFocus}
+            />
+          </Suspense>
+        </LazyDialogBoundary>
       )}
     </OfficialUpdateContext>
   );
@@ -262,19 +298,26 @@ function useOfficialUpdate() {
 export function OfficialUpdateDialog() {
   const { update, checked, preferences, selection, dialogRequest, clearDialogRequest, openSelfUpdate } = useOfficialUpdate();
   const candidate = checked && !selection.pending?.manual && !dialogRequest && !update.isFetching && !update.isError ? update.data?.data : undefined;
-  if (!candidate && !dialogRequest) return null;
+  const shouldActivate = candidate?.status === "update_available" || dialogRequest !== null;
+  const [mounted, setMounted] = useState(shouldActivate);
+  if (shouldActivate && !mounted) {
+    setMounted(true);
+  }
+  if (!mounted) return null;
   return (
-    <Suspense fallback={null}>
-      <UpdateDialog
-        channel={preferences.channel}
-        selection={selection}
-        candidate={candidate}
-        request={dialogRequest}
-        onRequestHandled={clearDialogRequest}
-        onStartUpdate={openSelfUpdate}
-        upgradeGuide={upgradeGuide}
-      />
-    </Suspense>
+    <LazyDialogBoundary resetKey={dialogRequest ?? candidate?.latest_version}>
+      <Suspense fallback={null}>
+        <UpdateDialog
+          channel={preferences.channel}
+          selection={selection}
+          candidate={candidate}
+          request={dialogRequest}
+          onRequestHandled={clearDialogRequest}
+          onStartUpdate={openSelfUpdate}
+          upgradeGuide={upgradeGuide}
+        />
+      </Suspense>
+    </LazyDialogBoundary>
   );
 }
 

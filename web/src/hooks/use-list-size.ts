@@ -14,30 +14,43 @@ export function useListSize<T extends HTMLElement = HTMLDivElement>() {
   });
 
   useLayoutEffect(() => {
-    function measure() {
+    let lastViewport = -1;
+    let lastContainer = -1;
+    let lastRem = -1;
+    function readSize(): TableSize {
       const viewport = window.innerWidth;
       const container = ref.current?.getBoundingClientRect().width || viewport;
       const rem =
         Number.parseFloat(getComputedStyle(document.documentElement).fontSize) ||
         16;
+      return { viewport, container, rem };
+    }
+    function measure() {
+      const next = readSize();
+      lastViewport = next.viewport;
+      lastContainer = next.container;
+      lastRem = next.rem;
       setSize((previous) =>
-        previous.viewport === viewport &&
-        previous.container === container &&
-        previous.rem === rem
+        previous.viewport === next.viewport &&
+        previous.container === next.container &&
+        previous.rem === next.rem
           ? previous
-          : { viewport, container, rem },
+          : next,
       );
     }
 
     const throttled = createRafCoalescer(measure);
     measure();
-    let initialObserve = true;
     const observer =
       typeof ResizeObserver === "undefined"
         ? null
         : new ResizeObserver(() => {
-            if (initialObserve) {
-              initialObserve = false;
+            const next = readSize();
+            if (
+              next.viewport === lastViewport &&
+              next.container === lastContainer &&
+              next.rem === lastRem
+            ) {
               return;
             }
             throttled.schedule();

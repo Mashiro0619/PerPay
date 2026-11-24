@@ -142,7 +142,11 @@ function ArchiveCreator({ blocked }: { blocked: boolean }) {
       return;
     }
     setBefore(value);
-    if (!value || !archiveDateError(value)) setDateError("");
+    if (!value) {
+      setDateError("");
+    } else if (dateError) {
+      setDateError(archiveDateError(value));
+    }
   }
   function confirmArchive() {
     if (operation.unknown) { setOpen(true); return; }

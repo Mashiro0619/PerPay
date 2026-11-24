@@ -5,6 +5,13 @@
 export function createRafCoalescer(callback: () => void) {
   let frameId = 0;
   let pending = false;
+  function flush() {
+    frameId = 0;
+    if (!pending) return;
+    pending = false;
+    callback();
+    frameId = requestAnimationFrame(flush);
+  }
   return {
     schedule() {
       if (typeof requestAnimationFrame !== "function") {
@@ -16,13 +23,7 @@ export function createRafCoalescer(callback: () => void) {
         return;
       }
       callback();
-      frameId = requestAnimationFrame(() => {
-        frameId = 0;
-        if (pending) {
-          pending = false;
-          callback();
-        }
-      });
+      frameId = requestAnimationFrame(flush);
     },
     cancel() {
       if (frameId !== 0 && typeof cancelAnimationFrame === "function") {
