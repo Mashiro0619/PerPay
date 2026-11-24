@@ -70,13 +70,22 @@ describe("administrator frontend delivery", () => {
         const response = await app.request(path);
         assert.equal(response.status, 200);
         assert.match(response.headers.get("content-type") ?? "", /text\/html/);
-        assert.equal(response.headers.get("cache-control"), "no-store");
+        assert.equal(response.headers.get("cache-control"), "no-cache");
+        assert.equal(response.headers.get("x-frame-options"), "DENY");
+        assert.equal(response.headers.get("reporting-endpoints"), 'csp-endpoint="/api/public/v1/csp-report"');
         const policy = response.headers.get("content-security-policy") ?? "";
-        assert.match(policy, /script-src 'self'/);
+        const nonceMatch = /script-src 'nonce-([A-Za-z0-9+/=]+)' 'strict-dynamic' 'report-sample'/.exec(policy);
+        assert.ok(nonceMatch, `expected nonce-based strict-dynamic script-src, got: ${policy}`);
         assert.match(policy, /style-src-attr 'none'/);
         assert.match(policy, /frame-ancestors 'none'/);
+        assert.match(policy, /report-to csp-endpoint/);
         assert.doesNotMatch(policy, /unsafe-inline|unsafe-eval/);
+        assert.match(
+          response.headers.get("content-security-policy-report-only") ?? "",
+          /require-trusted-types-for 'script'/,
+        );
         const html = await response.text();
+        assert.ok(html.includes(`nonce="${nonceMatch[1]}"`));
         assert.doesNotMatch(html, new RegExp(apiSecret));
         faviconPath(html);
       }
@@ -110,6 +119,12 @@ describe("administrator frontend delivery", () => {
         assert.equal((await app.request(missing)).status, 404);
       }
       assert.equal((await app.request("/api/admin/v1/orders")).status, 401);
+      const crossSiteRead = await app.request("/api/admin/v1/orders", {
+        headers: { "sec-fetch-site": "cross-site", "sec-fetch-mode": "cors", "sec-fetch-dest": "empty" },
+      });
+      assert.equal(crossSiteRead.status, 403);
+      assert.equal(crossSiteRead.headers.get("vary"), "Sec-Fetch-Dest, Sec-Fetch-Mode, Sec-Fetch-Site");
+      assert.equal((await app.request("/api/public/v1/csp-report", { method: "POST", body: "[]" })).status, 204);
       assert.equal((await app.request("/healthz")).status, 200);
     } finally {
       services.database.close();

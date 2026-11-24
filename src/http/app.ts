@@ -370,6 +370,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     : null;
   const publicCheckoutBudget = new PublicCheckoutRateLimiter();
   const manualCheckoutBudget = new PublicCheckoutRateLimiter({sourceBurst:5,sourceRequestsPerSecond:1,globalBurst:30,globalRequestsPerSecond:10});
+  const cspReportBudget = new PublicCheckoutRateLimiter({sourceBurst:10,sourceRequestsPerSecond:2,globalBurst:60,globalRequestsPerSecond:20});
   const collectionCodeCache = new CollectionCodeSvgCache();
   const probeOperations = new HealthProbeCache<OperationalSummaries>();
   const adminFrontend = loadAdminFrontend();
@@ -390,22 +391,61 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     context.set("cspNonce", cspNonce);
     context.header("x-request-id", requestId);
     context.header("x-content-type-options", "nosniff");
+    context.header("x-frame-options", "DENY");
     context.header("referrer-policy", "no-referrer");
     context.header("cache-control", "no-store");
     context.header("permissions-policy", "camera=(), microphone=(), geolocation=(), payment=()");
     context.header("cross-origin-resource-policy", "same-origin");
     context.header("cross-origin-opener-policy", "same-origin");
+    context.header("reporting-endpoints", 'csp-endpoint="/api/public/v1/csp-report"');
     context.header(
       "content-security-policy",
-      `default-src 'none'; script-src 'self'; style-src-elem 'self' 'nonce-${cspNonce}'; ` +
+      `default-src 'none'; script-src 'nonce-${cspNonce}' 'strict-dynamic' 'report-sample'; style-src-elem 'self' 'nonce-${cspNonce}'; ` +
         "style-src-attr 'none'; connect-src 'self'; " +
         "img-src 'self'; font-src 'self'; object-src 'none'; frame-ancestors 'none'; " +
-        "base-uri 'none'; form-action 'self'; worker-src 'none'",
+        "base-uri 'none'; form-action 'self'; worker-src 'none'; report-to csp-endpoint",
+    );
+    context.header(
+      "content-security-policy-report-only",
+      "require-trusted-types-for 'script'; report-to csp-endpoint",
     );
     if (dependencies.config.secureCookies) {
       context.header("strict-transport-security", "max-age=31536000; includeSubDomains");
     }
     await next();
+  });
+
+  // Pre-auth Fetch Metadata resource isolation for browser-targeted admin & public checkout APIs.
+  // Cross-site merchant/Epay endpoints (/submit.php, /mapi.php, /api.php, /api/pay/*, /api/v1/*)
+  // are intentionally excluded.
+  const enforceFetchMetadata: MiddlewareHandler<AppEnvironment> = async (context, next) => {
+    context.header("vary", "Sec-Fetch-Dest, Sec-Fetch-Mode, Sec-Fetch-Site");
+    const fetchSite = context.req.header("sec-fetch-site");
+    if (fetchSite !== undefined && fetchSite !== "same-origin" && fetchSite !== "none") {
+      const mode = context.req.header("sec-fetch-mode");
+      const dest = context.req.header("sec-fetch-dest");
+      const isCheckoutReturnNav =
+        context.req.method === "GET" &&
+        mode === "navigate" &&
+        dest !== "object" &&
+        dest !== "embed" &&
+        /^\/api\/public\/v1\/checkouts\/[^/]+\/return$/.test(context.req.path);
+      if (!isCheckoutReturnNav) {
+        throw new HttpApiError(403, "origin_not_allowed", "请求来源不受信任");
+      }
+    }
+    await next();
+  };
+  app.use("/api/admin/v1/*", enforceFetchMetadata);
+  app.use("/api/public/v1/checkouts/*", enforceFetchMetadata);
+
+  app.post("/api/public/v1/csp-report", async (context) => {
+    const sourceAddress = remoteAddress(context, dependencies.config.trustedProxy);
+    if (!cspReportBudget.take(sourceAddress)) {
+      return context.body(null, 429);
+    }
+    await readBodyLimited(context, 16 * 1024).catch(() => undefined);
+    return context.body(null, 204);
   });
 
   app.use("*", async (context, next) => {
@@ -531,7 +571,8 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     if (path.startsWith("/admin/assets/") || /\.[^/]+$/.test(path)) {
       throw new HttpApiError(404, "asset_not_found", "静态资源不存在");
     }
-    return context.html(adminFrontend.render(dependencies.identity.isInitialized(), publicSystemName(dependencies), dependencies.config.setupTokenEnabled).replace("<html", dependencies.demoMode ? '<html data-perpay-demo="readonly"' : "<html"));
+    context.header("cache-control", "no-cache");
+    return context.html(adminFrontend.render(dependencies.identity.isInitialized(), publicSystemName(dependencies), dependencies.config.setupTokenEnabled, context.get("cspNonce")).replace("<html", dependencies.demoMode ? '<html data-perpay-demo="readonly"' : "<html"));
   };
   app.get("/admin", (context) => context.redirect("/admin/" + new URL(context.req.url).search, 308));
   app.get("/admin/*", serveAdmin);
@@ -592,6 +633,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
       }
     }
     if (initialError) { const auditScope = currentAuditContext(); if (auditScope) auditScope.errorCode = initialError.code; }
+    if (status === 200) context.header("cache-control", "no-cache");
     return context.html(renderCheckoutPage({
         serverTime: dependencies.clock?.() ?? Date.now(),
         demoMode: dependencies.demoMode ?? false,
@@ -609,6 +651,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
         ? null
         : `/api/public/v1/checkouts/${encodeURIComponent(token)}/qr.svg`,
       initialError,
+      cspNonce: context.get("cspNonce"),
     }), status);
   });
 
@@ -2658,6 +2701,7 @@ function setAuthenticationCookies(
 }
 
 function clearAuthenticationCookies(context: Context<AppEnvironment>, secure: boolean): void {
+  context.header("clear-site-data", '"cookies", "storage", "cache"');
   deleteCookie(context, sessionCookieName(secure), {
     path: "/",
     secure,
@@ -2690,6 +2734,17 @@ function readApiAuthentication(context: Context<AppEnvironment>): ApiRequestAuth
   return { version, clientId, timestamp, nonce, signature };
 }
 
+function clientUserAgent(context: Context<AppEnvironment>): string | undefined {
+  const ua = context.req.header("user-agent");
+  if (ua) return ua;
+  const parts = [
+    context.req.header("sec-ch-ua"),
+    context.req.header("sec-ch-ua-platform"),
+    context.req.header("sec-ch-ua-mobile"),
+  ].filter((value): value is string => Boolean(value));
+  return parts.length > 0 ? parts.join(" ") : undefined;
+}
+
 function identityContext(
   context: Context<AppEnvironment>,
   trustedProxy: TrustedProxyPolicy,
@@ -2701,7 +2756,7 @@ function identityContext(
   return {
     requestId: context.get("requestId"),
     sourceAddress: remoteAddress(context, trustedProxy),
-    userAgent: context.req.header("user-agent"),
+    userAgent: clientUserAgent(context),
   };
 }
 

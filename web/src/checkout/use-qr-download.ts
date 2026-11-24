@@ -5,6 +5,7 @@ import {
   useState,
   type RefObject,
 } from "react";
+import { isSameOriginUrl } from "@/lib/origin";
 export function useQrDownload(
   image: RefObject<HTMLImageElement | null>,
   available: boolean,
@@ -62,8 +63,7 @@ export function useQrDownload(
       !img ||
       !img.complete ||
       img.naturalWidth < 1 ||
-      new URL(img.currentSrc || img.src, location.origin).origin !==
-        location.origin
+      !isSameOriginUrl(img.currentSrc || img.src, location.href)
     ) {
       failed();
       return;

@@ -7,28 +7,28 @@ export interface SessionDevice {
   label: string;
 }
 
-/** Identify the client from its login UA; this is a display hint, not a device ID. */
+/** Identify the client from its login UA or UA-CH hints; this is a display hint, not a device ID. */
 export function sessionDevice(userAgent: string | null): SessionDevice {
   const ua = userAgent ?? "";
   let browser = "未知浏览器";
-  if (/SamsungBrowser\//i.test(ua)) browser = "Samsung Internet";
-  else if (/(?:Edg|EdgA|EdgiOS)\//i.test(ua)) browser = "Edge";
-  else if (/(?:OPR|Opera|OPiOS)(?:\/|\s)/i.test(ua)) browser = "Opera";
-  else if (/(?:Firefox|FxiOS)\//i.test(ua)) browser = "Firefox";
-  else if (/(?:Chrome|CriOS)\//i.test(ua)) browser = "Chrome";
-  else if (/Version\/[\d.]+.*Safari\//i.test(ua)) browser = "Safari";
+  if (/SamsungBrowser\/|"Samsung Internet"/i.test(ua)) browser = "Samsung Internet";
+  else if (/(?:Edg|EdgA|EdgiOS)\/|"Microsoft Edge"/i.test(ua)) browser = "Edge";
+  else if (/(?:OPR|Opera|OPiOS)(?:\/|\s)|"Opera"/i.test(ua)) browser = "Opera";
+  else if (/(?:Firefox|FxiOS)\/|"Firefox"/i.test(ua)) browser = "Firefox";
+  else if (/(?:Chrome|CriOS)\/|"Google Chrome"|"Chromium"/i.test(ua)) browser = "Chrome";
+  else if (/Version\/[\d.]+.*Safari\/|"Safari"/i.test(ua)) browser = "Safari";
 
   let operatingSystem = "未知系统";
-  if (/Windows (?:NT|Phone)/i.test(ua)) operatingSystem = "Windows";
-  else if (/(?:iPhone|iPad|iPod)/i.test(ua)) operatingSystem = "iOS";
-  else if (/Android/i.test(ua)) operatingSystem = "Android";
-  else if (/CrOS/i.test(ua)) operatingSystem = "ChromeOS";
-  else if (/(?:Macintosh|Mac OS X)/i.test(ua)) operatingSystem = "macOS";
-  else if (/Linux/i.test(ua)) operatingSystem = "Linux";
+  if (/Windows (?:NT|Phone)|"Windows"/i.test(ua)) operatingSystem = "Windows";
+  else if (/(?:iPhone|iPad|iPod)|"iOS"/i.test(ua)) operatingSystem = "iOS";
+  else if (/Android|"Android"/i.test(ua)) operatingSystem = "Android";
+  else if (/CrOS|"Chrome OS"/i.test(ua)) operatingSystem = "ChromeOS";
+  else if (/(?:Macintosh|Mac OS X)|"macOS"/i.test(ua)) operatingSystem = "macOS";
+  else if (/Linux|"Linux"/i.test(ua)) operatingSystem = "Linux";
 
   let kind: SessionDeviceKind = "unknown";
-  if (/(?:iPad|Tablet)/i.test(ua) || (/Android/i.test(ua) && !/Mobile/i.test(ua))) kind = "tablet";
-  else if (/(?:iPhone|iPod|Mobile|Windows Phone)/i.test(ua)) kind = "phone";
+  if (/(?:iPad|Tablet)/i.test(ua) || (/Android/i.test(ua) && !/Mobile|\?1\b/i.test(ua))) kind = "tablet";
+  else if (/(?:iPhone|iPod|Mobile|Windows Phone)|\?1\b/i.test(ua)) kind = "phone";
   else if (operatingSystem !== "未知系统") kind = "computer";
 
   return { browser, operatingSystem, kind, label: `${browser} · ${operatingSystem}` };

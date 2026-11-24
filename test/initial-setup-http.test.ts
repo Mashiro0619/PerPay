@@ -24,7 +24,7 @@ describe("first-run administrator HTTP flow", () => {
         assert.deepEqual(fixture.issuedTokens, [], "disabled setup must not issue a token");
         for (const path of ["/admin/", "/admin/login", "/admin/setup"]) {
           const page = await fixture.app.request(path);
-          assert.equal(page.headers.get("cache-control"), "no-store");
+          assert.equal(page.headers.get("cache-control"), "no-cache");
           assert.match(await page.text(), /name="perpay-setup-token-required" content="false"/);
         }
         const wrongOrigin = await fixture.app.request("/api/admin/v1/setup", {
@@ -209,7 +209,7 @@ describe("first-run administrator HTTP flow", () => {
       for (const path of ["/admin/", "/admin/login", "/admin/setup"]) {
         const page = await fixture.app.request(path);
         assert.equal(page.status, 200);
-        assert.equal(page.headers.get("cache-control"), "no-store");
+        assert.equal(page.headers.get("cache-control"), "no-cache");
         assert.match(await page.text(), /name="perpay-initialized" content="false"/);
       }
 
@@ -242,7 +242,7 @@ describe("first-run administrator HTTP flow", () => {
       for (const path of ["/admin/", "/admin/login", "/admin/setup"]) {
         const page = await fixture.app.request(path);
         assert.equal(page.status, 200);
-        assert.equal(page.headers.get("cache-control"), "no-store");
+        assert.equal(page.headers.get("cache-control"), "no-cache");
         assert.match(await page.text(), /name="perpay-initialized" content="true"/);
       }
 

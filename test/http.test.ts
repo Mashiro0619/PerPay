@@ -1576,9 +1576,11 @@ describe("order HTTP contract", () => {
       );
       assert.equal(checkoutPage.status, 200);
       assert.match(checkoutPage.headers.get("content-type") ?? "", /^text\/html/);
+      assert.equal(checkoutPage.headers.get("cache-control"), "no-cache");
+      assert.equal(checkoutPage.headers.get("x-frame-options"), "DENY");
       assert.match(
         checkoutPage.headers.get("content-security-policy") ?? "",
-        /script-src 'self'; style-src-elem 'self' 'nonce-[A-Za-z0-9+/=]+'; style-src-attr 'none'; connect-src 'self'; img-src 'self'/,
+        /script-src 'nonce-[A-Za-z0-9+/=]+' 'strict-dynamic' 'report-sample'; style-src-elem 'self' 'nonce-[A-Za-z0-9+/=]+'; style-src-attr 'none'; connect-src 'self'; img-src 'self'/,
       );
       const checkoutHtml = await checkoutPage.text();
       assert.match(checkoutHtml, /data-payable-amount[^>]*>¥10\.01<\/strong>/);

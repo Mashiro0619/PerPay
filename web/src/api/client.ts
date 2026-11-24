@@ -2,6 +2,7 @@ import { isReadOnlyDemo } from "../demo-mode";
 import { setSystemName } from "../branding";
 import { MutationCache, QueryClient } from "@tanstack/react-query";
 
+import { isSameOriginUrl } from "@/lib/origin";
 import { client } from "./generated/client.gen";
 import type { ErrorEnvelope } from "./generated/types.gen";
 import { apiErrorMessage } from "../lib/api-errors";
@@ -94,7 +95,7 @@ client.setConfig({
 client.interceptors.request.use((request) => {
   request.signal.throwIfAborted();
   requestGenerations.set(request, sessionGeneration);
-  if (new URL(request.url).origin !== window.location.origin) {
+  if (!isSameOriginUrl(request.url, window.location.href)) {
     throw new Error("管理请求不能发送到其他业务网站。");
   }
   if (!["GET", "HEAD", "OPTIONS"].includes(request.method)) {

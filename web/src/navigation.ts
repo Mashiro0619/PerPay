@@ -3,6 +3,7 @@ import { actualPageAddress, isGlobalNavigationPage, navigationSelection, switchW
 import { createContext, createElement, useCallback, useContext, useLayoutEffect, useRef, type Ref } from "react";
 import { Link as RouterLink, NavLink as RouterNavLink, parsePath, useLocation, useNavigate as useRouterNavigate, type LinkProps, type NavLinkProps, type NavigateFunction, type NavigateOptions, type To } from "react-router";
 
+import { isSameOriginUrl } from "./lib/origin";
 import { useReducedMotion } from "./lib/motion";
 import { OverlayRecordListScopeContext, useOptionalOverlayNavigation, type OverlayRecordListScope } from "./lib/overlay-context";
 import { parseOverlayTarget, withOverlayTarget } from "./lib/overlay-navigation";
@@ -38,8 +39,7 @@ function navigationFeedback(to: To) {
   const path = typeof to === "string" ? to : to.pathname;
   let internal = !path || !/^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(path);
   if (!internal && typeof window !== "undefined") {
-    try { internal = new URL(path!, window.location.href).origin === window.location.origin; }
-    catch { /* Invalid or non-web destinations do not get internal navigation feedback. */ }
+    internal = isSameOriginUrl(path!, window.location.href);
   }
   return { "data-internal-link": internal ? "" : undefined };
 }

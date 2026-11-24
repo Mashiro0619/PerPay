@@ -28,9 +28,11 @@ async function validCheckout(page: Page, manifest: Manifest, requested: number, 
   await page.route(manifest.origin + checkoutPath, async route => {
     const original = await route.fetch();
     const headers = { ...original.headers() }; delete headers["content-length"];
+    const cspNonce = /'nonce-([^']+)'/.exec(headers["content-security-policy"] ?? "")?.[1];
     return route.fulfill({ response: original, headers, body: renderCheckoutPage({
       serverTime: manifest.epoch, demoMode: true, systemName: "PerPay",
       checkoutToken: checkoutPath.split("/").at(-1)!,
+      ...(cspNonce ? { cspNonce } : {}),
       checkout: {
         merchantOrderNo: order.merchant_order_no, requestedAmountCents: requested,
         currency: "CNY", productName: order.product_name, returnUrl: order.return_url,

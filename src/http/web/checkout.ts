@@ -33,6 +33,7 @@ export interface CheckoutPageInput {
   readonly qrImageUrl: string | null;
   readonly initialError: CheckoutPageInitialError | null;
   readonly showProductName?: boolean;
+  readonly cspNonce?: string;
 }
 
 export type CheckoutVisualState =
@@ -134,10 +135,13 @@ export function renderCheckoutPage(input: CheckoutPageInput): string {
       ? order.merchantOrderNo
       : checkoutCopy[initialCheckoutState(initial)].heading;
   const title = titleSubject + " | " + initial.systemName + " 收银台";
+  const nonceAttr = input.cspNonce ? ' nonce="' + escapeHtml(input.cspNonce) + '"' : "";
   return (
     '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="color-scheme" content="light dark"><meta name="theme-color" content="#ffffff"><meta name="robots" content="noindex, nofollow, noarchive"><title>' +
     escapeHtml(title) +
-    '</title><script src="' +
+    '</title><script' +
+    nonceAttr +
+    ' src="' +
     checkoutFrontend.theme +
     '"></script>' +
     checkoutFrontend.styles
@@ -147,7 +151,9 @@ export function renderCheckoutPage(input: CheckoutPageInput): string {
     escapeHtml(JSON.stringify(initial)) +
     '">' +
     checkoutFrontend.render(initial) +
-    '</div><script type="module" src="' +
+    '</div><script' +
+    nonceAttr +
+    ' type="module" src="' +
     checkoutFrontend.script +
     '"></script></body></html>'
   );

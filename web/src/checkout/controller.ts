@@ -1,3 +1,4 @@
+import { isSameOriginUrl } from "@/lib/origin";
 import {
   checkoutState,
   initialCheckoutState,
@@ -200,7 +201,7 @@ export function createCheckoutController(initial: CheckoutInitial) {
       initial.apiUrl + (checking ? "/check" : ""),
       location.origin,
     );
-    if (target.origin !== location.origin) return;
+    if (!isSameOriginUrl(target, location.href)) return;
     stopTimer();
     const controller = new AbortController();
     active = controller;

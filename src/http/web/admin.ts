@@ -5,8 +5,19 @@ import { readFileSync, readdirSync } from "node:fs";
 import type { WebAsset } from "./assets.ts";
 
 export interface AdminFrontend {
-  readonly render: (initialized: boolean, systemName?: string, setupTokenEnabled?: boolean) => string;
+  readonly render: (initialized: boolean, systemName?: string, setupTokenEnabled?: boolean, cspNonce?: string) => string;
   readonly assets: ReadonlyMap<string, WebAsset>;
+}
+
+const CSP_NONCE_MARKER = "__PERPAY_CSP_NONCE__";
+
+function escapeHtmlAttribute(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
 }
 
 export function loadAdminFrontend(root = new URL("../../../web-dist/admin/", import.meta.url)): AdminFrontend | null {
@@ -17,6 +28,11 @@ export function loadAdminFrontend(root = new URL("../../../web-dist/admin/", imp
     if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
     throw error;
   }
+  // Stamp nonce placeholders only on static build-time Vite script/modulepreload tags
+  // before any runtime values (such as systemName) are ever interpolated.
+  const preparedTemplate = template
+    .replaceAll("<script ", `<script nonce="${CSP_NONCE_MARKER}" `)
+    .replaceAll('<link rel="modulepreload" ', `<link rel="modulepreload" nonce="${CSP_NONCE_MARKER}" `);
   const assets = new Map<string, WebAsset>();
   const files = ["theme.js", ...readdirSync(new URL("assets/", root)).map((file) => `assets/${file}`)];
   for (const file of files) {
@@ -35,7 +51,8 @@ export function loadAdminFrontend(root = new URL("../../../web-dist/admin/", imp
     }));
   }
   return {
-    render: (initialized, systemName = DEFAULT_SYSTEM_NAME, setupTokenEnabled = false) => template
+    render: (initialized, systemName = DEFAULT_SYSTEM_NAME, setupTokenEnabled = false, cspNonce) => preparedTemplate
+      .replaceAll(` nonce="${CSP_NONCE_MARKER}"`, () => (cspNonce ? ` nonce="${escapeHtmlAttribute(cspNonce)}"` : ""))
       .replace("__PERPAY_INITIALIZED__", String(initialized))
       .replace("__PERPAY_SETUP_TOKEN_REQUIRED__", String(!initialized && setupTokenEnabled))
       .replaceAll(SYSTEM_NAME_MARKER, () => escapeSystemName(systemName)),
