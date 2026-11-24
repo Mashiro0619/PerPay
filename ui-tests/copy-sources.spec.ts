@@ -338,7 +338,7 @@ test("public checkout shows payment results and historical refunds without inter
         await expect(page.getByRole("heading", { name: "付款成功", exact: true })).toBeVisible();
         await expect(payment.getByText(automaticCheckoutCopy)).toHaveCount(0);
         await expect(payment.getByText(manualCheckoutCopy, { exact: true })).toHaveCount(0);
-        const refund = page.getByRole("region", { name: "订单信息", exact: true }).getByRole("alert");
+        const refund = page.getByRole("region", { name: "订单信息", exact: true }).locator(".checkout-refund-alert");
         await expect(refund).toContainText("订单已有" + scenario.refundLabel + "退款记录");
         await expect(refund.getByText("具体退款金额与到账进度请联系商家确认。", { exact: true })).toBeVisible();
         await expect(page.locator("[data-qr-image]")).toHaveCount(0);

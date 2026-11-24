@@ -7,7 +7,7 @@ async function editorGeometry(dialog: Locator) {
   await waitForControlAnimations(dialog);
   return dialog.evaluate(element => {
     const surface = element.querySelector<HTMLElement>("[data-overlay-step-host] [data-overlay-step]") ?? element;
-    const body = surface.querySelector<HTMLElement>("[data-overlay-step-scroll], [data-overlay-detail]")!;
+    const body = surface.querySelector<HTMLElement>("[data-overlay-step-scroll], [data-overlay-detail], [data-admin-dialog-scroll]")!;
     return {
       dialog: element.getBoundingClientRect().toJSON(),
       header: surface.querySelector('[data-slot="dialog-header"]')!.getBoundingClientRect().toJSON(),
@@ -50,14 +50,19 @@ async function focusGeometry(control: Locator) {
     }
     const canvas = document.createElement("canvas").getContext("2d")!;
     const color = (value: string) => {
+      const probe = document.createElement("span");
+      probe.style.color = value;
+      document.documentElement.appendChild(probe);
+      const resolved = getComputedStyle(probe).color;
+      probe.remove();
       canvas.clearRect(0, 0, 1, 1);
-      canvas.fillStyle = value;
+      canvas.fillStyle = resolved;
       canvas.fillRect(0, 0, 1, 1);
       return [...canvas.getImageData(0, 0, 1, 1).data];
     };
-    const overlay = indicator.closest<HTMLElement>("[data-overlay-content]")!;
+    const overlay = indicator.closest<HTMLElement>("[data-overlay-content], [data-slot='dialog-content']")!;
     const overlayBox = overlay.getBoundingClientRect(), overlayStyle = getComputedStyle(overlay);
-    const body = indicator.closest<HTMLElement>("[data-overlay-step-scroll], [data-overlay-detail]")!;
+    const body = indicator.closest<HTMLElement>("[data-overlay-step-scroll], [data-overlay-detail], [data-admin-dialog-scroll]")!;
     const bodyStyle = getComputedStyle(body);
     const scrollbarWidth = Math.max(0, body.offsetWidth - body.clientWidth - parseFloat(bodyStyle.borderLeftWidth) - parseFloat(bodyStyle.borderRightWidth));
     const fieldBox = indicator.closest('[data-slot="field"]')!.getBoundingClientRect();
@@ -76,7 +81,7 @@ async function focusGeometry(control: Locator) {
       viewport: { left: viewport?.offsetLeft ?? 0, top: viewport?.offsetTop ?? 0,
         right: (viewport?.offsetLeft ?? 0) + (viewport?.width ?? innerWidth),
         bottom: (viewport?.offsetTop ?? 0) + (viewport?.height ?? innerHeight) },
-      expectedColor: color(document.documentElement.classList.contains("dark") ? "oklch(0.8 0 0 / 0.5)" : "oklch(0.45 0 0 / 0.5)"),
+      expectedColor: color(document.documentElement.classList.contains("dark") ? "oklch(0.8 0 0)" : "oklch(0.45 0 0)"),
       centerHit: element === hit || element.contains(hit),
     };
   });
@@ -174,16 +179,11 @@ for (const layout of layouts) {
         }, layout);
         const writes: string[] = [];
         page.on("request", request => { if (!["GET", "HEAD"].includes(request.method())) writes.push(request.url()); });
-        await page.goto(fixture.origin + "/admin/sites/default/settings/display");
+        await page.goto(fixture.origin + "/admin/sites/defaults");
         await expect(page.locator("html")).toHaveCSS("font-size", (16 * layout.font / 100) + "px");
-        await page.getByRole("link", { name: "编辑收银台展示", exact: true }).click();
         const dialog = page.locator("[data-overlay-content]");
+        await selectSettingsSection(page, dialog, "默认设置分组", "收银台展示");
         await expect(dialog.getByRole("textbox", { name: "收银台名称", exact: true })).toBeVisible();
-        if (layout.font === 100) {
-          const shortForm = await editorGeometry(dialog);
-          expect(shortForm.scrollHeight, "a short editor does not acquire a scrollbar from extended touch targets").toBeLessThanOrEqual(shortForm.clientHeight + 1);
-          expect(shortForm.scrollbarWidth).toBe(0);
-        }
         await checkControl(page, dialog, dialog.getByRole("textbox", { name: "收银台名称", exact: true }), "full-width-input", info);
         await checkControl(page, dialog, dialog.getByRole("textbox", { name: "帮助链接", exact: true }), "help-url-input", info);
         if (layout.font === 200) await checkIndependentScroll(page, dialog);
@@ -191,6 +191,15 @@ for (const layout of layouts) {
         await expect(dialog).toHaveCount(0);
 
         if (layout.font === 100) {
+          await page.goto(fixture.origin + "/admin/settings/security");
+          await page.getByRole("link", { name: "编辑管理员 IP 白名单", exact: true }).click();
+          await expect(dialog.getByRole("textbox", { name: "允许的 IP / 网段", exact: true })).toBeVisible();
+          const shortForm = await editorGeometry(dialog);
+          expect(shortForm.scrollHeight, "a short editor does not acquire a scrollbar from extended touch targets").toBeLessThanOrEqual(shortForm.clientHeight + 1);
+          expect(shortForm.scrollbarWidth).toBe(0);
+          await dialog.getByRole("button", { name: "关闭对话框", exact: true }).click();
+          await expect(dialog).toHaveCount(0);
+
           await page.goto(fixture.origin + "/admin/sites/default/settings/integration");
           await page.getByRole("button", { name: "更换网站 ID", exact: true }).click();
           const step = page.getByRole("dialog", { name: "更换网站 ID", exact: true });

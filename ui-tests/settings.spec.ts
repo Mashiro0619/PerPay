@@ -33,7 +33,7 @@ isolatedTest("IP 白名单在真实版本冲突后保留草稿并可继续保存
     const submitted: { status: number; revision: number; enabled: boolean; cidrs: string[] }[] = [];
     async function submit(status: number, revision: number) {
       await save.click();
-      const dialog = page.getByRole("dialog", { name: "确认保存 IP 白名单？", exact: true });
+      const dialog = page.getByRole("alertdialog", { name: "确认保存 IP 白名单？", exact: true });
       const pending = page.waitForResponse(response => response.url() === endpoint && response.request().method() === "PUT");
       await dialog.getByRole("button", { name: "确认保存", exact: true }).click();
       const response = await pending;

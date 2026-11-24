@@ -370,11 +370,12 @@ function withFixture(operation: (database: AppDatabase, connection: DatabaseSync
         next_attempt_at INTEGER, last_error_code TEXT, dead_lettered_at INTEGER, created_at INTEGER,
         updated_at INTEGER, predecessor_delivery_id TEXT
       );
-      CREATE TABLE webhook_targets (target_id TEXT PRIMARY KEY, target_format TEXT NOT NULL);
+      CREATE TABLE webhook_targets (target_id TEXT PRIMARY KEY, order_id TEXT, target_format TEXT NOT NULL);
       CREATE TABLE payment_matches (payment_match_id TEXT PRIMARY KEY, created_by_operation_id TEXT NOT NULL, status TEXT NOT NULL);
       CREATE TABLE outbox_events (outbox_event_id TEXT PRIMARY KEY, event_type TEXT, aggregate_id TEXT, created_at INTEGER, payload_json TEXT, financial_operation_id TEXT);
       CREATE TABLE collection_profiles (profile_id TEXT PRIMARY KEY, provider_account_key TEXT);
       CREATE TABLE collection_profile_provider_accounts (profile_id TEXT PRIMARY KEY, provider_account_key TEXT);
+      CREATE TABLE provider_account_bindings (provider_account_key TEXT PRIMARY KEY, provider_endpoint TEXT NOT NULL);
       CREATE TABLE admin_work_item_states (kind TEXT, item_id TEXT, ignored INTEGER, updated_at INTEGER, operation_id TEXT);
       CREATE TABLE admin_operation_log (operation_id TEXT PRIMARY KEY, actor_id TEXT);
     `);

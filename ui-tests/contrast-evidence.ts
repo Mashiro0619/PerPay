@@ -76,7 +76,9 @@ export function measureAxisContrast(element: Element) {
 
 /** Measure text and SVG ink against the known opaque, settled selection background. */
 export function measureSelectionContrast(element: Element) {
-  const control = element.closest<HTMLElement>('button[data-slot="toggle-group-item"][aria-pressed="true"]');
+  const control = element.closest<HTMLElement>(
+    'button[data-slot="toggle-group-item"][aria-pressed="true"], button[data-slot="tabs-trigger"][aria-selected="true"]',
+  );
   const group = control?.closest('[data-selection-motion="fill"]');
   const indicator = control?.querySelector<HTMLElement>(':scope > [data-selection-indicator="fill"]');
   if (!control || !group || !indicator || group.querySelectorAll('[data-selection-indicator="fill"]').length !== 1) return null;

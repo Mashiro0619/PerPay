@@ -412,7 +412,10 @@ async function reconcileUnmatchedIncome(page: Page, fixture: BusinessFixture, in
   await overlay.getByRole("button", { name: "撤销收款关联", exact: true }).click();
   const reverse = page.getByRole("dialog", { name: "撤销收款关联？", exact: true });
   const reverseSubmit = reverse.getByRole("button", { name: "确认撤销关联", exact: true });
-  await expect(reverseSubmit).toBeDisabled();
+  await expect(reverseSubmit).toBeEnabled();
+  await reverseSubmit.click();
+  await expect(reverse.getByRole("alert")).toBeVisible();
+  await expect(reverse.getByRole("textbox", { name: "操作理由", exact: true })).toBeFocused();
   const reversalReason = "连续验收：复核发现归属错误，撤销本次人工关联";
   await reverse.getByRole("textbox", { name: "操作理由", exact: true }).fill(reversalReason);
   await expectReachable(reverseSubmit);

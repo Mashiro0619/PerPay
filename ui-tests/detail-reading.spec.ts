@@ -527,9 +527,13 @@ test("named notification scenarios retain delivery facts and safe resend recover
       await page.keyboard.press("Enter");
       const dialog = page.getByRole("dialog", { name: "重新发送通知", exact: true });
       await expect(dialog).toBeVisible();
-      await expect(dialog.getByRole("button", { name: "确认重新发送", exact: true })).toBeDisabled();
+      const submit = dialog.getByRole("button", { name: "确认重新发送", exact: true });
+      await expect(submit).toBeEnabled();
+      await submit.click();
+      await expect(dialog.getByRole("alert")).toBeVisible();
+      await expect(dialog.getByLabel("操作理由", { exact: true })).toBeFocused();
       await dialog.getByLabel("操作理由", { exact: true }).fill("业务接收端已修复；取消本次验收操作");
-      await expect(dialog.getByRole("button", { name: "确认重新发送", exact: true })).toBeEnabled();
+      await expect(submit).toBeEnabled();
       await dialog.getByRole("button", { name: "取消", exact: true }).click();
       await expect(dialog).toHaveCount(0);
       await expect(trigger).toBeFocused();
@@ -760,7 +764,11 @@ test("automatic, manual and reversed matches keep full evidence in unified and s
       const dialog = page.getByRole("dialog", { name: "撤销收款关联？", exact: true });
       await expect(dialog).toBeVisible();
       await expect(dialog).toContainText("不会转出资金");
-      await expect(dialog.getByRole("button", { name: "确认撤销关联", exact: true })).toBeDisabled();
+      const confirm = dialog.getByRole("button", { name: "确认撤销关联", exact: true });
+      await expect(confirm).toBeEnabled();
+      await confirm.click();
+      await expect(dialog.getByRole("alert")).toBeVisible();
+      await expect(dialog.getByRole("textbox", { name: "操作理由", exact: true })).toBeFocused();
       await dialog.getByRole("button", { name: "取消", exact: true }).click();
       await expect(dialog).toHaveCount(0);
       await expect(trigger).toBeFocused();
@@ -838,7 +846,7 @@ test("all genuine ledger versions and synthetic simultaneous associations remain
   await openDetail(page, manifest, "ledgerAssociated");
   const notice = foreground(page).locator("[data-record-notice]");
   await expect(notice).toHaveAttribute("data-record-notice", "danger");
-  await expect(notice).toContainText(`有 ${entry.active_match_count} 条有效关联`);
+  await expect(notice).toContainText(`存在 ${entry.active_match_count} 条有效关联`);
   await expect(notice).toContainText("无法确定唯一订单");
   await expect(foreground(page).getByRole("group", { name: "流水概况", exact: true }).getByText("多笔关联", { exact: true })).toBeVisible();
   // The notice leads to the associations it is about.

@@ -424,7 +424,7 @@ describe("readable delivery attempts", () => {
     expect(attempts).toEqual(original);
   });
 
-  it("offers quick-fill reason chips for DEAD_LETTER redelivery while keeping submit disabled until chosen", async () => {
+  it("offers quick-fill reason chips for DEAD_LETTER redelivery and validates empty reason on submit", async () => {
     const writes: Array<{ path: string; body: Record<string, unknown> }> = [];
     const terminal = {
       ...delivery,

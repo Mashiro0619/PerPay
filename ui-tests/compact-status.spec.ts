@@ -250,7 +250,7 @@ for (const width of [1440, 320]) for (const theme of ["light", "dark"] as const)
     });
     const ignoredPath = "/work-items?visibility=IGNORED";
     const ignoredView = await openList(page, manifest, ignoredPath, "ignored-work-items", [ignored]);
-    await expect(ignoredView.root.getByRole("button", { name: "恢复提醒", exact: true })).toBeVisible();
+    await expect(ignoredView.root.getByRole("button", { name: /^恢复提醒/ })).toBeVisible();
     await assertGeometry(page, info, ignoredView.root, { route: ignoredPath, width, theme, fontScale: 2, evidence: "synthetic-ignored-read-snapshot-no-writes", resource: ignored.resource_id });
 
     const orderPath = "/orders?q=" + encodeURIComponent("空气循环扇");

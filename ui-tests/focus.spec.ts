@@ -2,29 +2,39 @@ import type { Locator } from "@playwright/test";
 import { test, expect, login, record } from "./fixtures";
 import { screenshot } from "./audit";
 
-async function expectInputRing(control: Locator, indicator = control, alpha = 128) {
+async function expectInputRing(control: Locator, indicator = control, alpha = 255) {
   await expect(control).toBeFocused();
   expect(await control.evaluate(element => element.matches(":focus-visible"))).toBe(true);
   await expect.poll(() => indicator.evaluate(element => {
     const style = getComputedStyle(element);
+    const probe = document.createElement("span");
+    probe.style.color = style.getPropertyValue("--tw-ring-color");
+    document.documentElement.appendChild(probe);
+    const resolved = getComputedStyle(probe).color;
+    probe.remove();
     const context = document.createElement("canvas").getContext("2d")!;
-    context.fillStyle = style.getPropertyValue("--tw-ring-color");
+    context.fillStyle = resolved;
     context.fillRect(0, 0, 1, 1);
     return context.getImageData(0, 0, 1, 1).data[3];
   })).toBe(alpha);
   await expect.poll(() => indicator.evaluate(element => getComputedStyle(element).boxShadow)).toMatch(/\s3px(?:,|$)/);
-  if (alpha === 128) {
+  if (alpha === 255) {
     const colors = await indicator.evaluate(element => {
       const context = document.createElement("canvas").getContext("2d")!;
       const paint = (color: string) => {
+        const probe = document.createElement("span");
+        probe.style.color = color;
+        document.documentElement.appendChild(probe);
+        const resolved = getComputedStyle(probe).color;
+        probe.remove();
         context.clearRect(0, 0, 1, 1);
-        context.fillStyle = color;
+        context.fillStyle = resolved;
         context.fillRect(0, 0, 1, 1);
         return [...context.getImageData(0, 0, 1, 1).data];
       };
       return {
         actual: paint(getComputedStyle(element).getPropertyValue("--tw-ring-color")),
-        expected: paint(document.documentElement.classList.contains("dark") ? "oklch(0.556 0 0 / 0.5)" : "oklch(0.708 0 0 / 0.5)"),
+        expected: paint(document.documentElement.classList.contains("dark") ? "oklch(0.8 0 0)" : "oklch(0.45 0 0)"),
       };
     });
     expect(colors.actual).toEqual(colors.expected);
@@ -36,8 +46,13 @@ async function expectButtonRing(button: Locator) {
   await expect.poll(() => button.evaluate(element => getComputedStyle(element).boxShadow)).toMatch(/\s3px(?:,|$)/);
   const focus = await button.evaluate(element => {
     const style = getComputedStyle(element);
+    const probe = document.createElement("span");
+    probe.style.color = style.getPropertyValue("--tw-ring-color");
+    document.documentElement.appendChild(probe);
+    const resolvedRing = getComputedStyle(probe).color;
+    probe.remove();
     const context = document.createElement("canvas").getContext("2d")!;
-    context.fillStyle = style.getPropertyValue("--tw-ring-color");
+    context.fillStyle = resolvedRing;
     context.fillRect(0, 0, 1, 1);
     const ring = [...context.getImageData(0, 0, 1, 1).data];
     context.clearRect(0, 0, 1, 1);
@@ -65,7 +80,7 @@ async function expectButtonRing(button: Locator) {
   return focus;
 }
 
-for (const theme of ["light", "dark"] as const) test(`${theme}: form controls retain the official translucent focus and invalid states`, async ({ page, manifest }, info) => {
+for (const theme of ["light", "dark"] as const) test(`${theme}: form controls retain high-contrast opaque focus and invalid states`, async ({ page, manifest }, info) => {
   await page.emulateMedia({ colorScheme: theme, reducedMotion: "reduce" });
   await page.addInitScript(theme => localStorage.setItem("perpay:theme", theme), theme);
   const writes: string[] = [];
@@ -145,9 +160,9 @@ for (const theme of ["light", "dark"] as const) test(`${theme}: form controls re
   const queryInput = queryGroup.locator('input[data-slot="input-group-control"]');
   await queryInput.click();
   await expectInputRing(queryInput, queryGroup);
-  await queryInput.press("Tab");
+  await queryInput.press("Shift+Tab");
   const queryMethodFocus = await expectButtonRing(queryMethod);
-  await page.keyboard.press("Shift+Tab");
+  await page.keyboard.press("Tab");
   await expectInputRing(queryInput, queryGroup);
   await record(page, info, { state: "query mode button focus", queryMethodFocus });
   expect(writes).toEqual([]);
@@ -169,7 +184,12 @@ for (const theme of ["light", "dark"] as const) test(`${theme}: keyboard focus i
     const canvas = document.createElement("canvas");
     const context = canvas.getContext("2d")!;
     function luminance(value: string) {
-      context.clearRect(0, 0, 1, 1); context.fillStyle = value; context.fillRect(0, 0, 1, 1);
+      const probe = document.createElement("span");
+      probe.style.color = value;
+      document.documentElement.appendChild(probe);
+      const resolved = getComputedStyle(probe).color;
+      probe.remove();
+      context.clearRect(0, 0, 1, 1); context.fillStyle = resolved; context.fillRect(0, 0, 1, 1);
       return [...context.getImageData(0, 0, 1, 1).data].slice(0, 3).map(v => v / 255).map(v => v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4).reduce((sum, v, i) => sum + v * [.2126, .7152, .0722][i]!, 0);
     }
     const ring = luminance(root.getPropertyValue("--ring"));

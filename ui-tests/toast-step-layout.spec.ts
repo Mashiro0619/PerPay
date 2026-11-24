@@ -81,7 +81,8 @@ for (const layout of [
         await page.getByRole("button", { name: "确认保存", exact: true }).click();
         const toast = page.locator('[data-slot="toast"]');
         await expect(toast.locator('[data-slot="toast-title"]')).toHaveText("IP 白名单已保存");
-        await expect(page.locator("[data-overlay-step]")).toHaveCount(0);
+        const confirmation = page.getByRole("alertdialog", { name: "确认保存 IP 白名单？", exact: true });
+        await expect(confirmation).toHaveCount(0);
         await expect(primary).toBeVisible();
         await expect.poll(async () => {
           const geometry = await dockGeometry(primary);
@@ -90,15 +91,15 @@ for (const layout of [
         const returned = await dockGeometry(primary);
         await input.fill("192.0.2.12");
         await primary.getByRole("button", { name: "保存白名单", exact: true }).click({ timeout: 1000 });
-        await expect(page.getByRole("heading", { name: "确认保存 IP 白名单？", exact: true })).toBeVisible();
-        const footer = page.locator('[data-overlay-step] [data-slot="dialog-footer"]');
+        await expect(confirmation).toBeVisible();
+        const footer = confirmation.locator('[data-slot="alert-dialog-footer"]');
         await expect(footer).toBeVisible();
         const before = await dockGeometry(footer);
         await page.keyboard.press("F6");
         await expect(page.getByRole("region", { name: "提示", exact: true })).toBeFocused();
         await page.keyboard.press("Tab");
         await expect(toast).toBeFocused();
-        await expect(page.locator("[data-overlay-step]")).toHaveCount(1);
+        await expect(confirmation).toHaveCount(1);
         await footer.getByRole("button", { name: "确认保存", exact: true }).evaluate(button => {
           const text = [...button.childNodes].find(node => node.nodeType === Node.TEXT_NODE && node.textContent?.trim());
           if (!text) throw new Error("Confirmation label is missing");
@@ -132,12 +133,12 @@ for (const layout of [
           const footer = element as HTMLElement;
           footer.style.minHeight = `${innerHeight * 2}px`;
           const scroll = footer.closest<HTMLElement>('[data-admin-dialog-scroll]')!;
-          const surface = footer.closest('[data-slot="dialog-content"]')!;
+          const surface = footer.closest('[data-slot="dialog-content"], [data-slot="alert-dialog-content"]')!;
           scroll.scrollTop += footer.getBoundingClientRect().top - surface.getBoundingClientRect().top + 16;
         });
         await expect.poll(() => footer.evaluate(element => {
           const bounds = element.getBoundingClientRect();
-          const surface = element.closest('[data-slot="dialog-content"]')!.getBoundingClientRect();
+          const surface = element.closest('[data-slot="dialog-content"], [data-slot="alert-dialog-content"]')!.getBoundingClientRect();
           return bounds.top <= surface.top && bounds.bottom >= surface.bottom;
         })).toBe(true);
         await expect.poll(() => toast.evaluate(element => {
@@ -149,9 +150,9 @@ for (const layout of [
         })).toBe(true);
         await toast.getByRole("button", { name: "关闭提示", exact: true }).click();
         await expect(toast).toHaveCount(0);
-        await expect(page.locator("[data-overlay-step]"), "closing feedback keeps the confirmation open").toHaveCount(1);
+        await expect(confirmation, "closing feedback keeps the confirmation open").toHaveCount(1);
         await footer.getByRole("button", { name: "取消", exact: true }).click({ timeout: 1000 });
-        await expect(page.locator("[data-overlay-step]")).toHaveCount(0);
+        await expect(confirmation).toHaveCount(0);
         expect(writes).toEqual([{ method: "PUT", path: "/api/admin/v1/settings/admin-access" }]);
         expect(errors).toEqual([]);
       } finally { await fixture.close(); }

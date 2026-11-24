@@ -74,7 +74,7 @@ test.describe("compact mobile button visuals and separate touch targets", () => 
   }
 
   for (const width of [320, 360, 390, 430]) {
-    test(`${width}px: settings page menu rows use compact 40px touch areas`, async ({ page, manifest }, info) => {
+    test(`${width}px: settings page menu rows use 44px touch areas`, async ({ page, manifest }, info) => {
       await page.setViewportSize({ width, height: 560 });
       await login(page, manifest);
       await page.goto(manifest.origin + "/admin/settings/display");
@@ -112,7 +112,7 @@ test.describe("compact mobile button visuals and separate touch targets", () => 
       await info.attach("settings-wizard-edge-tap", { body: Buffer.from(JSON.stringify(wizardTap, null, 2)), contentType: "application/json" });
     });
 
-    test(`${width}px: toolbar, display controls and checkout use compact visuals with 40px touch slots`, async ({ page, manifest }, info) => {
+    test(`${width}px: toolbar, display controls and checkout use compact visuals with 44px touch slots`, async ({ page, manifest }, info) => {
       await page.setViewportSize({ width, height: 560 });
       await login(page, manifest);
       await page.goto(manifest.origin + "/admin/orders");

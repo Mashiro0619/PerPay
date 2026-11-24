@@ -865,7 +865,7 @@ describe("shared content width navigation", () => {
     expect(container.querySelector("[data-content-width]")).toHaveAttribute("data-content-width", "full");
   });
 
-  it("preserves the daily-report tab, every date and analytics observers when width changes", async () => {
+  it("preserves the daily-report tab, every date and avoids duplicate fetches when width changes", async () => {
     const { fetchMock, container } = mount({ path: "/", configured: true, hasOrders: true });
     const tab = await screen.findByRole("button", { name: "每日数据" });
     await userEvent.click(tab);

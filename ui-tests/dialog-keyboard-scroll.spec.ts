@@ -95,12 +95,11 @@ for (const size of [
         await rules.fill(draftRules);
         const save = editor.getByRole("button", { name: "保存白名单", exact: true });
         await save.press("Enter");
-        const confirmation = page.locator("[data-overlay-step]:visible");
+        const confirmation = page.getByRole("alertdialog", { name: "确认保存 IP 白名单？", exact: true });
         await expect(confirmation).toBeVisible();
         await expect(confirmation).toHaveAccessibleName("确认保存 IP 白名单？");
-        await expect(page.getByRole("dialog")).toHaveCount(1);
         if (!size.isMobile) {
-          const scroll = confirmation.locator("[data-overlay-step-scroll]");
+          const scroll = confirmation.locator("[data-admin-dialog-scroll], [data-overlay-step-scroll]");
           await expect(scroll).toBeFocused();
           await expect(scroll).toHaveAttribute("tabindex", "0");
           await page.setViewportSize({ width: size.width, height: 900 });

@@ -108,7 +108,7 @@ test("session rows fill their own card across themes and narrow or wide content"
     const geometry = await card.evaluate(element => {
       const box = element.getBoundingClientRect();
       const summary = element.closest('[data-security-summary]')!.getBoundingClientRect();
-      const list = element.querySelector('[aria-label="登录会话列表"]')!.getBoundingClientRect();
+      const list = (element.querySelector('[aria-label="登录会话列表"]') ?? element.querySelector("table"))!.getBoundingClientRect();
       const rows = [...element.querySelectorAll<HTMLElement>("[data-business-row]")];
       return { width: box.width, summaryWidth: summary.width,
         layout: element.querySelector('[data-business-table]')!.getAttribute('data-list-layout'),

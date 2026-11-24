@@ -236,15 +236,13 @@ test.describe("mobile overlay regression with synthetic visible viewport", () =>
     await rules.fill(Array.from({ length: 30 }, (_, index) => `192.0.2.${index + 1}`).join("\n"));
     const save = page.getByRole("button", { name: "保存白名单", exact: true });
     await save.click();
-    const dialog = page.getByRole("dialog", { name: "确认保存 IP 白名单？", exact: true });
+    const dialog = page.getByRole("alertdialog", { name: "确认保存 IP 白名单？", exact: true });
     await expect(dialog).toBeVisible();
     const small = { ...panned, height: 220 };
     await visibleArea(page, small);
-    const close = dialog.getByRole("button", { name: "关闭对话框", exact: true });
-    const closeGeometry = await reachable(close);
     const explanation = dialog.locator("[data-admin-dialog-body]");
     await expect(explanation).toHaveText(/保存立即生效/);
-    const scroll = dialog.locator("[data-overlay-step-scroll]");
+    const scroll = dialog.locator("[data-admin-dialog-scroll]");
     await explanation.evaluate(element => element.scrollIntoView({ block: "center" }));
     await info.attach(`confirmation-reading-${font}`, { body: await page.screenshot(), contentType: "image/png" });
     const reading = await scroll.evaluate(element => {
@@ -256,13 +254,12 @@ test.describe("mobile overlay regression with synthetic visible viewport", () =>
     });
     expect(reading.clientHeight).toBeGreaterThanOrEqual(Math.min(64, reading.scrollHeight));
     expect(reading.contentHeight, "padding leaves at least 64px for readable content").toBeGreaterThanOrEqual(64);
-    expect(reading.top, "the fixed close target stays outside the reading region").toBeGreaterThanOrEqual(closeGeometry.y + closeGeometry.height - 1);
     expect(reading.scrollTop).toBeCloseTo(Math.max(0, reading.scrollHeight - reading.clientHeight), 0);
     const confirmGeometry = await scrollTo(dialog.getByRole("button", { name: "确认保存", exact: true }), page);
     const cancel = dialog.getByRole("button", { name: "取消", exact: true });
     const cancelGeometry = await scrollTo(cancel, page);
     await info.attach(`confirmation-actions-${font}`, { body: await page.screenshot(), contentType: "image/png" });
-    await record(page, info, { evidence: "browser synthetic visualViewport", area: small, reading, closeGeometry, confirmGeometry, cancelGeometry });
+    await record(page, info, { evidence: "browser synthetic visualViewport", area: small, reading, confirmGeometry, cancelGeometry });
     await cancel.click();
     await expect(dialog).toHaveCount(0);
     await expect(save).toBeFocused();

@@ -28,11 +28,11 @@ test.describe("compact mobile controls preserve their actual touch areas", () =>
       await period.evaluate(element => element.scrollIntoView({ block: "center" }));
       await page.clock.runFor(100);
       const selection = await expectTouchTarget(period);
-      expect(selection.visual.height).toBeCloseTo(40, 1);
+      expect(selection.visual.height).toBeCloseTo(44, 1);
       await period.tap();
       const week = page.getByRole("option", { name: "近 7 天", exact: true });
       const option = await expectTouchTarget(week);
-      expect(option.visual.height).toBeCloseTo(40, 1);
+      expect(option.visual.height).toBeCloseTo(44, 1);
       await week.tap();
       await expect(period.locator('[data-slot="select-value"]')).toHaveText("近 7 天");
 
@@ -42,7 +42,7 @@ test.describe("compact mobile controls preserve their actual touch areas", () =>
       const refresh = actions.getByRole("menuitem", { name: "刷新", exact: true });
       await expect(refresh).toBeEnabled();
       const menuRow = await expectTouchTarget(refresh);
-      expect(menuRow.visual.height).toBeCloseTo(40, 1);
+      expect(menuRow.visual.height).toBeCloseTo(44, 1);
       await refresh.tap();
       await expect(actions).toHaveCount(0);
       await expect(pageActions).toBeFocused();
@@ -53,8 +53,8 @@ test.describe("compact mobile controls preserve their actual touch areas", () =>
       const orders = sidebar.getByRole("link", { name: "订单", exact: true });
       const overviewTarget = await expectTouchTarget(overview);
       const orderTarget = await expectTouchTarget(orders);
-      expect(overviewTarget.visual.height).toBeCloseTo(40, 1);
-      expect(orderTarget.visual.height).toBeCloseTo(40, 1);
+      expect(overviewTarget.visual.height).toBeCloseTo(44, 1);
+      expect(orderTarget.visual.height).toBeCloseTo(44, 1);
       expect(orderTarget.y - overviewTarget.y - overviewTarget.height).toBeCloseTo(2, 1);
       await orders.tap();
       await expect(page).toHaveURL(manifest.origin + "/admin/orders");
@@ -62,7 +62,7 @@ test.describe("compact mobile controls preserve their actual touch areas", () =>
       const filter = page.getByRole("button", { name: "筛选与排序", exact: true });
       const filterTarget = await expectTouchTarget(filter);
       expect(filterTarget.visual.height).toBeCloseTo(32, 1);
-      expect(filterTarget.height).toBeCloseTo(40, 1);
+      expect(filterTarget.height).toBeCloseTo(44, 1);
       await tapOutsideVisible(page, filter, "top");
       const filters = page.getByRole("dialog", { name: "筛选与排序", exact: true });
       await expect(filters).toBeVisible();

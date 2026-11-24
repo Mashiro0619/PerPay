@@ -131,7 +131,7 @@ function expectRecordFieldList(group: FieldGroup) {
 export async function expectTechnicalPlacement(technical: Locator) {
   const placements = await technical.evaluateAll(items => items.map(element => {
     const owner = element.closest('[data-slot="card"], [data-detail-section], [data-detail-page]')!;
-    const trigger = element.querySelector<HTMLElement>(':scope > button[aria-expanded]')!;
+    const trigger = element.querySelector<HTMLElement>(':scope > button[aria-haspopup="dialog"]')!;
     const bounds = element.getBoundingClientRect(), triggerBounds = trigger.getBoundingClientRect(), triggerStyle = getComputedStyle(trigger);
     const content = document.createRange(), text = document.createTreeWalker(trigger, NodeFilter.SHOW_TEXT);
     const contentWidths: number[] = [];
@@ -252,7 +252,8 @@ export async function openTechnicalDialog(page: Page, technical: Locator, menuIt
   const titleText = menuItem ?? (await trigger.innerText()).trim();
   expect(titleText).toMatch(/技术信息$/);
   if (!menuItem) await expect(trigger).toHaveAccessibleName(titleText);
-  await expect(trigger).toHaveAttribute("aria-expanded", "false");
+  if (menuItem) await expect(trigger).toHaveAttribute("aria-expanded", "false");
+  else await expect(trigger).toHaveAttribute("aria-haspopup", "dialog");
   await expect(technical.locator("pre, [data-detail-fields]")).toHaveCount(0);
   const frameScroll = () => parent.evaluate(parent => {
     const primary = parent.querySelector<HTMLElement>("[data-overlay-primary]")!;
@@ -286,7 +287,7 @@ export async function openTechnicalDialog(page: Page, technical: Locator, menuIt
   await expect(technical.locator("pre, [data-detail-fields]")).toHaveCount(0);
   expect(await dialog.evaluate(element => !element.closest('[data-overlay-content]')), "technical information is portaled outside the main detail").toBe(true);
   const opened = await expectParentDetailPreserved(parentState, "secondary opened");
-  return { page, parent, technical, trigger, dialog, title, close, body, pre, parentState, opened };
+  return { page, parent, technical, trigger, isMenu: Boolean(menuItem), dialog, title, close, body, pre, parentState, opened };
 }
 
 type TechnicalDialogSession = Awaited<ReturnType<typeof openTechnicalDialog>>;
@@ -376,7 +377,8 @@ export async function closeTechnicalDialog(session: TechnicalDialogSession, meth
     else if (method === "header") await session.close.click();
     else await session.dialog.getByRole("button", { name: "关闭", exact: true }).click();
     await expect(session.dialog).toHaveCount(0);
-    await expect(session.trigger).toHaveAttribute("aria-expanded", "false");
+    if (session.isMenu) await expect(session.trigger).toHaveAttribute("aria-expanded", "false");
+    else await expect(session.trigger).toHaveAttribute("aria-haspopup", "dialog");
     await expect(session.trigger, "closing only the secondary dialog returns focus to its original entry").toBeFocused();
     await expect(session.parent).toBeVisible();
     await expect(session.technical.locator("pre, [data-detail-fields]")).toHaveCount(0);
