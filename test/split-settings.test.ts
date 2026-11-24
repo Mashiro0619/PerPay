@@ -103,7 +103,13 @@ it("keeps the engine snapshot independent of website settings, templates and the
   try {
     const before = f.settings.instanceSnapshot();
     assert.deepEqual(Object.keys(before.collection!), ["codePayload"]);
-    assert.deepEqual(Object.keys(before.display).sort(), ["dashboardChartType", "systemName"]);
+    assert.deepEqual(Object.keys(before.display).sort(), [
+      "checkoutNotFoundDetail",
+      "dashboardChartType",
+      "dashboardSections",
+      "dashboardWorkItemsLayout",
+      "systemName",
+    ]);
     for (const name of ["webhook", "apiSecret", "apiSecretFingerprint"]) assert.equal(name in before, false);
     const serialized = JSON.stringify(before);
     const defaults = f.sites.defaults();
