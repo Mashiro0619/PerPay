@@ -1000,7 +1000,7 @@ export function AlipayAccountEditor({
                     render={<Button type="button" variant="outline" size="sm" className="h-auto min-h-8 max-w-full justify-between whitespace-normal py-1.5" />}
                   >
                     <span className="min-w-0">导入已有应用私钥（可选）</span>
-                    <ChevronDown aria-hidden="true" data-icon="inline-end" className={cn("transition-transform", privateKeyOpen && "rotate-180")} />
+                    <ChevronDown aria-hidden="true" data-icon="inline-end" className={cn("transition-transform motion-reduce:transition-none", privateKeyOpen && "rotate-180")} />
                   </CollapsibleTrigger>
                   <FieldDescription>推荐由系统生成应用密钥；仅使用自己已有的密钥时才需要导入。</FieldDescription>
                   <CollapsibleContent>

@@ -76,7 +76,7 @@ function RelatedOrderLink({ item }: { item: ReconciliationRow }) {
       aria-label={"查看订单：" + (merchantOrderNo ?? orderId)}
       to={"/orders/" + orderId}
     >
-      {merchantOrderNo ?? <>订单 <ShortId value={orderId} /></>}
+      {merchantOrderNo ?? <span className="short-id-inline"><span>订单</span><ShortId value={orderId} /></span>}
     </Link>
   );
 }
@@ -156,7 +156,7 @@ function RelatedRecord({ item, compact = false }: { item: ReconciliationRow; com
         <span className="reconciliation-related-meta">
           <ListDateTime value={ledger.occurred_at} inline />
           <span className="reconciliation-related-detail" title={referenceText ?? "流水号 " + ledger.external_event_id}>
-            {referenceText ?? <>流水号 <ShortId value={ledger.external_event_id} /></>}
+            {referenceText ?? <span className="short-id-inline"><span>流水号</span><ShortId value={ledger.external_event_id} /></span>}
           </span>
         </span>
       </Link>
@@ -179,8 +179,8 @@ function RelatedRecord({ item, compact = false }: { item: ReconciliationRow; com
           <span title={raw.occurred_at_text ?? undefined}>{compact && <span>原始时间 </span>}{raw.occurred_at_text || "时间未知"}</span>
           <span className="reconciliation-related-detail" title={reference ?? rawReferenceTitle}>
             {reference ?? (raw.external_event_id
-              ? <>流水号 <ShortId value={raw.external_event_id} /></>
-              : <>原始记录 <ShortId value={raw.raw_event_id} /></>)}
+              ? <span className="short-id-inline"><span>流水号</span><ShortId value={raw.external_event_id} /></span>
+              : <span className="short-id-inline"><span>原始记录</span><ShortId value={raw.raw_event_id} /></span>)}
           </span>
         </span>
       </div>

@@ -788,7 +788,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 }
 @media (pointer: coarse) {
   .site-overview-sort [data-slot="toggle-group-item"] {
-    min-width: 40px;
+    min-width: 44px;
     min-height: 32px;
     height: auto;
   }
@@ -959,13 +959,21 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   .site-overview-card:hover .site-overview-row-chevron {
     opacity: 1;
     color: var(--foreground);
-    transform: translateX(2px);
   }
 }
 .site-overview-card:focus-visible .site-overview-row-chevron {
   opacity: 1;
   color: var(--foreground);
-  transform: translateX(2px);
+}
+@media (prefers-reduced-motion: no-preference) {
+  @media (hover: hover) {
+    .site-overview-card:hover .site-overview-row-chevron {
+      transform: translateX(2px);
+    }
+  }
+  .site-overview-card:focus-visible .site-overview-row-chevron {
+    transform: translateX(2px);
+  }
 }
 .site-overview-row-meta {
   display: flex;
@@ -2254,6 +2262,12 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   gap: 0.3125rem;
 }
 .daily-cal-head { min-width: 0; }
+.daily-cal-rows {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.3125rem;
+}
 .daily-cal-week {
   display: grid;
   min-width: 0;
@@ -2280,6 +2294,12 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   padding-right: 0.25rem;
   scrollbar-width: auto;
   scrollbar-color: var(--muted-foreground) transparent;
+}
+.daily-cal-body[data-scrollable="true"] .daily-cal-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: color-mix(in oklab, var(--muted) 22%, var(--card));
 }
 .daily-cal-body[data-scrollable="true"]:focus-visible {
   outline: 2px solid var(--ring);
@@ -2609,7 +2629,8 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 @container daily-report (max-width: 31.999rem) {
   .daily-cal-surface { padding: 0.5rem; }
   .daily-cal-grid-wrap,
-  .daily-cal-body { gap: 0.25rem; }
+  .daily-cal-body,
+  .daily-cal-rows { gap: 0.25rem; }
   .daily-cal-week,
   .daily-cal-loading-grid { gap: 0.25rem; }
   .daily-cal-pad,
@@ -2667,6 +2688,17 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   .daily-cal-cell-body { display: none; }
 }
 @media (pointer: coarse) {
+  .daily-cal-pad,
+  .daily-cal-cell {
+    margin-block: 0;
+    min-height: 44px;
+  }
+  .daily-cal-cell {
+    min-width: 0;
+  }
+  .daily-cal-cell::before {
+    min-width: 0;
+  }
   .daily-cal-detail-actions a {
     min-height: 2.75rem;
   }
@@ -3363,7 +3395,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 .ledger-summary-links dt { flex: none; }
 .ledger-summary-links > div:last-child { justify-content: flex-end; }
 .ledger-summary-links > div:only-child { justify-content: flex-start; }
-.ledger-summary-links a { display: inline-flex; min-width: 40px; max-width: 100%; min-height: 40px; align-items: center; overflow-wrap: anywhere; }
+.ledger-summary-links a { display: inline-flex; min-width: 44px; max-width: 100%; min-height: 44px; align-items: center; overflow-wrap: anywhere; }
 .ledger-summary-links .ledger-order-line { white-space: normal; }
 .ledger-summary-links > div:last-child { text-align: right; }
 .ledger-summary-links > div:only-child { grid-column: 1 / -1; text-align: left; }
@@ -3371,7 +3403,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 [data-business-table="administrator-ledger"] .list-summary-heading:has(.list-money[data-wide="true"]) { grid-template-columns: minmax(0, 1fr); }
 .issue-summary-related { min-width: 0; font-size: 0.8125rem; }
 .issue-summary-related .reconciliation-related-record { align-items: stretch; text-align: left; }
-.issue-summary-related .reconciliation-related-link { justify-content: center; min-height: 40px; }
+.issue-summary-related .reconciliation-related-link { justify-content: center; min-height: 44px; }
 .issue-summary-related .reconciliation-related-title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; white-space: normal; overflow-wrap: anywhere; }
 .issue-summary-related .reconciliation-related-meta { flex-wrap: wrap; overflow-wrap: anywhere; }
 .issue-summary-related .reconciliation-related-meta > span { min-width: 0; max-width: 100%; }
@@ -3801,6 +3833,17 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   outline: 2px solid var(--ring);
   outline-offset: 2px;
 }
+@media (pointer: coarse) {
+  .checkout-preview-segment-btn {
+    min-width: 44px;
+    min-height: 44px;
+    margin-block: 0;
+  }
+  .checkout-preview-segment-btn::before {
+    min-width: 0;
+    min-height: 0;
+  }
+}
 
 .checkout-preview-theme-pill {
   display: inline-flex;
@@ -3821,6 +3864,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 .checkout-preview-stage {
   container: checkout-preview / inline-size;
   min-height: 24rem;
+  padding-top: 1.625rem;
   background-color: var(--background);
   background-image:
     radial-gradient(
@@ -3984,6 +4028,18 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
     outline-color: color-mix(in oklab, var(--foreground) 28%, transparent);
   }
 }
+@media (pointer: coarse) {
+  .checkout-preview-hotspot {
+    min-width: 44px;
+    min-height: 44px;
+    margin-block: 0;
+    align-items: center;
+  }
+  .checkout-preview-hotspot::before {
+    min-width: 0;
+    min-height: 0;
+  }
+}
 .checkout-preview-hotspot[data-active="true"],
 .checkout-preview-hotspot:focus-visible {
   outline: 2px solid var(--ring);
@@ -4138,19 +4194,11 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   cursor: not-allowed;
 }
 
-/* CSS containment for isolated dashboard/calendar widgets and off-screen list items. */
+/* CSS containment for isolated dashboard/calendar widgets. */
 .daily-cal-surface,
 .site-overview-panel {
   contain: layout style paint;
 }
 .trend-card {
   contain: layout style;
-}
-.daily-cal-week:nth-child(n + 7) {
-  content-visibility: auto;
-  contain-intrinsic-block-size: auto 3.5rem;
-}
-.business-summary-list > :nth-child(n + 8) {
-  content-visibility: auto;
-  contain-intrinsic-block-size: auto 7rem;
 }

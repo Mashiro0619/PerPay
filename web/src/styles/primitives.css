@@ -252,6 +252,7 @@ a:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
     [data-slot="input"],
     [data-slot="textarea"],
     [data-slot="select-trigger"],
+    [data-slot="select-item"],
     [data-slot="checkbox"],
     [data-slot="switch"],
     [data-slot="toggle"],
@@ -269,6 +270,35 @@ a:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
     outline-offset: 2px;
   }
 
+  [data-slot="table-container"]:focus-visible {
+    outline-offset: -2px;
+  }
+
+  :where(
+    [data-slot="card"],
+    [data-slot="dialog-content"],
+    [data-slot="alert-dialog-content"],
+    [data-slot="popover-content"],
+    [data-slot="dropdown-menu-content"],
+    [data-slot="dropdown-menu-sub-content"],
+    [data-slot="select-content"],
+    [data-slot="tooltip-content"],
+    [data-slot="badge"]
+  ) {
+    border: 1px solid CanvasText;
+  }
+
+  :where(
+    [data-slot="select-item"],
+    [data-slot="dropdown-menu-item"],
+    [data-slot="dropdown-menu-radio-item"],
+    [data-slot="dropdown-menu-checkbox-item"],
+    [data-slot="dropdown-menu-sub-trigger"]
+  )[data-highlighted] {
+    background-color: Highlight;
+    color: HighlightText;
+  }
+
   :where([data-slot="tabs-trigger"][data-active], [role="tab"][aria-selected="true"]) {
     border-color: Highlight;
     border-block-end: 2px solid Highlight;
@@ -277,10 +307,16 @@ a:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
   :where(
     [data-slot="toggle"][aria-pressed="true"],
     [data-slot="toggle-group-item"][aria-pressed="true"],
-    .settings-rail-item[aria-selected="true"],
     [data-slot="sidebar-menu-button"][data-active="true"]
   ) {
     border: 1px solid Highlight;
+  }
+
+  :where(
+    .daily-cal-cell[data-selected="true"],
+    .checkout-preview-segment-btn[aria-pressed="true"]
+  ) {
+    border: 2px solid Highlight;
   }
 
   [data-selection-indicator="fill"] {
@@ -308,19 +344,15 @@ a:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
   [data-slot="checkbox"][data-checked] {
     border-color: Highlight;
   }
-
-  [data-slot="spinner"] {
-    forced-color-adjust: none;
-    color: CanvasText;
-  }
 }
 
 /* Middle-truncated identifiers keep the full value in the DOM for find, copy, and screen readers. */
 .short-id {
   display: inline-flex;
+  align-items: baseline;
   max-inline-size: min(100%, 16ch);
   min-inline-size: 0;
-  vertical-align: bottom;
+  vertical-align: baseline;
   white-space: nowrap;
 }
 .short-id-head {
@@ -328,9 +360,26 @@ a:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.short-id-inline {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.25em;
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  vertical-align: baseline;
+}
+.short-id-inline > :first-child {
+  flex: none;
+}
+.short-id-inline > .short-id {
+  flex: 0 1 auto;
+  min-inline-size: 0;
+}
 
 /* Visually mark required fields without altering label textContent or duplicating screen reader announcements. */
 [data-slot="field"]:has(:is(input, textarea, select)[required]) [data-slot="field-label"]:not(.sr-only)::after {
-  content: " *" / "";
+  content: "*";
+  content: "*" / "";
+  margin-inline-start: -0.25rem;
   color: var(--destructive);
 }

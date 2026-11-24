@@ -542,7 +542,7 @@ export function SitePolicyFields({
               通知超时与重试设置
               <ChevronDown
                 data-icon="inline-end"
-                className={cn("transition-transform", notificationPolicyOpen && "rotate-180")}
+                className={cn("transition-transform motion-reduce:transition-none", notificationPolicyOpen && "rotate-180")}
                 aria-hidden="true"
               />
             </CollapsibleTrigger>

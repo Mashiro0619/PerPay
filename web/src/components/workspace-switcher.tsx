@@ -198,7 +198,7 @@ export function WorkspaceSwitcher({
         >
           {selectedName}
         </span>
-        <ChevronRight aria-hidden="true" className="transition-transform group-data-open/collapsible:rotate-90" />
+        <ChevronRight aria-hidden="true" className="transition-transform motion-reduce:transition-none group-data-open/collapsible:rotate-90" />
       </CollapsibleTrigger>
       {sidebar.isMobile && <div className="px-2 py-1 empty:hidden">
         <RequestNoticeBanner showRuntimeLink={false} />

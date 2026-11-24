@@ -724,7 +724,7 @@ export function SelfUpdateDialog({
                   }
                 >
                   <span>如何启用后台一键更新？</span>
-                  <ChevronDown aria-hidden="true" className="size-3.5 text-muted-foreground transition-transform [[data-panel-open]_&]:rotate-180" />
+                  <ChevronDown aria-hidden="true" className="size-3.5 text-muted-foreground transition-transform motion-reduce:transition-none [[data-panel-open]_&]:rotate-180" />
                 </CollapsibleTrigger>
                 <CollapsibleContent className="mt-2.5 flex flex-col gap-2 text-muted-foreground">
                   <p>

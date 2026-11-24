@@ -57,6 +57,7 @@ const pairs = [
   ["sidebar-foreground", "sidebar"],
   ["accent-foreground", "accent"],
   ["destructive", "background"],
+  ["destructive", "muted"],
   ["success-foreground", "success"],
   ["warning-foreground", "warning"],
   ["danger-foreground", "danger"],
@@ -100,6 +101,29 @@ describe("official Neutral theme", () => {
     expect(primitivesCss).toContain("@media (forced-colors: active)");
     expect(stylesCss).not.toMatch(/color-mix\(in oklch/i);
     expect(checkoutCss).not.toMatch(/color-mix\(in oklch/i);
+
+    const supportsMatch = css.match(
+      /@supports \(color: light-dark\(white, black\)\)\s*\{\s*:root\s*\{([\s\S]*?)\}\s*\}/,
+    );
+    expect(supportsMatch).not.toBeNull();
+    const supportsVars = Object.fromEntries(
+      [...supportsMatch![1]!.matchAll(/--([\w-]+):\s*([^;]+);/g)].map((match) => [
+        match[1]!,
+        match[2]!.trim(),
+      ]),
+    );
+    const darkRaw = rawVariables(".dark");
+    const fallbackRaw = rawVariables(":root:not([data-theme])");
+    for (const [name, darkValue] of Object.entries(darkRaw)) {
+      expect(fallbackRaw[name]).toBe(darkValue);
+      if (name === "sidebar-ring") {
+        expect(supportsVars[name]).toBe("var(--ring)");
+        continue;
+      }
+      expect(supportsVars[name]).toBe(`light-dark(var(--${name}-light), var(--${name}-dark))`);
+      expect(rootRaw[`${name}-light`]).toBeTruthy();
+      expect(rootRaw[`${name}-dark`]).toBeTruthy();
+    }
   });
 });
 

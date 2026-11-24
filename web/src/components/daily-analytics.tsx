@@ -282,27 +282,27 @@ export function DailyAnalytics({
 
           <div className="daily-cal-surface" data-daily-surface="true">
             <div role="grid" aria-label="每日收款日历" className="daily-cal-grid-wrap">
-              <div role="rowgroup" className="daily-cal-head">
-                <div role="row" className="daily-cal-week">
-                  {CALENDAR_WEEKDAYS.map((weekday) => (
-                    <div key={weekday} role="columnheader" className="daily-cal-weekday">
-                      {weekday}
-                    </div>
-                  ))}
-                </div>
-              </div>
               <div
                 ref={scrollRef}
-                role="rowgroup"
                 className="daily-cal-body"
                 data-scrollable={isScrollable || undefined}
                 aria-label="每日收款记录"
               >
-                {weeks.map((week) => (
-                  <div key={week[0]!.iso} role="row" className="daily-cal-week">
-                    {week.map((cell) => {
-                      if (!cell.day) {
-                        return <div key={cell.iso} role="gridcell" className="daily-cal-pad" />;
+                <div role="rowgroup" className="daily-cal-head">
+                  <div role="row" className="daily-cal-week">
+                    {CALENDAR_WEEKDAYS.map((weekday) => (
+                      <div key={weekday} role="columnheader" className="daily-cal-weekday">
+                        {weekday}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div role="rowgroup" className="daily-cal-rows">
+                  {weeks.map((week) => (
+                    <div key={week[0]!.iso} role="row" className="daily-cal-week">
+                      {week.map((cell) => {
+                        if (!cell.day) {
+                          return <div key={cell.iso} role="gridcell" className="daily-cal-pad" />;
                       }
                       const day = cell.day;
                       const isToday = day.date === report.today;
@@ -415,6 +415,7 @@ export function DailyAnalytics({
                     })}
                   </div>
                 ))}
+                </div>
               </div>
             </div>
           </div>

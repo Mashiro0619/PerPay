@@ -1,4 +1,13 @@
-@custom-variant dark (&:is(.dark *));
+@custom-variant dark {
+  &:is(.dark *) {
+    @slot;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme]) & {
+      @slot;
+    }
+  }
+}
 @theme inline {
   --font-sans:
     ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
@@ -79,7 +88,7 @@
   --accent-dark: oklch(0.269 0 0);
   --accent-foreground-light: oklch(0.205 0 0);
   --accent-foreground-dark: oklch(0.985 0 0);
-  --destructive-light: oklch(0.577 0.245 27.325);
+  --destructive-light: oklch(0.53 0.22 27.325);
   --destructive-dark: oklch(0.704 0.191 22.216);
   --success-light: oklch(0.965 0.018 162);
   --success-dark: oklch(0.265 0.04 160);

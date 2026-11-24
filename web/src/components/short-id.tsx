@@ -20,7 +20,17 @@ export function ShortId({
   const prefix = value.slice(0, -6);
   const suffix = value.slice(-6);
   return (
-    <span className={cn("short-id", className)} title={title ?? value}>
+    <span
+      className={cn("short-id", className)}
+      title={title ?? value}
+      onCopy={(event) => {
+        const selection = window.getSelection()?.toString();
+        if (selection && selection.replace(/\s+/g, "") === value) {
+          event.clipboardData.setData("text/plain", value);
+          event.preventDefault();
+        }
+      }}
+    >
       <span className="short-id-head">{prefix}</span>
       {suffix}
     </span>
