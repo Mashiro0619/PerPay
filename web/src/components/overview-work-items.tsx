@@ -78,7 +78,7 @@ export function OverviewWorkItems({ items }: { items: readonly AdminWorkItem[] }
             <ItemContent className="overview-work-content">
               <ItemHeader className="overview-work-header min-w-0">
                 <div className="overview-work-heading min-w-0 flex-1">
-                  <ItemTitle className="min-w-0 max-w-full line-clamp-2 wrap-anywhere">
+                  <ItemTitle className="min-w-0 max-w-full line-clamp-none wrap-anywhere">
                     <Link
                       data-row-link
                       className="list-primary-link"

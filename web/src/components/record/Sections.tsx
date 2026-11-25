@@ -40,10 +40,9 @@ export function Sections({ label = "详情内容", className, children }: {
         ?? sections.find(element => element.dataset.detailSection === requested);
       const target = exact ?? section;
       if (!target) return;
-      const active = document.activeElement;
-      if (target.closest("[inert]") || (active && active !== document.body && root.contains(active))) {
-        // Another step/modal or direct interaction already owns focus on this record;
-        // stop waiting so closing that step cannot yank focus back to the initial anchor.
+      if (target.closest("[inert]")) {
+        // Another step/modal already owns focus on this record; stop waiting so
+        // closing that step cannot yank focus back to the initial anchor.
         complete = true;
         observer.disconnect();
         return;

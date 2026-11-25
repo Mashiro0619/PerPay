@@ -210,6 +210,12 @@ a:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
   transition-duration: var(--motion-fast);
   transition-timing-function: var(--motion-ease-exit);
 }
+@media (prefers-reduced-motion: reduce) {
+  :is([data-slot="dialog-overlay"], [data-slot="alert-dialog-overlay"])[data-starting-style],
+  [data-overlay-viewport="dialog"][data-starting-style] {
+    opacity: 1;
+  }
+}
 @media (prefers-reduced-motion: no-preference) {
   [data-overlay-viewport="dialog"] {
     transition:
