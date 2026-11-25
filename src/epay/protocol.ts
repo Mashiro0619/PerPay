@@ -21,8 +21,30 @@ export const EPAY_NOTIFICATION_FIELDS = Object.freeze([
   "addtime", "endtime", "name", "money", "param", "buyer", "timestamp", "sign", "sign_type",
 ]);
 
+/** Standard EasyPay V1/V2 parameters accepted on order creation endpoints. */
+export const EPAY_CREATE_PARAMETERS = Object.freeze([
+  "pid", "type", "method", "out_trade_no", "notify_url", "return_url",
+  "name", "money", "sitename", "clientip", "device", "param",
+  "timestamp", "sign", "sign_type",
+  "channel_id", "auth_code", "sub_openid", "sub_appid", "biz_content",
+]);
+
+const EPAY_CALLBACK_URL_FIELDS: ReadonlySet<string> = new Set(["notify_url", "return_url"]);
+const EPAY_CALLBACK_RESERVED_FIELDS: ReadonlySet<string> = new Set([
+  ...EPAY_NOTIFICATION_FIELDS,
+  "notify_url", "return_url", "sitename", "sub_appid", "sub_openid",
+]);
+
+export interface ParseEpayParametersOptions {
+  readonly allowCallbackUrlAmpersand?: boolean;
+}
+
+export interface AppendEpayParametersOptions {
+  readonly allowMatchingOutTradeNo?: string;
+}
+
 /** Decode exactly once, before any business field normalization or signature verification. */
-export function parseEpayParameters(query: string, body?: string | Uint8Array): EpayParameters {
+export function parseEpayParameters(query: string, body?: string | Uint8Array, options?: ParseEpayParametersOptions): EpayParameters {
   let form = "";
   try { form = typeof body === "string" ? body : body ? new TextDecoder("utf-8", { fatal: true }).decode(body) : ""; }
   catch { throw new EpayProtocolError("invalid_parameters", "表单必须使用有效 UTF-8。"); }
@@ -37,7 +59,10 @@ export function parseEpayParameters(query: string, body?: string | Uint8Array): 
       const separator = pair.indexOf("=");
       const key = decodeComponent(separator < 0 ? pair : pair.slice(0, separator));
       const value = decodeComponent(separator < 0 ? "" : pair.slice(separator + 1));
-      validateField(key, value);
+      validateField(key, value, {
+        allowCallbackUrlAmpersand: Boolean(options?.allowCallbackUrlAmpersand),
+        allowOutTradeNoInReturnUrl: true,
+      });
       if (Object.hasOwn(parameters, key)) throw new EpayProtocolError("invalid_parameters", "参数名不能重复。");
       parameters[key] = value;
     }
@@ -50,15 +75,73 @@ function decodeComponent(value: string): string {
   catch { throw new EpayProtocolError("invalid_parameters", "表单包含无效编码。"); }
 }
 
-function validateField(key: string, value: string): void {
-  if (!key || /[\[\]&=\x00-\x20\x7f]/.test(key) || value.includes("&") || !key.isWellFormed() || !value.isWellFormed()) {
+function validateField(
+  key: string,
+  value: string,
+  options?: { allowCallbackUrlAmpersand?: boolean; allowOutTradeNoInReturnUrl?: boolean; matchingOutTradeNo?: string },
+): void {
+  if (!key || /[\[\]&=\x00-\x20\x7f]/.test(key) || !key.isWellFormed() || !value.isWellFormed()) {
     throw new EpayProtocolError("invalid_parameters", "参数包含数组、非法参数名或不支持的 & 字符。");
   }
+  if (!value.includes("&")) return;
+  if (options?.allowCallbackUrlAmpersand && EPAY_CALLBACK_URL_FIELDS.has(key)) {
+    validateCallbackUrlTarget(value, {
+      ...(key === "return_url" && options.matchingOutTradeNo !== undefined ? { allowMatchingOutTradeNo: options.matchingOutTradeNo } : {}),
+      ...(key === "return_url" && options.allowOutTradeNoInReturnUrl && options.matchingOutTradeNo === undefined ? { deferOutTradeNoMatch: true } : {}),
+    });
+    return;
+  }
+  throw new EpayProtocolError("invalid_parameters", "参数包含数组、非法参数名或不支持的 & 字符。");
+}
+
+function validateCallbackUrlTarget(
+  target: string,
+  options?: AppendEpayParametersOptions & { deferOutTradeNoMatch?: boolean },
+): { url: URL; existing: EpayParameters } {
+  if (target !== target.trim() || /\p{Cc}/u.test(target)) {
+    throw new EpayProtocolError("invalid_return_url", "回调地址格式无效。");
+  }
+  let url: URL;
+  try { url = new URL(target); }
+  catch { throw new EpayProtocolError("invalid_return_url", "回调地址格式无效。"); }
+  if (url.protocol !== "https:" && url.protocol !== "http:") {
+    throw new EpayProtocolError("invalid_return_url", "回调地址格式无效。");
+  }
+  if (target.includes("#") || url.hash) {
+    throw new EpayProtocolError("invalid_return_url", "回调地址不能包含片段标识。");
+  }
+  const queryIndex = target.indexOf("?");
+  const beforeQuery = queryIndex < 0 ? target : target.slice(0, queryIndex);
+  if (beforeQuery.includes("&")) {
+    throw new EpayProtocolError("invalid_return_url", "回调地址路径不能包含 & 字符。");
+  }
+  if (queryIndex >= 0) {
+    const rawQuery = target.slice(queryIndex + 1);
+    if (!rawQuery || rawQuery.split("&").some(pair => !pair)) {
+      throw new EpayProtocolError("invalid_parameters", "回调地址查询参数格式无效。");
+    }
+  }
+  const existing = parseEpayParameters(url.search);
+  for (const name of Object.keys(existing)) {
+    // PHP decodes dots as underscores in $_GET, changing the signed parameter name.
+    if (name.includes(".")) throw new EpayProtocolError("invalid_return_url", "回调地址参数名不能包含点号，PHP 接收端会改变该名称。");
+    if (EPAY_CALLBACK_RESERVED_FIELDS.has(name)) {
+      if (name === "out_trade_no" && (
+        options?.deferOutTradeNoMatch ||
+        (options?.allowMatchingOutTradeNo !== undefined && existing[name] === options.allowMatchingOutTradeNo)
+      )) {
+        continue;
+      }
+      throw new EpayProtocolError("invalid_return_url", "返回地址已有易支付保留参数。");
+    }
+  }
+  return { url, existing };
 }
 
 /** PHP SDK skips arrays and trim-empty scalars, while preserving the original non-empty value. */
 export function epaySigningContent(parameters: EpaySignable, protocol: EpayProtocol = "epay_v2"): string {
   const entries: string[] = [];
+  const matchingOutTradeNo = typeof parameters.out_trade_no === "string" ? parameters.out_trade_no : undefined;
   for (const key of Object.keys(parameters).sort((a, b) => Buffer.compare(Buffer.from(a), Buffer.from(b)))) {
     const value = parameters[key];
     if (key === "sign" || key === "sign_type" || value === null || value === undefined || typeof value === "object") continue;
@@ -68,7 +151,10 @@ export function epaySigningContent(parameters: EpaySignable, protocol: EpayProto
     if (typeof value === "number" && !Number.isFinite(value)) throw new EpayProtocolError("invalid_parameters", "签名参数包含无效数字。");
     const text = typeof value === "boolean" ? (value ? "1" : "") : String(value);
     if (protocol === "epay_v1" ? text === "" : PHP_EMPTY.test(text)) continue;
-    validateField(key, text);
+    validateField(key, text, {
+      allowCallbackUrlAmpersand: true,
+      ...(matchingOutTradeNo !== undefined ? { matchingOutTradeNo } : {}),
+    });
     entries.push(`${key}=${text}`);
   }
   return entries.join("&");
@@ -188,22 +274,29 @@ export function buildEpayNotification(order: EpayNotificationOrder, protocol: Ep
   return Object.freeze(result);
 }
 
-export function appendEpayParameters(target: string, parameters: EpayParameters): string {
-  const url = new URL(target);
-  const existing = parseEpayParameters(url.search);
-  for (const name of Object.keys(existing)) {
-    // PHP decodes dots as underscores in $_GET, changing the signed parameter name.
-    if (name.includes(".")) throw new EpayProtocolError("invalid_return_url", "回调地址参数名不能包含点号，PHP 接收端会改变该名称。");
-    if (EPAY_NOTIFICATION_FIELDS.includes(name)) throw new EpayProtocolError("invalid_return_url", "返回地址已有易支付保留参数。");
+export function appendEpayParameters(target: string, parameters: EpayParameters, options?: AppendEpayParametersOptions): string {
+  const { url, existing } = validateCallbackUrlTarget(target, options);
+  for (const [name, value] of Object.entries(parameters)) {
+    if (name === "out_trade_no" && options?.allowMatchingOutTradeNo !== undefined && Object.hasOwn(existing, name)) {
+      if (existing[name] !== value) throw new EpayProtocolError("invalid_return_url", "返回地址已有易支付保留参数。");
+      continue;
+    }
+    url.searchParams.append(name, value);
   }
-  for (const [name, value] of Object.entries(parameters)) url.searchParams.append(name, value);
   return url.href;
 }
 
 /** Sign the complete delivered query, including the merchant's existing scalar parameters. */
-export function buildEpayCallbackUrl(target: string, order: EpayNotificationOrder, protocol: EpayProtocol, key: EpayKey, nowMilliseconds = Date.now()): string {
-  appendEpayParameters(target, {});
-  const existing = parseEpayParameters(new URL(target).search);
+export function buildEpayCallbackUrl(
+  target: string,
+  order: EpayNotificationOrder,
+  protocol: EpayProtocol,
+  key: EpayKey,
+  nowMilliseconds = Date.now(),
+  options?: { allowMatchingOutTradeNo?: boolean },
+): string {
+  const appendOptions = options?.allowMatchingOutTradeNo ? { allowMatchingOutTradeNo: order.outTradeNo } : undefined;
+  const { existing } = validateCallbackUrlTarget(target, appendOptions);
   const notification = { ...buildEpayNotification(order, protocol, key, nowMilliseconds) };
   const parameters = { ...existing, ...notification };
   if (protocol === "epay_v2") notification.sign = signEpayV2(parameters, key);
@@ -211,7 +304,7 @@ export function buildEpayCallbackUrl(target: string, order: EpayNotificationOrde
     if (typeof key !== "string") throw new EpayProtocolError("invalid_key", "V1 密钥须为字符串。");
     notification.sign = signEpayV1(parameters, key);
   }
-  return appendEpayParameters(target, notification);
+  return appendEpayParameters(target, notification, appendOptions);
 }
 
 export function isEpaySuccessAck(status: number, body: string | Uint8Array): boolean {

@@ -107,3 +107,67 @@ test("callback signatures retain supported static names and decode percent escap
     assert.equal(protocol === "epay_v1" ? verifyEpayV1(delivered, "secret") : verifyEpayV2(delivered, keys.publicKey), true);
   }
 });
+
+test("order creation parsing allows multi-query callback URLs and matching return out_trade_no without smuggling", () => {
+  const notifyUrl = "https://sub.example.com/api/v1/payment/webhook/easypay?instance_id=42&channel=alipay";
+  const returnUrl = "https://sub.example.com/payment/result?order_id=99&out_trade_no=SUB2-1&resume_token=tok_abc&status=success";
+  const raw = new URLSearchParams({
+    pid: "1001", type: "alipay", out_trade_no: "SUB2-1", name: "Sub2API 10.00 CNY", money: "10.00",
+    notify_url: notifyUrl, return_url: returnUrl,
+  }).toString();
+
+  // Default strict mode still rejects `&` in any parameter value.
+  assert.throws(() => parseEpayParameters(raw));
+
+  // Order-creation mode accepts `&` strictly inside notify_url / return_url query strings.
+  const parsed = parseEpayParameters(raw, undefined, { allowCallbackUrlAmpersand: true });
+  assert.equal(parsed.notify_url, notifyUrl);
+  assert.equal(parsed.return_url, returnUrl);
+
+  for (const protocol of ["epay_v1", "epay_v2"] as const) {
+    const signed = protocol === "epay_v1"
+      ? { ...parsed, sign_type: "MD5", sign: signEpayV1(parsed, "secret") }
+      : { ...parsed, timestamp: String(Math.floor(now / 1000)), sign_type: "RSA", sign: signEpayV2({ ...parsed, timestamp: String(Math.floor(now / 1000)) }, keys.privateKey) };
+    assert.equal(protocol === "epay_v1" ? verifyEpayV1(signed, "secret") : verifyEpayV2(signed, keys.publicKey), true);
+
+    // Paid return reuses the matching out_trade_no once and signs the complete query.
+    const order = { pid: "1001", tradeNo: "202611070001", outTradeNo: "SUB2-1", name: "Sub2API 10.00 CNY", moneyCents: 1000 };
+    const returned = buildEpayCallbackUrl(returnUrl, order, protocol, protocol === "epay_v1" ? "secret" : keys.privateKey, now, { allowMatchingOutTradeNo: true });
+    const returnedUrl = new URL(returned);
+    assert.deepEqual(returnedUrl.searchParams.getAll("out_trade_no"), ["SUB2-1"]);
+    const delivered = parseEpayParameters(returnedUrl.search);
+    assert.equal(delivered.order_id, "99");
+    assert.equal(delivered.out_trade_no, "SUB2-1");
+    assert.equal(delivered.resume_token, "tok_abc");
+    assert.equal(delivered.status, "success");
+    assert.equal(protocol === "epay_v1" ? verifyEpayV1(delivered, "secret") : verifyEpayV2(delivered, keys.publicKey), true);
+
+    // Single-parameter return_url (no `&`) with matching out_trade_no also deduplicates cleanly; mismatched out_trade_no fails.
+    const singleParamReturn = buildEpayCallbackUrl("https://sub.example.com/payment/result?out_trade_no=SUB2-1", order, protocol, protocol === "epay_v1" ? "secret" : keys.privateKey, now, { allowMatchingOutTradeNo: true });
+    const singleParamUrl = new URL(singleParamReturn);
+    assert.deepEqual(singleParamUrl.searchParams.getAll("out_trade_no"), ["SUB2-1"]);
+    assert.equal(protocol === "epay_v1" ? verifyEpayV1(parseEpayParameters(singleParamUrl.search), "secret") : verifyEpayV2(parseEpayParameters(singleParamUrl.search), keys.publicKey), true);
+    assert.throws(() => appendEpayParameters("https://sub.example.com/payment/result?out_trade_no=OTHER", {}, { allowMatchingOutTradeNo: "SUB2-1" }), { code: "invalid_return_url" });
+  }
+
+  // Non-URL fields, callback paths, control characters, malformed queries, reserved fields, and mismatched out_trade_no remain rejected.
+  const invalidPayloads: Record<string, string>[] = [
+    { pid: "1001", out_trade_no: "SUB2-1", name: "A&B" },
+    { pid: "1001", out_trade_no: "SUB2-1", param: "a=1&b=2" },
+    { pid: "1001", out_trade_no: "SUB2-1", notify_url: "https://sub.example.com/a&b" },
+    { pid: "1001", out_trade_no: "SUB2-1", notify_url: "https://sub.example.com/cb?a=1&b=2\t" },
+    { pid: "1001", out_trade_no: "SUB2-1", notify_url: "https://sub.example.com/cb?a=1&sit\tename=Shop" },
+    { pid: "1001", out_trade_no: "SUB2-1", notify_url: " https://sub.example.com/cb?a=1&b=2" },
+    { pid: "1001", out_trade_no: "SUB2-1", notify_url: "https://sub.example.com/cb?a=1&" },
+    { pid: "1001", out_trade_no: "SUB2-1", notify_url: "https://sub.example.com/cb?a=1&&b=2" },
+    { pid: "1001", out_trade_no: "SUB2-1", notify_url: "https://sub.example.com/cb?a=1&b=2%263" },
+    { pid: "1001", out_trade_no: "SUB2-1", notify_url: "https://sub.example.com/cb?a=1&out_trade_no=SUB2-1" },
+    { pid: "1001", out_trade_no: "SUB2-1", return_url: "https://sub.example.com/ret?a=1&trade_status=TRADE_SUCCESS" },
+    { pid: "1001", out_trade_no: "SUB2-1", return_url: "https://sub.example.com/ret?a=1&sitename=Shop" },
+    { pid: "1001", out_trade_no: "SUB2-1", return_url: "https://sub.example.com/ret?a=1&type=alipay" },
+    { pid: "1001", out_trade_no: "SUB2-1", return_url: "https://sub.example.com/ret?a=1&out_trade_no=OTHER" },
+  ];
+  for (const invalid of invalidPayloads) {
+    assert.throws(() => epaySigningContent(invalid, "epay_v1"), JSON.stringify(invalid));
+  }
+});

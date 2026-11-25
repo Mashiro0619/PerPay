@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 import assert from "node:assert/strict";
-import { createHash, randomUUID } from "node:crypto";
+import { constants, createHash, randomUUID, sign } from "node:crypto";
 import { test } from "node:test";
 import { parseEnv } from "node:util";
 import { createApp } from "../src/http/app.ts";
@@ -176,7 +176,7 @@ test("browser-visible V2 payment signatures cannot authorize merchant reads", as
       const visible = f.parameters(f.first.credentials, "epay_v2", { type: "alipay",
         out_trade_no: `browser-${method}`, name: "Public checkout item", money: "10.00",
         notify_url: merchantOrigin + "/notify", return_url: merchantOrigin + "/return",
-        clientip: "203.0.113.9", device: "pc", custom_extension: "accepted" });
+        clientip: "203.0.113.9", device: "pc", sitename: "Public Shop" });
       const submitted = await f.send("/api/pay/submit", visible, method);
       assert.equal(submitted.status, 302);
       // The customer can copy either the signed URL or the browser's hidden form.
@@ -496,5 +496,131 @@ test("V1 and V2 idempotent retries still return existing orders after pausing no
       })).json() as { code: number };
       assert.equal(conflict.code, -1);
     }
+  } finally { f.close(); }
+});
+
+test("multi-query callback URLs and Sub2API-style return_url work end-to-end while blocking parameter smuggling", async () => {
+  const f = await fixture();
+  const signRaw = (credentials: EpayCredentials, protocol: EpayProtocol, fields: Record<string, string>) => {
+    const body: Record<string, string> = {
+      pid: credentials.pid, ...fields,
+      ...(protocol === "epay_v2" ? { timestamp: String(Math.floor(f.now() / 1000)) } : {}),
+      sign_type: protocol === "epay_v1" ? "MD5" : "RSA",
+    };
+    const content = Object.keys(body)
+      .filter(key => key !== "sign" && key !== "sign_type" && body[key] !== "")
+      .sort((a, b) => Buffer.compare(Buffer.from(a), Buffer.from(b)))
+      .map(key => `${key}=${body[key]}`)
+      .join("&");
+    const signature = protocol === "epay_v1"
+      ? createHash("md5").update(content + credentials.v1Key!, "utf8").digest("hex")
+      : sign("RSA-SHA256", Buffer.from(content), {
+          key: credentials.merchantPrivateKey!,
+          padding: constants.RSA_PKCS1_PADDING,
+        }).toString("base64");
+    return { ...body, sign: signature };
+  };
+  try {
+    for (const protocol of ["epay_v1", "epay_v2"] as const) {
+      const submitPath = protocol === "epay_v1" ? "/submit.php" : "/api/pay/submit";
+      const outTradeNo = `${protocol}-sub2api`;
+      const notifyUrl = `${merchantOrigin}/api/v1/payment/webhook/easypay?instance_id=42&channel=alipay`;
+      const returnUrl = `${merchantOrigin}/payment/result?order_id=99&out_trade_no=${outTradeNo}&resume_token=tok_abc&status=success`;
+      const signed = f.parameters(f.first.credentials, protocol, {
+        type: "alipay",
+        out_trade_no: outTradeNo,
+        name: "Sub2API 10.00 CNY",
+        money: "10.00",
+        notify_url: notifyUrl,
+        return_url: returnUrl,
+      });
+
+      // 1. Splitting `&status=success` out of return_url into a top-level query param keeps the exact same signature
+      //    string (`return_url < status < timestamp/type`), and MUST be rejected by the standard parameter allowlist.
+      const splitAttack = {
+        ...signed,
+        return_url: `${merchantOrigin}/payment/result?order_id=99&out_trade_no=${outTradeNo}&resume_token=tok_abc`,
+        status: "success",
+      };
+      const splitResponse = await (await f.send(submitPath, splitAttack, "GET")).json() as { code: number; msg: string };
+      assert.equal(splitResponse.code, -1);
+      assert.match(splitResponse.msg, /不支持的参数/);
+
+      // 2. Merging top-level `sitename` into return_url keeps the exact same signature string, and MUST be rejected.
+      const withSiteName = f.parameters(f.first.credentials, protocol, {
+        type: "alipay",
+        out_trade_no: `${outTradeNo}-merge`,
+        name: "Sub2API 10.00 CNY",
+        money: "10.00",
+        notify_url: notifyUrl,
+        return_url: `${merchantOrigin}/payment/result?order_id=99`,
+        sitename: "Sub2API",
+      });
+      const mergeAttack: Record<string, string> = {
+        ...withSiteName,
+        return_url: `${merchantOrigin}/payment/result?order_id=99&sitename=Sub2API`,
+      };
+      delete mergeAttack.sitename;
+      const mergeResponse = await (await f.send(submitPath, mergeAttack, "GET")).json() as { code: number };
+      assert.equal(mergeResponse.code, -1);
+
+      // 3. Smuggling `trade_status=TRADE_SUCCESS`, mismatched `out_trade_no`, `&` in non-URL fields, or unknown fields MUST be rejected.
+      const badOutTradeNo = `${outTradeNo}-bad`;
+      const badBaseReturnUrl = `${merchantOrigin}/payment/result?order_id=99&out_trade_no=${badOutTradeNo}&resume_token=tok_abc&status=success`;
+      const badCases: Record<string, string>[] = [
+        { return_url: `${merchantOrigin}/payment/result?order_id=99&trade_status=TRADE_SUCCESS` },
+        { return_url: `${merchantOrigin}/payment/result?order_id=99&out_trade_no=OTHER-ORDER` },
+        { notify_url: `${merchantOrigin}/webhook?instance_id=42&out_trade_no=${badOutTradeNo}` },
+        { name: "Sub2API & Pro" },
+        { custom_extension: "blocked" },
+      ];
+      for (const badFields of badCases) {
+        const payload = {
+          type: "alipay",
+          out_trade_no: badOutTradeNo,
+          name: "Sub2API 10.00 CNY",
+          money: "10.00",
+          notify_url: notifyUrl,
+          return_url: badBaseReturnUrl,
+          ...badFields,
+        };
+        const tampered = signRaw(f.first.credentials, protocol, payload);
+        const badResponse = await (await f.send(submitPath, tampered, "GET")).json() as { code: number };
+        assert.equal(badResponse.code, -1, `${protocol} should reject ${JSON.stringify(badFields)}`);
+      }
+      assert.equal(f.epay.orders(f.first.site.clientId).length, protocol === "epay_v1" ? 0 : 1);
+
+      // 4. Legitimate Sub2API submit succeeds, settles, and returns with deduplicated out_trade_no and valid signature.
+      const page = await f.send(submitPath, signed, "GET");
+      assert.equal(page.status, 302, await page.clone().text());
+      const metadata = f.epay.findOrder(f.first.site.clientId, { outTradeNo })!;
+      const order = f.orders.forSite(metadata.siteId).get(metadata.orderId);
+      assert.equal(order.notification.notifyUrl, notifyUrl);
+      assert.equal(metadata.returnUrl, returnUrl);
+
+      const returnEndpoint = `/api/public/v1/checkouts/${order.checkoutToken}/return`;
+      const unpaidReturn = await f.app.request(returnEndpoint);
+      assert.equal(unpaidReturn.status, 302);
+      assert.equal(unpaidReturn.headers.get("location"), returnUrl);
+
+      f.settle(order);
+      const paidReturn = await f.app.request(returnEndpoint);
+      assert.equal(paidReturn.status, 302);
+      const paidLocation = new URL(paidReturn.headers.get("location")!);
+      assert.deepEqual(paidLocation.searchParams.getAll("out_trade_no"), [outTradeNo]);
+      const delivered = Object.fromEntries(paidLocation.searchParams);
+      assert.equal(delivered.order_id, "99");
+      assert.equal(delivered.resume_token, "tok_abc");
+      assert.equal(delivered.status, "success");
+      assert.equal(delivered.money, "10.00");
+      assert.equal(delivered.trade_status, "TRADE_SUCCESS");
+      assert.equal(
+        protocol === "epay_v1"
+          ? verifyEpayV1(delivered, f.first.credentials.v1Key!)
+          : verifyEpayV2(delivered, f.first.credentials.platformPublicKey!),
+        true,
+      );
+    }
+    assert.equal(f.database.integrityCheck().ok, true);
   } finally { f.close(); }
 });

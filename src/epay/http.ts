@@ -14,7 +14,7 @@ import { SettingsFieldError } from "../settings/validation.ts";
 import { EpayStore, EpayError } from "./store.ts";
 import { epayConfigurationInputSchema, type EpayCredentials, type EpayOrderMetadata, type EpaySiteSnapshot } from "./model.ts";
 import {
-  EpayProtocolError, appendEpayParameters, assertEpayTimestamp, buildEpayCallbackUrl,
+  EPAY_CREATE_PARAMETERS, EpayProtocolError, appendEpayParameters, assertEpayTimestamp, buildEpayCallbackUrl,
   epayMoneyToCents, moneyFromCents, parseEpayParameters, signEpayV2,
   truncateEpayName, verifyEpayV1, verifyEpayV2, type EpayParameters, type EpayProtocol,
 } from "./protocol.ts";
@@ -43,6 +43,17 @@ const v2ReadParameters: Record<EpayReadAction, ReadonlySet<string>> = {
   info: new Set(v2CommonParameters),
   orders: new Set([...v2CommonParameters, "offset", "limit", "status"]),
 };
+
+const createParameterSet: ReadonlySet<string> = new Set(EPAY_CREATE_PARAMETERS);
+
+function assertCreateParameters(parameters: EpayParameters): void {
+  // Callback URLs may carry multiple query parameters (`&`); restricting top-level
+  // order-creation fields to the standard EasyPay set prevents splitting or merging
+  // URL query parameters across signing boundaries.
+  if (Object.keys(parameters).some(name => !createParameterSet.has(name))) {
+    throw new EpayProtocolError("invalid_parameters", "下单请求包含不支持的参数。");
+  }
+}
 
 function assertV2ReadParameters(action: EpayReadAction, parameters: EpayParameters): void {
   // Page-payment signatures are visible to the customer and do not bind a URL
@@ -145,7 +156,9 @@ export function registerEpayRoutes(app: Hono<AppEnvironment>, dependencies: AppD
         }
         body = await options.readBody(context, 16 * 1024);
       }
-      const parameters = parseEpayParameters(new URL(context.req.url).search.slice(1), body);
+      const parameters = parseEpayParameters(new URL(context.req.url).search.slice(1), body, {
+        allowCallbackUrlAmpersand: action === "create" || action === "submit",
+      });
       credentials = epay.credential(parameters.pid ?? "", { protocol, forCreation: action === "create" || action === "submit" });
       if (!credentials) throw new EpayProtocolError("authentication_failed", "商户不存在或当前协议未启用。");
       if (action === "legacy") {
@@ -159,6 +172,9 @@ export function registerEpayRoutes(app: Hono<AppEnvironment>, dependencies: AppD
       const selected = action === "legacy" ? ({ query: "info", order: "query", orders: "orders" } as const)[parameters.act as "query" | "order" | "orders"] : action;
       let result: Record<string, unknown>;
       authenticated = true;
+      if (selected === "create" || selected === "submit") {
+        assertCreateParameters(parameters);
+      }
       if (protocol === "epay_v2" && (selected === "query" || selected === "info" || selected === "orders")) {
         assertV2ReadParameters(selected, parameters);
       }
@@ -224,7 +240,7 @@ export function registerEpayRoutes(app: Hono<AppEnvironment>, dependencies: AppD
     const order = dependencies.orders.forSite(metadata.siteId).get(metadata.orderId);
     const returnUrl = new URL(metadata.returnUrl).href;
     if (order.payment.status !== "CONFIRMED") return context.redirect(returnUrl, 302);
-    try { appendEpayParameters(returnUrl, {}); }
+    try { appendEpayParameters(returnUrl, {}, { allowMatchingOutTradeNo: order.merchantOrderNo }); }
     catch (error) {
       // Historical requests remain immutable; an unsupported callback can still return to the merchant.
       if (error instanceof EpayProtocolError && ["invalid_return_url", "invalid_parameters"].includes(error.code)) {
@@ -235,7 +251,7 @@ export function registerEpayRoutes(app: Hono<AppEnvironment>, dependencies: AppD
     const key = metadata.protocol === "epay_v1" ? credentials.v1Key : credentials.platformPrivateKey;
     if (!key) throw new EpayError("epay_secret_missing", "商户通知密钥不可用。");
     const target = buildEpayCallbackUrl(returnUrl, { pid: metadata.pid, tradeNo: metadata.tradeNo, outTradeNo: order.merchantOrderNo,
-      name: order.productName, moneyCents: order.requestedAmountCents, ...(metadata.param !== null ? { param: metadata.param } : {}) }, metadata.protocol, key, now());
+      name: order.productName, moneyCents: order.requestedAmountCents, ...(metadata.param !== null ? { param: metadata.param } : {}) }, metadata.protocol, key, now(), { allowMatchingOutTradeNo: true });
     return context.redirect(target, 302);
   });
 }
@@ -247,7 +263,6 @@ function validateExportCallback(value: string, protocol: "native" | EpayProtocol
     keys.add(key);
   }
   if (protocol === "native") return;
-  if (value.includes("&")) throw new SettingsFieldError(field, "易支付回调地址不能包含 &，请移除该字符或简化查询参数。");
   try { appendEpayParameters(value, {}); }
   catch (error) {
     if (error instanceof EpayProtocolError) throw new SettingsFieldError(field, error.message);
@@ -266,7 +281,7 @@ function createEpayOrder(dependencies: AppDependencies, epay: EpayStore, credent
   if (!parameters.notify_url || !parameters.name || !parameters.out_trade_no ||
       (page && protocol === "epay_v1" && !parameters.return_url)) throw new EpayProtocolError("missing_parameter", "缺少必要的下单参数。");
   appendEpayParameters(parameters.notify_url, {});
-  if (parameters.return_url) appendEpayParameters(parameters.return_url, {});
+  if (parameters.return_url) appendEpayParameters(parameters.return_url, {}, { allowMatchingOutTradeNo: parameters.out_trade_no });
   const money = epayMoneyToCents(parameters.money ?? "");
   const param = parameters.param ?? null;
   if (param !== null && (Buffer.byteLength(param) > 4096 || /\p{Cc}/u.test(param))) {

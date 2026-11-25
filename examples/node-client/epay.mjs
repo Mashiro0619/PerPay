@@ -127,7 +127,18 @@ export class EpayClient {
       money: (payload.amount_cents / 100).toFixed(2), notify_url: payload.notify_url,
       clientip: '127.0.0.1', device: 'pc', param: payload.note ?? '' };
     if (payload.return_url) parameters.return_url = payload.return_url;
-    if (Object.values(parameters).some(value => value.includes('&'))) throw new DemoError(400, '易支付参数值暂不支持 & 字符。');
+    for (const [key, value] of Object.entries(parameters)) {
+      if (!value.includes('&')) continue;
+      if (key === 'notify_url' || key === 'return_url') {
+        const queryIndex = value.indexOf('?');
+        const rawQuery = queryIndex >= 0 ? value.slice(queryIndex + 1) : '';
+        if (queryIndex >= 0 && !value.includes('#') && !value.slice(0, queryIndex).includes('&') && rawQuery && !rawQuery.split('&').some(pair => !pair)) {
+          parseEpayQuery(rawQuery);
+          continue;
+        }
+      }
+      throw new DemoError(400, '易支付参数值暂不支持 & 字符。');
+    }
     if (this.config.protocol === 'epay_v2') parameters.method = 'jump';
     const result = await this.request(this.config.protocol === 'epay_v1' ? '/mapi.php' : '/api/pay/create', parameters);
     const payurl = this.config.protocol === 'epay_v1' ? result.payurl : result.pay_type === 'jump' ? result.pay_info : null;

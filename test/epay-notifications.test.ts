@@ -21,7 +21,7 @@ type Fixture = Awaited<ReturnType<typeof createSitePaymentFixture>>;
 type CompatibleOrder = ReturnType<typeof createOrder>;
 const audit = { actorId: "admin" };
 const origin = "https://merchant.example.com";
-const target = `${origin}/notify?channel=shop%2Bweb`;
+const target = `${origin}/notify?instance_id=42&channel=shop%2Bweb`;
 const emptyBodyFingerprint = createHash("sha256").update("").digest("hex");
 
 function configure(f: Fixture, protocol: EpayProtocol, name: string = protocol) {
@@ -212,6 +212,7 @@ for (const protocol of ["epay_v1", "epay_v2"] as const) {
       assert.equal(parameters.trade_status, "TRADE_SUCCESS");
       assert.equal(parameters.name, order.productName);
       assert.equal(parameters.param, "0");
+      assert.equal(parameters.instance_id, "42");
       assert.equal(parameters.channel, "shop+web");
       assert.equal(verifies(url, protocol, credentials), true);
       const tampered = new URL(url);

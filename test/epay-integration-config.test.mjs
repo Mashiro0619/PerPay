@@ -34,15 +34,19 @@ test('export rejects unusable callback configurations and accepted downloads cre
     for (const protocol of ['native', 'epay_v1', 'epay_v2']) {
       for (const field of ['notify_url', 'return_url']) {
         const badQueries = protocol === 'native' ? ['?a=1&a=2', '?a=1&%61=2']
-          : ['?a=1&b=2', '?tracking.id=123', '?tracking%2Eid=123'];
+          : ['?a=1&a=2', '?a=1&b=2%263', '?a=1&trade_status=TRADE_SUCCESS', '?a=1&sitename=shop', '?tracking.id=123', '?tracking%2Eid=123'];
         for (const query of badQueries) {
           const response = await download({ protocol, [field]: origin + '/callback' + query });
           assert.equal(response.status, 422, `${protocol} ${field} ${query}`);
           const error = await response.json();
           assert.equal(typeof error.error.fields[field], 'string');
         }
+        if (protocol !== 'native') {
+          const pathAmpersand = await download({ protocol, [field]: origin + '/call&back?a=1' });
+          assert.equal(pathAmpersand.status, 422, `${protocol} ${field} path ampersand`);
+        }
       }
-      const query = protocol === 'native' ? '?a=1&b=2' : '?source=demo%2B%3D%2526';
+      const query = protocol === 'native' ? '?a=1&b=2' : '?source=demo%2B%3D%2526&channel=web';
       const response = await download({ protocol, notify_url: origin + '/通知' + query,
         return_url: origin + '/返回' + query });
       assert.equal(response.status, 200, await response.clone().text());
