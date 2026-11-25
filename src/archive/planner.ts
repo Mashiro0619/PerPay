@@ -64,16 +64,22 @@ export function buildHistoryArchivePlan(connection: DatabaseSync, before: number
     const dates = ["created_at", "updated_at", "occurred_at", "received_at", "observed_at", "started_at", "completed_at", "finished_at", "resolved_at", "released_at", "closed_at"]
       .filter(column => table.columns.includes(column));
     const conditions = dates.map(column => `(${quoted(column)} IS NULL OR ${quoted(column)} < ${before})`);
+    // 未付款订单和仍可认单的流水保留在线，等待后续对账。
     const terminal: Record<string, string> = {
-      payment_orders: "checkout_status != 'OPEN' AND payment_status != 'DISPUTED'",
+      payment_orders: "checkout_status != 'OPEN' AND payment_status = 'CONFIRMED'",
       amount_slots: "released_at IS NOT NULL",
       ledger_entries: `state IN ('ALLOCATED', 'IGNORED', 'UNALLOCATED') AND NOT EXISTS (
-        SELECT 1 FROM payment_orders AS open_order JOIN collection_profile_provider_accounts AS binding
-          ON binding.profile_id = open_order.collection_profile_id
-        WHERE open_order.checkout_status = 'OPEN' AND binding.provider_account_key = ledger_entries.provider_account_key
-          AND open_order.payable_amount_cents = ledger_entries.amount_cents
-          AND open_order.eligible_from < ledger_entries.occurred_at + ledger_entries.occurred_at_precision_ms
-          AND open_order.expires_at > ledger_entries.occurred_at)`,
+        SELECT 1 FROM payment_orders AS unpaid_order JOIN collection_profile_provider_accounts AS binding
+          ON binding.profile_id = unpaid_order.collection_profile_id
+          JOIN amount_slots AS slot ON slot.order_id = unpaid_order.order_id
+        WHERE unpaid_order.payment_status = 'UNPAID' AND ledger_entries.direction = 'CREDIT'
+          AND binding.provider_account_key = ledger_entries.provider_account_key
+          AND unpaid_order.currency = ledger_entries.currency
+          AND unpaid_order.payable_amount_cents = ledger_entries.amount_cents
+          AND unpaid_order.eligible_from < ledger_entries.occurred_at + ledger_entries.occurred_at_precision_ms
+          AND slot.occupied_from < ledger_entries.occurred_at + ledger_entries.occurred_at_precision_ms
+          AND unpaid_order.expires_at > ledger_entries.occurred_at
+          AND (slot.released_at IS NULL OR ledger_entries.occurred_at < slot.released_at))`,
       // Observation numbering continues from the highest online sequence.
       ingest_runs: `status != 'RUNNING' AND ingest_run_id != COALESCE((
         SELECT ingest_run_id FROM ingest_run_page_observations
