@@ -31,15 +31,42 @@ async function closeOverlay(page: Page) {
 }
 
 async function screenshot(page: Page, info: TestInfo, name: string) {
+  const overlay = page.locator("[data-overlay-content]");
+  const overlayCount = await overlay.count();
+  const initialUrl = page.url();
   for (let remaining = 5; remaining > 0; remaining--) {
-    // Base UI hides the collapsed toast close button from the accessibility
-    // tree; its visible pointer control can still dismiss stale screenshot UI.
     const notices = page.locator('[data-slot="toast-close"]:visible');
-    const close = notices.first();
-    if (!await close.isVisible()) break;
+    if (!await notices.first().isVisible()) break;
+    const toast = page.locator('[data-slot="toast"]:visible').first();
+    await toast.hover();
+    const close = toast.getByRole("button", { name: "关闭提示", exact: true });
+    await expect(close).toBeVisible();
+    let previousPlacement = "";
+    let stableReadings = 0;
+    // Switching an editor tab can remove its footer and move the toast dock.
+    // Observe the final placement before sending a pointer click.
+    await expect.poll(async () => {
+      const placement = await close.evaluate(element => {
+        const box = element.getBoundingClientRect();
+        const viewport = element.closest<HTMLElement>('[data-slot="toast-viewport"]')!;
+        const style = getComputedStyle(viewport);
+        const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+        return {
+          position: JSON.stringify([box.x, box.y, box.width, box.height, style.bottom, style.getPropertyValue("--toast-max-height")]),
+          reachable: hit === element || !!hit && element.contains(hit),
+        };
+      });
+      stableReadings = placement.position === previousPlacement ? stableReadings + 1 : 0;
+      previousPlacement = placement.position;
+      return placement.reachable && stableReadings >= 2;
+    }, { intervals: [100, 100, 100] }).toBe(true);
     const previous = await notices.count();
     await close.click();
     await expect.poll(() => notices.count()).toBeLessThan(previous);
+    if (overlayCount) {
+      await expect(overlay).toHaveCount(overlayCount);
+      await expect(page).toHaveURL(initialUrl);
+    }
   }
   const path = info.outputPath(name + ".png");
   await page.screenshot({ path });
