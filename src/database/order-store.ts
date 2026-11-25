@@ -6,8 +6,8 @@ import { assertSiteCanCreate, readSite, SiteError } from "../sites/store.ts";
 import { normalizeListQuery, isDefaultQuery, ORDER_SORT_FIELDS, type ListQuery, type OrderSort } from "../shared/list-query.ts";
 import { listKeyset, listSearch, listCreatedDates } from "./list-query.ts";
 import { randomBytes, randomUUID } from "node:crypto";
-import { performance } from "node:perf_hooks";
 import type { DatabaseSync } from "node:sqlite";
+import { OrderClockError, orderClockForDatabase, type OrderClock } from "./order-clock.ts";
 
 import {
   CREATE_ORDER_REQUEST_FINGERPRINT_VERSION,
@@ -46,6 +46,8 @@ import {
 import type { AppDatabase } from "./database.ts";
 import { appendAuditEvent, IdentityTransaction } from "./identity-store.ts";
 import { auditContextAvailable, auditSiteContext, currentAuditContext } from "../audit/context.ts";
+
+export { OrderClockError } from "./order-clock.ts";
 
 const MAX_PAYABLE_AMOUNT_CENTS = MAX_REQUESTED_AMOUNT_CENTS + 1;
 const EXPIRY_SWEEP_LIMIT = 256;
@@ -167,20 +169,12 @@ export type CreateStoredOrderResult =
       readonly retryAfterSeconds: number;
     };
 
-export class OrderClockError extends Error {
-  constructor() {
-    super("the persisted order clock is too far ahead of the system clock");
-    this.name = "OrderClockError";
-  }
-}
-
 export class OrderStore {
   readonly #database: DatabaseOwner;
   readonly #physicalClock: (() => number) | undefined;
   readonly #checkoutKeyRotationMilliseconds: number;
   readonly #checkoutTerminalObservationMilliseconds: number;
-  readonly #wallClockAnchorMs: number;
-  readonly #monotonicAnchorMs: number;
+  readonly #clock: OrderClock;
 
   constructor(
     database: DatabaseOwner,
@@ -201,8 +195,7 @@ export class OrderStore {
     this.#physicalClock = physicalClock;
     this.#checkoutKeyRotationMilliseconds = checkoutKeyRotationMilliseconds;
     this.#checkoutTerminalObservationMilliseconds = checkoutTerminalObservationMilliseconds;
-    this.#wallClockAnchorMs = Date.now();
-    this.#monotonicAnchorMs = performance.now();
+    this.#clock = orderClockForDatabase(database);
   }
 
   syncCollectionProfile(input: SyncCollectionProfileInput): SyncCollectionProfileResult {
@@ -923,16 +916,10 @@ export class OrderStore {
   }
 
   #readPhysicalTime(connection: DatabaseSync): number {
-    const physicalNow = this.#physicalClock ? this.#physicalClock() : readDatabaseTime(connection);
+    if (!this.#physicalClock) return this.#clock.read(connection);
+    const physicalNow = this.#physicalClock();
     if (!Number.isSafeInteger(physicalNow) || physicalNow < 0) {
       throw new RangeError("order clock must return a non-negative safe integer");
-    }
-    if (!this.#physicalClock) {
-      const expectedPhysical =
-        this.#wallClockAnchorMs + (performance.now() - this.#monotonicAnchorMs);
-      if (Math.abs(physicalNow - expectedPhysical) > MAX_ORDER_CLOCK_AHEAD_MILLISECONDS) {
-        throw new OrderClockError();
-      }
     }
     return physicalNow;
   }
@@ -2066,13 +2053,6 @@ function linkCollectionProfileProvider(
      ) VALUES (?, ?, ?)`,
   ).run(profileId, providerAccountKey, linkedAt);
   assertChangedOnce(inserted.changes, "collection profile provider link insert");
-}
-
-function readDatabaseTime(connection: DatabaseSync): number {
-  const row = connection
-    .prepare("SELECT CAST(unixepoch('subsec') * 1000 AS INTEGER) AS now_ms")
-    .get() as { now_ms: bigint | number };
-  return toSafeInteger(row.now_ms, "database time");
 }
 
 function readOrderClock(connection: DatabaseSync): number {

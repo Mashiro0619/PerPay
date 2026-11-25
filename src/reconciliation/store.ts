@@ -11,6 +11,7 @@ import { appendAuditEvent } from "../database/identity-store.ts";
 import type { DatabaseSync } from "node:sqlite";
 
 import type { AppDatabase } from "../database/database.ts";
+import { OrderClockError, orderClockForDatabase, type OrderClock } from "../database/order-clock.ts";
 import { SANDBOX_PROVIDER_ENDPOINT } from "../settings/model.ts";
 import {
   MAX_ORDER_CLOCK_AHEAD_MILLISECONDS,
@@ -354,9 +355,11 @@ interface ReviewOrderRow {
  */
 export class ReconciliationStore {
   readonly #database: DatabaseOwner;
+  readonly #clock: OrderClock;
 
   constructor(database: DatabaseOwner) {
     this.#database = database;
+    this.#clock = orderClockForDatabase(database);
   }
 
   reconcileEntry(ledgerEntryId: string, nowInput?: number): ReconcileEntryResult {
@@ -370,7 +373,7 @@ export class ReconciliationStore {
       ).get(entry.provider_account_key, SANDBOX_PROVIDER_ENDPOINT)) {
         return { kind: "ignored", ledgerEntryId };
       }
-      const now = financialNow(connection, nowInput);
+      const now = financialNow(connection, nowInput, this.#clock);
       if (
         !entry ||
         entry.state === "CONFLICT" ||
@@ -625,7 +628,7 @@ export class ReconciliationStore {
     const reason = validateManualSettlementInput(input);
     return this.#database.write((connection) => {
       assertSiteOrder(connection, input.expectedClientId, input.orderId);
-      const now = financialNow(connection, input.now);
+      const now = financialNow(connection, input.now, this.#clock);
       const existingOperation = readOperation(connection, input.financialOperationId);
       const existingMatch = existingOperation?.operationType === "MANUAL_SETTLEMENT"
         ? readPaymentMatchByCreationOperation(connection, existingOperation.financialOperationId)
@@ -764,7 +767,7 @@ export class ReconciliationStore {
   reverseSettlement(input: FinancialDecisionInput): FinancialDecisionResult {
     validateDecisionInput(input);
     return this.#database.write((connection) => {
-      const now = financialNow(connection, input.now);
+      const now = financialNow(connection, input.now, this.#clock);
       const match = readPaymentMatch(connection, input.paymentMatchId);
       if (!match) throw new ReconciliationError("match_not_found", "payment match does not exist");
       assertSiteOrder(connection, input.expectedClientId, match.orderId);
@@ -2627,8 +2630,16 @@ function mapException(row: ExceptionRow): FinancialException {
   });
 }
 
-function financialNow(connection: DatabaseSync, nowInput: number | undefined): number {
-  const physical = nowInput ?? databaseTime(connection);
+function financialNow(connection: DatabaseSync, nowInput: number | undefined, physicalClock: OrderClock): number {
+  let physical: number;
+  try {
+    physical = nowInput ?? physicalClock.read(connection);
+  } catch (error) {
+    if (error instanceof OrderClockError) {
+      throw new ReconciliationError("financial_clock_unavailable", "financial clock is out of sync with the system clock");
+    }
+    throw error;
+  }
   if (!Number.isSafeInteger(physical) || physical < 0) {
     throw new RangeError("financial clock must be a non-negative safe integer");
   }
@@ -2651,13 +2662,6 @@ function financialNow(connection: DatabaseSync, nowInput: number | undefined): n
     .get(now) as { last_now_ms: bigint | number } | undefined;
   if (!row) throw new ReconciliationError("financial_clock_unavailable", "order clock cannot be advanced");
   return toSafeInteger(row.last_now_ms, "financial clock");
-}
-
-function databaseTime(connection: DatabaseSync): number {
-  const row = connection
-    .prepare("SELECT CAST(unixepoch('subsec') * 1000 AS INTEGER) AS now_ms")
-    .get() as { now_ms: bigint | number };
-  return toSafeInteger(row.now_ms, "database time");
 }
 
 function validateBatchLimit(limit: number): void {
