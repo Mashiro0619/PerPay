@@ -646,6 +646,8 @@ it("submits a new manual scan to its account while retaining another account's a
   );
   mount(
     <AlipayAccountStatus
+      source="test-instance:test-provider:1"
+      snapshotUpdatedAt={1}
       accounts={[
         {
           ...first,

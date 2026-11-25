@@ -1,10 +1,13 @@
+import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { ArrowRight } from "lucide-react";
 import {
   api,
+  queryClient,
   refreshOperationalData,
   result,
   type AlipayAccount,
+  type LedgerManualScanRequest,
 } from "@/api/client";
 import { accountHealth, accountState } from "@/lib/alipay-accounts";
 import { manualScanActive } from "@/lib/manual-ledger-scan";
@@ -26,8 +29,12 @@ import {
 
 export function AlipayAccountStatus({
   accounts,
+  source,
+  snapshotUpdatedAt,
 }: {
   accounts: readonly AlipayAccount[];
+  source: string;
+  snapshotUpdatedAt: number;
 }) {
   return (
     <Card size="sm" className="runtime-accounts-card">
@@ -69,7 +76,7 @@ export function AlipayAccountStatus({
                       : "尚无成功查账记录"}
                   </p>
                 </div>
-                <AccountScan account={account} />
+                <AccountScan key={source + ":" + account.revision} account={account} snapshotUpdatedAt={snapshotUpdatedAt} />
               </div>
             );
           })}
@@ -84,19 +91,31 @@ export function AlipayAccountStatus({
   );
 }
 
-function AccountScan({ account }: { account: AlipayAccount }) {
+function AccountScan({ account, snapshotUpdatedAt }: { account: AlipayAccount; snapshotUpdatedAt: number }) {
+  const [accepted, setAccepted] = useState<{
+    request: LedgerManualScanRequest;
+    snapshotUpdatedAt: number;
+    refreshed: boolean;
+  } | null>(null);
   const scan = useMutation({
     networkMode: "always",
     mutationFn: () =>
       result(
         api.requestLedgerScan({ body: { alipay_account_id: account.id } }),
       ),
-    onSuccess: () => {
-      void refreshOperationalData();
+    onSuccess: ({ data }) => {
+      setAccepted({ request: data, snapshotUpdatedAt, refreshed: false });
+      void refreshOperationalData({ includeStatus: false });
+      // Keep the receipt until a new status read has settled. That read also
+      // retires requests discarded by a runtime restart.
+      void queryClient.invalidateQueries({ queryKey: ["status"] }).then(() => {
+        setAccepted(current => current?.request.id === data.id ? { ...current, refreshed: true } : current);
+      });
     },
   });
   const serverRequest = account.manual_scan?.request;
-  const submittedRequest = scan.data?.data;
+  const submittedRequest = accepted && (!accepted.refreshed || accepted.snapshotUpdatedAt === snapshotUpdatedAt)
+    ? accepted.request : null;
   const request =
     submittedRequest &&
     (!serverRequest ||

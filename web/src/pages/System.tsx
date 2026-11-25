@@ -39,6 +39,7 @@ import { CopyValue } from "@/components/copy-value";
 import { accountHealth, accountState } from "@/lib/alipay-accounts";
 import { OfficialUpdatePanel } from "@/updates";
 import { useManualLedgerScan } from "@/features/manual-ledger-scan";
+import { manualScanSource } from "@/lib/manual-ledger-scan";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
@@ -132,7 +133,7 @@ function SystemContent() {
               onDiagnose={openDiagnostics}
               onLedgerDiagnose={openLedgerDiagnostics}
             />
-            {snapshot.alipay_accounts && <AlipayAccountStatus accounts={snapshot.alipay_accounts} />}
+            {snapshot.alipay_accounts && <AlipayAccountStatus accounts={snapshot.alipay_accounts} source={manualScanSource(snapshot)} snapshotUpdatedAt={status.dataUpdatedAt} />}
           </div>
         )}
         <div key="updates" className="system-secondary-column">
