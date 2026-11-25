@@ -64,15 +64,13 @@ const pairs = [
 ];
 describe("official Neutral theme", () => {
   for (const mode of [":root", ".dark", ":root:not([data-theme])"])
-    it(mode + " gives opaque focus indicators and input boundaries at least 3:1 on adjacent surfaces", () => {
+    it(mode + " keeps opaque focus indicators at least 3:1 and preserves official Neutral input tokens", () => {
       const tokens = variables(mode);
       expect(tokens["sidebar-ring"]).toBe("var(--ring)");
       expect(tokens["input-ring"]).toBe(mode === ":root" ? "oklch(0.708 0 0)" : "oklch(0.556 0 0)");
+      expect(tokens.input).toBe(mode === ":root" ? "oklch(0.922 0 0)" : "oklch(1 0 0 / 15%)");
       for (const surface of ["background", "card", "popover", "secondary", "sidebar", "sidebar-accent"]) {
         expect(contrast(luminance(tokens.ring!), luminance(tokens[surface]!))).toBeGreaterThanOrEqual(3);
-      }
-      for (const surface of ["background", "card", "muted"]) {
-        expect(contrast(luminance(tokens.input!), luminance(tokens[surface]!))).toBeGreaterThanOrEqual(3);
       }
     });
   for (const mode of [":root", ".dark", ":root:not([data-theme])"])

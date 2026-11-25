@@ -104,8 +104,8 @@
   --danger-foreground-dark: oklch(0.84 0.09 25);
   --border-light: oklch(0.922 0 0);
   --border-dark: oklch(1 0 0 / 10%);
-  --input-light: oklch(0.62 0 0);
-  --input-dark: oklch(0.58 0 0);
+  --input-light: oklch(0.922 0 0);
+  --input-dark: oklch(1 0 0 / 15%);
   --ring-light: oklch(0.45 0 0);
   --ring-dark: oklch(0.8 0 0);
   --input-ring-light: oklch(0.708 0 0);
