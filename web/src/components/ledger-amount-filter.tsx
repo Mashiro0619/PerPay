@@ -5,7 +5,7 @@ import type { ListQueryControl } from "@/lib/list-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field";
-import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/admin-dialog";
+import { Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
 import { useListFilterPanel } from "@/components/list-filter-context";
 
 type LedgerAmountFilterProps = { control: ListQueryControl; searchParams?: URLSearchParams };
@@ -162,15 +162,20 @@ function LedgerAmountDialogFilter({ control, searchParams }: LedgerAmountFilterP
     setOpen(value);
   }
   return (
-    <Dialog open={open} onOpenChange={changeOpen}>
-      <DialogTrigger render={<Button ref={trigger} variant="outline" size="sm" />} aria-label={active ? "金额范围，已筛选" : "金额范围"}>
+    <Popover open={open} onOpenChange={changeOpen}>
+      <PopoverTrigger render={<Button ref={trigger} variant="outline" size="sm" />} aria-label={active ? "金额范围，已筛选" : "金额范围"}>
         金额范围{active ? " · 已筛选" : ""}
-      </DialogTrigger>
-      <DialogContent finalFocus={trigger}>
-        <DialogHeader>
-          <DialogTitle>金额范围</DialogTitle>
-        </DialogHeader>
-        <form className="contents" onSubmit={event => {
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        className="w-72 max-w-[calc(100dvw-2rem)] max-h-[min(28rem,var(--available-height,calc(100dvh-2rem)))] overflow-y-auto overscroll-contain gap-3"
+        finalFocus={trigger}
+      >
+        <PopoverHeader>
+          <PopoverTitle>金额范围</PopoverTitle>
+          <PopoverDescription>最多两位小数，留空不限。</PopoverDescription>
+        </PopoverHeader>
+        <form className="flex flex-col gap-3" onSubmit={event => {
           event.preventDefault();
           try {
             const min = parseLedgerAmount(minimum), max = parseLedgerAmount(maximum);
@@ -179,26 +184,23 @@ function LedgerAmountDialogFilter({ control, searchParams }: LedgerAmountFilterP
             setOpen(false);
           } catch (reason) { setError(reason instanceof Error ? reason.message : "金额范围无效。"); }
         }}>
-          <DialogBody>
-            <DialogDescription>最多两位小数，留空不限。</DialogDescription>
-            <FieldGroup>
-              <Field data-invalid={!!error}>
-                <FieldLabel htmlFor={id + "-min"}>最低金额（元）</FieldLabel>
-                <Input id={id + "-min"} inputMode="decimal" autoComplete="off" placeholder="不限" value={minimum} maxLength={24} onChange={event => { setMinimum(event.target.value); setError(""); }} aria-invalid={!!error} aria-describedby={error ? id + "-error" : undefined} />
-              </Field>
-              <Field data-invalid={!!error}>
-                <FieldLabel htmlFor={id + "-max"}>最高金额（元）</FieldLabel>
-                <Input id={id + "-max"} inputMode="decimal" autoComplete="off" placeholder="不限" value={maximum} maxLength={24} onChange={event => { setMaximum(event.target.value); setError(""); }} aria-invalid={!!error} aria-describedby={error ? id + "-error" : undefined} />
-              </Field>
-              {error && <FieldError id={id + "-error"}>{error}</FieldError>}
-            </FieldGroup>
-          </DialogBody>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setOpen(false)}>取消</Button>
-            <Button type="submit">应用金额</Button>
-          </DialogFooter>
+          <FieldGroup>
+            <Field data-invalid={!!error}>
+              <FieldLabel htmlFor={id + "-min"}>最低金额（元）</FieldLabel>
+              <Input id={id + "-min"} inputMode="decimal" autoComplete="off" placeholder="不限" value={minimum} maxLength={24} onChange={event => { setMinimum(event.target.value); setError(""); }} aria-invalid={!!error} aria-describedby={error ? id + "-error" : undefined} />
+            </Field>
+            <Field data-invalid={!!error}>
+              <FieldLabel htmlFor={id + "-max"}>最高金额（元）</FieldLabel>
+              <Input id={id + "-max"} inputMode="decimal" autoComplete="off" placeholder="不限" value={maximum} maxLength={24} onChange={event => { setMaximum(event.target.value); setError(""); }} aria-invalid={!!error} aria-describedby={error ? id + "-error" : undefined} />
+            </Field>
+            {error && <FieldError id={id + "-error"}>{error}</FieldError>}
+          </FieldGroup>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button type="button" variant="outline" size="sm" onClick={() => setOpen(false)}>取消</Button>
+            <Button type="submit" size="sm">应用金额</Button>
+          </div>
         </form>
-      </DialogContent>
-    </Dialog>
+      </PopoverContent>
+    </Popover>
   );
 }
