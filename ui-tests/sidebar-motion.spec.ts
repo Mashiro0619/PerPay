@@ -59,6 +59,8 @@ test.describe("touch sidebar", () => {
     await trigger.tap();
     const drawer = page.getByRole("dialog", { name: "导航菜单", exact: true });
     await expect(drawer).toBeVisible();
+    await expect(drawer).toHaveCSS("opacity", "1");
+    await expect(drawer).toHaveCSS("translate", "none");
     const overview = drawer.getByRole("navigation", { name: "主导航", exact: true }).getByRole("link", { name: "总览", exact: true });
     await expect(overview).toHaveAttribute("aria-current", "page");
     await page.getByRole("button", { name: "关闭导航", exact: true }).tap();
@@ -66,6 +68,8 @@ test.describe("touch sidebar", () => {
     await expect(trigger).toBeFocused();
     await trigger.tap();
     await expect(drawer).toBeVisible();
+    await expect(drawer).toHaveCSS("opacity", "1");
+    await expect(drawer).toHaveCSS("translate", "none");
     await drawer.getByRole("navigation", { name: "主导航", exact: true }).getByRole("link", { name: "订单", exact: true }).tap();
     await expect(page).toHaveURL(/\/admin\/orders$/);
     await expect(drawer).toBeHidden();
@@ -74,6 +78,8 @@ test.describe("touch sidebar", () => {
     await page.emulateMedia({ reducedMotion: "reduce" });
     await trigger.tap();
     await expect(drawer).toBeVisible();
+    await expect(drawer).toHaveCSS("opacity", "1");
+    await expect(drawer).toHaveCSS("translate", "none");
     const orders = drawer.getByRole("navigation", { name: "主导航", exact: true }).getByRole("link", { name: "订单", exact: true });
     await expect(orders).toHaveAttribute("aria-current", "page");
     await page.keyboard.press("Escape");
