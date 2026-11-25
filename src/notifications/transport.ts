@@ -21,7 +21,8 @@ import {
 import { MAX_WEBHOOK_REQUEST_BYTES, MAX_WEBHOOK_RESPONSE_BYTES } from "./model.ts";
 
 const MAX_HEADER_BYTES = 16 * 1024;
-const MAX_RESOLVED_ADDRESSES = 16;
+const MAX_DNS_RECORDS = 256;
+const MAX_DIAL_ADDRESSES = 16;
 const MAX_CONCURRENT_DNS_RESOLUTIONS = 4;
 const ALLOWED_USER_AGENT = "perpay-webhook/1";
 const FORBIDDEN_EXTENSION_HEADERS = new Set([
@@ -336,6 +337,13 @@ export class NodeWebhookTransport implements WebhookTransport {
         retryable: true,
       });
     }
+    if (records.length > MAX_DNS_RECORDS) {
+      throw new WebhookTransportError({
+        code: "target_address_limit",
+        message: "通知目标 DNS 地址数量超过上限",
+        retryable: false,
+      });
+    }
     const seen = new Set<string>();
     const addresses: ResolvedAddress[] = [];
     for (const record of records) {
@@ -363,15 +371,45 @@ export class NodeWebhookTransport implements WebhookTransport {
         retryable: true,
       });
     }
-    if (addresses.length > MAX_RESOLVED_ADDRESSES) {
-      throw new WebhookTransportError({
-        code: "target_address_limit",
-        message: "通知目标 DNS 地址数量超过上限",
-        retryable: false,
-      });
-    }
-    return Object.freeze(addresses);
+    return Object.freeze(selectDialAddresses(addresses));
   }
+}
+
+function selectDialAddresses(
+  addresses: readonly ResolvedAddress[],
+): readonly ResolvedAddress[] {
+  if (addresses.length <= MAX_DIAL_ADDRESSES) return addresses;
+  const ipv4: ResolvedAddress[] = [];
+  const ipv6: ResolvedAddress[] = [];
+  for (const address of addresses) {
+    if (address.family === 4) ipv4.push(address);
+    else ipv6.push(address);
+  }
+  const half = Math.floor(MAX_DIAL_ADDRESSES / 2);
+  let ipv4Limit = Math.min(ipv4.length, half);
+  let ipv6Limit = Math.min(ipv6.length, half);
+  let remaining = MAX_DIAL_ADDRESSES - ipv4Limit - ipv6Limit;
+  if (remaining > 0) {
+    const extraIpv4 = Math.min(ipv4.length - ipv4Limit, remaining);
+    ipv4Limit += extraIpv4;
+    remaining -= extraIpv4;
+    const extraIpv6 = Math.min(ipv6.length - ipv6Limit, remaining);
+    ipv6Limit += extraIpv6;
+  }
+  const selected: ResolvedAddress[] = [];
+  let ipv4Used = 0;
+  let ipv6Used = 0;
+  for (const address of addresses) {
+    if (address.family === 4) {
+      if (ipv4Used >= ipv4Limit) continue;
+      ipv4Used += 1;
+    } else {
+      if (ipv6Used >= ipv6Limit) continue;
+      ipv6Used += 1;
+    }
+    selected.push(address);
+  }
+  return selected;
 }
 
 function requestPinnedAddresses(input: {

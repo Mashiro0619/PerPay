@@ -94,6 +94,146 @@ describe("webhook outbound transport", () => {
     }
   });
 
+  it("supports CDN pools exceeding 16 public addresses while bounding and balancing dial candidates", async () => {
+    const cdnIpv4 = Array.from({ length: 24 }, (_, index) => ({
+      address: `8.8.4.${index + 1}`,
+      family: 4 as const,
+    }));
+    {
+      const harness = createHarness(cdnIpv4);
+      const promise = harness.transport.post(postInput());
+      await harness.created;
+      const pinned = await invokeAllLookup(harness.options?.lookup);
+      assert.deepEqual(pinned, cdnIpv4.slice(0, 16));
+      const response = new FakeIncomingResponse(
+        { "content-type": ["application/json"] },
+        200,
+        "8.8.4.16",
+      );
+      harness.respond(response);
+      response.emit("end");
+      const result = await promise;
+      assert.equal(result.connectedAddress, "8.8.4.16");
+    }
+    {
+      const harness = createHarness(cdnIpv4);
+      const promise = harness.transport.post(postInput());
+      const rejection = assert.rejects(
+        promise,
+        (error: unknown) =>
+          error instanceof WebhookTransportError &&
+          error.code === "target_address_forbidden",
+      );
+      await harness.created;
+      // Address #17 was not pinned to this attempt and must fail remoteAddress verification.
+      harness.respond(new FakeIncomingResponse(
+        { "content-type": ["application/json"] },
+        200,
+        "8.8.4.17",
+      ));
+      await rejection;
+    }
+    {
+      const dualStackSkewed = [
+        ...cdnIpv4.slice(0, 20),
+        ...Array.from({ length: 4 }, (_, index) => ({
+          address: `2606:4700:4700::${index + 1}`,
+          family: 6 as const,
+        })),
+      ];
+      const harness = createHarness(dualStackSkewed);
+      const promise = harness.transport.post(postInput());
+      await harness.created;
+      const pinned = await invokeAllLookup(harness.options?.lookup);
+      assert.equal(pinned.length, 16);
+      assert.equal(pinned.filter((item) => item.family === 4).length, 12);
+      assert.equal(pinned.filter((item) => item.family === 6).length, 4);
+      const response = new FakeIncomingResponse(
+        { "content-type": ["application/json"] },
+        200,
+        "2606:4700:4700::1",
+      );
+      harness.respond(response);
+      response.emit("end");
+      const result = await promise;
+      assert.equal(result.connectedAddress, "2606:4700:4700::1");
+    }
+    {
+      const dualStackLarge = [
+        ...cdnIpv4.slice(0, 20),
+        ...Array.from({ length: 20 }, (_, index) => ({
+          address: `2606:4700:4700::${(index + 1).toString(16)}`,
+          family: 6 as const,
+        })),
+      ];
+      const harness = createHarness(dualStackLarge);
+      const promise = harness.transport.post(postInput());
+      await harness.created;
+      const pinned = await invokeAllLookup(harness.options?.lookup);
+      assert.equal(pinned.length, 16);
+      assert.equal(pinned.filter((item) => item.family === 4).length, 8);
+      assert.equal(pinned.filter((item) => item.family === 6).length, 8);
+      const response = new FakeIncomingResponse(
+        { "content-type": ["application/json"] },
+        200,
+        "8.8.4.1",
+      );
+      harness.respond(response);
+      response.emit("end");
+      await promise;
+    }
+  });
+
+  it("still validates every record beyond the dial cap and rejects oversized DNS responses", async () => {
+    {
+      let requestCalls = 0;
+      const mixedPool = [
+        ...Array.from({ length: 20 }, (_, index) => ({
+          address: `8.8.4.${index + 1}`,
+          family: 4,
+        })),
+        { address: "127.0.0.1", family: 4 },
+      ];
+      const transport = new NodeWebhookTransport("https://hooks.example.test", {
+        startHostnameResolution: () => resolvedResolution(mixedPool),
+        request: () => {
+          requestCalls += 1;
+          return new FakeClientRequest() as unknown as ClientRequest;
+        },
+      });
+      await assert.rejects(
+        transport.post(postInput()),
+        (error: unknown) =>
+          error instanceof WebhookTransportError &&
+          error.code === "target_address_forbidden" &&
+          error.retryable === false,
+      );
+      assert.equal(requestCalls, 0);
+    }
+    {
+      let requestCalls = 0;
+      const oversizedPool = Array.from({ length: 257 }, (_, index) => ({
+        address: `8.8.${Math.floor(index / 250) + 1}.${(index % 250) + 1}`,
+        family: 4,
+      }));
+      const transport = new NodeWebhookTransport("https://hooks.example.test", {
+        startHostnameResolution: () => resolvedResolution(oversizedPool),
+        request: () => {
+          requestCalls += 1;
+          return new FakeClientRequest() as unknown as ClientRequest;
+        },
+      });
+      await assert.rejects(
+        transport.post(postInput()),
+        (error: unknown) =>
+          error instanceof WebhookTransportError &&
+          error.code === "target_address_limit" &&
+          error.retryable === false,
+      );
+      assert.equal(requestCalls, 0);
+    }
+  });
+
   it("pins all addresses, preserves path/query, and fixes protocol headers", async () => {
     const harness = createHarness();
     const responsePromise = harness.transport.post(postInput());
@@ -520,7 +660,7 @@ function postInput() {
   } as const;
 }
 
-function createHarness() {
+function createHarness(resolved: readonly ResolverAddress[] = publicAddresses) {
   const client = new FakeClientRequest();
   let options: RequestOptions | undefined;
   let onResponse: ((response: IncomingMessage) => void) | undefined;
@@ -529,7 +669,7 @@ function createHarness() {
     resolveCreated = resolve;
   });
   const dependencies: WebhookTransportTestDependencies = {
-    startHostnameResolution: () => resolvedResolution(publicAddresses),
+    startHostnameResolution: () => resolvedResolution(resolved),
     request: (captured, callback) => {
       options = captured;
       onResponse = callback;
