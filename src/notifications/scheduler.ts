@@ -33,7 +33,7 @@ export interface WebhookProcessor {
 }
 
 export interface WebhookCountStore {
-  counts(): { readonly pending: number; readonly dead: number };
+  counts(options?: { readonly activePendingOnly?: boolean }): { readonly pending: number; readonly dead: number };
 }
 
 export interface WebhookRunResult {
@@ -113,7 +113,7 @@ export class WebhookScheduler {
       : this.#run(reason, runSignal);
     const operation = execution
       .then((result) => {
-        const counts = this.#store.counts();
+        const counts = this.#storeCounts();
         if (result.failed > 0) {
           this.#state = "degraded";
           this.#lastErrorCode = "webhook_delivery_failed";
@@ -189,7 +189,7 @@ export class WebhookScheduler {
   #storeCountsFromDatabase(): { readonly pending: number; readonly dead: number } {
     // The store intentionally exposes only bounded operational counts here;
     // this read is cheap and does not participate in a business transaction.
-    return this.#store.counts();
+    return this.#store.counts({ activePendingOnly: true });
   }
 
   async #run(reason: string, signal: AbortSignal): Promise<WebhookRunResult> {
@@ -205,7 +205,7 @@ export class WebhookScheduler {
       if (signal.aborted) break;
       await yieldToEventLoop();
     }
-    const counts = this.#store.counts();
+    const counts = this.#storeCounts();
     return Object.freeze({
       reason,
       processed,

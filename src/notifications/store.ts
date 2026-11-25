@@ -253,12 +253,21 @@ export class WebhookStore {
     return this.#database.read((connection) => readActiveSigningKey(connection));
   }
 
-  counts(): { readonly pending: number; readonly dead: number } {
+  counts(options: { readonly activePendingOnly?: boolean } = {}): { readonly pending: number; readonly dead: number } {
     return this.#database.read((connection) => {
+      const activePending = options.activePendingOnly === true && connection.prepare(
+        "SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'sites'",
+      ).get() !== undefined;
+      // Paused websites keep their queues for later; health counts current delivery work.
+      const pendingScope = activePending ? `AND EXISTS (
+        SELECT 1 FROM webhook_targets AS target JOIN sites AS site ON site.client_id = target.api_client_id
+         WHERE target.target_id = delivery.target_id AND ${LIVE_NOTIFICATION_TARGET}
+           AND site.deleted_at IS NULL AND json_extract(site.configuration, '$.notifications_enabled') = 1
+      )` : "";
       const row = connection
         .prepare(
           `SELECT
-             COALESCE(SUM(delivery.status IN ('PENDING', 'LEASED', 'RETRY_WAIT')), 0) AS pending,
+             COALESCE(SUM(delivery.status IN ('PENDING', 'LEASED', 'RETRY_WAIT') ${pendingScope}), 0) AS pending,
              COALESCE(SUM(
                delivery.status = 'DEAD_LETTER' AND NOT EXISTS (
                  SELECT 1 FROM webhook_deliveries AS successor
