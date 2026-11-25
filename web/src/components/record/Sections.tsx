@@ -39,7 +39,15 @@ export function Sections({ label = "详情内容", className, children }: {
       const section = (anchor ? sections.find(element => (element.dataset.anchorPrefixes ?? "").split(" ").some(prefix => prefix && anchor.startsWith(prefix))) : undefined)
         ?? sections.find(element => element.dataset.detailSection === requested);
       const target = exact ?? section;
-      if (!target || target.closest("[inert]")) return;
+      if (!target) return;
+      const active = document.activeElement;
+      if (target.closest("[inert]") || (active && active !== document.body && root.contains(active))) {
+        // Another step/modal or direct interaction already owns focus on this record;
+        // stop waiting so closing that step cannot yank focus back to the initial anchor.
+        complete = true;
+        observer.disconnect();
+        return;
+      }
       // Wait only for content that can move this destination, not later sections.
       const pendingBefore = Array.from(root.querySelectorAll('[data-slot="skeleton"]')).some(placeholder =>
         target.contains(placeholder) || !!(placeholder.compareDocumentPosition(target) & Node.DOCUMENT_POSITION_FOLLOWING));

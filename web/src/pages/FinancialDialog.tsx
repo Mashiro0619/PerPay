@@ -242,7 +242,6 @@ export function FinancialDialog({
                 null
             : finalFocus
         }
-        className="flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden sm:max-w-xl"
         scrollMode="body"
       >
         <DialogHeader>

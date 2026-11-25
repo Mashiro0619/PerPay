@@ -124,6 +124,34 @@ describe("record sections", () => {
     expect(document.querySelector("[data-anchor-hit]")).toBeNull();
   });
 
+  it("does not steal focus back to the initial anchor after an inert step closes", async () => {
+    const scroll = vi.spyOn(HTMLElement.prototype, "scrollIntoView");
+    const renderRecord = (inert: boolean, loading: boolean, showStep: boolean) => (
+      <div inert={inert || undefined}>
+        <Sections>
+          <Section id="payments" title="收款关联" anchorPrefixes={["match-"]}>
+            <SubRecord id="match-1" title="收款关联">
+              {loading && <div data-slot="skeleton" />}
+              <button type="button">撤销收款关联</button>
+              {showStep && <div data-step-placeholder />}
+            </SubRecord>
+          </Section>
+        </Sections>
+      </div>
+    );
+    const view = at("/record#match-1", renderRecord(false, true, false));
+    // A step dialog opens and marks the record inert before the initial anchor locate runs.
+    view.rerender(<MemoryRouter initialEntries={["/record#match-1"]}>{renderRecord(true, false, true)}</MemoryRouter>);
+    await act(() => new Promise(resolve => setTimeout(resolve, 40)));
+    // Closing the step unmounts its node, clears inert, and restores focus to the trigger button.
+    view.rerender(<MemoryRouter initialEntries={["/record#match-1"]}>{renderRecord(false, false, false)}</MemoryRouter>);
+    const trigger = screen.getByRole("button", { name: "撤销收款关联" });
+    trigger.focus();
+    await act(() => new Promise(resolve => setTimeout(resolve, 60)));
+    expect(trigger).toHaveFocus();
+    expect(scroll).not.toHaveBeenCalled();
+  });
+
   it.each(["?section=unknown", "#obsolete", "#%E0%A4%A", ""])("leaves the record where it opened for the absent or invalid destination \"%s\"", async suffix => {
     const scroll = vi.spyOn(HTMLElement.prototype, "scrollIntoView");
     at("/record" + suffix, <Sections>

@@ -121,7 +121,6 @@ export function ReasonDialog<Output>({
                 null
             : finalFocus
         }
-        className="flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden"
       >
         <DialogHeader>
           <DialogTitle>{snapshot.title}</DialogTitle>

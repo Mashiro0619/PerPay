@@ -201,7 +201,7 @@ export function ManualCandidatePicker({
           className="w-full max-w-full flex-wrap"
           value={[view]}
           variant="outline"
-          spacing={2}
+          spacing={1}
           onValueChange={(values) => {
             if (disabled || !values[0]) return;
             setView(values[0] as "recommended" | "all");

@@ -282,12 +282,13 @@ export function DailyAnalytics({
           )}
 
           <div className="daily-cal-surface" data-daily-surface="true">
-            <div role="grid" aria-label="每日收款日历" className="daily-cal-grid-wrap">
+            <div className="daily-cal-grid-wrap">
               <div
                 ref={scrollRef}
+                role="grid"
+                aria-label="每日收款日历"
                 className="daily-cal-body"
                 data-scrollable={isScrollable || undefined}
-                aria-label="每日收款记录"
               >
                 <div role="rowgroup" className="daily-cal-head">
                   <div role="row" className="daily-cal-week">

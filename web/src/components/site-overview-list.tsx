@@ -121,7 +121,7 @@ function SiteOverviewCard({
               {site.work_items > 0 && (
                 <Badge variant="warning" className="site-overview-work-indicator">
                   <span className="site-overview-work-dot" aria-hidden="true" />
-                  待处理 {count(site.work_items)}
+                  <span>{"待处理 " + count(site.work_items)}</span>
                 </Badge>
               )}
             </div>
