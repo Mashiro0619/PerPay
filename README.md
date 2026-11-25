@@ -4,8 +4,8 @@
   <img src="web/src/assets/favicon.svg" alt="PerPay" width="64" height="64">
 </p>
 <h1 align="center">PerPay</h1>
-<p align="center"><strong>面向个人开发者、可自行部署的支付宝收款系统</strong></p>
-<p align="center">收款码收银台 · 自动查账 · 多网站与多账号 · 原生 API 与易支付</p>
+<p align="center"><strong>面向个人开发者、可自部署的支付宝个人收款系统</strong></p>
+<p align="center">静态收款码收银台 · 自动查账对账 · 多网站与多账号 · 原生 API 与易支付 V1/V2</p>
 
 <p align="center">
   <a href="https://github.com/Mashiro0619/PerPay/releases"><img src="https://img.shields.io/github/v/release/Mashiro0619/PerPay?include_prereleases&label=Release" alt="最新发布"></a>
@@ -15,58 +15,64 @@
 
 <p align="center">
   <a href="#部署">快速部署</a> ·
-  <a href="docs/alipay-setup.md">配置支付宝</a> ·
-  <a href="docs/integration-quickstart.md">接入业务网站</a> ·
-  <a href="docs/README.md">全部文档</a> ·
-  <a href="CHANGELOG.md">版本记录</a>
+  <a href="docs/alipay-setup.md">支付宝配置</a> ·
+  <a href="docs/epay-integration.md">易支付接入</a> ·
+  <a href="docs/integration-quickstart.md">原生 API 接入</a> ·
+  <a href="docs/README.md">文档目录</a> ·
+  <a href="CHANGELOG.md">更新日志</a>
 </p>
 
-PerPay 将下单、展示收款码、查询支付宝账单和通知业务网站连成一个流程。一次部署可管理多个业务网站和支付宝账号，无需在手机上安装监听软件。
+---
 
-系统通过支付宝开放平台查询账务明细，按**收款账号、应付金额和付款时间**匹配订单。例如商品标价 10 元，收银台可能要求支付 10.03 元；顾客需要按完整金额付款。错付、迟付和重复付款可在后台核对处理。退款需要管理员自行处理，完成后再在 PerPay 登记。
+## 工作方式
 
-## 功能
+PerPay 将下单、展示静态收款码、服务端定时查账对账和异步回调通知整合为一套可自部署服务，无需在手机端运行监听程序：
 
-| 你要做什么 | PerPay 提供什么 |
+1. 业务网站创建订单时，PerPay 在商品原价基础上分配小额加价以生成唯一应付金额（例如原价 `10.00` 元对应应付金额 `10.03` 元）。
+2. 服务端通过支付宝开放平台账务明细接口定时拉取流水，按收款账号、应付金额和付款时间自动匹配订单。
+3. 确认到账后，PerPay 向业务网站发送带签名的回调通知，由业务网站完成履约。
+
+> **说明**：付款人须按收银台显示的完整应付金额付款；金额不符、超时付款或重复付款等情况进入后台待处理列表，供管理员人工核对。PerPay 不直接发起退款转账，外部退款后可在后台使用「标记已退款」登记。
+
+## 主要功能
+
+| 类别 | 说明 |
 | --- | --- |
-| 为网站接收付款 | 收款码收银台、付款状态查询、原生 API、易支付 V1/V2 |
-| 管理多个业务 | 每个网站有自己的密钥、订单和通知；可指定收款账号，也可随机或按设定比例分配 |
-| 确认收款并通知网站 | 自动查账，向网站发送带签名的收款通知；发送失败后自动重试，也可查看记录并手动重发 |
-| 处理异常付款 | 订单与流水相互核对、人工关联、争议处理及操作记录 |
-| 了解收款情况 | 今日指标、7 / 30 / 90 天趋势、网站概览、订单筛选与 CSV 导出 |
-| 维护收款服务 | Docker 部署、自动备份、后台立即备份与恢复、操作日志和版本提醒 |
-| 控制历史数据占用 | 采集正文去重压缩、空间检查、历史归档与手动永久删除 |
+| 支付协议与收银台 | 内置公开收银台，提供原生 HMAC 签名 API 及易支付 V1 / V2 兼容接口 |
+| 多网站与多账号 | 单实例支持多个业务网站与多个支付宝收款账号，支持固定、随机及按权重分配 |
+| 查账与回调通知 | 服务端定时查账，自动发送签名通知并支持退避重试与后台手动重发 |
+| 对账与异常处理 | 自动关联流水与订单；异常、冲突和通知失败集中处理，支持人工关联与争议撤销 |
+| 统计与导出 | 今日指标、7/30/90 天趋势、按网站汇总、订单筛选与 CSV 导出 |
+| 运维与备份 | Docker 部署、定时自动备份、网页/命令行恢复、历史归档与版本更新 |
 
 ## 界面预览
 
-以下截图中的网站、商品、付款人和交易编号都是专门生成的示例数据。
+以下截图基于内置演示数据生成：
 
 <table>
   <tr>
     <td width="50%" valign="top">
       <h3>全部网站总览</h3>
-      <p>集中查看所有网站的今日收款、趋势和待处理数量。</p>
+      <p>查看今日核心指标、收款趋势与待处理数量。</p>
       <a href="docs/screenshots/dashboard-light.png"><img src="docs/screenshots/dashboard-light.png" alt="PerPay 全部网站总览：今日指标、收款趋势与待处理数量" width="100%"></a>
     </td>
     <td width="50%" valign="top">
       <h3>单网站工作台</h3>
-      <p>选择一个业务网站，查看商品、订单金额和付款状态。</p>
+      <p>切换到单个业务网站，管理所属订单、金额与状态。</p>
       <a href="docs/screenshots/workspace-site.png"><img src="docs/screenshots/workspace-site.png" alt="PerPay 单网站订单：商品、金额与付款状态" width="100%"></a>
     </td>
   </tr>
 </table>
 
-## 部署前准备
+## 前置条件
 
-- **服务器**：安装 Docker 和 Docker Compose v2，支持 `amd64` 或 `arm64`。Windows 可使用 WSL2 的 Linux 容器。
-- **访问地址**：公网部署准备域名、HTTPS 证书与反向代理；本机试用可使用 HTTP。
-- **支付宝**：准备收款码，以及已上线、具备对应收款账户账务明细查询权限的开放平台应用。申请与配置步骤见[支付宝配置](docs/alipay-setup.md)。
+1. **运行环境**：已安装 Docker 与 Docker Compose v2 的服务器（支持 `amd64` / `arm64`，Windows 可使用 WSL2）。
+2. **域名与 HTTPS**：正式收款需要公网域名、HTTPS 证书及反向代理（如 Nginx）；仅本机试用可使用 `http://localhost:6190`。
+3. **支付宝收款码与开放平台应用**：需准备支付宝收款码或经营码，以及一个**已上线**且已开通「账务明细查询」权限的支付宝开放平台应用，详见 [支付宝配置指南](docs/alipay-setup.md)。
 
-订单如何匹配付款、何时可以再次使用同一应付金额，见[订单金额和付款期限](USAGE.md#金额复用冷却与付款截止)。业务网站收到通知后需要验证签名，也可以主动查单；确认付款成功后再发货或开通服务。
+> **免责声明**：PerPay 是独立开源的自部署软件，并非支付宝官方产品。在法律允许范围内，因使用本项目导致的账号风控、受限、收付款异常或资金损失均由使用者自行承担，详见 [DISCLAIMER.md](DISCLAIMER.md)。
 
-## 免责声明
-
-PerPay 是需要自行部署的开源软件，不是支付宝官方产品。软件可能存在缺陷，使用前请自行判断是否适合你的业务。**在法律允许免责的范围内，因使用本项目导致的支付宝账号风控、冻结或封禁、收付款异常、资金损失等问题，由使用者自行承担，项目作者、维护者和贡献者不承担责任。** 法律规定必须承担的责任除外，详见[免责声明](DISCLAIMER.md)。
+---
 
 ## 部署
 
@@ -74,38 +80,32 @@ PerPay 是需要自行部署的开源软件，不是支付宝官方产品。软�
 
 ### 1. 下载配置
 
-下面的配置默认使用 `latest`，也就是最新稳定版镜像：
+默认配置使用 `latest`（最新稳定版镜像）：
 
 ```sh
 mkdir -p perpay && cd perpay
 curl -fsSLo docker-compose.yml https://raw.githubusercontent.com/Mashiro0619/PerPay/main/docker-compose.yml
 ```
 
-需要指定版本或体验预发布版时，再按[固定版本与回滚](docs/maintenance.md#固定版本与回滚)操作。
-
 <a id="2-修改配置"></a>
 
-### 2. 设置访问地址
+### 2. 修改配置
 
-编辑 `docker-compose.yml` 顶部的配置：
+编辑 `docker-compose.yml` 顶部变量：
 
-| 配置项 | 填写方式 |
+| 配置项 | 说明 |
 | --- | --- |
-| `x-perpay-image` | 默认 `ghcr.io/mashiro0619/perpay:latest`，通常不用修改。 |
-| `x-perpay-public-url` | PerPay 的公开地址，如 `https://pay.example.com`，不带路径。 |
-| `x-perpay-trusted-proxy-cidrs` | 反向代理连接到 PerPay 时使用的 IP 或网段，多个用逗号分隔。本机直接访问时留空。 |
-| `x-perpay-host-port` | 默认 `127.0.0.1:6190:6190`，供宿主机上的反向代理访问。 |
-| `x-perpay-setup-token-enabled` | 默认 `"true"`，首次创建管理员时填写启动日志中的一次性令牌。 |
+| `x-perpay-public-url` | **必填**。外部访问地址，如 `https://pay.example.com`（不含路径）。本机试用填 `http://localhost:6190`。 |
+| `x-perpay-trusted-proxy-cidrs` | 可信反向代理来源 IP（如 `172.18.0.1/32`），用于识别真实客户端 IP；本机直连时留空。 |
+| `x-perpay-host-port` | 默认 `127.0.0.1:6190:6190`（仅监听本机供反代转发）；端口冲突时修改宿主机端口。 |
+| `x-perpay-image` | 默认 `ghcr.io/mashiro0619/perpay:latest`。 |
+| `x-perpay-setup-token-enabled` | 默认 `"true"`，首次创建管理员需输入启动日志中的一次性口令，建议保持开启。 |
 
-在服务器上配置反向代理，将域名转发到 `http://127.0.0.1:6190`。代理 IP 怎么填，见[反向代理配置示例](docs/reverse-proxy.md)。
-
-本机试用时，把公开地址设为 `http://localhost:6190`，可信代理留空，浏览器也使用这个地址。
+正式部署需通过反向代理提供 HTTPS 并转发至 `http://127.0.0.1:6190`，配置示例与代理 IP 获取方法见 [反向代理部署](docs/reverse-proxy.md)。
 
 <a id="3-启动"></a>
 
 ### 3. 启动服务
-
-首次创建管理员默认需要初始化令牌，读取方式见[初始化](#初始化)。需要限制安装期间的访问来源时，按[首次访问控制](docs/reverse-proxy.md#首次访问控制)配置。
 
 ```sh
 docker compose config --quiet
@@ -113,21 +113,29 @@ docker compose up -d
 docker compose ps
 ```
 
-启动失败时查看 `docker compose logs --tail=100 app backup`。
+若启动异常，可执行 `docker compose logs --tail=100 app backup` 查看日志。
+
+---
 
 ## 初始化
 
-1. 打开 `https://你的域名/admin/`；本机试用打开 [http://localhost:6190/admin/](http://localhost:6190/admin/)。
-2. 从 `docker compose logs --tail=100 app` 中读取最新一条 `administrator_setup_required` 的 `setup_token`，填写初始化令牌并设置管理员密码。密码至少 6 个字符，建议使用随机长密码。
-3. 登录并按向导[配置支付宝账号](docs/alipay-setup.md)，完成密钥与收款码设置、连接检查。
-4. [创建业务网站](docs/multi-site.md)，选择收款账号；在接入助手中选择原生 API 或易支付 V1/V2。
-5. 从业务网站下单并支付一笔小额订单，确认 **PerPay 显示“收款已确认”，业务网站也已收到通知并完成发货或服务开通**。
+服务启动后，按以下顺序完成初始化：
 
-暂时无法收款时，打开“运行状态”查看原因；通知发送失败时，打开订单中的通知记录。管理员创建前，服务重启会更换初始化令牌，填写最新值即可。
+1. **访问后台**：打开 `https://你的域名/admin/`（本机试用访问 [http://localhost:6190/admin/](http://localhost:6190/admin/)）。
+2. **创建管理员**：执行 `docker compose logs --tail=100 app`，获取最新一条 `administrator_setup_required` 日志中的 `setup_token`，在页面提交并设置管理员密码（至少 6 位，建议使用高强度随机密码）。
+3. **配置支付宝账号**：按后台向导完成 [支付宝配置](docs/alipay-setup.md)（填写 App ID、交换密钥、上传收款码并执行连接测试）。
+4. **创建业务网站**：添加业务网站并绑定收款账号，在「接入与通知」中配置 **易支付 V1/V2** 或 **原生 API** 凭据与通知来源。
+5. **实付验证**：通过业务网站发起一笔小额订单并完成实际支付，确认订单变为「收款已确认」且业务网站成功接收回调。
+
+---
 
 ## 更新
 
-使用默认的 `latest` 时，先[完成备份](docs/maintenance.md#启用与验证备份)，再在保存 `docker-compose.yml` 的目录执行：
+PerPay 支持两种更新方式；在后台 **运行状态 → 官方更新** 点击 **立即更新** 时会自动识别当前部署模式：
+
+### 方式 A：标准手动更新（默认）
+
+在后台 **系统设置 → 备份与恢复** 执行一次备份后，于 `docker-compose.yml` 所在目录运行：
 
 ```sh
 docker compose pull
@@ -136,40 +144,47 @@ docker compose up -d
 docker compose ps
 ```
 
-这些命令会下载最新稳定版并重启服务。后台“运行状态 → 官方更新”可查看新版本并通过“立即更新”使用升级助手完成在线备份与命令复制；如需直接在网页后台一键拉取镜像并重启，可按[在线一键更新](docs/maintenance.md#在线一键更新)合并启用可选伴生更新器。使用指定版本或需要退回旧版本时，按[升级与回滚](docs/maintenance.md#固定版本与回滚)操作。
+### 方式 B：后台在线一键更新（可选伴生更新器）
+
+如需在后台直接触发自动备份、镜像拉取、容器切换与失败自动回滚，启动时附加伴生更新器配置即可：
+
+```sh
+docker compose -f docker-compose.yml -f docker-compose.updater.yml up -d
+```
+
+版本固定、回滚条件及伴生更新器安全隔离说明见 [更新与回滚](docs/maintenance.md#固定版本与回滚) 与 [在线一键更新](docs/maintenance.md#在线一键更新)。
+
+---
 
 ## 数据与备份
 
-| 数据卷 | 保存内容 |
+默认 Compose 会创建 3 个持久化数据卷。切勿执行 `docker compose down --volumes`，否则会删除全部数据与密钥：
+
+| 数据卷 | 用途 |
 | --- | --- |
-| `perpay-data` | 数据库及历史归档：订单、流水、配置与审计记录 |
-| `perpay-backups` | 数据库备份及维护记录 |
-| `perpay-secrets` | 自动生成的主密钥，恢复加密配置时必需 |
+| `perpay-data` | 核心数据库与历史归档（订单、流水、配置、审计日志） |
+| `perpay-backups` | 自动与手动生成的数据库备份 |
+| `perpay-secrets` | 自动生成的主密钥（恢复加密配置时必需） |
 
-在 **系统设置 → 备份与恢复** 可立即备份、恢复或永久删除备份，并查看执行进度。自动备份默认每 24 小时运行、保留 7 份，可在同页调整。
+- **定时备份**：默认每 24 小时备份一次，保留最近 7 份；可在后台 **系统设置 → 备份与恢复** 执行手动备份、恢复及历史归档。
+- **异地保存**：请定期将数据库备份与原主密钥加密导出并分开异地保存，操作步骤见 [维护与恢复](docs/maintenance.md#启用与验证备份)。
+- **账号恢复**：[重置管理员密码](docs/maintenance.md#忘记管理员密码) · [关闭管理员 IP 白名单](docs/maintenance.md#管理员-ip-白名单与离线恢复)。
 
-进入“历史归档”，选择日期即可将已结束的历史移出在线库。归档长期保留，可查看、下载和手动永久删除。归档和恢复由系统自动暂停业务、完成后重新打开服务；恢复前会保留一份需手动删除的副本，恢复完成后重新登录。
+---
 
-将数据库备份、历史归档和原主密钥另存到服务器之外，主密钥与数据分开保存。
+## 文档索引
 
-**删除数据卷或执行 `docker compose down --volumes` 会删除订单、配置、备份和主密钥。** 更换服务器请按[恢复数据库](docs/maintenance.md#恢复数据库)操作；忘记密码可[停服重设](docs/maintenance.md#忘记管理员密码)。
-
-## 文档导航
-
-| 任务 | 文档 |
+| 主题 | 文档 |
 | --- | --- |
-| 配置收款环境 | [支付宝配置](docs/alipay-setup.md) · [反向代理](docs/reverse-proxy.md) |
-| 接入业务系统 | [快速接入](docs/integration-quickstart.md) · [易支付 V1/V2](docs/epay-integration.md) · [Node.js Demo](examples/node-client/README.md) |
-| 查询接口与错误 | [完整接口参考](USAGE.md) · [错误处理](docs/integration-errors.md) · [OpenAPI](openapi.yaml) |
-| 管理与维护 | [多网站管理](docs/multi-site.md) · [备份、恢复与排错](docs/maintenance.md) · [数据与隐私](docs/privacy.md) |
-| 参与开发 | [开发导航](docs/development/README.md) · [前端开发](web/README.md) · [本地预览](docs/development/ui-verification.md#本地预览) |
+| 支付宝与反代配置 | [支付宝配置指南](docs/alipay-setup.md) · [反向代理部署](docs/reverse-proxy.md) |
+| 业务对接 | [易支付 V1/V2 接入](docs/epay-integration.md) · [原生 API 快速接入](docs/integration-quickstart.md) · [Node.js 示例](examples/node-client/README.md) |
+| 接口与错误参考 | [使用与接口参考](USAGE.md) · [业务错误码与重试](docs/integration-errors.md) · [OpenAPI 规范](openapi.yaml) |
+| 多网站与运维 | [多网站与多账号管理](docs/multi-site.md) · [维护、升级与恢复](docs/maintenance.md) · [数据与隐私](docs/privacy.md) |
+| 二次开发 | [开发导航](docs/development/README.md) · [前端开发](web/README.md) · [开发验证](docs/development/ui-verification.md#本地预览) |
 
-全部资料见[文档索引](docs/README.md)，版本变化见[变更日志](CHANGELOG.md)。技术栈为 Node.js 24、TypeScript、Hono、SQLite、React、Vite 和 shadcn/ui。
+完整目录见 [docs/README.md](docs/README.md)，版本变更见 [CHANGELOG.md](CHANGELOG.md)。技术栈：Node.js 24 · TypeScript · Hono · SQLite · React · Vite · shadcn/ui。
 
-## 许可证
+## 许可证与友链
 
-[MIT License](LICENSE) · [免责声明](DISCLAIMER.md)。第三方代码与素材见 [NOTICE](NOTICE)，安全问题请[私密报告](SECURITY.md)。
-
-## 友链
-
-[Linux Do](https://linux.do/)
+- 开源协议：[MIT License](LICENSE) · [免责声明](DISCLAIMER.md) · [第三方声明](NOTICE) · [安全报告](SECURITY.md)
+- 友链：[Linux Do](https://linux.do/)
