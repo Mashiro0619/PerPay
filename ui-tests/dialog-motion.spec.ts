@@ -4,12 +4,14 @@ import { test, expect, login } from "./fixtures";
 const popup = '[data-overlay-viewport="dialog"]';
 
 interface Sample { opacity: number; scale: string; translate: string; kinds: string[]; duration: string }
+interface Recording { opening: Sample[]; closing: Sample | null; openingStarted: boolean; openingFinished: boolean }
 
-/** Records the popup's computed style on every frame from the moment it is inserted, and once more when it starts closing. */
+/** Keeps natural start/end samples and reads an intermediate style on the popup's real transition timeline. */
 async function watchDialog(page: Page) {
   await page.evaluate(selector => {
-    const state: { opening: Sample[]; closing: Sample | null } = { opening: [], closing: null };
+    const state: Recording = { opening: [], closing: null, openingStarted: false, openingFinished: false };
     (window as unknown as { dialogMotion: typeof state }).dialogMotion = state;
+    const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
     const read = (element: Element): Sample => {
       const style = getComputedStyle(element);
       return {
@@ -18,26 +20,60 @@ async function watchDialog(page: Page) {
       };
     };
     let watched: Element | null = null;
+    let capture: (() => void) | null = null;
     new MutationObserver(() => {
       const element = document.querySelector(selector);
       if (!element) return;
       if (element !== watched) {
         watched = element;
-        const started = performance.now();
-        const frame = () => {
-          if (!element.isConnected || element.hasAttribute("data-ending-style")) return;
-          state.opening.push(read(element));
-          if (performance.now() - started < 600) requestAnimationFrame(frame);
+        let frameId = 0;
+        let samplingTimeline = false;
+        const frame = async () => {
+          cancelAnimationFrame(frameId);
+          if (samplingTimeline || state.openingFinished || !element.isConnected || element.hasAttribute("data-ending-style")) return;
+          const sample = read(element);
+          state.opening.push(sample);
+          const transitions = element.getAnimations().filter(animation => animation instanceof CSSTransition);
+          if (!reducedMotion && transitions.length > 0) {
+            samplingTimeline = true;
+            state.openingStarted = true;
+            const timelines = transitions.map(animation => ({ animation, currentTime: animation.currentTime }));
+            for (const { animation } of timelines) animation.pause();
+            await Promise.all(transitions.map(animation => animation.ready));
+            // RAF can skip the entire entrance on a busy runner. Sample the
+            // browser-created transitions at 25%, then restore normal playback.
+            for (const { animation } of timelines) {
+              animation.currentTime = Number(animation.effect!.getComputedTiming().duration) * 0.25;
+            }
+            state.opening.push(read(element));
+            for (const { animation, currentTime } of timelines) {
+              animation.currentTime = currentTime;
+              animation.play();
+            }
+            await Promise.all(transitions.map(animation => animation.finished));
+            requestAnimationFrame(() => {
+              if (!element.isConnected || element.hasAttribute("data-ending-style")) return;
+              state.opening.push(read(element));
+              state.openingFinished = true;
+            });
+            return;
+          }
+          if (reducedMotion && !element.hasAttribute("data-starting-style") && sample.kinds.length === 0) {
+            state.openingFinished = true;
+            return;
+          }
+          frameId = requestAnimationFrame(() => { void frame(); });
         };
-        frame();
+        capture = () => { void frame(); };
       }
+      capture?.();
       if (element.hasAttribute("data-ending-style") && !state.closing) state.closing = read(element);
-    }).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-ending-style"] });
+    }).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-starting-style", "data-ending-style"] });
   }, popup);
 }
 
 async function recorded(page: Page) {
-  return page.evaluate(() => (window as unknown as { dialogMotion: { opening: Sample[]; closing: Sample | null } }).dialogMotion);
+  return page.evaluate(() => (window as unknown as { dialogMotion: Recording }).dialogMotion);
 }
 
 async function openOverlay(page: Page, list: string, link: Locator, content: string) {
@@ -48,8 +84,11 @@ async function openOverlay(page: Page, list: string, link: Locator, content: str
   await trigger.click();
   const overlay = page.locator("[data-overlay-content]");
   await expect(overlay.locator(content).first()).toBeVisible();
-  // Let the entrance finish before reading the settled state.
-  await expect.poll(async () => (await recorded(page)).opening.at(-1)?.kinds.length).toBe(0);
+  // The starting style has no transitions yet; wait for actual playback first.
+  if (!await page.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches)) {
+    await expect.poll(async () => (await recorded(page)).openingStarted).toBe(true);
+  }
+  await expect.poll(async () => (await recorded(page)).openingFinished).toBe(true);
   return overlay;
 }
 
