@@ -2,13 +2,15 @@
 
 # 开发导航
 
-PerPay 在一个 Node.js 进程中提供管理 API、原生支付 API、易支付兼容接口和前端资源，用 SQLite 保存订单、流水和配置。进程内的定时任务负责查账、对账和发送通知，另一个独立进程负责自动备份。
+单进程 Node.js（Hono + SQLite）承载管理 API、原生支付 API、易支付兼容接口与前端静态/SSR 资源；进程内调度器驱动查账、对账与通知投递，独立备份进程负责定期快照。
 
-按任务阅读：[前端开发](../../web/README.md) · [本地预览与截图](ui-verification.md) · [支付宝 SDK 与易支付设计](integration-epay-plan.md)。部署见[项目说明](../../README.md)，业务接入见 [USAGE](../../USAGE.md)。
+相关工程文档：[前端开发](../../web/README.md) · [开发验证与回归](ui-verification.md) · [支付宝 SDK 与易支付设计](integration-epay-plan.md) · [术语与字段词典](../glossary.md)
+
+外部文档：[项目说明](../../README.md) · [接口与运维参考](../../USAGE.md)
 
 ## 开始开发
 
-使用 [package.json](../../package.json) 中 `engines.node` 指定的 Node.js 版本范围。以下命令在仓库根目录执行。
+Node.js 版本须满足 [package.json](../../package.json) 中的 `engines.node`。以下命令在仓库根目录执行：
 
 ```sh
 npm ci
@@ -16,61 +18,68 @@ npm run build
 npm run demo:preview -- --interactive
 ```
 
-打开 `http://127.0.0.1:6192/admin/`，密码为 `123456`。可以在预览中编辑临时配置、查看生成的示例订单和通知记录。启动参数、怎样找到示例记录及退出后的清理方式见[本地预览](ui-verification.md#本地预览)；前端热更新见[开发与构建](../../web/README.md#开发与构建)。
+- **本地可编辑预览**：访问 `http://127.0.0.1:6192/admin/`（密码 `123456`），运行于独立临时库与模拟查账/通知环境。参数、日志定位及清理见[本地预览](ui-verification.md#本地预览)；前端 HMR 见[开发与构建](../../web/README.md#开发与构建)。
+- **真实后端运行**：先按[配置参考](../../README.md)配置独立 `PERPAY_DATA_DIR`、`PERPAY_BACKUP_DIR`、`PERPAY_MASTER_KEY` 等环境变量，再运行 `npm run dev` 或 `node dist/main.js`（默认监听 `127.0.0.1:6190`，通过 `PERPAY_HOST` 覆盖）。注意真实后端会立即启动已配置账号的查账与通知任务。
+- **产物与临时目录**：编译输出写入 `dist/`、`web-dist/`；预览库默认落在系统临时目录（可提前创建目录并通过 Linux/macOS `TMPDIR` 或 Windows `TEMP`/`TMP` 指定）。截图、日志与复核材料应放在独立工作目录，避免被重新构建清理。
 
-需要运行真实后端时，先按[配置参考](../../README.md)准备独立数据目录、备份目录和主密钥，再执行 `npm run dev`。直接运行源码或 `node dist/main.js` 默认监听 `127.0.0.1:6190`，其他监听地址通过 `PERPAY_HOST` 设置。真实后端会启动已配置账号的查账和通知任务。
+## 源码导航与关键不变量
 
-构建产物写入 `dist/`、`web-dist/`。预览数据库默认使用系统临时目录；需要自定义时，先创建目标目录，再在启动前设置 Linux/macOS 的 `TMPDIR`，或 Windows 的 `TEMP`、`TMP`。截图候选、日志和其他复核材料保存到独立工作目录，避免随构建产物一起清理。
-
-## 从问题定位源码
-
-| 开发任务 | 主要入口 | 先核对什么 |
+| 变更域 | 源码入口 | 修改前必查不变量 |
 | --- | --- | --- |
-| 调整启动配置、任务启停 | [main.ts](../../src/main.ts)、[config.ts](../../src/config.ts)、[runtime/](../../src/runtime/) | 配置如何加载，账号启停或配置重载时如何处理正在执行的任务 |
-| 修改路由、管理会话、鉴权 | [http/](../../src/http/)、[identity/](../../src/identity/)、[security/](../../src/security/) | OpenAPI、登录会话与 CSRF 检查，请求是否只访问所属网站的数据 |
-| 修改下单与金额分配 | [orders/](../../src/orders/)、[order-store.ts](../../src/database/order-store.ts) | 重复请求是否返回原订单，应付金额是否已被占用，付款何时截止 |
-| 修改支付宝请求和查账 | [infrastructure/alipay/](../../src/infrastructure/alipay/)、[ledger/](../../src/ledger/)、[alipay-accounts/](../../src/alipay-accounts/) | SDK 验签、原始响应保存、正常查账与历史补查进度 |
-| 修改自动确认与人工处置 | [reconciliation/](../../src/reconciliation/) | 匹配的金额和时间，流水属于哪个账号，怎样撤销确认或处理争议 |
-| 修改通知和易支付兼容 | [notifications/](../../src/notifications/)、[epay/](../../src/epay/)、[接入设计](integration-epay-plan.md) | 哪个订单事件触发通知，怎样签名、发送、接收回执和返回商家 |
-| 修改网站和系统设置 | [sites/](../../src/sites/)、[settings/](../../src/settings/) | 固定网站编号、配置版本、密钥和默认设置 |
-| 修改数据库、升级与备份 | [database/](../../src/database/)、[backup/](../../src/backup/) | 迁移校验和、兼容版本、密钥和恢复 |
-| 修改审计查询 | [audit/](../../src/audit/)、[audit-routes.ts](../../src/http/audit-routes.ts) | 业务事件、活动记录及完整性 |
-| 修改后台和收银台 | [web/src/](../../web/src/)、[checkout-view.ts](../../src/shared/checkout-view.ts) | [后台操作规则](../../web/README.md#后台交互约束)、允许向付款人公开的数据、截图效果 |
+| 启动配置与运行时生命周期 | [main.ts](../../src/main.ts)、[config.ts](../../src/config.ts)、[runtime/](../../src/runtime/) | 配置解析、账号启停与配置重载时对在途任务（in-flight）的取消/排空处理 |
+| 路由、会话与安全边界 | [http/](../../src/http/)、[identity/](../../src/identity/)、[security/](../../src/security/) | OpenAPI 契约、Session + CSRF + IP 白名单校验、站点/账号租户隔离 |
+| 下单与应付金额分配 | [orders/](../../src/orders/)、[order-store.ts](../../src/database/order-store.ts) | 幂等重放（返回原订单或冲突）、应付金额占用与复用冷却、付款截止边界 |
+| 支付宝 SDK 与账本采集 | [infrastructure/alipay/](../../src/infrastructure/alipay/)、[ledger/](../../src/ledger/)、[alipay-accounts/](../../src/alipay-accounts/) | SDK 验签流程、原始响应落库上限、正常查账与历史补扫的双轨游标 |
+| 自动对账与人工处置 | [reconciliation/](../../src/reconciliation/) | 金额/时间窗/来源账号匹配条件、确认撤销与争议状态流转 |
+| 回调通知与易支付兼容 | [notifications/](../../src/notifications/)、[epay/](../../src/epay/)、[接入设计](integration-epay-plan.md) | 触发事件类型、协议签名与验签、租约/退避重试、回执判定与同步跳转 |
+| 业务网站与系统设置 | [sites/](../../src/sites/)、[settings/](../../src/settings/) | 不可变 `client_id`、乐观锁 `config_version`、密钥轮换与默认模板继承 |
+| SQLite Schema、升级与备份 | [database/](../../src/database/)、[backup/](../../src/backup/) | 迁移校验和不可变性、版本兼容范围、主密钥加密与恢复一致性 |
+| 审计日志与完整性 | [audit/](../../src/audit/)、[audit-routes.ts](../../src/http/audit-routes.ts) | 业务事件/活动记录模型、哈希链与 spool 落盘恢复 |
+| 后台 SPA 与公开收银台 | [web/src/](../../web/src/)、[checkout-view.ts](../../src/shared/checkout-view.ts) | [后台交互约束](../../web/README.md#后台交互约束)、收银台公开数据白名单、SSR/Hydration 一致性 |
 
-已有用例说明各类输入应得到什么结果，也包含构造测试数据的示例，可用 `rg --files test web/test ui-tests` 查找。HTTP 测试环境在 [http-fixture.ts](../../test/http-fixture.ts)，预览数据由 [preview-demo.ts](../../scripts/preview-demo.ts)生成。
+测试资产与夹具定位：运行 `rg --files test web/test ui-tests`；HTTP 集成测试夹具见 [http-fixture.ts](../../test/http-fixture.ts)，演示数据生成器见 [preview-demo.ts](../../scripts/preview-demo.ts)。
 
-## 业务数据流
+## 核心数据流
 
-1. 原生或易支付接口创建订单，订单服务选择收款账号、分配应付金额并生成收银台入口。
-2. 查账服务验证支付宝响应，保存流水及其原始响应等来源记录；每个账号分别记录正常查账和历史补查进度。
-3. 对账服务按金额、付款时间和来源将流水关联到订单；需要人工核对的情况进入待处理。
-4. 订单事件触发通知任务，按网站所用协议发送回调，记录每次发送、重试和接收方的确认响应（回执）。
+```text
+[原生 / 易支付下单]
+  └─> OrderService：选定收款账号 -> 分配唯一应付金额 -> 生成收银台令牌 -> 落库
+        │
+[账本采集调度]
+  └─> Alipay SDK Adapter：拉取账单 -> 保存原始响应 -> SDK 验签 -> 写入 ledger（正常游标 / 补扫游标分离）
+        │
+[对账引擎]
+  └─> Reconciliation：按金额 + 付款时间 + 来源账号唯一匹配 -> 确认收款（歧义/异常进入待处理队列）
+        │
+[通知调度]
+  └─> NotificationWorker：按订单确认事件生成投递 -> 按网站协议签名发送 -> 记录回执 / 退避重试
+```
 
-排查“付款后业务网站没有更新”时，先核对订单的收款确认，再检查通知投递和业务网站处理结果。字段来源、金额和状态用词见[术语表](../glossary.md)。
+排障顺序（“已付款但下游未更新”）：先查订单的**收款确认记录**（排除未入账/异常队列），再查**通知投递日志与回执**，最后核对业务侧验签与幂等履约。字段来源、单位与状态定义见[术语表](../glossary.md)。
 
-## 修改与验证
+## 修改与验证矩阵
 
-日常开发按改动选择类型检查、构建和人工核对。已有自动化套件继续在 CI 中运行，需要检查指定功能时再单独运行对应用例。
+日常开发按改动面执行对应的类型检查、构建与手工核对；重建前先停止旧预览，防止前后端产物版本混用。
 
-| 改动 | 日常核对 |
-| --- | --- |
-| 后台组件、页面或交互 | `npm run typecheck:admin`、`npm run build:admin`，在可编辑预览中核对相关操作 |
-| 公开收银台或共用展示逻辑 | `npm run typecheck`、`npm run build:checkout`，重启后端后核对 SSR、交互及结束状态 |
-| 服务端或业务逻辑 | `npm run typecheck:server`、`npm run build:server`，在独立实例中复现相关输入与结果 |
-| API 字段、请求或错误码 | 修改 [openapi.yaml](../../openapi.yaml)，执行 `npm run api:types` 和 `npm run typecheck`，核对调用方与响应 |
-| 文档、命令、链接或截图 | 对照当前实现检查命令和本地链接，执行 `git diff --check`，查看 Markdown 渲染 |
-| 一批功能改动完成 | `npm run typecheck`、`npm run build`，按[手工核对项](ui-verification.md#日常手工核对)完成受影响流程 |
+| 改动范围 | 必跑命令 | 核对重点 |
+| --- | --- | --- |
+| 后台组件 / 页面 / 交互 | `npm run typecheck:admin && npm run build:admin` | 在可编辑预览中实操受影响流程 |
+| 收银台或共享公开模型 | `npm run typecheck && npm run build:checkout` | 重启后端，验证 SSR 首屏、Hydration、无脚本降级及终态 |
+| 服务端 / 业务逻辑 | `npm run typecheck:server && npm run build:server` | 跑对应单测或在独立实例复现输入/边界输出 |
+| OpenAPI 字段 / 错误码 | 编辑 [openapi.yaml](../../openapi.yaml) → `npm run api:types && npm run typecheck` | 检查 `web/src/api/generated/` diff 及前后端调用方 |
+| 文档 / 命令 / 链接 / 截图 | `git diff --check` | 核对命令与代码一致、相对路径/锚点有效、Markdown 渲染正常 |
+| 批量功能收口 | `npm run typecheck && npm run build` | 按[日常手工核对](ui-verification.md#日常手工核对)过一遍受影响路径 |
 
-构建结束后再用浏览器检查。重新构建前先停止预览，完成后再启动，防止页面混用新旧构建文件。
-
-`npm run check` 包含版本、OpenAPI、类型、Node/React 测试和服务端构建；`npm test` 会先构建后台与收银台。现有 CI、浏览器专项及容器恢复入口集中在[开发验证](ui-verification.md#现有-ci-与专项入口)。
+- `npm run check`：聚合版本一致性、OpenAPI、类型检查、Node/React 测试与服务端构建。
+- `npm test`：会先构建后台与收银台再执行测试。
+- CI 流水线、Playwright 套件及 Linux 升级/崩溃恢复验证见[开发验证](ui-verification.md#现有-ci-与专项入口)。
 
 <a id="契约与文档入口"></a>
 
-## 接口规则与文档
+## 强约束与契约维护
 
-- API 客户端生成到 `web/src/api/generated/`，通过 `npm run api:types` 更新。
-- 数据库结构版本（schema）变化时新增一条[迁移](../../src/database/migrations.ts)，不要改写已发布迁移及其校验和。同时更新[版本兼容声明](../../src/version.ts)和升级说明，并用 `npm run check:version` 核对版本是否一致。
-- 写入订单或收款记录时，保留数据库事务、幂等和网站／账号归属检查：同一操作不能重复记账，记录不能写到其他网站或账号下。收款确认、通知回执和管理员退款登记分别使用自己的状态；修改前先核对已有用例规定的成功、失败和重复请求行为。
-- 部署、备份和恢复说明集中在[维护指南](../maintenance.md)，保存范围见[数据与隐私](../privacy.md)。使用者操作变化更新对应指南，待发布内容写入[待发布说明](../releases/unreleased.md)。
-- 协议和 SDK 的接口规则及核对方法见[接入设计](integration-epay-plan.md)、[支付宝 SDK 接口检查](../../scripts/validation/alipay-sdk/README.md)与[易支付客户端兼容检查](../../scripts/validation/epay/README.md)。
+- **OpenAPI 单一事实来源**：修改接口后必须通过 `npm run api:types` 重新生成 `web/src/api/generated/`，不要手改生成目录。
+- **数据库迁移不可变**：Schema 变更时必须在 [migrations.ts](../../src/database/migrations.ts) 追加新迁移，**严禁改写已发布迁移及其校验和**；同步更新 [src/version.ts](../../src/version.ts) 的兼容范围及升级文档，并用 `npm run check:version` 校验。
+- **财务写入原子性与状态分离**：订单/账本/对账写入必须保持数据库事务、幂等键与站点/账号归属校验（防跨站越权与重复记账）。**收款确认状态**、**通知回执状态**与**管理员外部退款标记**是三条独立状态线，严禁混用；改动前先核对既有测试对成功、失败与重复重放的断言。
+- **跨文档同步**：部署/备份/恢复变更同步[维护指南](../maintenance.md)；落盘与留存范围变更同步[数据与隐私](../privacy.md)；未发布变更记录到[待发布说明](../releases/unreleased.md)。
+- **协议与外部 SDK 验证**：详见[接入设计](integration-epay-plan.md)、[支付宝 SDK 验证](../../scripts/validation/alipay-sdk/README.md)与[易支付客户端兼容验证](../../scripts/validation/epay/README.md)。
