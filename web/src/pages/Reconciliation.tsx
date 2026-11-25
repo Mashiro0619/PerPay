@@ -11,7 +11,8 @@ import {
 import { ListActionsMenu } from "@/components/list-actions-menu";
 import { ListColumnsProvider } from "@/components/list-columns";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
-import { useCompactList } from "@/hooks/use-compact-list";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { RefreshButton } from "@/components/refresh-button";
 import { BusinessTable, type BusinessColumn } from "@/components/business-table";
 import {
   ListDateTime,
@@ -37,7 +38,6 @@ import { CursorPagination } from "@/components/cursor-pagination";
 import { OverlayRecordList } from "@/components/overlay-record-list";
 import { useSuccessToast } from "@/components/Feedback";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Spinner } from "@/components/ui/spinner";
 import {
   Select,
   SelectContent,
@@ -217,7 +217,7 @@ export default function Reconciliation() {
     : <ReconciliationPage />;
 }
 function ReconciliationPage() {
-  const compact = useCompactList();
+  const compact = useIsMobile();
   const operationTrigger = useRef<HTMLButtonElement | null>(null);
   function showOperation(trigger: HTMLButtonElement | null) {
     operationTrigger.current = trigger;
@@ -561,21 +561,13 @@ function ReconciliationList({
               >
                 查看已忽略
             </Link>
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label="刷新"
+            <RefreshButton
               disabled={query.isFetching}
+              busy={query.isFetching}
               onClick={() => {
                 void query.refetch();
               }}
-            >
-              {query.isFetching ? (
-                <Spinner aria-hidden="true" />
-              ) : (
-                <RefreshCw />
-              )}
-            </Button>
+            />
           </>
         }
         filters={mobileFilters}

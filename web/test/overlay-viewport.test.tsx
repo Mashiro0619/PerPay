@@ -2,7 +2,6 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { useOverlayViewport } from "../src/hooks/use-overlay-viewport";
 import { useIsMobile } from "../src/hooks/use-mobile";
-import { useCompactList } from "../src/hooks/use-compact-list";
 import { mobileMedia } from "./mobile-media";
 import { matchesTestMedia } from "./media-query";
 
@@ -40,19 +39,19 @@ describe("visible overlay viewport", () => {
 });
 
 describe("shared compact breakpoint", () => {
-  it("keeps landscape phones in drawer mode and changes both hooks at 1024px", () => {
+  it("keeps landscape phones in drawer mode and changes at 1024px", () => {
     const media = mobileMedia(844, { coarse: true });
-    const { result } = renderHook(() => [useIsMobile(), useCompactList()]);
-    expect(result.current).toEqual([true, true]);
+    const { result } = renderHook(() => useIsMobile());
+    expect(result.current).toBe(true);
     media.resize(1024);
-    expect(result.current).toEqual([false, false]);
+    expect(result.current).toBe(false);
     expect(matchMedia("(pointer: coarse)").matches).toBe(true);
   });
 
   it("trusts the CSS media result when overflow has expanded innerWidth", () => {
     vi.stubGlobal("innerWidth", 1202);
     vi.stubGlobal("matchMedia", (media: string) => ({ matches: matchesTestMedia(media, 390), addEventListener: vi.fn(), removeEventListener: vi.fn() }));
-    const { result } = renderHook(() => [useIsMobile(), useCompactList()]);
-    expect(result.current).toEqual([true, true]);
+    const { result } = renderHook(() => useIsMobile());
+    expect(result.current).toBe(true);
   });
 });

@@ -2,17 +2,18 @@ import { Children, Fragment, cloneElement, isValidElement, useEffect, useId, use
 import { cn } from "cn";
 import { ChevronDown, Columns3, Search, X } from "lucide-react";
 import { normalizeKeyword, type ListQueryControl } from "@/lib/list-query";
-import { useCompactList } from "@/hooks/use-compact-list";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { ListColumnsSlot, useListSummary } from "@/components/list-columns";
 import { ListDensityOptions } from "@/components/list-density";
 import { CreatedDateFilter } from "@/components/created-date-filter";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
 import { ListActionsMenu, ListActionsProvider } from "@/components/list-actions-menu";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
 import { ErrorNotice } from "@/components/request-state";
-import { Field, FieldGroup, FieldError } from "@/components/ui/field";
+import { Field, FieldGroup, FieldLabel, FieldError } from "@/components/ui/field";
 import {
   InputGroup,
   InputGroupInput,
@@ -95,7 +96,7 @@ export function ListQueryToolbar({
   mobileFilterSummary?: readonly string[];
   mobileFilterReset?: Record<string, string | null>;
 }) {
-  const compactViewport = useCompactList();
+  const compactViewport = useIsMobile();
   const summary = useListSummary();
   const compact = compactViewport || summary;
   const [draft, setDraft] = useState(control.query.q);
@@ -160,7 +161,9 @@ export function ListQueryToolbar({
     searchInput.current?.focus({ preventScroll: true });
   };
   return (
-    <div
+    <Collapsible
+      open={!compact && advancedOpen}
+      onOpenChange={setAdvancedOpen}
       className="list-query-toolbar min-w-0"
       data-list-query-toolbar
       data-compact={compact}
@@ -222,9 +225,9 @@ export function ListQueryToolbar({
               data-invalid={!!error}
               data-disabled={busy}
             >
-              <label htmlFor={advancedId + "-search"} className="sr-only">
+              <FieldLabel htmlFor={advancedId + "-search"} className="sr-only">
                 {selectedMode ? lookup!.inputLabel : label}
-              </label>
+              </FieldLabel>
               <InputGroup>
                 <InputGroupAddon align="inline-start">
                   {lookup ? (
@@ -344,11 +347,21 @@ export function ListQueryToolbar({
                 {primaryControls}
               </div>
             )}
-            {advancedControls.length > 0 && <Button type="button" variant="outline" disabled={busy}
-              aria-expanded={advancedOpen} aria-controls={advancedId} data-list-advanced-trigger
-              onClick={() => setAdvancedOpen(open => !open)}>
-              高级筛选<ChevronDown className={advancedOpen ? "rotate-180" : undefined} data-icon="inline-end" />
-            </Button>}
+            {advancedControls.length > 0 && (
+              <CollapsibleTrigger
+                disabled={busy}
+                render={
+                  <Button
+                    type="button"
+                    variant="outline"
+                    data-list-advanced-trigger
+                  />
+                }
+              >
+                高级筛选
+                <ChevronDown aria-hidden="true" className={advancedOpen ? "rotate-180" : undefined} data-icon="inline-end" />
+              </CollapsibleTrigger>
+            )}
             {desktopActions && (
               <div
                 className="ml-auto flex shrink-0 items-center gap-2"
@@ -371,10 +384,15 @@ export function ListQueryToolbar({
           </>
         )}
       </div>
-      {!compact && advancedOpen && advancedControls.length > 0 && <div id={advancedId}
-        className="list-toolbar-detail flex min-w-0 flex-wrap items-end gap-3" data-list-advanced-filters>
-        {advancedControls}
-      </div>}
+      {!compact && advancedControls.length > 0 && (
+        <CollapsibleContent
+          id={advancedId}
+          className="list-toolbar-detail flex min-w-0 flex-wrap items-end gap-3"
+          data-list-advanced-filters
+        >
+          {advancedControls}
+        </CollapsibleContent>
+      )}
       {selectedMode && (
         <div className="list-toolbar-detail empty:hidden">
           <ErrorNotice error={lookup?.error} />
@@ -459,6 +477,6 @@ export function ListQueryToolbar({
           {children}
         </div>
       )}
-    </div>
+    </Collapsible>
   );
 }

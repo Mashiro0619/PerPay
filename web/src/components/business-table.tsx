@@ -32,7 +32,7 @@ import {
   updateColumnOverrides,
   type ResponsiveColumn,
 } from "@/lib/table-columns";
-import { useCompactList } from "@/hooks/use-compact-list";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { useListSize } from "@/hooks/use-list-size";
 import { LinkedSummaryRow, LinkedTableRow } from "@/components/LinkedTableRow";
 import { ListRowPresentation, ListSummary } from "@/components/list-primitives";
@@ -195,7 +195,7 @@ function BusinessTableView<T extends RowData>({
   embedded = false,
   "aria-label": ariaLabel,
 }: BusinessTableProps<T>) {
-  const compact = useCompactList();
+  const compact = useIsMobile();
   const inlineColumns = useListDisplay();
   const columnsId = useId();
   const captionId = useId();

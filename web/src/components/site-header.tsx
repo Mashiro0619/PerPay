@@ -15,6 +15,7 @@ import {
   BreadcrumbItem,
   BreadcrumbLink,
   BreadcrumbList,
+  BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import { TestPaymentButton } from "@/components/test-payment-provider";
@@ -84,7 +85,7 @@ export function SiteHeader({
           <BreadcrumbItem className="min-w-0 lg:max-w-64">
             {scope.clientId && !isMobile
               ? <HeaderWorkspaceSwitcher name={workspaceName} />
-              : <span className="truncate" title={workspaceName}>{workspaceName}</span>}
+              : <BreadcrumbPage aria-current="location" className="truncate" title={workspaceName}>{workspaceName}</BreadcrumbPage>}
           </BreadcrumbItem>
           </BreadcrumbList>
         </Breadcrumb>
