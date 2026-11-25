@@ -15,6 +15,7 @@ import { waitForOperation } from "@/lib/operation-timeout";
 import { SiteConfigurationConflicts } from "@/components/site-configuration-conflicts";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import { FieldLegend, FieldSet } from "@/components/ui/field";
 import { ScrollingTabs } from "@/components/scrolling-tabs";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -228,6 +229,7 @@ function DefaultsEditor({ initial }: { initial: DefaultsSnapshot }) {
               ? "输入和操作前的版本已保留。请读取最新默认设置核对保存结果，再继续修改。"
               : "你的修改已保留。读取最新默认设置将合并无冲突项，冲突需核对；不会自动保存。"}</p>
             <Button variant="outline" className="h-auto min-h-8 max-w-full whitespace-normal py-1.5" disabled={busy} onClick={() => reload.mutate()}>
+              {reload.isPending && <Spinner aria-hidden="true" data-icon="inline-start" />}
               {reload.isPending ? "正在读取…" : "读取最新默认设置并核对"}
             </Button>
           </AlertDescription>
@@ -284,7 +286,10 @@ function DefaultsEditor({ initial }: { initial: DefaultsSnapshot }) {
           />
           <OverlayActions>
             {overlay && <Button type="button" variant="outline" disabled={busy} onClick={() => overlay.requestClose()}>关闭</Button>}
-            <Button form={formId} type="submit" disabled={busy || requiresReview}>保存默认设置</Button>
+            <Button form={formId} type="submit" disabled={busy || requiresReview}>
+              {save.isPending && <Spinner aria-hidden="true" data-icon="inline-start" />}
+              保存默认设置
+            </Button>
           </OverlayActions>
         </FieldSet>
       </form>

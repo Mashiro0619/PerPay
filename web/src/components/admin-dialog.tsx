@@ -143,8 +143,8 @@ export function DialogContent({ className, kind = "form", size, scrollMode = "co
     return initialFocus ?? true;
   }} presentation={step ? "step" : "dialog"} portalProps={{ ...props.portalProps, ...(step ? { container: steps!.portal } : {}), keepMounted: keepMounted || props.portalProps?.keepMounted,
     hidden: switching || stepHidden || props.portalProps?.hidden, inert: switching || stepHidden || props.portalProps?.inert }} data-admin-dialog={kind} data-overlay-step={step ? step.id : undefined}
-    className={cn(className, step ? "flex min-h-0 max-h-full w-full flex-1 flex-col overflow-hidden" : content,
-      !step && (kind === "detail" ? detailClass : kind === "compact" ? "sm:max-w-md" : "max-md:translate-x-0 max-md:translate-y-0 " + (kind === "technical" ? "sm:max-w-3xl" : "sm:max-w-xl")))}>
+    className={cn(step ? "flex min-h-0 max-h-full w-full flex-1 flex-col overflow-hidden" : content,
+      !step && (kind === "detail" ? detailClass : kind === "compact" ? "sm:max-w-md" : "max-md:translate-x-0 max-md:translate-y-0 " + (kind === "technical" ? "sm:max-w-3xl" : "sm:max-w-xl")), className)}>
     {drawerStep && (
       <div
         data-overlay-step-bar
@@ -180,7 +180,7 @@ export function AlertDialogContent({ className, initialFocus, children, ...props
     if (initialFocus !== false && scroll && scroll.scrollHeight > scroll.clientHeight + 1) return scroll;
     if (initialFocus && typeof initialFocus === "object") return initialFocus.current;
     return typeof initialFocus === "function" ? initialFocus(openType) : initialFocus ?? element.current?.querySelector<HTMLButtonElement>('[data-slot="alert-dialog-cancel"]') ?? element.current;
-  }} data-admin-dialog="confirm" className={cn(className, content, "data-[size=default]:max-w-[calc(100%-2rem)] data-[size=sm]:max-w-[calc(100%-2rem)] data-[size=default]:sm:max-w-lg")}>
+  }} data-admin-dialog="confirm" className={cn(content, "data-[size=default]:max-w-[calc(100%-2rem)] data-[size=sm]:max-w-[calc(100%-2rem)] data-[size=default]:sm:max-w-lg", className)}>
     <LocalRequestNotices><DialogScroll>{children}</DialogScroll></LocalRequestNotices>
   </AlertUI.AlertDialogContent>;
 }
@@ -188,14 +188,14 @@ export function DialogHeader({ className, ...props }: ComponentProps<typeof Dial
   return <DialogUI.DialogHeader {...props} className={cn("shrink-0 text-left", className)} />;
 }
 export function AlertDialogHeader({ className, ...props }: ComponentProps<typeof AlertUI.AlertDialogHeader>) {
-  return <AlertUI.AlertDialogHeader {...props} className={cn(className, "flex shrink-0 flex-col items-stretch gap-2 text-left")} />;
+  return <AlertUI.AlertDialogHeader {...props} className={cn("flex shrink-0 flex-col items-stretch gap-2 text-left", className)} />;
 }
 const footer = "shrink-0 flex-col flex-nowrap items-stretch sm:flex-row sm:justify-end";
 export function DialogFooter({ className, ...props }: ComponentProps<typeof DialogUI.DialogFooter>) {
-  return <DialogUI.DialogFooter {...props} className={cn(className, footer)} />;
+  return <DialogUI.DialogFooter {...props} className={cn(footer, className)} />;
 }
 export function AlertDialogFooter({ className, safeActionFirst = false, ...props }: ComponentProps<typeof AlertUI.AlertDialogFooter> & { safeActionFirst?: boolean }) {
-  return <AlertUI.AlertDialogFooter {...props} className={cn(className, footer, safeActionFirst && "flex-col sm:flex-row")} />;
+  return <AlertUI.AlertDialogFooter {...props} className={cn(footer, safeActionFirst && "flex-col sm:flex-row", className)} />;
 }
 export function DialogBody({ className, ...props }: ComponentProps<"div">) {
   return <div {...props} data-admin-dialog-body className={cn("-mx-4 flex min-h-0 flex-col gap-4 overflow-y-auto overscroll-contain px-4 pb-1", className)} />;

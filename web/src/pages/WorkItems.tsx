@@ -4,7 +4,6 @@ import { useQuery } from "@/lib/workspace-query";
 import { useWorkspaceApi } from "@/workspace";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { RefreshButton } from "@/components/refresh-button";
-import { DialogBody } from "@/components/admin-dialog";
 import { useListQuery } from "@/lib/list-query";
 import { workItemFilters, workItemSortFields, workItemsQuery, type WorkItemVisibility } from "@/api/workspace-queries";
 import { ListQueryToolbar } from "@/components/list-query-toolbar";
@@ -380,12 +379,10 @@ export default function WorkItems() {
         <AlertDialogContent
           initialFocus={cancelIgnore}
           finalFocus={() => finalFocus.current}
-          className="max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] overflow-y-auto sm:max-w-lg"
+          className="sm:max-w-lg"
         >
           <AlertDialogHeader>
             <AlertDialogTitle>{dialogTitle}</AlertDialogTitle>
-          </AlertDialogHeader>
-          <DialogBody>
             <AlertDialogDescription>
               {shownBatch?.clientId && (
                 <>
@@ -419,7 +416,7 @@ export default function WorkItems() {
               ) : null}
               仅关闭现有提醒，不删除记录、处理冲突或停止通知重试；新增提醒不受影响，后续可在“已忽略”中随时恢复。
             </AlertDialogDescription>
-          </DialogBody>
+          </AlertDialogHeader>
           <ErrorNotice error={ignore.error} />
           <AlertDialogFooter>
             <AlertDialogCancel ref={cancelIgnore} disabled={ignore.isPending}>

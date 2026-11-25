@@ -14,6 +14,7 @@ import { ListDateTime } from "@/components/list-primitives";
 import { ErrorNotice } from "@/components/request-state";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import {
   Card,
   CardAction,
@@ -114,6 +115,7 @@ function AccountScan({ account }: { account: AlipayAccount }) {
         onClick={() => scan.mutate()}
         aria-label={"立即查账：" + account.name}
       >
+        {(scan.isPending || active) && <Spinner aria-hidden="true" data-icon="inline-start" />}
         {scan.isPending ? "正在提交…" : active ? "查账处理中…" : "立即查账"}
       </Button>
       {request && !active && (

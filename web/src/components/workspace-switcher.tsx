@@ -156,10 +156,25 @@ export function WorkspaceSwitcher({
   </>;
   if (icon) return <SidebarMenuItem>
     <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
-      <PopoverTrigger render={<SidebarMenuButton tooltip={`查看范围 · ${selectedName}`} aria-label={`切换查看范围，当前${selectedName}`} />}>
-        <ListFilter />
-        <span className="sr-only">查看范围</span>
-      </PopoverTrigger>
+      <Tooltip disabled={popoverOpen}>
+        <PopoverTrigger
+          render={
+            <TooltipTrigger
+              render={
+                <SidebarMenuButton
+                  aria-label={`切换查看范围，当前${selectedName}`}
+                />
+              }
+            />
+          }
+        >
+          <ListFilter />
+          <span className="sr-only">查看范围</span>
+        </PopoverTrigger>
+        <TooltipContent side="right" align="center">
+          {`查看范围 · ${selectedName}`}
+        </TooltipContent>
+      </Tooltip>
       <PopoverContent side="right" align="start" className="max-h-[min(32rem,calc(100dvh-2rem))] overflow-y-auto overscroll-contain">
         <PopoverTitle>查看范围</PopoverTitle>
         <p className="text-xs text-muted-foreground">当前：{selectedName}</p>

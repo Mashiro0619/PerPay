@@ -253,7 +253,7 @@ export function TestPaymentResult({
   return onClose ? (
     <>
       <div className="-mx-4 min-h-0 overflow-auto px-4 pb-1">{content}</div>
-      <DialogFooter className="shrink-0 flex-row justify-end">
+      <DialogFooter>
         <Button variant="outline" onClick={onClose}>
           关闭
         </Button>

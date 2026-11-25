@@ -404,7 +404,7 @@ export function FinancialDialog({
               </>
             )}
           </FieldGroup>
-          <DialogFooter className="shrink-0 flex-row flex-wrap justify-end">
+          <DialogFooter>
             <Button
               type="button"
               variant="outline"

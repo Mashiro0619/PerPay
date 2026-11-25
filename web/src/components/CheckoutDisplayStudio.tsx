@@ -712,6 +712,7 @@ export function CheckoutDisplayStudio({
                   disabled={busy}
                   onClick={() => reload.mutate()}
                 >
+                  {reload.isPending && <Spinner aria-hidden="true" data-icon="inline-start" />}
                   {reload.isPending ? "正在读取…" : "读取最新配置并核对"}
                 </Button>
               </AlertDescription>

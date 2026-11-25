@@ -140,10 +140,12 @@ export function OrderExport({
       </Button>}
       <Dialog open={open} onOpenChange={next => { if (!next) closeExport(); }}>
         <DialogContent finalFocus={() => finalFocus.current?.isConnected ? finalFocus.current : document.querySelector<HTMLElement>('[aria-label="更多订单操作"]')}>
-          <DialogHeader><DialogTitle>导出订单</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>导出订单</DialogTitle>
+            <DialogDescription>按订单创建日期导出，使用北京时间，包含起止日期；金额单位为元。</DialogDescription>
+          </DialogHeader>
           <form className="contents" onSubmit={event => { event.preventDefault(); void download(); }}>
             <DialogBody>
-              <DialogDescription>按订单创建日期导出，使用北京时间，包含起止日期；金额单位为元。</DialogDescription>
               <p className="text-sm">{[
                 clientId ? "当前网站" : "全部网站",
                 query.q ? "关键词：“" + query.q + "”" : "",
@@ -152,8 +154,8 @@ export function OrderExport({
                 accountId ? "收款账号：" + (accountName ?? accountId) : "",
               ].filter(Boolean).join(" · ")}</p>
               <FieldGroup>
-                <Field><FieldLabel htmlFor={id + "-from"}>开始日期</FieldLabel><Input id={id + "-from"} type="date" required min="1970-01-01" value={from} disabled={pending} onChange={event => { setFrom(event.target.value); setError(null); }} /></Field>
-                <Field><FieldLabel htmlFor={id + "-to"}>结束日期</FieldLabel><Input id={id + "-to"} type="date" required min={from || "1970-01-01"} value={to} disabled={pending} onChange={event => { setTo(event.target.value); setError(null); }} /></Field>
+                <Field data-disabled={pending}><FieldLabel htmlFor={id + "-from"}>开始日期</FieldLabel><Input id={id + "-from"} type="date" required min="1970-01-01" value={from} disabled={pending} onChange={event => { setFrom(event.target.value); setError(null); }} /></Field>
+                <Field data-disabled={pending}><FieldLabel htmlFor={id + "-to"}>结束日期</FieldLabel><Input id={id + "-to"} type="date" required min={from || "1970-01-01"} value={to} disabled={pending} onChange={event => { setTo(event.target.value); setError(null); }} /></Field>
               </FieldGroup>
               <ErrorNotice error={error} />
             </DialogBody>

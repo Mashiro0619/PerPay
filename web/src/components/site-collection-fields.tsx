@@ -223,10 +223,10 @@ export function CollectionChoices({
         {error && <FieldError id={id + "-mode-error"}>{error}</FieldError>}
       </Field>
       {value.mode === "FIXED" ? (
-        <Field>
+        <Field data-invalid={!!error} data-disabled={disabled}>
           <FieldLabel htmlFor={id + "-account"}>支付宝账号</FieldLabel>
           <Select
-            value={value.accounts[0]?.account_id ?? ""}
+            value={value.accounts[0]?.account_id ?? null}
             onValueChange={(accountId) =>
               onChange({
                 ...value,

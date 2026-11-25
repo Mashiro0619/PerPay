@@ -9,6 +9,7 @@ import { OperationNavigationDialog } from "@/components/operation-navigation-dia
 import { CopyValue } from "@/components/copy-value";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Spinner } from "@/components/ui/spinner";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldTitle } from "@/components/ui/field";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogBody, DialogFooter,
@@ -76,10 +77,12 @@ export function SiteClientIdChange({ site, onChanged, onClose, finalFocus }: {
       if (!open) { if (change.isBusy()) event.cancel(); else close(); }
     }}>
       <DialogContent ref={content} showCloseButton={!change.isPending} finalFocus={finalFocus}>
-        <DialogHeader><DialogTitle>更换网站 ID</DialogTitle></DialogHeader>
+        <DialogHeader>
+          <DialogTitle>更换网站 ID</DialogTitle>
+          <DialogDescription>更换后立即生效，请同步更新业务网站接入配置。原网站 ID 将保留占用，无法再次分配。</DialogDescription>
+        </DialogHeader>
         <form className="contents" onSubmit={event => { event.preventDefault(); submit(); }}>
           <DialogBody>
-            <DialogDescription>更换后立即生效，请同步更新业务网站接入配置。原网站 ID 将保留占用，无法再次分配。</DialogDescription>
             <FieldGroup>
               <Field><FieldTitle>当前网站 ID</FieldTitle><CopyValue value={currentId} label="复制当前网站 ID" /></Field>
               <Field data-invalid={!!fieldError} data-disabled={locked}>
@@ -102,6 +105,7 @@ export function SiteClientIdChange({ site, onChanged, onClose, finalFocus }: {
           <DialogFooter>
             <Button type="button" variant="outline" disabled={change.isPending} onClick={close}>{needsRefresh ? "关闭并刷新" : "取消"}</Button>
             <Button type="submit" disabled={change.isPending || change.conflict || change.isSuccess || (!change.recovery && nextId.trim() === currentId)}>
+              {change.isPending && <Spinner aria-hidden="true" data-icon="inline-start" />}
               {change.isPending ? "正在更换…" : change.recovery ? "重试上一次操作" : "继续核对"}
             </Button>
           </DialogFooter>
@@ -109,9 +113,11 @@ export function SiteClientIdChange({ site, onChanged, onClose, finalFocus }: {
       </DialogContent>
     <AlertDialog open={!!confirmation} onOpenChange={open => { if (!open) setConfirmation(null); }}>
       <AlertDialogContent finalFocus={() => locked ? content.current : input.current}>
-        <AlertDialogHeader><AlertDialogTitle>确认更换网站 ID？</AlertDialogTitle></AlertDialogHeader>
-        <DialogBody>
+        <AlertDialogHeader>
+          <AlertDialogTitle>确认更换网站 ID？</AlertDialogTitle>
           <AlertDialogDescription>{snapshot.configuration.name} 的网站 ID 将立即更换，请同步更新业务网站。原网站 ID 将停止用于接入并继续保留占用。</AlertDialogDescription>
+        </AlertDialogHeader>
+        <DialogBody>
           <FieldGroup>
             <Field><FieldTitle>原网站 ID</FieldTitle><CopyValue value={currentId} label="复制原网站 ID" /></Field>
             <Field><FieldTitle>新网站 ID</FieldTitle><CopyValue value={confirmation?.client_id ?? ""} label="复制新网站 ID" /></Field>

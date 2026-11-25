@@ -41,9 +41,8 @@ export function OperationNavigationDialog({
       <AlertDialogContent
         initialFocus={stayButton}
         finalFocus={finalFocus}
-        className="flex max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] flex-col overflow-hidden"
       >
-        <AlertDialogHeader className="shrink-0">
+        <AlertDialogHeader>
           <AlertDialogTitle>{title}</AlertDialogTitle>
         </AlertDialogHeader>
         <div className="-mx-4 flex min-h-0 flex-col gap-4 overflow-y-auto px-4 pb-1">
@@ -72,7 +71,7 @@ export function OperationNavigationDialog({
             </Field>
           )}
         </div>
-        <AlertDialogFooter safeActionFirst className="shrink-0 flex-row flex-wrap justify-end">
+        <AlertDialogFooter safeActionFirst>
           <AlertDialogCancel ref={stayButton} variant="default">
             留在此页
           </AlertDialogCancel>

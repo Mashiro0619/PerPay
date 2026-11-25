@@ -785,6 +785,7 @@ function SiteEditor({
               ? "你的修改已保留。读取最新配置将合并无冲突项，冲突需核对；不会自动保存或重试密钥操作。"
               : "重新读取密钥状态后，可查看已保存的密钥。未保存的配置会保留。"}</p>
             <Button ref={reloadTrigger} variant="outline" size="sm" className="h-auto min-h-8 max-w-full whitespace-normal py-1.5" disabled={busy} onClick={() => reload.mutate()}>
+              {reload.isPending && <Spinner aria-hidden="true" data-icon="inline-start" />}
               {reload.isPending ? "正在读取…" : requiresConfigurationReview ? "读取最新配置并核对" : "重新读取密钥状态"}
             </Button>
           </AlertDescription>

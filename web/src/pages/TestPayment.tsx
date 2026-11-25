@@ -40,6 +40,7 @@ import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -252,7 +253,6 @@ function TestPaymentForm({ dialog, overlay = false }: { dialog?: TestPaymentDial
         }}
       >
         <DialogContent
-          className="flex max-h-[calc(100dvh-2rem)] flex-col sm:max-w-xl"
           initialFocus={dialogTitle}
           finalFocus={dialog.finalFocus}
           showCloseButton={!create.isPending}
@@ -261,6 +261,9 @@ function TestPaymentForm({ dialog, overlay = false }: { dialog?: TestPaymentDial
             <DialogTitle ref={dialogTitle} tabIndex={-1}>
               测试收款
             </DialogTitle>
+            <DialogDescription className="sr-only">
+              创建一笔测试收款订单以验证收银台与查账流程。
+            </DialogDescription>
           </DialogHeader>
           {order ? (
             <TestPaymentResult workspaceClientId={request.fixedClientId}
@@ -273,7 +276,7 @@ function TestPaymentForm({ dialog, overlay = false }: { dialog?: TestPaymentDial
               <div className="-mx-4 min-h-0 overflow-auto px-4 pb-1">
                 {content}
               </div>
-              <DialogFooter className="shrink-0 flex-row justify-end">
+              <DialogFooter>
                 <Button
                   variant="outline"
                   disabled={create.isPending}

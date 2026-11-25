@@ -33,7 +33,7 @@ import { ErrorNotice, Loading, QueryView, ReadPausedNotice } from "@/components/
 import { useRequestConnectionOnline } from "@/lib/request-notices";
 import { TechnicalDetailsDialog } from "@/components/detail/DetailPrimitives";
 import { FieldList } from "@/components/record/FieldList";
-import { Dialog, DialogBody, DialogClose, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/admin-dialog";
+import { Dialog, DialogBody, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/admin-dialog";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { CopyValue } from "@/components/copy-value";
 import { accountHealth, accountState } from "@/lib/alipay-accounts";
@@ -588,7 +588,12 @@ function LedgerDiagnosis({ data, open, onOpenChange, finalFocus }: { data: Syste
   })) }, null, 2);
   return <Dialog open={open} onOpenChange={onOpenChange}>
     <DialogContent initialFocus={title} finalFocus={finalFocus}>
-      <DialogHeader><DialogTitle ref={title} tabIndex={-1}>查账诊断</DialogTitle></DialogHeader>
+      <DialogHeader>
+        <DialogTitle ref={title} tabIndex={-1}>查账诊断</DialogTitle>
+        <DialogDescription className="sr-only">
+          查看各支付宝账号配置、连接测试与查账诊断详情。
+        </DialogDescription>
+      </DialogHeader>
       <DialogBody>
         <Alert variant={data.ledger.collection_ready ? "default" : "destructive"}>
           <AlertTitle>{data.ledger.collection_ready ? "查账已就绪" : "查账尚未就绪"}</AlertTitle>

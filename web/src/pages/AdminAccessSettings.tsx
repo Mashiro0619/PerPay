@@ -27,6 +27,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import { ErrorNotice, QueryView } from "@/components/request-state";
 import {
   AlertDialog,
@@ -37,7 +38,6 @@ import {
   AlertDialogTitle,
   AlertDialogDescription,
   AlertDialogFooter,
-  DialogBody,
 } from "@/components/admin-dialog";
 
 export function AdminAccessEditorPage() {
@@ -187,6 +187,7 @@ export function AdminAccessSettings({
                 ? "你的填写已保留。请重新读取并核对服务器规则，再继续保存。"
                 : "你的修改已保留，重新读取后可继续保存。"}</p>
               <Button type="button" variant="outline" disabled={busy} onClick={() => reload.mutate()}>
+                {reload.isPending && <Spinner aria-hidden="true" data-icon="inline-start" />}
                 {reload.isPending ? "正在读取…" : "重新读取配置"}
               </Button>
             </AlertDescription>
@@ -301,13 +302,11 @@ export function AdminAccessSettings({
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>确认保存 IP 白名单？</AlertDialogTitle>
-          </AlertDialogHeader>
-          <DialogBody>
             <AlertDialogDescription>
               保存立即生效。启用时须允许当前
               IP；不匹配的来源即使已登录也会被拒绝。请确认有服务器离线恢复权限。
             </AlertDialogDescription>
-          </DialogBody>
+          </AlertDialogHeader>
           <AlertDialogFooter safeActionFirst>
             <AlertDialogCancel
               disabled={save.isPending}
@@ -316,6 +315,7 @@ export function AdminAccessSettings({
               取消
             </AlertDialogCancel>
             <AlertDialogAction disabled={save.isPending} onClick={() => save.mutate()}>
+              {save.isPending && <Spinner aria-hidden="true" data-icon="inline-start" />}
               {save.isPending ? "保存中…" : "确认保存"}
             </AlertDialogAction>
           </AlertDialogFooter>

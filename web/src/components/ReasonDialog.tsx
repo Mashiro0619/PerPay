@@ -205,7 +205,7 @@ export function ReasonDialog<Output>({
             </Field>
             {!mutation.recovery && <ErrorNotice error={mutation.error} />}
           </FieldGroup>
-          <DialogFooter className="shrink-0 flex-row flex-wrap justify-end">
+          <DialogFooter>
             <Button
               type="button"
               variant="outline"

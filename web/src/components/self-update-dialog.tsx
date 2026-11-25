@@ -29,6 +29,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
 
@@ -531,9 +532,9 @@ export function SelfUpdateDialog({
                 </div>
               </dl>
 
-              <label
+              <Label
                 htmlFor="self-update-create-backup"
-                className="flex cursor-pointer items-start gap-3 rounded-lg border border-border bg-card p-3"
+                className="flex w-full cursor-pointer items-start gap-3 rounded-lg border border-border bg-card p-3 font-normal"
               >
                 <Checkbox
                   id="self-update-create-backup"
@@ -550,7 +551,7 @@ export function SelfUpdateDialog({
                       : "当前运行环境未启用在线维护服务，将跳过自动备份并直接执行镜像更新。"}
                   </span>
                 </span>
-              </label>
+              </Label>
 
               <div className="flex items-start gap-2 rounded-lg border border-border bg-muted/20 p-3 text-xs text-muted-foreground">
                 <ShieldCheck className="mt-0.5 size-4 shrink-0 text-foreground" aria-hidden="true" />

@@ -742,6 +742,7 @@ export function AlipayAccountEditor({
         <OperationRecoveryNotice heading="创建结果待确认" operationId={creation.recovery.body.operation_id} error={creation.error} conflict={creation.conflict} />
         <OverlayActions><Button type="button" disabled={creation.isPending || creation.conflict}
           onClick={() => creation.recovery && creation.submit(creation.recovery)}>
+          {creation.isPending && <Spinner aria-hidden="true" data-icon="inline-start" />}
           {creation.isPending ? "正在重试…" : "重试上一次操作"}
         </Button></OverlayActions>
       </>}
@@ -749,7 +750,10 @@ export function AlipayAccountEditor({
         <AlertTitle>{needsReload === "unknown" ? "操作结果待核对" : "账号配置已在其他页面或设备中更新"}</AlertTitle>
         <AlertDescription>
           <p>{needsReload === "unknown" ? "你的输入已保留。请重新读取账号，核对操作是否完成后再继续。" : "你的修改已保留，重新读取后可继续操作。"}</p>
-          <Button variant="outline" disabled={busy} onClick={() => reload.mutate()}>{reload.isPending ? "正在读取…" : "重新读取账号"}</Button>
+          <Button variant="outline" disabled={busy} onClick={() => reload.mutate()}>
+            {reload.isPending && <Spinner aria-hidden="true" data-icon="inline-start" />}
+            {reload.isPending ? "正在读取…" : "重新读取账号"}
+          </Button>
         </AlertDescription>
       </Alert>}
       {review && <Card>

@@ -65,7 +65,7 @@ describe("admin access settings", () => {
     expect(requests.filter((r) => r.method === "PUT")).toHaveLength(0);
     const confirmation = screen.getByRole("alertdialog", { name: "确认保存 IP 白名单？" });
     const explanation = within(confirmation).getByText(/保存立即生效/);
-    expect(explanation.closest("[data-admin-dialog-body]")).not.toBeNull();
+    expect(explanation.closest('[data-slot="alert-dialog-header"]')).not.toBeNull();
     expect(confirmation).toHaveAccessibleDescription(explanation.textContent ?? "");
     await user.click(screen.getByRole("button", { name: "确认保存" }));
     await waitFor(() =>

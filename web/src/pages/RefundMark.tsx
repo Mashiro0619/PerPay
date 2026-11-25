@@ -313,7 +313,7 @@ export function RefundMarkDialog({
             </Field>
             {!save.recovery && <ErrorNotice error={save.error} />}
           </FieldGroup>
-          <DialogFooter className="shrink-0 flex-row flex-wrap justify-end">
+          <DialogFooter>
             <Button
               variant="outline"
               type="button"
