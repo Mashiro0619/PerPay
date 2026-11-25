@@ -69,7 +69,7 @@ for (const width of [390, 320]) {
         await page.getByRole("option", { name: `${name} · App ID ${appIds[1]}`, exact: true }).click();
         measurements.push(await expectPaintedIdentity(selector.locator('[data-slot="select-value"]'), appIds[1]!));
         await page.screenshot({ path: info.outputPath("same-name-fixed-selected.png") });
-        await overlay.getByRole("button", { name: "随机", exact: true }).click();
+        await overlay.getByRole("button", { name: "随机分配", exact: true }).click();
         for (const appId of appIds) {
           const checkbox = overlay.getByRole("checkbox", { name: `${name} · App ID ${appId}`, exact: true });
           await expect(checkbox).toBeVisible();

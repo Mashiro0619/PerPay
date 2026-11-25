@@ -43,10 +43,13 @@ for (const surface of [
       }
       await expect(row.locator("a[data-row-link]")).toHaveCount(1);
       if (surface.name === "work-items") {
-        if (font === 100) expect(geometry.height, "ordinary reminders should fit a concise summary").toBeLessThanOrEqual(width === 320 ? 180 : 160);
+        // Active mobile work items include the selection checkbox and inline ignore action.
+        if (font === 100) expect(geometry.height, "ordinary reminders should fit a concise summary").toBeLessThanOrEqual(width === 320 ? 224 : 200);
         await expect(row.locator("time")).toBeVisible();
         await expect(row.getByRole("group", { name: /^应付金额 / })).toBeVisible();
         await expect(row.getByRole("link", { name: /^查看订单：/ })).toBeVisible();
+        await expect(row.getByRole("checkbox")).toBeVisible();
+        await expect(row.getByRole("button", { name: /^忽略提醒：/ })).toBeVisible();
       } else {
         // Notification identity now includes the order, amount and both dates;
         // verify those readable fields rather than the older, shorter row height.

@@ -95,7 +95,7 @@ for (const layout of [
             toasts: [...document.querySelectorAll<HTMLElement>('[data-slot="toast"]')].map(toast => ({
               text: toast.innerText, box: box(toast), maxHeight: Number.parseFloat(getComputedStyle(toast).maxHeight),
             })),
-            overlayHostActive: !!document.querySelector("[data-overlay-content]"),
+            siteSettingsActive: !!document.querySelector('[data-site-settings-section="integration"]'),
           };
         });
         await page.screenshot({ path: info.outputPath("before-pointer.png"), animations: "disabled", caret: "hide" });
@@ -133,7 +133,7 @@ for (const layout of [
         await info.attach("toast-footer-geometry", { path: resultPath, contentType: "application/json" });
         if (!closed) await page.screenshot({ path: info.outputPath("after-blocked-pointer.png"), animations: "disabled", caret: "hide" });
 
-        expect(geometry.overlayHostActive, "the website editor remains behind its key dialog").toBe(true);
+        expect(geometry.siteSettingsActive, "the website editor remains behind its key dialog").toBe(true);
         const center = { x: geometry.button.x + geometry.button.width / 2, y: geometry.button.y + geometry.button.height / 2 };
         expect(center.x).toBeGreaterThanOrEqual(0);
         expect(center.x).toBeLessThan(geometry.viewport.width);

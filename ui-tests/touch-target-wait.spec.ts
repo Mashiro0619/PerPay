@@ -11,7 +11,7 @@ test.beforeEach(async ({ page }) => {
   await page.setContent(`<style>
     body { margin: 0; }
     #panel { position: fixed; left: 16px; top: 16px; }
-    button { display: block; width: 80px; height: 40px; padding: 0; border: 0; }
+    button { display: block; width: 80px; height: 44px; padding: 0; border: 0; }
   </style><div id="panel"><button>Target</button></div>`);
 });
 

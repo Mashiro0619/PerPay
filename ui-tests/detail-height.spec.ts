@@ -168,6 +168,11 @@ for (const layout of layouts) {
     const close = footer.getByRole("button", { name: "关闭", exact: true });
     await reachable(close);
     await reachable(footer.getByRole("button", { name: "保存默认设置", exact: true }));
+    if (editor.body.scrollHeight <= editor.body.height + 1) {
+      await dialog.getByRole("tab", { name: "收银台展示", exact: true }).click();
+      await dialog.getByRole("tab", { name: "文案", exact: true }).click();
+      await expect(dialog.getByLabel("待付款指引文案", { exact: true })).toBeVisible();
+    }
     const editorScroll = await scrollBody(page, dialog);
     await screenshot(page, info, "editor-footer-after-scroll");
     await close.click();

@@ -106,7 +106,7 @@ test.describe("mobile consecutive record rows", () => {
       await record(page, info, { feature: "mobile-consecutive-reminders", width, textPercent, rows: reminderGeometry });
       if (textPercent === 100) await capture(page, info, `mobile-reminders-${width}`);
       const reminderTarget = await reminder.locator("a[data-row-link]").getAttribute("href");
-      await reminder.click({ position: { x: 3, y: 3 } });
+      await reminder.click({ position: { x: 64, y: 3 } });
       await expect(page).toHaveURL(manifest.origin + reminderTarget);
 
       const ledgerQuery = "?direction=CREDIT&association_status=MATCHED";

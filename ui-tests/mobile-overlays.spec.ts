@@ -240,7 +240,7 @@ test.describe("mobile overlay regression with synthetic visible viewport", () =>
     await expect(dialog).toBeVisible();
     const small = { ...panned, height: 220 };
     await visibleArea(page, small);
-    const explanation = dialog.locator("[data-admin-dialog-body]");
+    const explanation = dialog.locator('[data-slot="alert-dialog-description"]');
     await expect(explanation).toHaveText(/保存立即生效/);
     const scroll = dialog.locator("[data-admin-dialog-scroll]");
     await explanation.evaluate(element => element.scrollIntoView({ block: "center" }));

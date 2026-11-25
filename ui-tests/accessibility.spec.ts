@@ -53,9 +53,15 @@ test("chart, avatar, amount list and dangerous action semantics stay accessible 
       else await page.goto(manifest.origin + "/admin" + route);
       await expect(page.locator("#main-content")).toBeVisible();
       await expect(page.locator('#main-content [data-slot="skeleton"]')).toHaveCount(0);
-      if (route === "/") await expect(page.locator(".recharts-surface")).toBeVisible();
-      // Font replacement changes text bounds after the skeletons disappear.
+      if (route === "/") {
+        await expect(page.locator(".recharts-surface")).toBeVisible();
+        await expect(page.locator(".recharts-cartesian-axis-tick-value").first()).toBeVisible();
+      }
+      // Font replacement and post-mount axis measurement update SVG tick bounds after skeletons disappear.
       await page.evaluate(() => document.fonts.ready);
+      if (route === "/") {
+        await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+      }
       await audit(page, info, `${theme}-${index}`);
       await record(page, info, { theme, route });
     }

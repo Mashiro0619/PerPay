@@ -57,7 +57,7 @@ for (const layout of [{ width: 1440, height: 900, font: 100 }, { width: 390, hei
     await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
     await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
     await login(page, manifest);
-    await page.goto(manifest.origin + "/admin/settings/display");
+    await page.goto(manifest.origin + "/admin/settings/security");
     await page.evaluate(font => document.documentElement.style.fontSize = font + "%", layout.font);
     await expect(page.locator("html")).toHaveCSS("font-size", (16 * layout.font / 100) + "px");
     const reference = await cardGeometry(page.locator("[data-settings-summary]").first());
